@@ -27,6 +27,13 @@ go.work.sum
 # env file
 .env
 
+# codex-dock binary
+codex-dock
+codex-dock-*
+
+# Config with secrets
+~/.config/codex-dock/apikey
+
 # Editor/IDE
 # .idea/
 # .vscode/

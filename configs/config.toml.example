@@ -1,0 +1,17 @@
+# codex-dock configuration file
+# Place at ~/.config/codex-dock/config.toml
+
+# Default Docker image for sandbox containers
+default_image = "codex-dock:latest"
+
+# Default token TTL in seconds
+default_token_ttl = 3600
+
+# Docker network name
+network_name = "dock-net"
+
+# Enable verbose output by default
+verbose = false
+
+# Enable debug output by default
+debug = false
