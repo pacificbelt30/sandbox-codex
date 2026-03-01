@@ -1,0 +1,101 @@
+package sandbox
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAbsolutePath_Absolute(t *testing.T) {
+	got, err := absolutePath("/tmp/workspace")
+	if err != nil {
+		t.Fatalf("absolutePath: %v", err)
+	}
+	if got != "/tmp/workspace" {
+		t.Errorf("absolutePath = %q; want /tmp/workspace", got)
+	}
+}
+
+func TestAbsolutePath_Relative(t *testing.T) {
+	wd, _ := os.Getwd()
+	got, err := absolutePath("workspace")
+	if err != nil {
+		t.Fatalf("absolutePath: %v", err)
+	}
+	want := wd + "/workspace"
+	if got != want {
+		t.Errorf("absolutePath = %q; want %q", got, want)
+	}
+}
+
+func TestBuildCodexArgs_Minimal(t *testing.T) {
+	opts := RunOptions{}
+	args := buildCodexArgs(opts)
+	if len(args) != 1 || args[0] != "codex" {
+		t.Errorf("buildCodexArgs(minimal) = %v; want [codex]", args)
+	}
+}
+
+func TestBuildCodexArgs_FullAuto(t *testing.T) {
+	opts := RunOptions{FullAuto: true}
+	args := buildCodexArgs(opts)
+	if !containsSequence(args, "--ask-for-approval", "never") {
+		t.Errorf("buildCodexArgs(FullAuto) = %v; missing --ask-for-approval never", args)
+	}
+}
+
+func TestBuildCodexArgs_Model(t *testing.T) {
+	opts := RunOptions{Model: "gpt-4o"}
+	args := buildCodexArgs(opts)
+	if !containsSequence(args, "--model", "gpt-4o") {
+		t.Errorf("buildCodexArgs(Model) = %v; missing --model gpt-4o", args)
+	}
+}
+
+func TestBuildCodexArgs_Task(t *testing.T) {
+	opts := RunOptions{Task: "Write unit tests"}
+	args := buildCodexArgs(opts)
+	last := args[len(args)-1]
+	if last != "Write unit tests" {
+		t.Errorf("buildCodexArgs(Task) last arg = %q; want task string", last)
+	}
+}
+
+func TestBuildCodexArgs_All(t *testing.T) {
+	opts := RunOptions{
+		FullAuto: true,
+		Model:    "o4-mini",
+		Task:     "Refactor auth module",
+	}
+	args := buildCodexArgs(opts)
+	if args[0] != "codex" {
+		t.Errorf("first arg should be 'codex', got %q", args[0])
+	}
+	if !containsSequence(args, "--ask-for-approval", "never") {
+		t.Error("missing --ask-for-approval never")
+	}
+	if !containsSequence(args, "--model", "o4-mini") {
+		t.Error("missing --model o4-mini")
+	}
+	if args[len(args)-1] != "Refactor auth module" {
+		t.Errorf("last arg = %q; want task", args[len(args)-1])
+	}
+}
+
+func TestInt64Ptr(t *testing.T) {
+	v := int64ptr(512)
+	if v == nil {
+		t.Fatal("int64ptr returned nil")
+	}
+	if *v != 512 {
+		t.Errorf("*int64ptr(512) = %d; want 512", *v)
+	}
+}
+
+func containsSequence(slice []string, a, b string) bool {
+	for i := 0; i < len(slice)-1; i++ {
+		if slice[i] == a && slice[i+1] == b {
+			return true
+		}
+	}
+	return false
+}
