@@ -96,9 +96,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		"CODEX_SANDBOX=1",
 	}
 
-	isOAuth := authproxy.IsOAuthAuth()
-
-	if m.proxy != nil && !isOAuth {
+	if m.proxy != nil {
 		token, err := m.proxy.IssueToken(name, opts.TokenTTL)
 		if err != nil {
 			return "", fmt.Errorf("issuing auth token: %w", err)
@@ -142,26 +140,9 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		},
 	}
 	_ = mountMode // applied via ReadOnly field below
-
-	// OAuth (ChatGPT subscription) auth: mount auth.json directly into the
-	// container so the Codex CLI can read and refresh tokens as usual.
-	if isOAuth {
-		authJSONPath, err := authproxy.CodexAuthJSONPath()
-		if err != nil {
-			return "", fmt.Errorf("resolving auth.json path: %w", err)
-		}
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: authJSONPath,
-			Target: "/home/codex/.codex/auth.json",
-			BindOptions: &mount.BindOptions{
-				Propagation: mount.PropagationRPrivate,
-			},
-		})
-		if m.debug {
-			fmt.Fprintf(os.Stderr, "debug: mounting auth.json for OAuth auth\n")
-		}
-	}
+	// Note: auth.json is NOT bind-mounted even in OAuth mode.
+	// The Auth Proxy provides only the access_token to the container via
+	// the /token endpoint, keeping the refresh_token on the host (F-AUTH-01).
 
 	// Container labels for identification
 	labels := map[string]string{

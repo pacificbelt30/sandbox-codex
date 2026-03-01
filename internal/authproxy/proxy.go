@@ -30,28 +30,48 @@ type tokenRecord struct {
 
 // Proxy is the Auth Proxy server that issues short-lived tokens to containers.
 type Proxy struct {
-	cfg      Config
-	apiKey   string
-	listener net.Listener
-	server   *http.Server
-	mu       sync.RWMutex
-	tokens   map[string]*tokenRecord // containerName -> record
-	addr     string
+	cfg        Config
+	apiKey     string
+	oauthCreds *OAuthCredentials // non-nil when operating in OAuth mode
+	listener   net.Listener
+	server     *http.Server
+	mu         sync.RWMutex
+	tokens     map[string]*tokenRecord // containerName -> record
+	addr       string
 }
 
 // NewProxy creates a new Auth Proxy.
+// In OAuth mode (detected via IsOAuthAuth), credentials are loaded from
+// ~/.codex/auth.json. In API key mode, the API key is loaded as usual.
 func NewProxy(cfg Config) (*Proxy, error) {
-	apiKey := loadAPIKey()
-	if apiKey == "" && cfg.Verbose {
-		fmt.Fprintln(os.Stderr, "warning: no API key found; containers will not receive auth tokens")
-	}
-
 	p := &Proxy{
 		cfg:    cfg,
-		apiKey: apiKey,
 		tokens: make(map[string]*tokenRecord),
 	}
+
+	if IsOAuthAuth() {
+		creds, err := LoadOAuthCredentials()
+		if err != nil {
+			return nil, fmt.Errorf("loading OAuth credentials: %w", err)
+		}
+		p.oauthCreds = creds
+		if cfg.Verbose {
+			fmt.Fprintln(os.Stderr, "Auth Proxy: OAuth mode (access_token only will be issued to containers)")
+		}
+	} else {
+		apiKey := loadAPIKey()
+		if apiKey == "" && cfg.Verbose {
+			fmt.Fprintln(os.Stderr, "warning: no API key found; containers will not receive auth tokens")
+		}
+		p.apiKey = apiKey
+	}
+
 	return p, nil
+}
+
+// IsOAuthMode returns true when the proxy is operating in OAuth mode.
+func (p *Proxy) IsOAuthMode() bool {
+	return p.oauthCreds != nil
 }
 
 // Start begins listening on a random loopback port on dock-net.
@@ -164,14 +184,25 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.cfg.Verbose {
-		fmt.Printf("API key served to container %s\n", found.ContainerName)
+		fmt.Printf("Credentials served to container %s\n", found.ContainerName)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"api_key":        p.apiKey,
-		"container_name": found.ContainerName,
-	})
+	if p.oauthCreds != nil {
+		// OAuth mode: return only the access_token — refresh_token stays on the host.
+		p.mu.RLock()
+		accessToken := p.oauthCreds.AccessToken
+		p.mu.RUnlock()
+		json.NewEncoder(w).Encode(map[string]string{
+			"oauth_access_token": accessToken,
+			"container_name":     found.ContainerName,
+		})
+	} else {
+		json.NewEncoder(w).Encode(map[string]string{
+			"api_key":        p.apiKey,
+			"container_name": found.ContainerName,
+		})
+	}
 }
 
 func (p *Proxy) handleHealth(w http.ResponseWriter, r *http.Request) {
