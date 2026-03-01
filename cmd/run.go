@@ -1,0 +1,221 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/network"
+	"github.com/pacificbelt30/codex-dock/internal/sandbox"
+	"github.com/pacificbelt30/codex-dock/internal/worktree"
+	"github.com/spf13/cobra"
+)
+
+var runOpts sandbox.RunOptions
+
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Start a sandboxed Codex worker container",
+	Long: `Start a Docker container with Codex CLI isolated from the host environment.
+Auth credentials are injected via the Auth Proxy instead of being directly mounted.`,
+	RunE: runWorker,
+}
+
+func init() {
+	rootCmd.AddCommand(runCmd)
+
+	f := runCmd.Flags()
+	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "Docker image for the sandbox")
+	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
+	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
+	f.StringVarP(&runOpts.ProjectDir, "project", "d", ".", "Project directory to mount as /workspace")
+	f.BoolVarP(&runOpts.UseWorktree, "worktree", "w", false, "Use git worktree for isolation")
+	f.StringVarP(&runOpts.Branch, "branch", "b", "", "Branch to checkout (requires --worktree)")
+	f.BoolVarP(&runOpts.NewBranch, "new-branch", "B", false, "Create new branch (requires --worktree and --branch)")
+	f.StringVarP(&runOpts.Name, "name", "n", "", "Container name (auto-generated if omitted)")
+	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for Codex")
+	f.BoolVar(&runOpts.FullAuto, "full-auto", false, "Run Codex with --ask-for-approval never")
+	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
+	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
+	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
+	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
+	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
+	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
+	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
+}
+
+func runWorker(cmd *cobra.Command, args []string) error {
+	// Resolve project directory
+	projectDir, err := resolveProjectDir(runOpts.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("resolving project directory: %w", err)
+	}
+	runOpts.ProjectDir = projectDir
+
+	// Ensure dock-net exists
+	netMgr, err := network.NewManager()
+	if err != nil {
+		return fmt.Errorf("creating network manager: %w", err)
+	}
+	if err := netMgr.EnsureNetwork(runOpts.NoInternet); err != nil {
+		return fmt.Errorf("ensuring dock-net: %w", err)
+	}
+
+	// Start Auth Proxy
+	proxy, err := authproxy.NewProxy(authproxy.Config{
+		TokenTTL: runOpts.TokenTTL,
+		Verbose:  verbose,
+	})
+	if err != nil {
+		return fmt.Errorf("starting auth proxy: %w", err)
+	}
+	if err := proxy.Start(); err != nil {
+		return fmt.Errorf("starting auth proxy: %w", err)
+	}
+	defer proxy.Stop()
+
+	// Load packages.dock if present and no --pkg-file given
+	if runOpts.PkgFile == "" {
+		autoFile := runOpts.ProjectDir + "/packages.dock"
+		if _, err := os.Stat(autoFile); err == nil {
+			runOpts.PkgFile = autoFile
+		}
+	}
+
+	// Setup signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	sbMgr, err := sandbox.NewManager(sandbox.ManagerConfig{
+		Proxy:   proxy,
+		Network: netMgr,
+		Verbose: verbose,
+		Debug:   debug,
+	})
+	if err != nil {
+		return fmt.Errorf("creating sandbox manager: %w", err)
+	}
+
+	if runOpts.Parallel > 1 {
+		return runParallel(sbMgr, proxy, sigCh)
+	}
+
+	return runSingle(sbMgr, proxy, sigCh)
+}
+
+func runSingle(mgr *sandbox.Manager, proxy *authproxy.Proxy, sigCh <-chan os.Signal) error {
+	opts := runOpts
+
+	// Handle worktree
+	if opts.UseWorktree {
+		wtPath, err := worktree.Create(worktree.CreateOptions{
+			ProjectDir: opts.ProjectDir,
+			Branch:     opts.Branch,
+			NewBranch:  opts.NewBranch,
+		})
+		if err != nil {
+			return fmt.Errorf("creating worktree: %w", err)
+		}
+		opts.WorktreePath = wtPath
+		defer func() {
+			if err := worktree.Remove(wtPath); err != nil && verbose {
+				fmt.Fprintf(os.Stderr, "warning: removing worktree %s: %v\n", wtPath, err)
+			}
+		}()
+	}
+
+	containerID, err := mgr.Run(opts)
+	if err != nil {
+		return fmt.Errorf("starting container: %w", err)
+	}
+
+	if opts.Detach {
+		fmt.Printf("Container started: %s\n", containerID[:12])
+		return nil
+	}
+
+	// Wait for signal or container exit
+	exitCh := mgr.Wait(containerID)
+	select {
+	case <-sigCh:
+		fmt.Println("\nStopping container...")
+		return mgr.Stop(containerID, 10)
+	case err := <-exitCh:
+		return err
+	}
+}
+
+func runParallel(mgr *sandbox.Manager, proxy *authproxy.Proxy, sigCh <-chan os.Signal) error {
+	opts := runOpts
+	n := opts.Parallel
+	fmt.Printf("Starting %d parallel workers...\n", n)
+
+	containerIDs := make([]string, 0, n)
+	worktreePaths := make([]string, 0, n)
+
+	for i := 1; i <= n; i++ {
+		o := opts
+		branch := opts.Branch
+		if branch == "" {
+			branch = fmt.Sprintf("worker-%d", i)
+		} else {
+			branch = fmt.Sprintf("%s-%d", branch, i)
+		}
+		o.Branch = branch
+		o.Name = fmt.Sprintf("%s-%d", opts.Name, i)
+
+		if opts.UseWorktree {
+			wtPath, err := worktree.Create(worktree.CreateOptions{
+				ProjectDir: opts.ProjectDir,
+				Branch:     branch,
+				NewBranch:  true,
+			})
+			if err != nil {
+				// cleanup already-created worktrees
+				for _, p := range worktreePaths {
+					_ = worktree.Remove(p)
+				}
+				return fmt.Errorf("creating worktree %d: %w", i, err)
+			}
+			worktreePaths = append(worktreePaths, wtPath)
+			o.WorktreePath = wtPath
+		}
+
+		containerID, err := mgr.Run(o)
+		if err != nil {
+			for _, p := range worktreePaths {
+				_ = worktree.Remove(p)
+			}
+			return fmt.Errorf("starting worker %d: %w", i, err)
+		}
+		containerIDs = append(containerIDs, containerID)
+		fmt.Printf("  Worker %d started: %s\n", i, containerID[:12])
+	}
+
+	if opts.Detach {
+		return nil
+	}
+
+	<-sigCh
+	fmt.Println("\nStopping all workers...")
+	for _, id := range containerIDs {
+		if err := mgr.Stop(id, 10); err != nil && verbose {
+			fmt.Fprintf(os.Stderr, "warning: stopping %s: %v\n", id[:12], err)
+		}
+	}
+	for _, p := range worktreePaths {
+		if err := worktree.Remove(p); err != nil && verbose {
+			fmt.Fprintf(os.Stderr, "warning: removing worktree %s: %v\n", p, err)
+		}
+	}
+	return nil
+}
+
+func resolveProjectDir(dir string) (string, error) {
+	if dir == "." {
+		return os.Getwd()
+	}
+	return dir, nil
+}
