@@ -20,8 +20,9 @@ RUN npm install -g @openai/codex
 # Create non-root user (uid:1000)
 RUN useradd -m -u 1000 -s /bin/bash codex
 
-# Create workspace directory
-RUN mkdir -p /workspace && chown codex:codex /workspace
+# Create workspace and .codex directories owned by the non-root user.
+# ~/.codex/auth.json may be bind-mounted here for ChatGPT subscription auth.
+RUN mkdir -p /workspace /home/codex/.codex && chown -R codex:codex /workspace /home/codex/.codex
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh

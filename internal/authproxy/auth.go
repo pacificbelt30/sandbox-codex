@@ -36,13 +36,46 @@ func GetAuthInfo() (*AuthInfo, error) {
 	home, _ := os.UserHomeDir()
 	authJSON := filepath.Join(home, ".codex", "auth.json")
 	if _, err := os.Stat(authJSON); err == nil {
-		info.Source = "~/.codex/auth.json"
+		if IsOAuthAuth() {
+			info.Source = "~/.codex/auth.json (OAuth/ChatGPT subscription)"
+		} else {
+			info.Source = "~/.codex/auth.json"
+		}
 		info.KeyConfigured = true
 		return info, nil
 	}
 
 	info.Source = "none"
 	return info, nil
+}
+
+// IsOAuthAuth returns true when ~/.codex/auth.json contains ChatGPT subscription
+// (OAuth) credentials rather than a plain API key. OAuth sessions are identified
+// by the presence of a refresh_token field.
+func IsOAuthAuth() bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "auth.json"))
+	if err != nil {
+		return false
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return false
+	}
+	_, hasRefresh := m["refresh_token"]
+	return hasRefresh
+}
+
+// CodexAuthJSONPath returns the absolute path to ~/.codex/auth.json.
+func CodexAuthJSONPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".codex", "auth.json"), nil
 }
 
 // SaveAPIKey persists an API key to the codex-dock config directory.
