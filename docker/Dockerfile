@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Codex CLI
 RUN npm install -g @openai/codex
 
-# Create non-root user (uid:1000)
-RUN useradd -m -u 1000 -s /bin/bash codex
+# Create non-root user (uid:1001; uid:1000 is reserved for the base image's node user)
+RUN useradd -m -u 1001 -s /bin/bash codex
 
 # Create workspace and .codex directories owned by the non-root user.
 # ~/.codex/auth.json may be bind-mounted here for ChatGPT subscription auth.
