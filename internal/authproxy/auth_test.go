@@ -168,8 +168,8 @@ func TestReadCodexAuthJSON_MultipleKeys(t *testing.T) {
 
 	// Test each key variant
 	tests := []struct {
-		jsonKey  string
-		wantKey  string
+		jsonKey string
+		wantKey string
 	}{
 		{"OPENAI_API_KEY", "sk-from-OPENAI_API_KEY"},
 		{"api_key", "sk-from-api_key"},

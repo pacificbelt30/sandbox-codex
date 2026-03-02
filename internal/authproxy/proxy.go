@@ -22,10 +22,10 @@ type Config struct {
 
 // tokenRecord holds a single issued token and its metadata.
 type tokenRecord struct {
-	Token      string
+	Token         string
 	ContainerName string
-	ExpiresAt  time.Time
-	IssuedAt   time.Time
+	ExpiresAt     time.Time
+	IssuedAt      time.Time
 }
 
 // Proxy is the Auth Proxy server that issues short-lived tokens to containers.
