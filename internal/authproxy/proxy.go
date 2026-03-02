@@ -193,12 +193,12 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 		p.mu.RLock()
 		accessToken := p.oauthCreds.AccessToken
 		p.mu.RUnlock()
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"oauth_access_token": accessToken,
 			"container_name":     found.ContainerName,
 		})
 	} else {
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"api_key":        p.apiKey,
 			"container_name": found.ContainerName,
 		})
@@ -210,8 +210,8 @@ func (p *Proxy) handleHealth(w http.ResponseWriter, r *http.Request) {
 	count := len(p.tokens)
 	p.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":       "ok",
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "ok",
 		"active_tokens": count,
 	})
 }
