@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -319,5 +321,172 @@ func TestGenerateToken(t *testing.T) {
 			t.Error("generateToken produced duplicate token")
 		}
 		seen[tok] = struct{}{}
+	}
+}
+
+// ── OAuth mode proxy tests ───────────────────────────────────────────────────
+
+// newOAuthTestProxy creates a Proxy configured for OAuth mode, bypassing
+// IsOAuthAuth() file detection by directly setting oauthCreds.
+func newOAuthTestProxy(t *testing.T, accessToken string) *Proxy {
+	t.Helper()
+	p, err := NewProxy(Config{TokenTTL: 60, Verbose: false})
+	if err != nil {
+		t.Fatalf("NewProxy: %v", err)
+	}
+	p.oauthCreds = &OAuthCredentials{
+		AccessToken:  accessToken,
+		RefreshToken: "rt-secret-stays-on-host",
+		TokenType:    "Bearer",
+	}
+	p.apiKey = "" // ensure API key mode is not active
+	return p
+}
+
+func TestIsOAuthMode_False(t *testing.T) {
+	p := newTestProxy(t)
+	if p.IsOAuthMode() {
+		t.Error("IsOAuthMode() = true for API key proxy; want false")
+	}
+}
+
+func TestIsOAuthMode_True(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-test-access")
+	if !p.IsOAuthMode() {
+		t.Error("IsOAuthMode() = false for OAuth proxy; want true")
+	}
+}
+
+func TestHandleToken_OAuthMode_ReturnsAccessToken(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-container-visible")
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	token, err := p.IssueToken("ctr-oauth", 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/token", nil)
+	req.Header.Set("X-Codex-Token", token)
+	w := httptest.NewRecorder()
+	p.handleToken(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var m map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// access_token must be present
+	if m["oauth_access_token"] != "at-container-visible" {
+		t.Errorf("oauth_access_token = %q; want at-container-visible", m["oauth_access_token"])
+	}
+	// container_name must match
+	if m["container_name"] != "ctr-oauth" {
+		t.Errorf("container_name = %q; want ctr-oauth", m["container_name"])
+	}
+}
+
+func TestHandleToken_OAuthMode_NoRefreshToken(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-no-leak")
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	token, _ := p.IssueToken("ctr-noleak", 60)
+
+	req := httptest.NewRequest(http.MethodGet, "/token", nil)
+	req.Header.Set("X-Codex-Token", token)
+	w := httptest.NewRecorder()
+	p.handleToken(w, req)
+
+	body, _ := io.ReadAll(w.Result().Body)
+	bodyStr := string(body)
+
+	// refresh_token must NOT appear in any response field
+	if strings.Contains(bodyStr, "rt-secret-stays-on-host") {
+		t.Errorf("refresh_token leaked in response: %s", bodyStr)
+	}
+	if strings.Contains(bodyStr, "refresh_token") {
+		t.Errorf("refresh_token key leaked in response: %s", bodyStr)
+	}
+}
+
+func TestHandleToken_OAuthMode_NoAPIKey(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-oauth")
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	token, _ := p.IssueToken("ctr-no-apikey", 60)
+
+	req := httptest.NewRequest(http.MethodGet, "/token", nil)
+	req.Header.Set("X-Codex-Token", token)
+	w := httptest.NewRecorder()
+	p.handleToken(w, req)
+
+	var m map[string]string
+	json.NewDecoder(w.Result().Body).Decode(&m)
+
+	// api_key must not be present in OAuth response
+	if _, hasKey := m["api_key"]; hasKey {
+		t.Error("api_key should not be present in OAuth mode response")
+	}
+}
+
+func TestNewProxy_OAuthMode(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	// Write an OAuth auth.json
+	writeAuthJSONForProxy(t, home, map[string]interface{}{
+		"access_token":  "at-proxy-test",
+		"refresh_token": "rt-proxy-test",
+		"token_type":    "Bearer",
+	})
+
+	p, err := NewProxy(Config{Verbose: false})
+	if err != nil {
+		t.Fatalf("NewProxy in OAuth mode: %v", err)
+	}
+
+	if !p.IsOAuthMode() {
+		t.Error("proxy should be in OAuth mode when auth.json has refresh_token")
+	}
+	if p.oauthCreds.AccessToken != "at-proxy-test" {
+		t.Errorf("oauthCreds.AccessToken = %q; want at-proxy-test", p.oauthCreds.AccessToken)
+	}
+	// RefreshToken must be held in proxy (not nil) but should NOT be forwarded
+	if p.oauthCreds.RefreshToken == "" {
+		t.Error("proxy should hold refresh_token internally (for future refresh support)")
+	}
+	// apiKey must be empty in OAuth mode
+	if p.apiKey != "" {
+		t.Errorf("apiKey should be empty in OAuth mode, got %q", p.apiKey)
+	}
+}
+
+// writeAuthJSONForProxy is a test helper that writes auth.json to the fake HOME.
+func writeAuthJSONForProxy(t *testing.T, home string, data map[string]interface{}) {
+	t.Helper()
+	codexDir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "auth.json"), b, 0600); err != nil {
+		t.Fatal(err)
 	}
 }

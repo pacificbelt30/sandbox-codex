@@ -15,25 +15,39 @@ fi
 
 # ── Auth token acquisition ──────────────────────────────────────────────────
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
-    log "Fetching API credentials from Auth Proxy..."
+    log "Fetching credentials from Auth Proxy..."
 
     RESPONSE=$(curl -sf \
         -H "X-Codex-Token: ${CODEX_TOKEN}" \
         "${CODEX_AUTH_PROXY_URL}/token") || {
-        log "ERROR: Failed to fetch token from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
+        log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
         exit 1
     }
 
-    # Extract api_key from JSON response
-    API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || true)
+    # Detect OAuth mode: proxy returns oauth_access_token instead of api_key
+    OAUTH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_access_token',''))" 2>/dev/null || true)
 
-    if [[ -z "$API_KEY" ]]; then
-        log "ERROR: Auth Proxy returned empty API key"
-        exit 1
+    if [[ -n "$OAUTH_TOKEN" ]]; then
+        # OAuth mode: create a synthetic auth.json with access_token only.
+        # The refresh_token is intentionally omitted — it stays on the host.
+        # This satisfies F-AUTH-01: auth.json is not bind-mounted from the host.
+        mkdir -p /home/codex/.codex
+        printf '{"access_token":"%s","token_type":"Bearer"}' "$OAUTH_TOKEN" \
+            > /home/codex/.codex/auth.json
+        chmod 600 /home/codex/.codex/auth.json
+        log "OAuth access_token acquired (refresh_token remains on host)."
+    else
+        # API key mode: extract api_key and set as environment variable
+        API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || true)
+
+        if [[ -z "$API_KEY" ]]; then
+            log "ERROR: Auth Proxy returned neither oauth_access_token nor api_key"
+            exit 1
+        fi
+
+        export OPENAI_API_KEY="$API_KEY"
+        log "API key acquired successfully."
     fi
-
-    export OPENAI_API_KEY="$API_KEY"
-    log "Auth token acquired successfully."
 
     # Clear the temporary token from environment for security
     unset CODEX_TOKEN

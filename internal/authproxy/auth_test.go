@@ -208,3 +208,128 @@ func TestSaveAPIKey_FilePermissions(t *testing.T) {
 		t.Errorf("apikey file mode = %o; want 0600", mode)
 	}
 }
+
+// ── OAuth credential tests ───────────────────────────────────────────────────
+
+func writeAuthJSON(t *testing.T, home string, data map[string]interface{}) {
+	t.Helper()
+	codexDir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "auth.json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadOAuthCredentials_Valid(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"access_token":  "at-test-access",
+		"refresh_token": "rt-test-refresh",
+		"expires_at":    1234567890,
+		"token_type":    "Bearer",
+	})
+
+	creds, err := LoadOAuthCredentials()
+	if err != nil {
+		t.Fatalf("LoadOAuthCredentials: %v", err)
+	}
+	if creds.AccessToken != "at-test-access" {
+		t.Errorf("AccessToken = %q; want at-test-access", creds.AccessToken)
+	}
+	if creds.RefreshToken != "rt-test-refresh" {
+		t.Errorf("RefreshToken = %q; want rt-test-refresh", creds.RefreshToken)
+	}
+	if creds.ExpiresAt != 1234567890 {
+		t.Errorf("ExpiresAt = %d; want 1234567890", creds.ExpiresAt)
+	}
+	if creds.TokenType != "Bearer" {
+		t.Errorf("TokenType = %q; want Bearer", creds.TokenType)
+	}
+}
+
+func TestLoadOAuthCredentials_NoFile(t *testing.T) {
+	_, cleanup := withTempHome(t)
+	defer cleanup()
+
+	_, err := LoadOAuthCredentials()
+	if err == nil {
+		t.Error("expected error when auth.json does not exist")
+	}
+}
+
+func TestLoadOAuthCredentials_InvalidJSON(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	codexDir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "auth.json"), []byte("not-json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadOAuthCredentials()
+	if err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestLoadOAuthCredentials_MissingAccessToken(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	// auth.json exists but has no access_token
+	writeAuthJSON(t, home, map[string]interface{}{
+		"refresh_token": "rt-only",
+	})
+
+	_, err := LoadOAuthCredentials()
+	if err == nil {
+		t.Error("expected error when access_token is missing")
+	}
+}
+
+func TestIsOAuthAuth_WithRefreshToken(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"access_token":  "at-test",
+		"refresh_token": "rt-test",
+	})
+
+	if !IsOAuthAuth() {
+		t.Error("IsOAuthAuth() = false; want true when refresh_token is present")
+	}
+}
+
+func TestIsOAuthAuth_WithoutRefreshToken(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"OPENAI_API_KEY": "sk-apikey",
+	})
+
+	if IsOAuthAuth() {
+		t.Error("IsOAuthAuth() = true; want false when refresh_token is absent")
+	}
+}
+
+func TestIsOAuthAuth_NoFile(t *testing.T) {
+	_, cleanup := withTempHome(t)
+	defer cleanup()
+
+	if IsOAuthAuth() {
+		t.Error("IsOAuthAuth() = true; want false when auth.json does not exist")
+	}
+}

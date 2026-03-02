@@ -16,6 +16,38 @@ type AuthInfo struct {
 	KeyConfigured bool
 }
 
+// OAuthCredentials holds OAuth credentials loaded from ~/.codex/auth.json.
+// Only AccessToken is passed to containers; RefreshToken stays on the host.
+type OAuthCredentials struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresAt    int64  `json:"expires_at"` // Unix timestamp; 0 means unknown
+	TokenType    string `json:"token_type"`
+}
+
+// LoadOAuthCredentials reads OAuth credentials from ~/.codex/auth.json.
+// Returns an error if the file does not exist, cannot be parsed, or contains
+// no access_token.
+func LoadOAuthCredentials() (*OAuthCredentials, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("getting home directory: %w", err)
+	}
+	path := filepath.Join(home, ".codex", "auth.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading auth.json: %w", err)
+	}
+	var creds OAuthCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, fmt.Errorf("parsing auth.json: %w", err)
+	}
+	if creds.AccessToken == "" {
+		return nil, fmt.Errorf("auth.json contains no access_token")
+	}
+	return &creds, nil
+}
+
 // GetAuthInfo returns metadata about the current auth configuration.
 func GetAuthInfo() (*AuthInfo, error) {
 	info := &AuthInfo{}
