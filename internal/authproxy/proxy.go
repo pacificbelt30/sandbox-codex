@@ -16,8 +16,9 @@ import (
 
 // Config configures the Auth Proxy.
 type Config struct {
-	TokenTTL int
-	Verbose  bool
+	TokenTTL   int
+	Verbose    bool
+	ListenAddr string // TCP address to listen on, e.g. "192.168.200.1:0". Defaults to "127.0.0.1:0".
 }
 
 // tokenRecord holds a single issued token and its metadata.
@@ -74,9 +75,16 @@ func (p *Proxy) IsOAuthMode() bool {
 	return p.oauthCreds != nil
 }
 
-// Start begins listening on a random loopback port on dock-net.
+// Start begins listening on a random port on the configured address.
+// If ListenAddr is empty it defaults to "127.0.0.1:0" (loopback only).
+// Pass the dock-net gateway address (e.g. "192.168.200.1:0") so containers
+// can reach the proxy over the bridge network (F-NET-04).
 func (p *Proxy) Start() error {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	addr := p.cfg.ListenAddr
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("starting auth proxy: %w", err)
 	}

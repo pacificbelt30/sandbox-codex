@@ -59,7 +59,6 @@ func Run() error {
 			true, false)
 
 	var workers []sandbox.Worker
-	var selectedIdx int
 
 	refreshData := func() {
 		ws, err := mgr.List(true)
@@ -103,6 +102,26 @@ func Run() error {
 		})
 	}
 
+	// showLogs fetches real container logs and displays them in the log view (F-UI-03).
+	showLogs := func(w sandbox.Worker) {
+		logView.Clear()
+		// Switch to log page immediately so the user sees activity.
+		app.QueueUpdateDraw(func() {
+			pages.SwitchToPage("logs")
+		})
+		go func() {
+			lw := &tviewWriter{view: logView, app: app}
+			opts := sandbox.LogOptions{
+				Name:   w.ID,
+				Tail:   200,
+				Output: lw,
+			}
+			if err := mgr.Logs(opts); err != nil {
+				_, _ = fmt.Fprintf(lw, "[red]Error fetching logs: %v[-]", err)
+			}
+		}()
+	}
+
 	// Key handling
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		row, _ := table.GetSelection()
@@ -128,6 +147,18 @@ func Run() error {
 				}(workers[idx])
 			}
 
+		case 'r', 'R':
+			// F-UI-02: Restart a stopped/exited container via Docker start.
+			if idx >= 0 && idx < len(workers) {
+				go func(w sandbox.Worker) {
+					if err := mgr.Start(w.ID); err != nil {
+						// Silently ignore; container may already be running.
+						_ = err
+					}
+					refreshData()
+				}(workers[idx])
+			}
+
 		case 'a', 'A':
 			go func() {
 				for _, w := range workers {
@@ -142,21 +173,7 @@ func Run() error {
 		switch event.Key() {
 		case tcell.KeyEnter:
 			if idx >= 0 && idx < len(workers) {
-				selectedIdx = idx
-				_ = selectedIdx
-				// Show logs
-				logView.Clear()
-				go func(w sandbox.Worker) {
-					opts := sandbox.LogOptions{Name: w.ID, Tail: 200}
-					// Write to logView
-					logWriter := &tviewWriter{view: logView, app: app}
-					_ = logWriter
-					_ = opts
-					logView.SetText(fmt.Sprintf("[Logs for %s]\n(Use codex-dock logs %s for full output)", w.Name, w.Name))
-					app.QueueUpdateDraw(func() {
-						pages.SwitchToPage("logs")
-					})
-				}(workers[idx])
+				showLogs(workers[idx])
 			}
 		}
 
@@ -224,7 +241,7 @@ func truncate(s string, n int) string {
 	return string(runes[:n-3]) + "..."
 }
 
-// tviewWriter is a simple io.Writer that appends to a tview TextView.
+// tviewWriter is an io.Writer that appends text to a tview TextView.
 type tviewWriter struct {
 	view *tview.TextView
 	app  *tview.Application
@@ -236,6 +253,7 @@ func (w *tviewWriter) Write(p []byte) (int, error) {
 	text := w.buf.String()
 	w.app.QueueUpdateDraw(func() {
 		w.view.SetText(text)
+		w.view.ScrollToEnd()
 	})
 	return len(p), nil
 }

@@ -66,7 +66,7 @@ func (m *Manager) EnsureNetwork(noInternet bool) error {
 		IPAM: &dockernetwork.IPAM{
 			Driver: "default",
 			Config: []dockernetwork.IPAMConfig{
-				{Subnet: "192.168.200.0/24"},
+				{Subnet: "192.168.200.0/24", Gateway: "192.168.200.1"},
 			},
 		},
 	})
@@ -116,6 +116,93 @@ func (m *Manager) Status() (*NetworkInfo, error) {
 	}
 
 	return info, nil
+}
+
+// GatewayAddr returns the gateway IP address of dock-net.
+// Containers on dock-net use this address to reach the host (and the Auth Proxy).
+// Returns an error if dock-net does not exist or gateway cannot be determined.
+func (m *Manager) GatewayAddr() (string, error) {
+	ctx := context.Background()
+	nets, err := m.cli.NetworkList(ctx, dockernetwork.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("listing networks: %w", err)
+	}
+	for _, n := range nets {
+		if n.Name != NetworkName {
+			continue
+		}
+		// Try gateway from list result first.
+		if len(n.IPAM.Config) > 0 && n.IPAM.Config[0].Gateway != "" {
+			return n.IPAM.Config[0].Gateway, nil
+		}
+		// Inspect for fuller IPAM data — the list endpoint may omit Gateway.
+		detail, err := m.cli.NetworkInspect(ctx, n.ID, dockernetwork.InspectOptions{})
+		if err == nil && len(detail.IPAM.Config) > 0 && detail.IPAM.Config[0].Gateway != "" {
+			return detail.IPAM.Config[0].Gateway, nil
+		}
+		// Last resort: derive first host address from subnet (e.g. 192.168.200.1 from .0/24).
+		if len(n.IPAM.Config) > 0 {
+			return deriveGateway(n.IPAM.Config[0].Subnet)
+		}
+	}
+	return "", fmt.Errorf("dock-net not found")
+}
+
+// deriveGateway computes the first host address of an IPv4 CIDR subnet.
+// For example "192.168.200.0/24" → "192.168.200.1".
+func deriveGateway(cidr string) (string, error) {
+	b, err := parseIPv4Network(cidr)
+	if err != nil {
+		return "", fmt.Errorf("parsing subnet %q: %w", cidr, err)
+	}
+	// Increment last byte to get the first host address.
+	for i := len(b) - 1; i >= 0; i-- {
+		b[i]++
+		if b[i] != 0 {
+			break
+		}
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3]), nil
+}
+
+// parseIPv4Network extracts the 4-byte network address from an IPv4 CIDR string.
+func parseIPv4Network(cidr string) ([4]byte, error) {
+	var b [4]byte
+	// Find the '/' separator.
+	slash := -1
+	for i, c := range cidr {
+		if c == '/' {
+			slash = i
+			break
+		}
+	}
+	if slash < 0 {
+		return b, fmt.Errorf("no prefix length in CIDR")
+	}
+	octets := cidr[:slash]
+	n := 0
+	cur := 0
+	for _, c := range octets + "." {
+		if c == '.' {
+			if n >= 4 {
+				return b, fmt.Errorf("too many octets")
+			}
+			b[n] = byte(cur)
+			n++
+			cur = 0
+		} else if c >= '0' && c <= '9' {
+			cur = cur*10 + int(c-'0')
+			if cur > 255 {
+				return b, fmt.Errorf("octet out of range")
+			}
+		} else {
+			return b, fmt.Errorf("invalid character %q", c)
+		}
+	}
+	if n != 4 {
+		return b, fmt.Errorf("expected 4 octets, got %d", n)
+	}
+	return b, nil
 }
 
 func (m *Manager) findNetwork(ctx context.Context) (*dockernetwork.Summary, error) {

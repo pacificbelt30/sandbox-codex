@@ -1,6 +1,9 @@
 package sandbox
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
@@ -41,4 +44,5 @@ type LogOptions struct {
 	Name   string
 	Tail   int
 	Follow bool
+	Output io.Writer // destination for log output; defaults to os.Stdout if nil
 }

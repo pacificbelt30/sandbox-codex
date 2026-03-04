@@ -13,13 +13,22 @@ func TestParsePackage(t *testing.T) {
 		wantManager string
 		wantName    string
 	}{
+		// Explicit prefix cases
 		{"apt:libssl-dev", "apt", "libssl-dev"},
 		{"pip:pwntools", "pip", "pwntools"},
 		{"npm:typescript", "npm", "typescript"},
 		{"APT:curl", "apt", "curl"},
-		{"pwntools", "auto", "pwntools"},
-		{"golang", "auto", "golang"},
 		{"apt:python3-scipy", "apt", "python3-scipy"},
+		// Auto-detection cases (F-PKG-05)
+		{"pwntools", "apt", "pwntools"},   // no prefix → apt (default)
+		{"golang", "apt", "golang"},       // no prefix → apt (default)
+		{"@types/node", "npm", "@types/node"}, // @-scoped → npm
+		{"requests>=2.0", "pip", "requests>=2.0"}, // PEP 508 → pip
+		{"flask==2.3.0", "pip", "flask==2.3.0"},   // PEP 508 → pip
+		{"numpy~=1.26", "pip", "numpy~=1.26"},     // PEP 508 → pip
+		{"mylib!=1.0", "pip", "mylib!=1.0"},       // PEP 508 → pip
+		{"scipy<=1.9", "pip", "scipy<=1.9"},       // PEP 508 → pip
+		{"@angular/core", "npm", "@angular/core"},  // @-scoped → npm
 	}
 	for _, tt := range tests {
 		t.Run(tt.spec, func(t *testing.T) {
@@ -29,6 +38,33 @@ func TestParsePackage(t *testing.T) {
 			}
 			if got.Name != tt.wantName {
 				t.Errorf("Name = %q; want %q", got.Name, tt.wantName)
+			}
+		})
+	}
+}
+
+// TestDetectManager exercises the auto-detection logic directly.
+func TestDetectManager(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"curl", "apt"},
+		{"libssl-dev", "apt"},
+		{"git", "apt"},
+		{"@types/node", "npm"},
+		{"@angular/core", "npm"},
+		{"requests==2.28.0", "pip"},
+		{"flask>=2.0", "pip"},
+		{"numpy<=1.26", "pip"},
+		{"mylib~=1.0", "pip"},
+		{"badlib!=2.0", "pip"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectManager(tt.name)
+			if got != tt.want {
+				t.Errorf("detectManager(%q) = %q; want %q", tt.name, got, tt.want)
 			}
 		})
 	}
@@ -57,11 +93,47 @@ npm:typescript   # inline comment
 		t.Fatalf("LoadPackageFile: %v", err)
 	}
 
+	// "pwntools" has no prefix → auto-detected as apt (F-PKG-05)
 	want := []Package{
-		{Manager: "auto", Name: "pwntools"},
+		{Manager: "apt", Name: "pwntools"},
 		{Manager: "apt", Name: "gdb"},
 		{Manager: "pip", Name: "requests"},
 		{Manager: "npm", Name: "typescript"},
+	}
+	if len(pkgs) != len(want) {
+		t.Fatalf("got %d packages; want %d", len(pkgs), len(want))
+	}
+	for i, p := range pkgs {
+		if p != want[i] {
+			t.Errorf("pkg[%d] = %+v; want %+v", i, p, want[i])
+		}
+	}
+}
+
+func TestLoadPackageFile_AutoDetect(t *testing.T) {
+	content := `
+@types/node
+requests>=2.0
+libssl-dev
+`
+	f, err := os.CreateTemp(t.TempDir(), "packages.dock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	pkgs, err := LoadPackageFile(f.Name())
+	if err != nil {
+		t.Fatalf("LoadPackageFile: %v", err)
+	}
+
+	want := []Package{
+		{Manager: "npm", Name: "@types/node"},
+		{Manager: "pip", Name: "requests>=2.0"},
+		{Manager: "apt", Name: "libssl-dev"},
 	}
 	if len(pkgs) != len(want) {
 		t.Fatalf("got %d packages; want %d", len(pkgs), len(want))
@@ -140,7 +212,7 @@ func TestBuildInstallScript(t *testing.T) {
 			{Manager: "apt", Name: "libssl-dev"},
 			{Manager: "pip", Name: "pwntools"},
 			{Manager: "npm", Name: "typescript"},
-			{Manager: "auto", Name: "make"},
+			{Manager: "auto", Name: "make"}, // legacy "auto" still falls through to apt
 		}
 		script := BuildInstallScript(pkgs)
 		if !strings.Contains(script, "apt-get install") {
@@ -154,6 +226,28 @@ func TestBuildInstallScript(t *testing.T) {
 		}
 		if !strings.HasPrefix(script, "set -e") {
 			t.Error("expected script to start with 'set -e'")
+		}
+	})
+
+	t.Run("auto-detected npm", func(t *testing.T) {
+		pkgs := []Package{{Manager: "npm", Name: "@types/node"}}
+		script := BuildInstallScript(pkgs)
+		if !strings.Contains(script, "npm install") {
+			t.Error("expected npm install for @types/node")
+		}
+		if !strings.Contains(script, "@types/node") {
+			t.Error("expected @types/node in script")
+		}
+	})
+
+	t.Run("auto-detected pip", func(t *testing.T) {
+		pkgs := []Package{{Manager: "pip", Name: "requests>=2.0"}}
+		script := BuildInstallScript(pkgs)
+		if !strings.Contains(script, "pip3 install") {
+			t.Error("expected pip3 install for requests>=2.0")
+		}
+		if !strings.Contains(script, "requests>=2.0") {
+			t.Error("expected requests>=2.0 in script")
 		}
 	})
 }

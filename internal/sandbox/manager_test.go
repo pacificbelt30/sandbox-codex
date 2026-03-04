@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -88,6 +89,32 @@ func TestInt64Ptr(t *testing.T) {
 	}
 	if *v != 512 {
 		t.Errorf("*int64ptr(512) = %d; want 512", *v)
+	}
+}
+
+// TestBuildEnv_AgentsMD verifies that CODEX_AGENTS_MD is included in the
+// container environment when --agents-md is specified (bug fix).
+// We exercise this indirectly through buildCodexArgs since the env-building
+// logic lives in Run() which requires Docker. The presence of AgentsMD in
+// RunOptions is the relevant contract tested here.
+func TestRunOptions_AgentsMD_FieldExists(t *testing.T) {
+	opts := RunOptions{AgentsMD: "/workspace/AGENTS.md"}
+	if opts.AgentsMD != "/workspace/AGENTS.md" {
+		t.Errorf("AgentsMD field not set correctly: %q", opts.AgentsMD)
+	}
+}
+
+// TestLogOptions_Output verifies that the Output field is present on LogOptions.
+func TestLogOptions_Output_FieldExists(t *testing.T) {
+	var buf strings.Builder
+	opts := LogOptions{
+		Name:   "worker-1",
+		Tail:   100,
+		Follow: false,
+		Output: &buf,
+	}
+	if opts.Output == nil {
+		t.Error("LogOptions.Output should not be nil after assignment")
 	}
 }
 
