@@ -14,28 +14,30 @@
 ## Quick Start
 
 ```bash
-# Build the base sandbox image
+# 1. サンドボックスイメージをビルド
 codex-dock build
 
-# Set your API key
+# 2. 認証を設定（API キーまたは ChatGPT OAuth）
 export OPENAI_API_KEY=sk-...
 codex-dock auth set
 
-# Run Codex in a sandbox (mounts current directory)
+# 3. カレントディレクトリをマウントして起動
 codex-dock run
 
-# Run with a task, fully automated, in the background
+# タスクを指定して全自動・バックグラウンド実行
 codex-dock run --task "Write unit tests for auth module" --full-auto --detach
 
-# Use git worktree on a feature branch
+# git worktree を使ってブランチを切り離して作業
 codex-dock run --worktree --branch feature-auth --new-branch
 
-# Parallel workers (3 branches auto-created)
-codex-dock run --parallel 3 --worktree
+# 3 つのワーカーを並列実行
+codex-dock run --parallel 3 --worktree --detach
 
-# Monitor all workers
+# TUI でワーカーを管理（↑↓選択・Enter でログ・S 停止・R 再起動・D 削除）
 codex-dock ui
 ```
+
+> **詳細な手順は [doc/getting-started.md](doc/getting-started.md) を参照してください。**
 
 ## Commands
 
@@ -51,11 +53,22 @@ codex-dock ui
 | `codex-dock network` | Manage dock-net |
 | `codex-dock build` | Build sandbox image |
 
+## Documentation
+
+| ドキュメント | 内容 |
+|-------------|------|
+| [Getting Started](doc/getting-started.md) | インストールから最初のコンテナ起動まで |
+| [Architecture](doc/architecture.md) | システム構成・コンポーネント・起動フロー |
+| [Auth Proxy](doc/auth-proxy.md) | 認証プロキシの技術仕様・エンドポイント |
+| [Network](doc/network.md) | dock-net の構成・セキュリティポリシー |
+| [Commands](doc/commands.md) | 全コマンドとオプションのリファレンス |
+| [Configuration](doc/configuration.md) | `config.toml` の設定項目リファレンス |
+
 ## Configuration
 
 Default config: `~/.config/codex-dock/config.toml`
 
-See `configs/config.toml.example` for all options.
+See [`configs/config.toml.example`](configs/config.toml.example) for all options.
 
 ## Security
 
@@ -68,12 +81,26 @@ See `configs/config.toml.example` for all options.
 ## Requirements
 
 - Go 1.22+
-- Docker Engine
+- Docker Engine 20.10+
+- git (worktree 機能を使う場合)
 
-## Build
+## Installation
+
+### go install（推奨）
 
 ```bash
+go install github.com/pacificbelt30/codex-dock@latest
+```
+
+### ソースからビルド
+
+```bash
+git clone https://github.com/pacificbelt30/codex-dock.git
+cd codex-dock
 go build -o codex-dock .
+
+# PATH へ追加（任意）
+sudo mv codex-dock /usr/local/bin/
 ```
 
 ---
