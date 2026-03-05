@@ -14,12 +14,34 @@ type Package struct {
 }
 
 // ParsePackage parses a package spec like "apt:libssl-dev" or "pwntools".
+// When no manager prefix is given, detectManager is used to infer the appropriate
+// package manager (F-PKG-05).
 func ParsePackage(spec string) Package {
 	parts := strings.SplitN(spec, ":", 2)
 	if len(parts) == 2 {
 		return Package{Manager: strings.ToLower(parts[0]), Name: parts[1]}
 	}
-	return Package{Manager: "auto", Name: spec}
+	return Package{Manager: detectManager(spec), Name: spec}
+}
+
+// detectManager infers the package manager for a package name that has no explicit prefix.
+// Rules (in order):
+//  1. Names starting with "@" are npm scoped packages (e.g. @types/node).
+//  2. Names containing PEP 508 version specifiers (==, >=, <=, ~=, !=) are pip packages.
+//  3. Everything else defaults to apt.
+func detectManager(name string) string {
+	// npm scoped packages always start with @
+	if strings.HasPrefix(name, "@") {
+		return "npm"
+	}
+	// pip version specifiers per PEP 508
+	for _, op := range []string{"==", ">=", "<=", "~=", "!="} {
+		if strings.Contains(name, op) {
+			return "pip"
+		}
+	}
+	// Default: treat as apt (system package)
+	return "apt"
 }
 
 // LoadPackageFile reads packages from a packages.dock file.

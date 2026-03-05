@@ -119,14 +119,11 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	if opts.FullAuto {
 		env = append(env, "CODEX_FULL_AUTO=1")
 	}
+	if opts.AgentsMD != "" {
+		env = append(env, "CODEX_AGENTS_MD="+opts.AgentsMD)
+	}
 	if installScript != "" {
 		env = append(env, "CODEX_INSTALL_SCRIPT="+installScript)
-	}
-
-	// Mount configuration
-	mountMode := "rw"
-	if opts.ReadOnly {
-		mountMode = "ro"
 	}
 
 	mounts := []mount.Mount{
@@ -139,7 +136,6 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 			},
 		},
 	}
-	_ = mountMode // applied via ReadOnly field below
 	// Note: auth.json is NOT bind-mounted even in OAuth mode.
 	// The Auth Proxy provides only the access_token to the container via
 	// the /token endpoint, keeping the refresh_token on the host (F-AUTH-01).
@@ -204,6 +200,11 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	return resp.ID, nil
 }
 
+// Start (re)starts a stopped container by ID. Used by the TUI to restart exited workers (F-UI-02).
+func (m *Manager) Start(containerID string) error {
+	return m.cli.ContainerStart(context.Background(), containerID, container.StartOptions{})
+}
+
 // Wait returns a channel that receives nil when the container exits cleanly, or an error.
 func (m *Manager) Wait(containerID string) <-chan error {
 	ch := make(chan error, 1)
@@ -223,19 +224,42 @@ func (m *Manager) Wait(containerID string) <-chan error {
 	return ch
 }
 
-// Stop gracefully stops a container by ID.
+// Stop gracefully stops a container by ID and revokes its auth token (F-AUTH-04).
 func (m *Manager) Stop(containerID string, timeoutSec int) error {
 	ctx := context.Background()
+	// Revoke token before stopping so it cannot be used after this point.
+	if m.proxy != nil {
+		if name, err := m.resolveNameByID(ctx, containerID); err == nil {
+			m.proxy.RevokeToken(name)
+		}
+	}
 	return m.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeoutSec})
 }
 
-// StopByName stops a container by name.
+// StopByName stops a container by name and revokes its auth token (F-AUTH-04).
 func (m *Manager) StopByName(name string, timeoutSec int) error {
+	// Revoke token immediately; Stop() will also attempt but name resolution is cheaper here.
+	if m.proxy != nil {
+		m.proxy.RevokeToken(name)
+	}
 	id, err := m.resolveID(name)
 	if err != nil {
 		return err
 	}
-	return m.Stop(id, timeoutSec)
+	ctx := context.Background()
+	return m.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeoutSec})
+}
+
+// RevokeToken revokes the auth token for a container identified by ID or name.
+// This should be called when a container exits naturally (without Stop being called).
+func (m *Manager) RevokeToken(containerID string) {
+	if m.proxy == nil {
+		return
+	}
+	ctx := context.Background()
+	if name, err := m.resolveNameByID(ctx, containerID); err == nil {
+		m.proxy.RevokeToken(name)
+	}
 }
 
 // Remove removes a container by ID.
@@ -285,7 +309,7 @@ func (m *Manager) List(all bool) ([]Worker, error) {
 	return workers, nil
 }
 
-// Logs streams container logs.
+// Logs streams container logs to opts.Output (defaults to os.Stdout).
 func (m *Manager) Logs(opts LogOptions) error {
 	ctx := context.Background()
 	id, err := m.resolveID(opts.Name)
@@ -306,8 +330,21 @@ func (m *Manager) Logs(opts LogOptions) error {
 	}
 	defer rc.Close()
 
-	_, err = io.Copy(os.Stdout, rc)
+	out := opts.Output
+	if out == nil {
+		out = os.Stdout
+	}
+	_, err = io.Copy(out, rc)
 	return err
+}
+
+// resolveNameByID returns the container name (without leading '/') for a given ID.
+func (m *Manager) resolveNameByID(ctx context.Context, containerID string) (string, error) {
+	info, err := m.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(info.Name, "/"), nil
 }
 
 func (m *Manager) resolveID(nameOrID string) (string, error) {

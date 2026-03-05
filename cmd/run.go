@@ -63,10 +63,19 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
 
+	// Determine Auth Proxy listen address.
+	// Use the dock-net gateway so containers can reach the proxy (F-NET-04).
+	// Fall back to loopback when Docker is unavailable or the network is missing.
+	listenAddr := ""
+	if gwAddr, err := netMgr.GatewayAddr(); err == nil {
+		listenAddr = gwAddr + ":0"
+	}
+
 	// Start Auth Proxy
 	proxy, err := authproxy.NewProxy(authproxy.Config{
-		TokenTTL: runOpts.TokenTTL,
-		Verbose:  verbose,
+		TokenTTL:   runOpts.TokenTTL,
+		Verbose:    verbose,
+		ListenAddr: listenAddr,
 	})
 	if err != nil {
 		return fmt.Errorf("starting auth proxy: %w", err)
@@ -141,8 +150,10 @@ func runSingle(mgr *sandbox.Manager, proxy *authproxy.Proxy, sigCh <-chan os.Sig
 	select {
 	case <-sigCh:
 		fmt.Println("\nStopping container...")
-		return mgr.Stop(containerID, 10)
+		return mgr.Stop(containerID, 10) // Stop() revokes token (F-AUTH-04)
 	case err := <-exitCh:
+		// Container exited on its own — revoke its token (F-AUTH-04)
+		mgr.RevokeToken(containerID)
 		return err
 	}
 }

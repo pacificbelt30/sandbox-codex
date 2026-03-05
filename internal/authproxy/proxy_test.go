@@ -490,3 +490,46 @@ func writeAuthJSONForProxy(t *testing.T, home string, data map[string]interface{
 		t.Fatal(err)
 	}
 }
+
+// ── ListenAddr tests ─────────────────────────────────────────────────────────
+
+func TestStart_DefaultListenAddr(t *testing.T) {
+	p := newTestProxy(t)
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	// Default should be loopback.
+	if !strings.HasPrefix(p.Endpoint(), "http://127.0.0.1:") {
+		t.Errorf("default Endpoint() = %q; expected http://127.0.0.1:...", p.Endpoint())
+	}
+}
+
+func TestStart_CustomListenAddr(t *testing.T) {
+	p, err := NewProxy(Config{
+		TokenTTL:   60,
+		Verbose:    false,
+		ListenAddr: "127.0.0.1:0", // Still loopback but using explicit config path.
+	})
+	if err != nil {
+		t.Fatalf("NewProxy: %v", err)
+	}
+	p.apiKey = "sk-test"
+
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start with ListenAddr: %v", err)
+	}
+	defer p.Stop()
+
+	if !strings.HasPrefix(p.Endpoint(), "http://127.0.0.1:") {
+		t.Errorf("Endpoint() = %q; expected http://127.0.0.1:...", p.Endpoint())
+	}
+}
+
+func TestConfig_ListenAddrDefault(t *testing.T) {
+	cfg := Config{TokenTTL: 60}
+	if cfg.ListenAddr != "" {
+		t.Errorf("ListenAddr default should be empty string, got %q", cfg.ListenAddr)
+	}
+}
