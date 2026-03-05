@@ -25,6 +25,7 @@ type RunOptions struct {
 	AgentsMD     string
 	Detach       bool
 	Parallel     int
+	ShellMode    bool
 }
 
 // Worker represents a running or stopped codex-dock container.

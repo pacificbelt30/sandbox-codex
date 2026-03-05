@@ -178,7 +178,13 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		AttachStdin:  !opts.Detach,
 		AttachStdout: !opts.Detach,
 		AttachStderr: !opts.Detach,
-		Cmd:          []string{"/entrypoint.sh"},
+	}
+	if opts.ShellMode {
+		// Override the Dockerfile ENTRYPOINT so Docker runs bash directly
+		// instead of "/entrypoint.sh /bin/bash".
+		containerConfig.Entrypoint = []string{"/bin/bash"}
+	} else {
+		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
 	_ = codexArgs // passed via env
 
@@ -416,6 +422,9 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 		}()
 	}
 
+	// Pass stdin bytes to the container as-is.  Ctrl+Z (0x1a) is forwarded
+	// to the container's PTY where the in-container bash handles job control:
+	// codex is suspended and the bash prompt appears inside the container.
 	go func() { _, _ = io.Copy(resp.Conn, os.Stdin) }()
 	_, _ = io.Copy(os.Stdout, resp.Reader)
 }
