@@ -168,11 +168,6 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
 
-	cmd := []string{"/entrypoint.sh"}
-	if opts.ShellMode {
-		cmd = []string{"/bin/bash"}
-	}
-
 	containerConfig := &container.Config{
 		Image:        opts.Image,
 		Env:          env,
@@ -183,7 +178,13 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		AttachStdin:  !opts.Detach,
 		AttachStdout: !opts.Detach,
 		AttachStderr: !opts.Detach,
-		Cmd:          cmd,
+	}
+	if opts.ShellMode {
+		// Override the Dockerfile ENTRYPOINT so Docker runs bash directly
+		// instead of "/entrypoint.sh /bin/bash".
+		containerConfig.Entrypoint = []string{"/bin/bash"}
+	} else {
+		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
 	_ = codexArgs // passed via env
 
