@@ -394,7 +394,9 @@ func TestHandleToken_OAuthMode_ReturnsAccessToken(t *testing.T) {
 	}
 }
 
-func TestHandleToken_OAuthMode_NoRefreshToken(t *testing.T) {
+func TestHandleToken_OAuthMode_AllFieldsPresent(t *testing.T) {
+	// OAuth mode now passes all token fields (including refresh_token) to containers.
+	// See doc/auth-proxy.md for security implications.
 	p := newOAuthTestProxy(t, "at-no-leak")
 	if err := p.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -408,15 +410,17 @@ func TestHandleToken_OAuthMode_NoRefreshToken(t *testing.T) {
 	w := httptest.NewRecorder()
 	p.handleToken(w, req)
 
-	body, _ := io.ReadAll(w.Result().Body)
-	bodyStr := string(body)
-
-	// refresh_token must NOT appear in any response field
-	if strings.Contains(bodyStr, "rt-secret-stays-on-host") {
-		t.Errorf("refresh_token leaked in response: %s", bodyStr)
+	var m map[string]string
+	if err := json.NewDecoder(w.Result().Body).Decode(&m); err != nil {
+		t.Fatalf("decode: %v", err)
 	}
-	if strings.Contains(bodyStr, "refresh_token") {
-		t.Errorf("refresh_token key leaked in response: %s", bodyStr)
+
+	if m["oauth_access_token"] != "at-no-leak" {
+		t.Errorf("oauth_access_token = %q; want at-no-leak", m["oauth_access_token"])
+	}
+	// refresh_token is now intentionally included in the response
+	if _, ok := m["oauth_refresh_token"]; !ok {
+		t.Error("oauth_refresh_token key missing from response")
 	}
 }
 

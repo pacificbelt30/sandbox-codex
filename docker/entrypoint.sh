@@ -28,19 +28,32 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     OAUTH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_access_token',''))" 2>/dev/null || true)
 
     if [[ -n "$OAUTH_TOKEN" ]]; then
-        # OAuth mode: create a synthetic auth.json with access_token and id_token.
-        # The refresh_token is intentionally omitted — it stays on the host.
-        # This satisfies F-AUTH-01: auth.json is not bind-mounted from the host.
-        # Use the nested tokens format expected by Codex CLI >= v0.110.0.
+        # OAuth mode: reconstruct auth.json from all fields provided by the Auth Proxy.
+        # WARNING: This includes refresh_token. The container has equivalent credentials
+        # to the host for the duration of its lifetime. See doc/auth-proxy.md.
         ID_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_id_token',''))" 2>/dev/null || true)
+        REFRESH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_refresh_token',''))" 2>/dev/null || true)
+        ACCOUNT_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_account_id',''))" 2>/dev/null || true)
+        LAST_REFRESH=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_last_refresh',''))" 2>/dev/null || true)
         mkdir -p /home/codex/.codex
-        # refresh_token is intentionally set to empty — the real token stays on the host.
-        # Codex CLI requires the field to exist (JSON schema check) but cannot use it
-        # to renew credentials; the container relies solely on the access_token TTL.
-        printf '{"auth_mode":"chatgpt","tokens":{"access_token":"%s","id_token":"%s","refresh_token":""}}' "$OAUTH_TOKEN" "$ID_TOKEN" \
-            > /home/codex/.codex/auth.json
+        python3 -c "
+import sys, json
+d = json.load(open('/dev/stdin'))
+out = {
+    'auth_mode': 'chatgpt',
+    'OPENAI_API_KEY': None,
+    'tokens': {
+        'id_token':      d.get('oauth_id_token', ''),
+        'access_token':  d.get('oauth_access_token', ''),
+        'refresh_token': d.get('oauth_refresh_token', ''),
+        'account_id':    d.get('oauth_account_id', ''),
+    },
+    'last_refresh': d.get('oauth_last_refresh', ''),
+}
+print(json.dumps(out))
+" <<< "$RESPONSE" > /home/codex/.codex/auth.json
         chmod 600 /home/codex/.codex/auth.json
-        log "OAuth access_token and id_token acquired (refresh_token remains on host)."
+        log "OAuth credentials acquired (all token fields written to auth.json)."
     else
         # API key mode: extract api_key and set as environment variable
         API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || true)

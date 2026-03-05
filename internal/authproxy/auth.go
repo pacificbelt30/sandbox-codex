@@ -17,11 +17,14 @@ type AuthInfo struct {
 }
 
 // OAuthCredentials holds OAuth credentials loaded from ~/.codex/auth.json.
-// Only AccessToken and IDToken are passed to containers; RefreshToken stays on the host.
+// All token fields are passed to containers via the Auth Proxy.
+// NOTE: This includes RefreshToken — see doc/auth-proxy.md for security implications.
 type OAuthCredentials struct {
 	IDToken      string `json:"id_token"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	AccountID    string `json:"account_id"`
+	LastRefresh  string `json:"last_refresh"`
 	ExpiresAt    int64  `json:"expires_at"` // Unix timestamp; 0 means unknown
 	TokenType    string `json:"token_type"`
 }
@@ -30,8 +33,9 @@ type OAuthCredentials struct {
 // Supports both the nested format (auth_mode + tokens object) used by
 // ChatGPT/OAuth and the legacy flat format used by older Codex versions.
 type codexAuthFile struct {
-	AuthMode string `json:"auth_mode"`
-	Tokens   *struct {
+	AuthMode    string `json:"auth_mode"`
+	LastRefresh string `json:"last_refresh"`
+	Tokens      *struct {
 		IDToken      string `json:"id_token"`
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
@@ -70,6 +74,8 @@ func LoadOAuthCredentials() (*OAuthCredentials, error) {
 			IDToken:      f.Tokens.IDToken,
 			AccessToken:  f.Tokens.AccessToken,
 			RefreshToken: f.Tokens.RefreshToken,
+			AccountID:    f.Tokens.AccountID,
+			LastRefresh:  f.LastRefresh,
 			TokenType:    "Bearer",
 		}, nil
 	}

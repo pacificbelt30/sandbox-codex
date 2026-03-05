@@ -398,6 +398,12 @@ func TestLoadOAuthCredentials_NestedFormat(t *testing.T) {
 	if creds.RefreshToken != "rt-nested-refresh" {
 		t.Errorf("RefreshToken = %q; want rt-nested-refresh", creds.RefreshToken)
 	}
+	if creds.AccountID != "acc-123" {
+		t.Errorf("AccountID = %q; want acc-123", creds.AccountID)
+	}
+	if creds.LastRefresh != "2026-03-05T15:22:40Z" {
+		t.Errorf("LastRefresh = %q; want 2026-03-05T15:22:40Z", creds.LastRefresh)
+	}
 	if creds.TokenType != "Bearer" {
 		t.Errorf("TokenType = %q; want Bearer", creds.TokenType)
 	}
