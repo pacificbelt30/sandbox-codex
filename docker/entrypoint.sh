@@ -31,8 +31,9 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
         # OAuth mode: create a synthetic auth.json with access_token only.
         # The refresh_token is intentionally omitted — it stays on the host.
         # This satisfies F-AUTH-01: auth.json is not bind-mounted from the host.
+        # Use the nested tokens format expected by Codex CLI >= v0.110.0.
         mkdir -p /home/codex/.codex
-        printf '{"access_token":"%s","token_type":"Bearer"}' "$OAUTH_TOKEN" \
+        printf '{"auth_mode":"chatgpt","tokens":{"access_token":"%s"}}' "$OAUTH_TOKEN" \
             > /home/codex/.codex/auth.json
         chmod 600 /home/codex/.codex/auth.json
         log "OAuth access_token acquired (refresh_token remains on host)."
