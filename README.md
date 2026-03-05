@@ -11,6 +11,60 @@
 - **dock-ui**: Terminal UI for managing all workers at a glance
 - **Package management**: `apt`, `pip`, `npm` packages via `--pkg` or `packages.dock`
 
+## Requirements
+
+### システム要件
+
+| 項目 | 要件 | 備考 |
+|------|------|------|
+| OS | Linux (amd64 / arm64) または macOS (amd64 / arm64) | Windows は未サポート |
+| Docker Engine | 20.10 以上 | Docker Desktop でも可 |
+| git | 任意 | `--worktree` 機能を使う場合に必要 |
+
+### ビルド要件
+
+`go install` またはソースからビルドする場合のみ必要です。
+
+| 項目 | 要件 |
+|------|------|
+| Go | 1.22 以上 |
+
+Go のインストール: https://go.dev/doc/install
+
+### 認証要件
+
+以下のいずれかが必要です。
+
+| 方式 | 取得先 |
+|------|--------|
+| **OpenAI API キー** (`OPENAI_API_KEY`) | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **ChatGPT サブスクリプション** (Plus / Pro / Team / Business / Enterprise) | [chatgpt.com](https://chatgpt.com) でログイン後 `codex login` を実行 |
+
+## Installation
+
+### go install（推奨）
+
+Go がインストール済みであれば、1 コマンドでインストールできます。
+
+```bash
+go install github.com/pacificbelt30/codex-dock@latest
+```
+
+インストール後、`$(go env GOPATH)/bin` が `PATH` に含まれていることを確認してください。
+
+### ソースからビルド
+
+```bash
+git clone https://github.com/pacificbelt30/codex-dock.git
+cd codex-dock
+go build -o codex-dock .
+
+# PATH へ追加（任意）
+sudo mv codex-dock /usr/local/bin/
+```
+
+---
+
 ## Quick Start
 
 ```bash
@@ -77,33 +131,6 @@ See [`configs/config.toml.example`](configs/config.toml.example) for all options
 - `auth.json` is never mounted into containers
 - Tokens expire on container stop or TTL expiry
 - Container↔container and container→host traffic blocked via ICC and iptables
-
-## Requirements
-
-- Go 1.22+
-- Docker Engine 20.10+
-- git (worktree 機能を使う場合)
-
-## Installation
-
-### go install（推奨）
-
-```bash
-go install github.com/pacificbelt30/codex-dock@latest
-```
-
-### ソースからビルド
-
-```bash
-git clone https://github.com/pacificbelt30/codex-dock.git
-cd codex-dock
-go build -o codex-dock .
-
-# PATH へ追加（任意）
-sudo mv codex-dock /usr/local/bin/
-```
-
----
 
 ## Implementation Status
 
