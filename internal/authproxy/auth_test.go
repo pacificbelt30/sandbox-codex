@@ -333,3 +333,95 @@ func TestIsOAuthAuth_NoFile(t *testing.T) {
 		t.Error("IsOAuthAuth() = true; want false when auth.json does not exist")
 	}
 }
+
+func TestIsOAuthAuth_ChatGPTAuthMode(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"auth_mode":      "chatgpt",
+		"OPENAI_API_KEY": nil,
+		"tokens": map[string]interface{}{
+			"access_token":  "at-test",
+			"refresh_token": "rt-test",
+		},
+		"last_refresh": "2026-03-05T15:22:40Z",
+	})
+
+	if !IsOAuthAuth() {
+		t.Error("IsOAuthAuth() = false; want true when auth_mode is chatgpt")
+	}
+}
+
+func TestIsOAuthAuth_NestedTokensRefresh(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"tokens": map[string]interface{}{
+			"access_token":  "at-test",
+			"refresh_token": "rt-test",
+		},
+	})
+
+	if !IsOAuthAuth() {
+		t.Error("IsOAuthAuth() = false; want true when tokens.refresh_token is present")
+	}
+}
+
+func TestLoadOAuthCredentials_NestedFormat(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"auth_mode":      "chatgpt",
+		"OPENAI_API_KEY": nil,
+		"tokens": map[string]interface{}{
+			"id_token":      "id-test",
+			"access_token":  "at-nested-access",
+			"refresh_token": "rt-nested-refresh",
+			"account_id":    "acc-123",
+		},
+		"last_refresh": "2026-03-05T15:22:40Z",
+	})
+
+	creds, err := LoadOAuthCredentials()
+	if err != nil {
+		t.Fatalf("LoadOAuthCredentials: %v", err)
+	}
+	if creds.IDToken != "id-test" {
+		t.Errorf("IDToken = %q; want id-test", creds.IDToken)
+	}
+	if creds.AccessToken != "at-nested-access" {
+		t.Errorf("AccessToken = %q; want at-nested-access", creds.AccessToken)
+	}
+	if creds.RefreshToken != "rt-nested-refresh" {
+		t.Errorf("RefreshToken = %q; want rt-nested-refresh", creds.RefreshToken)
+	}
+	if creds.AccountID != "acc-123" {
+		t.Errorf("AccountID = %q; want acc-123", creds.AccountID)
+	}
+	if creds.LastRefresh != "2026-03-05T15:22:40Z" {
+		t.Errorf("LastRefresh = %q; want 2026-03-05T15:22:40Z", creds.LastRefresh)
+	}
+	if creds.TokenType != "Bearer" {
+		t.Errorf("TokenType = %q; want Bearer", creds.TokenType)
+	}
+}
+
+func TestLoadOAuthCredentials_NestedMissingAccessToken(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+
+	writeAuthJSON(t, home, map[string]interface{}{
+		"auth_mode": "chatgpt",
+		"tokens": map[string]interface{}{
+			"refresh_token": "rt-only",
+		},
+	})
+
+	_, err := LoadOAuthCredentials()
+	if err == nil {
+		t.Error("expected error when nested tokens.access_token is missing")
+	}
+}
