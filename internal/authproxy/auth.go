@@ -17,8 +17,9 @@ type AuthInfo struct {
 }
 
 // OAuthCredentials holds OAuth credentials loaded from ~/.codex/auth.json.
-// Only AccessToken is passed to containers; RefreshToken stays on the host.
+// Only AccessToken and IDToken are passed to containers; RefreshToken stays on the host.
 type OAuthCredentials struct {
+	IDToken      string `json:"id_token"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresAt    int64  `json:"expires_at"` // Unix timestamp; 0 means unknown
@@ -66,6 +67,7 @@ func LoadOAuthCredentials() (*OAuthCredentials, error) {
 	// Nested format: auth_mode + tokens object (ChatGPT/OAuth)
 	if f.Tokens != nil && f.Tokens.AccessToken != "" {
 		return &OAuthCredentials{
+			IDToken:      f.Tokens.IDToken,
 			AccessToken:  f.Tokens.AccessToken,
 			RefreshToken: f.Tokens.RefreshToken,
 			TokenType:    "Bearer",

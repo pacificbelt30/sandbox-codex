@@ -28,15 +28,16 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     OAUTH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_access_token',''))" 2>/dev/null || true)
 
     if [[ -n "$OAUTH_TOKEN" ]]; then
-        # OAuth mode: create a synthetic auth.json with access_token only.
+        # OAuth mode: create a synthetic auth.json with access_token and id_token.
         # The refresh_token is intentionally omitted — it stays on the host.
         # This satisfies F-AUTH-01: auth.json is not bind-mounted from the host.
         # Use the nested tokens format expected by Codex CLI >= v0.110.0.
+        ID_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_id_token',''))" 2>/dev/null || true)
         mkdir -p /home/codex/.codex
-        printf '{"auth_mode":"chatgpt","tokens":{"access_token":"%s"}}' "$OAUTH_TOKEN" \
+        printf '{"auth_mode":"chatgpt","tokens":{"access_token":"%s","id_token":"%s"}}' "$OAUTH_TOKEN" "$ID_TOKEN" \
             > /home/codex/.codex/auth.json
         chmod 600 /home/codex/.codex/auth.json
-        log "OAuth access_token acquired (refresh_token remains on host)."
+        log "OAuth access_token and id_token acquired (refresh_token remains on host)."
     else
         # API key mode: extract api_key and set as environment variable
         API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || true)

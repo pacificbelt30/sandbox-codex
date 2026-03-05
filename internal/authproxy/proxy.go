@@ -197,12 +197,14 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if p.oauthCreds != nil {
-		// OAuth mode: return only the access_token — refresh_token stays on the host.
+		// OAuth mode: return access_token and id_token — refresh_token stays on the host.
 		p.mu.RLock()
 		accessToken := p.oauthCreds.AccessToken
+		idToken := p.oauthCreds.IDToken
 		p.mu.RUnlock()
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"oauth_access_token": accessToken,
+			"oauth_id_token":     idToken,
 			"container_name":     found.ContainerName,
 		})
 	} else {

@@ -389,6 +389,9 @@ func TestLoadOAuthCredentials_NestedFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadOAuthCredentials: %v", err)
 	}
+	if creds.IDToken != "id-test" {
+		t.Errorf("IDToken = %q; want id-test", creds.IDToken)
+	}
 	if creds.AccessToken != "at-nested-access" {
 		t.Errorf("AccessToken = %q; want at-nested-access", creds.AccessToken)
 	}
