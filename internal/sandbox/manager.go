@@ -168,6 +168,11 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
 
+	cmd := []string{"/entrypoint.sh"}
+	if opts.ShellMode {
+		cmd = []string{"/bin/bash"}
+	}
+
 	containerConfig := &container.Config{
 		Image:        opts.Image,
 		Env:          env,
@@ -178,7 +183,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		AttachStdin:  !opts.Detach,
 		AttachStdout: !opts.Detach,
 		AttachStderr: !opts.Detach,
-		Cmd:          []string{"/entrypoint.sh"},
+		Cmd:          cmd,
 	}
 	_ = codexArgs // passed via env
 
@@ -385,10 +390,18 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 	defer resp.Close()
 
 	fd := int(os.Stdin.Fd())
+	// savedState holds the most recent raw-mode terminal state so it can be
+	// restored before suspending and re-acquired on resume.
+	var savedState *term.State
 	if term.IsTerminal(fd) {
-		oldState, err := term.MakeRaw(fd)
+		st, err := term.MakeRaw(fd)
 		if err == nil {
-			defer term.Restore(fd, oldState) //nolint:errcheck
+			savedState = st
+			defer func() {
+				if savedState != nil {
+					_ = term.Restore(fd, savedState)
+				}
+			}()
 		}
 
 		// Set initial PTY size
@@ -416,7 +429,46 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 		}()
 	}
 
-	go func() { _, _ = io.Copy(resp.Conn, os.Stdin) }()
+	// Forward stdin to the container, intercepting Ctrl+Z (byte 0x1a) for job
+	// control.  In raw mode the terminal driver does not convert Ctrl+Z to
+	// SIGTSTP, so we detect the byte ourselves: restore the terminal, raise
+	// SIGTSTP to suspend the process, then re-enter raw mode when resumed
+	// by the shell's "fg" command (SIGCONT).
+	go func() {
+		buf := make([]byte, 32)
+		for {
+			n, readErr := os.Stdin.Read(buf)
+			if n > 0 {
+				data := buf[:n]
+				if savedState != nil {
+					hasSuspend := false
+					for _, b := range data {
+						if b == 0x1a { // Ctrl+Z
+							hasSuspend = true
+							break
+						}
+					}
+					if hasSuspend {
+						_ = term.Restore(fd, savedState)
+						savedState = nil
+						_ = syscall.Kill(syscall.Getpid(), syscall.SIGTSTP)
+						// Execution resumes here after SIGCONT (fg)
+						st, rawErr := term.MakeRaw(fd)
+						if rawErr == nil {
+							savedState = st
+						}
+						continue
+					}
+				}
+				if _, werr := resp.Conn.Write(data); werr != nil {
+					return
+				}
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}()
 	_, _ = io.Copy(os.Stdout, resp.Reader)
 }
 
