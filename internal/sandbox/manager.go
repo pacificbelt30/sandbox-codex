@@ -200,11 +200,11 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	return resp.ID, nil
 }
 
-
 // Start (re)starts a stopped container by ID. Used by the TUI to restart exited workers (F-UI-02).
 func (m *Manager) Start(containerID string) error {
 	return m.cli.ContainerStart(context.Background(), containerID, container.StartOptions{})
 }
+
 // Wait returns a channel that receives nil when the container exits cleanly, or an error.
 func (m *Manager) Wait(containerID string) <-chan error {
 	ch := make(chan error, 1)

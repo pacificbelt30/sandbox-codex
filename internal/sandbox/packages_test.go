@@ -20,15 +20,15 @@ func TestParsePackage(t *testing.T) {
 		{"APT:curl", "apt", "curl"},
 		{"apt:python3-scipy", "apt", "python3-scipy"},
 		// Auto-detection cases (F-PKG-05)
-		{"pwntools", "apt", "pwntools"},   // no prefix → apt (default)
-		{"golang", "apt", "golang"},       // no prefix → apt (default)
-		{"@types/node", "npm", "@types/node"}, // @-scoped → npm
+		{"pwntools", "apt", "pwntools"},           // no prefix → apt (default)
+		{"golang", "apt", "golang"},               // no prefix → apt (default)
+		{"@types/node", "npm", "@types/node"},     // @-scoped → npm
 		{"requests>=2.0", "pip", "requests>=2.0"}, // PEP 508 → pip
 		{"flask==2.3.0", "pip", "flask==2.3.0"},   // PEP 508 → pip
 		{"numpy~=1.26", "pip", "numpy~=1.26"},     // PEP 508 → pip
 		{"mylib!=1.0", "pip", "mylib!=1.0"},       // PEP 508 → pip
 		{"scipy<=1.9", "pip", "scipy<=1.9"},       // PEP 508 → pip
-		{"@angular/core", "npm", "@angular/core"},  // @-scoped → npm
+		{"@angular/core", "npm", "@angular/core"}, // @-scoped → npm
 	}
 	for _, tt := range tests {
 		t.Run(tt.spec, func(t *testing.T) {

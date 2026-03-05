@@ -14,7 +14,7 @@ func TestDeriveGateway(t *testing.T) {
 		{"192.168.1.0/24", "192.168.1.1", false},
 		{"invalid", "", true},
 		{"256.0.0.0/24", "", true}, // octet out of range
-		{"192.168.1/24", "", true},  // too few octets
+		{"192.168.1/24", "", true}, // too few octets
 	}
 
 	for _, tt := range tests {
