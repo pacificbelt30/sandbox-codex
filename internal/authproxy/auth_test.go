@@ -339,7 +339,7 @@ func TestIsOAuthAuth_ChatGPTAuthMode(t *testing.T) {
 	defer cleanup()
 
 	writeAuthJSON(t, home, map[string]interface{}{
-		"auth_mode":    "chatgpt",
+		"auth_mode":      "chatgpt",
 		"OPENAI_API_KEY": nil,
 		"tokens": map[string]interface{}{
 			"access_token":  "at-test",
@@ -374,7 +374,7 @@ func TestLoadOAuthCredentials_NestedFormat(t *testing.T) {
 	defer cleanup()
 
 	writeAuthJSON(t, home, map[string]interface{}{
-		"auth_mode":    "chatgpt",
+		"auth_mode":      "chatgpt",
 		"OPENAI_API_KEY": nil,
 		"tokens": map[string]interface{}{
 			"id_token":      "id-test",
