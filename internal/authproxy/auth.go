@@ -25,9 +25,29 @@ type OAuthCredentials struct {
 	TokenType    string `json:"token_type"`
 }
 
+// codexAuthFile represents the on-disk structure of ~/.codex/auth.json.
+// Supports both the nested format (auth_mode + tokens object) used by
+// ChatGPT/OAuth and the legacy flat format used by older Codex versions.
+type codexAuthFile struct {
+	AuthMode string `json:"auth_mode"`
+	Tokens   *struct {
+		IDToken      string `json:"id_token"`
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		AccountID    string `json:"account_id"`
+	} `json:"tokens"`
+	// Legacy flat fields
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresAt    int64  `json:"expires_at"`
+	TokenType    string `json:"token_type"`
+}
+
 // LoadOAuthCredentials reads OAuth credentials from ~/.codex/auth.json.
 // Returns an error if the file does not exist, cannot be parsed, or contains
 // no access_token.
+// Supports both the nested format (auth_mode + tokens object) and the legacy
+// flat format.
 func LoadOAuthCredentials() (*OAuthCredentials, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -38,14 +58,30 @@ func LoadOAuthCredentials() (*OAuthCredentials, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading auth.json: %w", err)
 	}
-	var creds OAuthCredentials
-	if err := json.Unmarshal(data, &creds); err != nil {
+	var f codexAuthFile
+	if err := json.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parsing auth.json: %w", err)
 	}
-	if creds.AccessToken == "" {
+
+	// Nested format: auth_mode + tokens object (ChatGPT/OAuth)
+	if f.Tokens != nil && f.Tokens.AccessToken != "" {
+		return &OAuthCredentials{
+			AccessToken:  f.Tokens.AccessToken,
+			RefreshToken: f.Tokens.RefreshToken,
+			TokenType:    "Bearer",
+		}, nil
+	}
+
+	// Legacy flat format
+	if f.AccessToken == "" {
 		return nil, fmt.Errorf("auth.json contains no access_token")
 	}
-	return &creds, nil
+	return &OAuthCredentials{
+		AccessToken:  f.AccessToken,
+		RefreshToken: f.RefreshToken,
+		ExpiresAt:    f.ExpiresAt,
+		TokenType:    f.TokenType,
+	}, nil
 }
 
 // GetAuthInfo returns metadata about the current auth configuration.
@@ -83,7 +119,8 @@ func GetAuthInfo() (*AuthInfo, error) {
 
 // IsOAuthAuth returns true when ~/.codex/auth.json contains ChatGPT subscription
 // (OAuth) credentials rather than a plain API key. OAuth sessions are identified
-// by the presence of a refresh_token field.
+// by auth_mode == "chatgpt", a nested tokens.refresh_token, or a top-level
+// refresh_token (legacy flat format).
 func IsOAuthAuth() bool {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -93,12 +130,17 @@ func IsOAuthAuth() bool {
 	if err != nil {
 		return false
 	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
+	var f codexAuthFile
+	if err := json.Unmarshal(data, &f); err != nil {
 		return false
 	}
-	_, hasRefresh := m["refresh_token"]
-	return hasRefresh
+	if f.AuthMode == "chatgpt" {
+		return true
+	}
+	if f.Tokens != nil && f.Tokens.RefreshToken != "" {
+		return true
+	}
+	return f.RefreshToken != ""
 }
 
 // CodexAuthJSONPath returns the absolute path to ~/.codex/auth.json.
