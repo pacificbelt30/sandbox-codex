@@ -101,6 +101,14 @@ if [[ -n "${CODEX_TASK:-}" ]]; then
     log "Task: ${CODEX_TASK}"
     exec codex "${CODEX_ARGS[@]}" "$CODEX_TASK"
 else
-    log "Starting in interactive mode."
-    exec codex "${CODEX_ARGS[@]}"
+    log "Starting in interactive mode (bash + codex with job control)."
+    # Start bash and have it run codex as the first command.
+    # Because bash is the session leader it handles job control normally:
+    # Ctrl+Z suspends codex and returns to the bash prompt inside the
+    # container; `fg` resumes codex.  `exit` stops the container.
+    CODEX_INIT="codex"
+    for arg in "${CODEX_ARGS[@]}"; do
+        CODEX_INIT+=" $(printf '%q' "$arg")"
+    done
+    exec bash --init-file <(printf '%s\n' "$CODEX_INIT")
 fi
