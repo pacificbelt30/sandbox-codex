@@ -102,13 +102,17 @@ if [[ -n "${CODEX_TASK:-}" ]]; then
     exec codex "${CODEX_ARGS[@]}" "$CODEX_TASK"
 else
     log "Starting in interactive mode (bash + codex with job control)."
-    # Start bash and have it run codex as the first command.
-    # Because bash is the session leader it handles job control normally:
-    # Ctrl+Z suspends codex and returns to the bash prompt inside the
-    # container; `fg` resumes codex.  `exit` stops the container.
+    # Build the codex invocation string.
     CODEX_INIT="codex"
     for arg in "${CODEX_ARGS[@]}"; do
         CODEX_INIT+=" $(printf '%q' "$arg")"
     done
-    exec bash --init-file <(printf '%s\n' "$CODEX_INIT")
+    # Use PROMPT_COMMAND to launch codex *after* bash has fully initialised
+    # its job-control machinery.  --init-file runs too early (before job
+    # control is ready), so Ctrl+Z would not work there.
+    # PROMPT_COMMAND fires just before the first prompt: bash is the session
+    # leader, ISIG is active, and Ctrl+Z properly suspends codex, returning
+    # to the bash prompt inside the container.  `fg` resumes codex.
+    export PROMPT_COMMAND="unset PROMPT_COMMAND; $CODEX_INIT"
+    exec bash -i
 fi
