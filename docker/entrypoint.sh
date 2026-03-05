@@ -34,7 +34,10 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
         # Use the nested tokens format expected by Codex CLI >= v0.110.0.
         ID_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_id_token',''))" 2>/dev/null || true)
         mkdir -p /home/codex/.codex
-        printf '{"auth_mode":"chatgpt","tokens":{"access_token":"%s","id_token":"%s"}}' "$OAUTH_TOKEN" "$ID_TOKEN" \
+        # refresh_token is intentionally set to empty — the real token stays on the host.
+        # Codex CLI requires the field to exist (JSON schema check) but cannot use it
+        # to renew credentials; the container relies solely on the access_token TTL.
+        printf '{"auth_mode":"chatgpt","tokens":{"access_token":"%s","id_token":"%s","refresh_token":""}}' "$OAUTH_TOKEN" "$ID_TOKEN" \
             > /home/codex/.codex/auth.json
         chmod 600 /home/codex/.codex/auth.json
         log "OAuth access_token and id_token acquired (refresh_token remains on host)."
