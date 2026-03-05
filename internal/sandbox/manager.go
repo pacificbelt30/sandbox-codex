@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -15,6 +17,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
+	"golang.org/x/term"
 )
 
 const (
@@ -380,6 +383,38 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 		return
 	}
 	defer resp.Close()
+
+	fd := int(os.Stdin.Fd())
+	if term.IsTerminal(fd) {
+		oldState, err := term.MakeRaw(fd)
+		if err == nil {
+			defer term.Restore(fd, oldState) //nolint:errcheck
+		}
+
+		// Set initial PTY size
+		if w, h, err := term.GetSize(fd); err == nil {
+			_ = m.cli.ContainerResize(ctx, containerID, container.ResizeOptions{
+				Width:  uint(w),
+				Height: uint(h),
+			})
+		}
+
+		// Forward terminal resize events (SIGWINCH) to the container PTY
+		resizeCh := make(chan os.Signal, 1)
+		signal.Notify(resizeCh, syscall.SIGWINCH)
+		defer signal.Stop(resizeCh)
+		go func() {
+			for range resizeCh {
+				w, h, err := term.GetSize(fd)
+				if err == nil {
+					_ = m.cli.ContainerResize(ctx, containerID, container.ResizeOptions{
+						Width:  uint(w),
+						Height: uint(h),
+					})
+				}
+			}
+		}()
+	}
 
 	go func() { _, _ = io.Copy(resp.Conn, os.Stdin) }()
 	_, _ = io.Copy(os.Stdout, resp.Reader)
