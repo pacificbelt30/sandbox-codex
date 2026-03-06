@@ -1,0 +1,58 @@
+site_name: codex-dock ドキュメント
+site_description: AI サンドボックスコンテナマネージャー codex-dock の公式ドキュメント
+site_url: https://pacificbelt30.github.io/codex-dock/
+repo_name: pacificbelt30/codex-dock
+repo_url: https://github.com/pacificbelt30/codex-dock
+
+docs_dir: doc
+
+theme:
+  name: material
+  language: ja
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: ダークモードに切り替え
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: ライトモードに切り替え
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+
+plugins:
+  - search:
+      lang: ja
+
+nav:
+  - ホーム: index.md
+  - はじめに: getting-started.md
+  - アーキテクチャ: architecture.md
+  - Auth Proxy: auth-proxy.md
+  - ネットワーク: network.md
+  - コマンド: commands.md
+  - 設定: configuration.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
