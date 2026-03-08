@@ -28,13 +28,12 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     OAUTH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_access_token',''))" 2>/dev/null || true)
 
     if [[ -n "$OAUTH_TOKEN" ]]; then
-        # OAuth mode: reconstruct auth.json from all fields provided by the Auth Proxy.
-        # WARNING: This includes refresh_token. The container has equivalent credentials
-        # to the host for the duration of its lifetime. See doc/auth-proxy.md.
-        ID_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_id_token',''))" 2>/dev/null || true)
-        REFRESH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_refresh_token',''))" 2>/dev/null || true)
-        ACCOUNT_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_account_id',''))" 2>/dev/null || true)
-        LAST_REFRESH=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_last_refresh',''))" 2>/dev/null || true)
+        # OAuth mode: write auth.json with access_token and id_token ONLY.
+        # refresh_token is intentionally omitted — the Auth Proxy holds it on the host.
+        # When Codex CLI needs to refresh, it calls CODEX_REFRESH_TOKEN_URL_OVERRIDE
+        # which points to the proxy's /oauth/token endpoint. The proxy performs the
+        # actual refresh using the host's refresh_token and returns the new access_token
+        # without ever exposing the refresh_token to the container.
         mkdir -p /home/codex/.codex
         python3 -c "
 import sys, json
@@ -45,7 +44,7 @@ out = {
     'tokens': {
         'id_token':      d.get('oauth_id_token', ''),
         'access_token':  d.get('oauth_access_token', ''),
-        'refresh_token': d.get('oauth_refresh_token', ''),
+        'refresh_token': '',
         'account_id':    d.get('oauth_account_id', ''),
     },
     'last_refresh': d.get('oauth_last_refresh', ''),
@@ -53,7 +52,7 @@ out = {
 print(json.dumps(out))
 " <<< "$RESPONSE" > /home/codex/.codex/auth.json
         chmod 600 /home/codex/.codex/auth.json
-        log "OAuth credentials acquired (all token fields written to auth.json)."
+        log "OAuth credentials acquired (refresh_token withheld; proxy handles refresh via CODEX_REFRESH_TOKEN_URL_OVERRIDE)."
     else
         # API key mode: extract api_key and set as environment variable
         API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || true)

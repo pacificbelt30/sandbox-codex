@@ -1,11 +1,13 @@
 package authproxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -95,6 +97,7 @@ func (p *Proxy) Start() error {
 	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/health", p.handleHealth)
 	mux.HandleFunc("/revoke", p.handleRevoke)
+	mux.HandleFunc("/oauth/token", p.handleOAuthTokenRefresh)
 
 	p.server = &http.Server{Handler: mux}
 	go func() {
@@ -197,18 +200,19 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if p.oauthCreds != nil {
-		// OAuth mode: pass all token fields to the container.
-		// NOTE: this includes refresh_token. See doc/auth-proxy.md for security implications.
+		// OAuth mode: pass only access_token and id_token to the container.
+		// refresh_token is intentionally withheld; the container must use
+		// /oauth/token (CODEX_REFRESH_TOKEN_URL_OVERRIDE) to refresh via the proxy.
 		p.mu.RLock()
 		creds := *p.oauthCreds
 		p.mu.RUnlock()
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"oauth_access_token":  creds.AccessToken,
-			"oauth_id_token":      creds.IDToken,
-			"oauth_refresh_token": creds.RefreshToken,
-			"oauth_account_id":    creds.AccountID,
-			"oauth_last_refresh":  creds.LastRefresh,
-			"container_name":      found.ContainerName,
+			"oauth_access_token": creds.AccessToken,
+			"oauth_id_token":     creds.IDToken,
+			"oauth_account_id":   creds.AccountID,
+			"oauth_last_refresh": creds.LastRefresh,
+			"container_name":     found.ContainerName,
+			// oauth_refresh_token intentionally omitted
 		})
 	} else {
 		_ = json.NewEncoder(w).Encode(map[string]string{
@@ -258,6 +262,136 @@ func (p *Proxy) expireLoop() {
 			}
 		}
 		p.mu.Unlock()
+	}
+}
+
+// handleOAuthTokenRefresh acts as an OAuth token refresh proxy for containers.
+// Codex CLI calls this endpoint via CODEX_REFRESH_TOKEN_URL_OVERRIDE.
+// The container authenticates via ?cdx=<short-lived-token> query param.
+// The proxy substitutes the host's real refresh_token, calls OpenAI, and returns
+// the new access_token WITHOUT the refresh_token (which stays on the host only).
+func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Authenticate the container via the short-lived token embedded in the URL.
+	// Codex CLI does not add custom headers when calling the refresh endpoint,
+	// so the token is passed as a query param when setting CODEX_REFRESH_TOKEN_URL_OVERRIDE.
+	cdxToken := r.URL.Query().Get("cdx")
+	if cdxToken == "" {
+		http.Error(w, "missing cdx param", http.StatusUnauthorized)
+		return
+	}
+
+	p.mu.RLock()
+	var found *tokenRecord
+	for _, rec := range p.tokens {
+		if rec.Token == cdxToken {
+			found = rec
+			break
+		}
+	}
+	p.mu.RUnlock()
+
+	if found == nil || time.Now().After(found.ExpiresAt) {
+		http.Error(w, "token invalid or expired", http.StatusUnauthorized)
+		return
+	}
+
+	p.mu.RLock()
+	if p.oauthCreds == nil {
+		p.mu.RUnlock()
+		http.Error(w, "not in OAuth mode", http.StatusBadRequest)
+		return
+	}
+	refreshToken := p.oauthCreds.RefreshToken
+	p.mu.RUnlock()
+
+	// Read the original request body from Codex CLI.
+	// We discard whatever refresh_token the container may have sent (it has none)
+	// and inject the host's real refresh_token instead.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "reading request body", http.StatusBadRequest)
+		return
+	}
+
+	var reqBody map[string]interface{}
+	if len(body) > 0 {
+		if jsonErr := json.Unmarshal(body, &reqBody); jsonErr != nil {
+			reqBody = map[string]interface{}{}
+		}
+	} else {
+		reqBody = map[string]interface{}{}
+	}
+	// Override with the host's real credentials; never use whatever the container sent.
+	reqBody["grant_type"] = "refresh_token"
+	reqBody["refresh_token"] = refreshToken
+
+	newBody, err := json.Marshal(reqBody)
+	if err != nil {
+		http.Error(w, "encoding request", http.StatusInternalServerError)
+		return
+	}
+
+	// Forward to the real OpenAI OAuth endpoint.
+	const realOAuthURL = "https://auth.openai.com/oauth/token"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, realOAuthURL, bytes.NewReader(newBody))
+	if err != nil {
+		http.Error(w, "creating refresh request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, "calling OAuth endpoint: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "reading OAuth response", http.StatusInternalServerError)
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(respBody)
+		return
+	}
+
+	var tokenResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
+		http.Error(w, "parsing OAuth response", http.StatusInternalServerError)
+		return
+	}
+
+	// Update the host's cached credentials with the new tokens.
+	p.mu.Lock()
+	if newAccess, ok := tokenResp["access_token"].(string); ok && newAccess != "" {
+		p.oauthCreds.AccessToken = newAccess
+	}
+	if newID, ok := tokenResp["id_token"].(string); ok && newID != "" {
+		p.oauthCreds.IDToken = newID
+	}
+	// Rotate the host's refresh_token if the server issued a new one (RFC 6749 §6).
+	if newRefresh, ok := tokenResp["refresh_token"].(string); ok && newRefresh != "" {
+		p.oauthCreds.RefreshToken = newRefresh
+	}
+	p.mu.Unlock()
+
+	// Strip refresh_token before returning to the container.
+	delete(tokenResp, "refresh_token")
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(tokenResp)
+
+	if p.cfg.Verbose {
+		fmt.Printf("OAuth token refreshed for container %s\n", found.ContainerName)
 	}
 }
 

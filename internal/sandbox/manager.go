@@ -108,6 +108,15 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 			"CODEX_AUTH_PROXY_URL="+m.proxy.Endpoint(),
 			"CODEX_TOKEN="+token,
 		)
+		// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
+		// The proxy substitutes the host's real refresh_token so it never reaches
+		// the container. The short-lived token is embedded as ?cdx= for authentication
+		// because Codex CLI does not add custom headers to refresh requests.
+		if m.proxy.IsOAuthMode() {
+			env = append(env,
+				"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+m.proxy.Endpoint()+"/oauth/token?cdx="+token,
+			)
+		}
 		if m.debug {
 			fmt.Fprintf(os.Stderr, "debug: issued token for %s (TTL=%ds)\n", name, opts.TokenTTL)
 		}
