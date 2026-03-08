@@ -562,11 +562,11 @@ func fakeOAuthServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 }
 
 func TestHandleOAuthTokenRefresh_HappyPath(t *testing.T) {
-	var gotBody string
+	var gotBody map[string]interface{}
 	var gotContentType string
 	fake := fakeOAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
-		gotBody = string(b)
+		_ = json.Unmarshal(b, &gotBody)
 		gotContentType = r.Header.Get("Content-Type")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -584,9 +584,12 @@ func TestHandleOAuthTokenRefresh_HappyPath(t *testing.T) {
 
 	cdx, _ := p.IssueToken("ctr-refresh", 60)
 
+	// Simulate what Codex CLI actually sends: JSON with empty refresh_token.
+	// client_id and grant_type are added by Codex CLI itself, not the proxy.
+	reqPayload := `{"client_id":"app_EMoamEEZ73f0CkXaXp7hrann","grant_type":"refresh_token","refresh_token":""}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx,
-		strings.NewReader("grant_type=refresh_token&refresh_token=rt-old&client_id=ignored"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		strings.NewReader(reqPayload))
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	p.handleOAuthTokenRefresh(w, req)
 
@@ -594,25 +597,24 @@ func TestHandleOAuthTokenRefresh_HappyPath(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Upstream must receive application/x-www-form-urlencoded
-	if gotContentType != "application/x-www-form-urlencoded" {
-		t.Errorf("upstream Content-Type = %q; want application/x-www-form-urlencoded", gotContentType)
+	// Upstream must receive application/json (Codex CLI's actual format).
+	if gotContentType != "application/json" {
+		t.Errorf("upstream Content-Type = %q; want application/json", gotContentType)
 	}
 
-	// Upstream body must contain the proxy's real refresh_token, not what container sent
-	if !strings.Contains(gotBody, "refresh_token=rt-secret-stays-on-host") {
-		t.Errorf("upstream body does not contain host refresh_token: %s", gotBody)
+	// Only refresh_token is replaced; all other fields pass through as-is from Codex CLI.
+	if gotBody["refresh_token"] != "rt-secret-stays-on-host" {
+		t.Errorf("upstream refresh_token = %v; want rt-secret-stays-on-host (host's real token)", gotBody["refresh_token"])
 	}
-	// Upstream body must contain the correct client_id
-	if !strings.Contains(gotBody, "client_id=app_EMoamEEZ73f0CkXaXp7hrann") {
-		t.Errorf("upstream body does not contain expected client_id: %s", gotBody)
+	// client_id is passed through from Codex CLI unchanged — proxy does NOT inject it.
+	if gotBody["client_id"] != "app_EMoamEEZ73f0CkXaXp7hrann" {
+		t.Errorf("upstream client_id = %v; want app_EMoamEEZ73f0CkXaXp7hrann (Codex CLI adds this)", gotBody["client_id"])
 	}
-	// grant_type must be refresh_token
-	if !strings.Contains(gotBody, "grant_type=refresh_token") {
-		t.Errorf("upstream body missing grant_type=refresh_token: %s", gotBody)
+	if gotBody["grant_type"] != "refresh_token" {
+		t.Errorf("upstream grant_type = %v; want refresh_token", gotBody["grant_type"])
 	}
 
-	// Response to container must NOT include refresh_token
+	// Response to container must NOT include refresh_token.
 	var resp map[string]interface{}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -779,11 +781,12 @@ func TestHandleOAuthTokenRefresh_UpstreamError(t *testing.T) {
 	}
 }
 
-func TestHandleOAuthTokenRefresh_FormBodySentEvenIfContainerBodyEmpty(t *testing.T) {
-	var gotBody string
+func TestHandleOAuthTokenRefresh_EmptyBodyStillInjectsHostToken(t *testing.T) {
+	// Edge case: container sends empty body (not expected in practice, but handled).
+	var gotBody map[string]interface{}
 	fake := fakeOAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
-		gotBody = string(b)
+		_ = json.Unmarshal(b, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"access_token": "at-ok"})
 	})
@@ -796,7 +799,6 @@ func TestHandleOAuthTokenRefresh_FormBodySentEvenIfContainerBodyEmpty(t *testing
 
 	cdx, _ := p.IssueToken("ctr-empty-body", 60)
 
-	// Container sends empty body (no refresh_token at all)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx, strings.NewReader(""))
 	w := httptest.NewRecorder()
 	p.handleOAuthTokenRefresh(w, req)
@@ -804,9 +806,9 @@ func TestHandleOAuthTokenRefresh_FormBodySentEvenIfContainerBodyEmpty(t *testing
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	// Proxy must still inject the host credentials
-	if !strings.Contains(gotBody, "refresh_token=rt-secret-stays-on-host") {
-		t.Errorf("upstream body missing host refresh_token even for empty container body: %s", gotBody)
+	// Even with empty body, proxy must inject the host's real refresh_token.
+	if gotBody["refresh_token"] != "rt-secret-stays-on-host" {
+		t.Errorf("upstream refresh_token = %v; want rt-secret-stays-on-host", gotBody["refresh_token"])
 	}
 }
 

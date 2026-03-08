@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -290,9 +289,16 @@ func (p *Proxy) expireLoop() {
 // The proxy substitutes the host's real refresh_token, calls OpenAI, and returns
 // the new access_token WITHOUT the refresh_token (which stays on the host only).
 //
-// Codex CLI sends application/x-www-form-urlencoded:
+// Codex CLI sends JSON:
 //
-//	grant_type=refresh_token&refresh_token=<rt_...>&client_id=app_EMoamEEZ73f0CkXaXp7hrann
+//	{"client_id":"app_EMoamEEZ73f0CkXaXp7hrann","grant_type":"refresh_token","refresh_token":""}
+//
+// The proxy replaces only the "refresh_token" field; all other fields (grant_type,
+// client_id, etc.) are passed through as-is from what Codex CLI sent.
+//
+// Monitored fields:
+//   - request  body["refresh_token"]: replaced with host's real refresh_token
+//   - response body["refresh_token"]: stripped before returning to container
 func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -332,22 +338,41 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	refreshToken := p.oauthCreds.RefreshToken
 	p.mu.RUnlock()
 
-	// Build application/x-www-form-urlencoded body with the host's real refresh_token.
-	// We ignore whatever the container sent and inject the host credentials.
-	// client_id is the Codex CLI OAuth application ID (public, non-secret).
-	formVals := url.Values{}
-	formVals.Set("grant_type", "refresh_token")
-	formVals.Set("refresh_token", refreshToken)
-	formVals.Set("client_id", "app_EMoamEEZ73f0CkXaXp7hrann")
+	// Parse the JSON body that Codex CLI sent.
+	// Only "refresh_token" is replaced; all other fields (grant_type, client_id, …)
+	// are kept as-is. The container's auth.json has refresh_token="" so Codex CLI
+	// sends an empty string here; the proxy substitutes the host's real token.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "reading request body", http.StatusBadRequest)
+		return
+	}
+	var reqBody map[string]interface{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &reqBody); err != nil {
+			http.Error(w, "parsing request body", http.StatusBadRequest)
+			return
+		}
+	} else {
+		reqBody = map[string]interface{}{}
+	}
+	// Replace only the refresh_token; leave grant_type, client_id, etc. unchanged.
+	reqBody["refresh_token"] = refreshToken
 
-	// Forward to the real OpenAI OAuth endpoint.
+	newBody, err := json.Marshal(reqBody)
+	if err != nil {
+		http.Error(w, "encoding request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Forward to the real OpenAI OAuth endpoint with Content-Type: application/json.
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, p.oauthTokenURL,
-		strings.NewReader(formVals.Encode()))
+		bytes.NewReader(newBody))
 	if err != nil {
 		http.Error(w, "creating refresh request", http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

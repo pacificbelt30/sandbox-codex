@@ -66,7 +66,7 @@ func (m *Manager) EnsureNetwork(noInternet bool) error {
 		IPAM: &dockernetwork.IPAM{
 			Driver: "default",
 			Config: []dockernetwork.IPAMConfig{
-				{Subnet: "192.168.200.0/24", Gateway: "192.168.200.1"},
+				{Subnet: "10.200.0.0/24", Gateway: "10.200.0.1"},
 			},
 		},
 	})
@@ -140,7 +140,7 @@ func (m *Manager) GatewayAddr() (string, error) {
 		if err == nil && len(detail.IPAM.Config) > 0 && detail.IPAM.Config[0].Gateway != "" {
 			return detail.IPAM.Config[0].Gateway, nil
 		}
-		// Last resort: derive first host address from subnet (e.g. 192.168.200.1 from .0/24).
+		// Last resort: derive first host address from subnet (e.g. 10.200.0.1 from .0/24).
 		if len(n.IPAM.Config) > 0 {
 			return deriveGateway(n.IPAM.Config[0].Subnet)
 		}
@@ -149,7 +149,7 @@ func (m *Manager) GatewayAddr() (string, error) {
 }
 
 // deriveGateway computes the first host address of an IPv4 CIDR subnet.
-// For example "192.168.200.0/24" → "192.168.200.1".
+// For example "10.200.0.0/24" → "10.200.0.1".
 func deriveGateway(cidr string) (string, error) {
 	b, err := parseIPv4Network(cidr)
 	if err != nil {
