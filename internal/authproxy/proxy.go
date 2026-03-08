@@ -43,6 +43,12 @@ type Proxy struct {
 	mu         sync.RWMutex
 	tokens     map[string]*tokenRecord // containerName -> record
 	addr       string
+
+	// Upstream endpoints; overridable for testing.
+	httpClient    *http.Client
+	oauthTokenURL string // default: "https://auth.openai.com/oauth/token"
+	apiUpstreamURL string // default: "https://api.openai.com/v1" (API key mode)
+	chatgptURL    string // default: "https://chatgpt.com/backend-api" (OAuth mode + /chatgpt/)
 }
 
 // NewProxy creates a new Auth Proxy.
@@ -50,8 +56,12 @@ type Proxy struct {
 // ~/.codex/auth.json. In API key mode, the API key is loaded as usual.
 func NewProxy(cfg Config) (*Proxy, error) {
 	p := &Proxy{
-		cfg:    cfg,
-		tokens: make(map[string]*tokenRecord),
+		cfg:            cfg,
+		tokens:         make(map[string]*tokenRecord),
+		httpClient:     http.DefaultClient,
+		oauthTokenURL:  "https://auth.openai.com/oauth/token",
+		apiUpstreamURL: "https://api.openai.com/v1",
+		chatgptURL:     "https://chatgpt.com/backend-api",
 	}
 
 	if IsOAuthAuth() {
@@ -331,8 +341,7 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	formVals.Set("client_id", "app_EMoamEEZ73f0CkXaXp7hrann")
 
 	// Forward to the real OpenAI OAuth endpoint.
-	const realOAuthURL = "https://auth.openai.com/oauth/token"
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, realOAuthURL,
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, p.oauthTokenURL,
 		strings.NewReader(formVals.Encode()))
 	if err != nil {
 		http.Error(w, "creating refresh request", http.StatusInternalServerError)
@@ -340,7 +349,7 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, "calling OAuth endpoint: "+err.Error(), http.StatusBadGateway)
 		return
@@ -399,9 +408,9 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 func (p *Proxy) handleAPIProxy(w http.ResponseWriter, r *http.Request) {
 	var base string
 	if p.oauthCreds != nil {
-		base = "https://chatgpt.com/backend-api/codex"
+		base = p.chatgptURL + "/codex"
 	} else {
-		base = "https://api.openai.com/v1"
+		base = p.apiUpstreamURL
 	}
 	p.reverseProxy(w, r, "/v1", base)
 }
@@ -411,7 +420,7 @@ func (p *Proxy) handleAPIProxy(w http.ResponseWriter, r *http.Request) {
 // in their Codex CLI config so backend-api calls (rate limits, account info, etc.)
 // flow through the proxy.
 func (p *Proxy) handleChatGPTProxy(w http.ResponseWriter, r *http.Request) {
-	p.reverseProxy(w, r, "/chatgpt", "https://chatgpt.com/backend-api")
+	p.reverseProxy(w, r, "/chatgpt", p.chatgptURL)
 }
 
 // reverseProxy strips stripPrefix from r.URL.Path, appends it to targetBase,
@@ -455,7 +464,7 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return

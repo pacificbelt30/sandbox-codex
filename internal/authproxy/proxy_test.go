@@ -538,3 +538,606 @@ func TestConfig_ListenAddrDefault(t *testing.T) {
 		t.Errorf("ListenAddr default should be empty string, got %q", cfg.ListenAddr)
 	}
 }
+
+// ── handleOAuthTokenRefresh tests ────────────────────────────────────────────
+
+// newOAuthProxyWithFakeOAuth creates an OAuth-mode proxy whose /oauth/token
+// upstream is redirected to fakeServer.URL so tests never hit the real internet.
+func newOAuthProxyWithFakeOAuth(t *testing.T, fakeServer *httptest.Server) *Proxy {
+	t.Helper()
+	p := newOAuthTestProxy(t, "at-initial")
+	p.oauthTokenURL = fakeServer.URL + "/oauth/token"
+	return p
+}
+
+// fakeOAuthServer starts a test HTTP server that simulates auth.openai.com/oauth/token.
+// handler is called for every POST /oauth/token.
+func fakeOAuthServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", handler)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestHandleOAuthTokenRefresh_HappyPath(t *testing.T) {
+	var gotBody string
+	var gotContentType string
+	fake := fakeOAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		gotContentType = r.Header.Get("Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token":  "at-new",
+			"id_token":      "id-new",
+			"refresh_token": "rt-new", // server rotates refresh_token
+		})
+	})
+
+	p := newOAuthProxyWithFakeOAuth(t, fake)
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	cdx, _ := p.IssueToken("ctr-refresh", 60)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx,
+		strings.NewReader("grant_type=refresh_token&refresh_token=rt-old&client_id=ignored"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Upstream must receive application/x-www-form-urlencoded
+	if gotContentType != "application/x-www-form-urlencoded" {
+		t.Errorf("upstream Content-Type = %q; want application/x-www-form-urlencoded", gotContentType)
+	}
+
+	// Upstream body must contain the proxy's real refresh_token, not what container sent
+	if !strings.Contains(gotBody, "refresh_token=rt-secret-stays-on-host") {
+		t.Errorf("upstream body does not contain host refresh_token: %s", gotBody)
+	}
+	// Upstream body must contain the correct client_id
+	if !strings.Contains(gotBody, "client_id=app_EMoamEEZ73f0CkXaXp7hrann") {
+		t.Errorf("upstream body does not contain expected client_id: %s", gotBody)
+	}
+	// grant_type must be refresh_token
+	if !strings.Contains(gotBody, "grant_type=refresh_token") {
+		t.Errorf("upstream body missing grant_type=refresh_token: %s", gotBody)
+	}
+
+	// Response to container must NOT include refresh_token
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := resp["refresh_token"]; ok {
+		t.Error("refresh_token must not be returned to container")
+	}
+	if resp["access_token"] != "at-new" {
+		t.Errorf("access_token = %v; want at-new", resp["access_token"])
+	}
+}
+
+func TestHandleOAuthTokenRefresh_UpdatesHostCreds(t *testing.T) {
+	fake := fakeOAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token":  "at-rotated",
+			"id_token":      "id-rotated",
+			"refresh_token": "rt-rotated",
+		})
+	})
+
+	p := newOAuthProxyWithFakeOAuth(t, fake)
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	cdx, _ := p.IssueToken("ctr-update", 60)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx, strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Host's cached credentials must be updated
+	p.mu.RLock()
+	at := p.oauthCreds.AccessToken
+	rt := p.oauthCreds.RefreshToken
+	id := p.oauthCreds.IDToken
+	p.mu.RUnlock()
+
+	if at != "at-rotated" {
+		t.Errorf("host AccessToken = %q; want at-rotated", at)
+	}
+	if rt != "rt-rotated" {
+		t.Errorf("host RefreshToken = %q; want rt-rotated (rotation)", rt)
+	}
+	if id != "id-rotated" {
+		t.Errorf("host IDToken = %q; want id-rotated", id)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_MissingCdxParam(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-test")
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_InvalidCdxToken(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-test")
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx=cdx-not-valid", strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_ExpiredCdxToken(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-test")
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	cdx, _ := p.IssueToken("ctr-exp-refresh", 60)
+	p.mu.Lock()
+	p.tokens["ctr-exp-refresh"].ExpiresAt = time.Now().Add(-1 * time.Second)
+	p.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx, strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for expired token, got %d", w.Code)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_WrongMethod(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-test")
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth/token", nil)
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", w.Code)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_NonOAuthMode(t *testing.T) {
+	p := newTestProxy(t) // API key mode, not OAuth
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	cdx, _ := p.IssueToken("ctr-apikey", 60)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx, strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-OAuth mode, got %d", w.Code)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_UpstreamError(t *testing.T) {
+	fake := fakeOAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+	})
+
+	p := newOAuthProxyWithFakeOAuth(t, fake)
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	cdx, _ := p.IssueToken("ctr-upstream-err", 60)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx, strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	// Relay the upstream error status
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 relayed from upstream, got %d", w.Code)
+	}
+}
+
+func TestHandleOAuthTokenRefresh_FormBodySentEvenIfContainerBodyEmpty(t *testing.T) {
+	var gotBody string
+	fake := fakeOAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"access_token": "at-ok"})
+	})
+
+	p := newOAuthProxyWithFakeOAuth(t, fake)
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	cdx, _ := p.IssueToken("ctr-empty-body", 60)
+
+	// Container sends empty body (no refresh_token at all)
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token?cdx="+cdx, strings.NewReader(""))
+	w := httptest.NewRecorder()
+	p.handleOAuthTokenRefresh(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	// Proxy must still inject the host credentials
+	if !strings.Contains(gotBody, "refresh_token=rt-secret-stays-on-host") {
+		t.Errorf("upstream body missing host refresh_token even for empty container body: %s", gotBody)
+	}
+}
+
+// ── handleAPIProxy tests ──────────────────────────────────────────────────────
+
+// newFakeUpstream starts a test server and returns it.
+// handler receives every request forwarded by the proxy.
+func newFakeUpstream(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestHandleAPIProxy_APIKeyMode_ForwardsToAPIUpstream(t *testing.T) {
+	var gotPath string
+	var gotAuth string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"object":"list"}`))
+	})
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer sk-test-key-12345")
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotPath != "/models" {
+		t.Errorf("upstream path = %q; want /models", gotPath)
+	}
+	// Authorization header must be forwarded as-is
+	if gotAuth != "Bearer sk-test-key-12345" {
+		t.Errorf("upstream Authorization = %q; want Bearer sk-test-key-12345", gotAuth)
+	}
+}
+
+func TestHandleAPIProxy_OAuthMode_ForwardsToChatGPTCodex(t *testing.T) {
+	var gotPath string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp-1"}`))
+	})
+
+	p := newOAuthTestProxy(t, "at-oauth-access")
+	// chatgptURL is the base; handler appends /codex
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses",
+		strings.NewReader(`{"model":"codex-mini"}`))
+	req.Header.Set("Authorization", "Bearer at-oauth-access")
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// In OAuth mode the path becomes /codex/responses
+	if gotPath != "/codex/responses" {
+		t.Errorf("upstream path = %q; want /codex/responses", gotPath)
+	}
+}
+
+func TestHandleAPIProxy_QueryStringPreserved(t *testing.T) {
+	var gotQuery string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?limit=10&order=asc", nil)
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if gotQuery != "limit=10&order=asc" {
+		t.Errorf("upstream query = %q; want limit=10&order=asc", gotQuery)
+	}
+}
+
+func TestHandleAPIProxy_ResponseBodyRelayed(t *testing.T) {
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"result":"ok"}`))
+	})
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`))
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q; want application/json", ct)
+	}
+	if body := w.Body.String(); body != `{"result":"ok"}` {
+		t.Errorf("body = %q; want {\"result\":\"ok\"}", body)
+	}
+}
+
+func TestHandleAPIProxy_HopByHopHeadersNotForwarded(t *testing.T) {
+	var gotConnection string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotConnection = r.Header.Get("Connection")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Authorization", "Bearer sk-test")
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if gotConnection != "" {
+		t.Errorf("Connection hop-by-hop header must not be forwarded, got %q", gotConnection)
+	}
+}
+
+func TestHandleAPIProxy_NonHopByHopHeadersForwarded(t *testing.T) {
+	var gotVersion string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotVersion = r.Header.Get("Version")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`))
+	req.Header.Set("Version", "0.110.0") // Codex CLI version header
+	req.Header.Set("Authorization", "Bearer sk-test")
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if gotVersion != "0.110.0" {
+		t.Errorf("Version header = %q; want 0.110.0", gotVersion)
+	}
+}
+
+// ── handleChatGPTProxy tests ──────────────────────────────────────────────────
+
+func TestHandleChatGPTProxy_ForwardsToChatGPTBackend(t *testing.T) {
+	var gotPath string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"limits":{}}`))
+	})
+
+	p := newTestProxy(t)
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/chatgpt/public_api/conversation_limit", nil)
+	w := httptest.NewRecorder()
+	p.handleChatGPTProxy(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotPath != "/public_api/conversation_limit" {
+		t.Errorf("upstream path = %q; want /public_api/conversation_limit", gotPath)
+	}
+}
+
+func TestHandleChatGPTProxy_QueryStringPreserved(t *testing.T) {
+	var gotQuery string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newTestProxy(t)
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/chatgpt/some/path?foo=bar", nil)
+	w := httptest.NewRecorder()
+	p.handleChatGPTProxy(w, req)
+
+	if gotQuery != "foo=bar" {
+		t.Errorf("upstream query = %q; want foo=bar", gotQuery)
+	}
+}
+
+func TestHandleChatGPTProxy_ResponseStatusRelayed(t *testing.T) {
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+	})
+
+	p := newTestProxy(t)
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/chatgpt/limits", nil)
+	w := httptest.NewRecorder()
+	p.handleChatGPTProxy(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 relayed from upstream, got %d", w.Code)
+	}
+}
+
+func TestHandleChatGPTProxy_HopByHopHeadersNotForwarded(t *testing.T) {
+	var gotUpgrade string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotUpgrade = r.Header.Get("Upgrade")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newTestProxy(t)
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	req := httptest.NewRequest(http.MethodGet, "/chatgpt/limits", nil)
+	req.Header.Set("Upgrade", "websocket")
+	w := httptest.NewRecorder()
+	p.handleChatGPTProxy(w, req)
+
+	if gotUpgrade != "" {
+		t.Errorf("Upgrade hop-by-hop header must not be forwarded, got %q", gotUpgrade)
+	}
+}
+
+// ── reverseProxy integration: end-to-end via httptest.Server ─────────────────
+
+func TestReverseProxy_EndToEnd_APIKeyMode(t *testing.T) {
+	// Verifies that a full HTTP request through the running proxy reaches upstream.
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	resp, err := http.Get(p.Endpoint() + "/v1/models")
+	if err != nil {
+		t.Fatalf("GET /v1/models: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != `{"ok":true}` {
+		t.Errorf("body = %q; want {\"ok\":true}", body)
+	}
+}
+
+func TestReverseProxy_EndToEnd_ChatGPTProxy(t *testing.T) {
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"limits":{"daily":100}}`))
+	})
+
+	p := newTestProxy(t)
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	resp, err := http.Get(p.Endpoint() + "/chatgpt/public_api/limits")
+	if err != nil {
+		t.Fatalf("GET /chatgpt/public_api/limits: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
