@@ -52,6 +52,16 @@ out = {
 print(json.dumps(out))
 " <<< "$RESPONSE" > /home/codex/.codex/auth.json
         chmod 600 /home/codex/.codex/auth.json
+
+        # Write Codex CLI config so chatgpt.com/backend-api calls go through the proxy.
+        # chatgpt_base_url overrides the default https://chatgpt.com/backend-api/ endpoint
+        # used by Codex CLI for rate-limit and account-info requests (ChatGPT auth mode only).
+        mkdir -p /home/codex/.config/codex
+        cat > /home/codex/.config/codex/config.toml <<EOF
+chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
+EOF
+        chmod 600 /home/codex/.config/codex/config.toml
+
         log "OAuth credentials acquired (refresh_token withheld; proxy handles refresh via CODEX_REFRESH_TOKEN_URL_OVERRIDE)."
     else
         # API key mode: extract api_key and set as environment variable

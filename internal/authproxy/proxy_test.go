@@ -394,9 +394,10 @@ func TestHandleToken_OAuthMode_ReturnsAccessToken(t *testing.T) {
 	}
 }
 
-func TestHandleToken_OAuthMode_AllFieldsPresent(t *testing.T) {
-	// OAuth mode now passes all token fields (including refresh_token) to containers.
-	// See doc/auth-proxy.md for security implications.
+func TestHandleToken_OAuthMode_RefreshTokenNotLeaked(t *testing.T) {
+	// OAuth mode must NOT pass refresh_token to containers.
+	// Containers refresh tokens via CODEX_REFRESH_TOKEN_URL_OVERRIDE → proxy /oauth/token,
+	// which substitutes the host's real refresh_token. The container never sees it.
 	p := newOAuthTestProxy(t, "at-no-leak")
 	if err := p.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -418,9 +419,9 @@ func TestHandleToken_OAuthMode_AllFieldsPresent(t *testing.T) {
 	if m["oauth_access_token"] != "at-no-leak" {
 		t.Errorf("oauth_access_token = %q; want at-no-leak", m["oauth_access_token"])
 	}
-	// refresh_token is now intentionally included in the response
-	if _, ok := m["oauth_refresh_token"]; !ok {
-		t.Error("oauth_refresh_token key missing from response")
+	// refresh_token must never be returned to containers.
+	if _, ok := m["oauth_refresh_token"]; ok {
+		t.Error("oauth_refresh_token must not be present in /token response (security: token stays on host)")
 	}
 }
 

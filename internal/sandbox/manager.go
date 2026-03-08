@@ -104,9 +104,14 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("issuing auth token: %w", err)
 		}
+		proxyEndpoint := m.proxy.Endpoint()
 		env = append(env,
-			"CODEX_AUTH_PROXY_URL="+m.proxy.Endpoint(),
+			"CODEX_AUTH_PROXY_URL="+proxyEndpoint,
 			"CODEX_TOKEN="+token,
+			// Route all Responses API traffic through the proxy so the proxy can
+			// substitute credentials. OPENAI_BASE_URL overrides the Codex CLI default
+			// (https://chatgpt.com/backend-api/codex) in all auth modes.
+			"OPENAI_BASE_URL="+proxyEndpoint+"/v1",
 		)
 		// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
 		// The proxy substitutes the host's real refresh_token so it never reaches
@@ -114,7 +119,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		// because Codex CLI does not add custom headers to refresh requests.
 		if m.proxy.IsOAuthMode() {
 			env = append(env,
-				"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+m.proxy.Endpoint()+"/oauth/token?cdx="+token,
+				"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+proxyEndpoint+"/oauth/token?cdx="+token,
 			)
 		}
 		if m.debug {

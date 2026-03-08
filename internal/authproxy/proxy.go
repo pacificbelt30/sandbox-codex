@@ -11,7 +11,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -97,7 +99,14 @@ func (p *Proxy) Start() error {
 	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/health", p.handleHealth)
 	mux.HandleFunc("/revoke", p.handleRevoke)
+	// OAuth token refresh: Codex CLI calls this via CODEX_REFRESH_TOKEN_URL_OVERRIDE.
+	// The proxy substitutes the host's real refresh_token so it never reaches containers.
 	mux.HandleFunc("/oauth/token", p.handleOAuthTokenRefresh)
+	// Responses API reverse proxy: containers set OPENAI_BASE_URL=http://proxy/v1.
+	// Forwards to api.openai.com/v1 (API key mode) or chatgpt.com/backend-api/codex (OAuth mode).
+	mux.HandleFunc("/v1/", p.handleAPIProxy)
+	// ChatGPT backend-api reverse proxy: containers use chatgpt_base_url=http://proxy/chatgpt/.
+	mux.HandleFunc("/chatgpt/", p.handleChatGPTProxy)
 
 	p.server = &http.Server{Handler: mux}
 	go func() {
@@ -270,6 +279,10 @@ func (p *Proxy) expireLoop() {
 // The container authenticates via ?cdx=<short-lived-token> query param.
 // The proxy substitutes the host's real refresh_token, calls OpenAI, and returns
 // the new access_token WITHOUT the refresh_token (which stays on the host only).
+//
+// Codex CLI sends application/x-www-form-urlencoded:
+//
+//	grant_type=refresh_token&refresh_token=<rt_...>&client_id=app_EMoamEEZ73f0CkXaXp7hrann
 func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -309,41 +322,23 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	refreshToken := p.oauthCreds.RefreshToken
 	p.mu.RUnlock()
 
-	// Read the original request body from Codex CLI.
-	// We discard whatever refresh_token the container may have sent (it has none)
-	// and inject the host's real refresh_token instead.
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "reading request body", http.StatusBadRequest)
-		return
-	}
-
-	var reqBody map[string]interface{}
-	if len(body) > 0 {
-		if jsonErr := json.Unmarshal(body, &reqBody); jsonErr != nil {
-			reqBody = map[string]interface{}{}
-		}
-	} else {
-		reqBody = map[string]interface{}{}
-	}
-	// Override with the host's real credentials; never use whatever the container sent.
-	reqBody["grant_type"] = "refresh_token"
-	reqBody["refresh_token"] = refreshToken
-
-	newBody, err := json.Marshal(reqBody)
-	if err != nil {
-		http.Error(w, "encoding request", http.StatusInternalServerError)
-		return
-	}
+	// Build application/x-www-form-urlencoded body with the host's real refresh_token.
+	// We ignore whatever the container sent and inject the host credentials.
+	// client_id is the Codex CLI OAuth application ID (public, non-secret).
+	formVals := url.Values{}
+	formVals.Set("grant_type", "refresh_token")
+	formVals.Set("refresh_token", refreshToken)
+	formVals.Set("client_id", "app_EMoamEEZ73f0CkXaXp7hrann")
 
 	// Forward to the real OpenAI OAuth endpoint.
 	const realOAuthURL = "https://auth.openai.com/oauth/token"
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, realOAuthURL, bytes.NewReader(newBody))
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, realOAuthURL,
+		strings.NewReader(formVals.Encode()))
 	if err != nil {
 		http.Error(w, "creating refresh request", http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -392,6 +387,91 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 
 	if p.cfg.Verbose {
 		fmt.Printf("OAuth token refreshed for container %s\n", found.ContainerName)
+	}
+}
+
+// handleAPIProxy proxies /v1/* to the real Responses API backend.
+// In API key mode: forwards to https://api.openai.com/v1/
+// In OAuth/ChatGPT mode: forwards to https://chatgpt.com/backend-api/codex/
+//
+// Containers should set OPENAI_BASE_URL=http://<proxy>/v1 so Codex CLI routes
+// all Responses API traffic through the proxy.
+func (p *Proxy) handleAPIProxy(w http.ResponseWriter, r *http.Request) {
+	var base string
+	if p.oauthCreds != nil {
+		base = "https://chatgpt.com/backend-api/codex"
+	} else {
+		base = "https://api.openai.com/v1"
+	}
+	p.reverseProxy(w, r, "/v1", base)
+}
+
+// handleChatGPTProxy proxies /chatgpt/* to https://chatgpt.com/backend-api/*.
+// Containers in ChatGPT auth mode set chatgpt_base_url=http://<proxy>/chatgpt/
+// in their Codex CLI config so backend-api calls (rate limits, account info, etc.)
+// flow through the proxy.
+func (p *Proxy) handleChatGPTProxy(w http.ResponseWriter, r *http.Request) {
+	p.reverseProxy(w, r, "/chatgpt", "https://chatgpt.com/backend-api")
+}
+
+// reverseProxy strips stripPrefix from r.URL.Path, appends it to targetBase,
+// and forwards the request upstream, copying status, headers, and body back.
+func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix, targetBase string) {
+	path := strings.TrimPrefix(r.URL.Path, stripPrefix)
+	target := targetBase + path
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "reading request body", http.StatusBadRequest)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "creating upstream request", http.StatusInternalServerError)
+		return
+	}
+
+	// Copy headers, skipping hop-by-hop headers.
+	hopByHop := map[string]bool{
+		"connection":          true,
+		"keep-alive":          true,
+		"proxy-authenticate":  true,
+		"proxy-authorization": true,
+		"te":                  true,
+		"trailers":            true,
+		"transfer-encoding":   true,
+		"upgrade":             true,
+	}
+	for k, vv := range r.Header {
+		if hopByHop[strings.ToLower(k)] {
+			continue
+		}
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	for k, vv := range resp.Header {
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
+
+	if p.cfg.Verbose {
+		fmt.Printf("Proxied %s %s -> %s (%d)\n", r.Method, r.URL.Path, target, resp.StatusCode)
 	}
 }
 
