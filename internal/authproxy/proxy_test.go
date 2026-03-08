@@ -1,6 +1,7 @@
 package authproxy
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -1105,7 +1106,8 @@ func TestReverseProxy_EndToEnd_APIKeyMode(t *testing.T) {
 	}
 	defer p.Stop()
 
-	resp, err := http.Get(p.Endpoint() + "/v1/models")
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, p.Endpoint()+"/v1/models", nil)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /v1/models: %v", err)
 	}
@@ -1133,7 +1135,8 @@ func TestReverseProxy_EndToEnd_ChatGPTProxy(t *testing.T) {
 	}
 	defer p.Stop()
 
-	resp, err := http.Get(p.Endpoint() + "/chatgpt/public_api/limits")
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, p.Endpoint()+"/chatgpt/public_api/limits", nil)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /chatgpt/public_api/limits: %v", err)
 	}

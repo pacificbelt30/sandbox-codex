@@ -44,10 +44,10 @@ type Proxy struct {
 	addr       string
 
 	// Upstream endpoints; overridable for testing.
-	httpClient    *http.Client
-	oauthTokenURL string // default: "https://auth.openai.com/oauth/token"
+	httpClient     *http.Client
+	oauthTokenURL  string // default: "https://auth.openai.com/oauth/token"
 	apiUpstreamURL string // default: "https://api.openai.com/v1" (API key mode)
-	chatgptURL    string // default: "https://chatgpt.com/backend-api" (OAuth mode + /chatgpt/)
+	chatgptURL     string // default: "https://chatgpt.com/backend-api" (OAuth mode + /chatgpt/)
 }
 
 // NewProxy creates a new Auth Proxy.
