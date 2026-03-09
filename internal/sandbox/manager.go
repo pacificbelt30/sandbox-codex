@@ -192,6 +192,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		AttachStdin:  !opts.Detach,
 		AttachStdout: !opts.Detach,
 		AttachStderr: !opts.Detach,
+		User:         opts.ContainerUser,
 	}
 	if opts.ShellMode {
 		// Override the Dockerfile ENTRYPOINT so Docker runs bash directly
