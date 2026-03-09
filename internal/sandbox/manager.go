@@ -143,6 +143,14 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		env = append(env, "CODEX_INSTALL_SCRIPT="+installScript)
 	}
 
+	// When a custom container user is specified, the uid may not exist in the
+	// image's /etc/passwd, causing Docker to set HOME="/".  Inject HOME=/tmp so
+	// the entrypoint can write auth files to a writable location regardless of
+	// which uid the container runs as.
+	if opts.ContainerUser != "" {
+		env = append(env, "HOME=/tmp")
+	}
+
 	mounts := []mount.Mount{
 		{
 			Type:   mount.TypeBind,
