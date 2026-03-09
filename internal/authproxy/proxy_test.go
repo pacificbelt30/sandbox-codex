@@ -1,9 +1,12 @@
 package authproxy
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1145,4 +1148,130 @@ func TestReverseProxy_EndToEnd_ChatGPTProxy(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
+}
+
+// ── WebSocket tunneling tests ─────────────────────────────────────────────────
+
+// TestIsWebSocketRequest verifies detection of WebSocket upgrade requests.
+func TestIsWebSocketRequest(t *testing.T) {
+	cases := []struct {
+		upgrade    string
+		connection string
+		want       bool
+	}{
+		{"websocket", "Upgrade", true},
+		{"WebSocket", "upgrade", true},
+		{"WEBSOCKET", "keep-alive, Upgrade", true},
+		{"", "Upgrade", false},
+		{"websocket", "", false},
+		{"websocket", "keep-alive", false},
+	}
+	for _, tc := range cases {
+		r, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+		if tc.upgrade != "" {
+			r.Header.Set("Upgrade", tc.upgrade)
+		}
+		if tc.connection != "" {
+			r.Header.Set("Connection", tc.connection)
+		}
+		if got := isWebSocketRequest(r); got != tc.want {
+			t.Errorf("upgrade=%q connection=%q: isWebSocketRequest()=%v, want %v",
+				tc.upgrade, tc.connection, got, tc.want)
+		}
+	}
+}
+
+// TestWebSocketProxy_Tunnel verifies end-to-end WebSocket tunneling through the proxy.
+// It spins up a bare TCP server that echoes WebSocket frames (after a 101 handshake)
+// and checks that data flows bidirectionally through handleWebSocketProxy.
+func TestWebSocketProxy_Tunnel(t *testing.T) {
+	// Minimal WebSocket echo server: accepts the HTTP upgrade, then echoes bytes.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close() //nolint:errcheck
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close() //nolint:errcheck
+
+		// Read the HTTP upgrade request.
+		br := bufio.NewReader(conn)
+		for {
+			line, err := br.ReadString('\n')
+			if err != nil || line == "\r\n" {
+				break
+			}
+		}
+		// Send 101 Switching Protocols.
+		_, _ = fmt.Fprint(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+
+		// Echo everything back.
+		buf := make([]byte, 64)
+		n, _ := br.Read(buf)
+		_, _ = conn.Write(buf[:n])
+	}()
+
+	// Start the auth proxy and point its API upstream at our echo server.
+	p := newTestProxy(t)
+	p.apiUpstreamURL = "http://" + ln.Addr().String()
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	// Connect to the proxy with a WebSocket upgrade request.
+	proxyAddr := strings.TrimPrefix(p.Endpoint(), "http://")
+	clientConn, err := net.Dial("tcp", proxyAddr)
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer clientConn.Close() //nolint:errcheck
+
+	// Send the WebSocket HTTP upgrade request.
+	_, err = fmt.Fprintf(clientConn,
+		"GET /v1/responses HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		proxyAddr)
+	if err != nil {
+		t.Fatalf("writing upgrade request: %v", err)
+	}
+
+	// Read and verify the 101 response from the proxy.
+	br2 := bufio.NewReader(clientConn)
+	statusLine, err := br2.ReadString('\n')
+	if err != nil {
+		t.Fatalf("reading status line: %v", err)
+	}
+	if !strings.Contains(statusLine, "101") {
+		t.Fatalf("expected 101 Switching Protocols, got: %q", statusLine)
+	}
+	// Drain remaining headers.
+	for {
+		line, err := br2.ReadString('\n')
+		if err != nil || line == "\r\n" {
+			break
+		}
+	}
+
+	// Send a payload and verify the echo server returns it.
+	payload := []byte("hello-ws")
+	if _, err := clientConn.Write(payload); err != nil {
+		t.Fatalf("writing payload: %v", err)
+	}
+
+	buf := make([]byte, len(payload))
+	if _, err := io.ReadFull(br2, buf); err != nil {
+		t.Fatalf("reading echo: %v", err)
+	}
+	if string(buf) != string(payload) {
+		t.Errorf("echo = %q; want %q", buf, payload)
+	}
+
+	<-serverDone
 }
