@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// userMode is the raw value of --user before resolution.
+var userMode string
+
 var runOpts sandbox.RunOptions
 
 var runCmd = &cobra.Command{
@@ -45,6 +48,11 @@ func init() {
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start an interactive bash shell instead of Codex")
+	f.StringVar(&userMode, "user", "", `User to run as inside the container.
+  ""        image default (uid:1001 codex user)
+  "current" current command user (uid:gid)
+  "dir"     project directory owner (uid:gid)
+  "uid"     explicit uid (e.g. "1000" or "1000:1000")`)
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {
@@ -54,6 +62,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving project directory: %w", err)
 	}
 	runOpts.ProjectDir = projectDir
+
+	// Resolve --user into uid[:gid] for the container
+	containerUser, err := resolveContainerUser(userMode, runOpts.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("resolving --user: %w", err)
+	}
+	runOpts.ContainerUser = containerUser
 
 	// Ensure dock-net exists
 	netMgr, err := network.NewManager()
@@ -230,4 +245,34 @@ func resolveProjectDir(dir string) (string, error) {
 		return os.Getwd()
 	}
 	return dir, nil
+}
+
+// resolveContainerUser converts a --user mode string into a "uid:gid" value
+// suitable for container.Config.User.
+//
+//	""        → "" (use image default)
+//	"current" → "<uid>:<gid>" of the process running this command
+//	"dir"     → "<uid>:<gid>" of the owner of projectDir
+//	anything else is returned as-is (e.g. "1000", "1000:1000")
+func resolveContainerUser(mode, projectDir string) (string, error) {
+	switch mode {
+	case "":
+		return "", nil
+	case "current":
+		uid := syscall.Getuid()
+		gid := syscall.Getgid()
+		return fmt.Sprintf("%d:%d", uid, gid), nil
+	case "dir":
+		info, err := os.Stat(projectDir)
+		if err != nil {
+			return "", fmt.Errorf("stat %s: %w", projectDir, err)
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return "", fmt.Errorf("cannot read uid/gid from %s on this platform", projectDir)
+		}
+		return fmt.Sprintf("%d:%d", stat.Uid, stat.Gid), nil
+	default:
+		return mode, nil
+	}
 }

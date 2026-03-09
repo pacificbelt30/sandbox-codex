@@ -41,6 +41,23 @@ codex-dock run [OPTIONS]
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
+| `--user` | | `""` | コンテナ内の実行ユーザ（詳細は下記） |
+
+### `--user` — コンテナ実行ユーザの指定
+
+`--user` フラグを使うと、コンテナ内のプロセスを任意の uid:gid で起動できます。
+ホストのファイルシステムとの権限整合性を確保するために使用します。
+
+| 値 | 動作 |
+|---|---|
+| `""` (省略) | イメージのデフォルトユーザ（`codex` uid:1001） |
+| `current` | `codex-dock` コマンドを実行しているユーザの uid:gid を自動取得 |
+| `dir` | `--project` で指定したディレクトリ所有者の uid:gid を自動取得 |
+| `uid` または `uid:gid` | 明示的に指定（例: `1000`, `1000:1000`） |
+
+> **注意**: カスタムユーザを指定した場合、そのユーザがコンテナの `/etc/passwd` に存在しない
+> ことがあります。`codex-dock` は `HOME=/tmp` を自動的に注入するため、認証ファイルや
+> Codex CLI の設定は `/tmp` 以下に書き込まれます。コンテナ終了時に自動的に破棄されます。
 
 ### 使用例
 
@@ -74,6 +91,15 @@ codex-dock run --image my-custom-codex:v2
 
 # カスタムモデルを指定
 codex-dock run --model "o3"
+
+# コマンド実行ユーザと同じ uid:gid でコンテナを起動（ファイル権限の整合性確保）
+codex-dock run --user current
+
+# プロジェクトディレクトリの所有者と同じ uid:gid でコンテナを起動
+codex-dock run --user dir --project /srv/myapp
+
+# uid:gid を明示指定
+codex-dock run --user 1000:1000
 ```
 
 ### パッケージ記述形式

@@ -7,25 +7,26 @@ import (
 
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
-	Image        string
-	Packages     []string
-	PkgFile      string
-	ProjectDir   string
-	WorktreePath string
-	UseWorktree  bool
-	Branch       string
-	NewBranch    bool
-	Name         string
-	Task         string
-	FullAuto     bool
-	Model        string
-	ReadOnly     bool
-	NoInternet   bool
-	TokenTTL     int
-	AgentsMD     string
-	Detach       bool
-	Parallel     int
-	ShellMode    bool
+	Image         string
+	Packages      []string
+	PkgFile       string
+	ProjectDir    string
+	WorktreePath  string
+	UseWorktree   bool
+	Branch        string
+	NewBranch     bool
+	Name          string
+	Task          string
+	FullAuto      bool
+	Model         string
+	ReadOnly      bool
+	NoInternet    bool
+	TokenTTL      int
+	AgentsMD      string
+	Detach        bool
+	Parallel      int
+	ShellMode     bool
+	ContainerUser string // uid[:gid] to run as inside the container; empty = image default
 }
 
 // Worker represents a running or stopped codex-dock container.

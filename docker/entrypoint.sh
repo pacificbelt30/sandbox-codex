@@ -34,7 +34,12 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
         # which points to the proxy's /oauth/token endpoint. The proxy performs the
         # actual refresh using the host's refresh_token and returns the new access_token
         # without ever exposing the refresh_token to the container.
-        mkdir -p /home/codex/.codex
+        #
+        # Use $HOME so the correct directory is used regardless of which uid the
+        # container runs as (codex-dock --user flag).  Falls back to /home/codex
+        # when HOME is unset (image default behaviour).
+        CODEX_HOME="${HOME:-/home/codex}"
+        mkdir -p "${CODEX_HOME}/.codex"
         python3 -c "
 import sys, json
 d = json.load(open('/dev/stdin'))
@@ -50,17 +55,17 @@ out = {
     'last_refresh': d.get('oauth_last_refresh', ''),
 }
 print(json.dumps(out))
-" <<< "$RESPONSE" > /home/codex/.codex/auth.json
-        chmod 600 /home/codex/.codex/auth.json
+" <<< "$RESPONSE" > "${CODEX_HOME}/.codex/auth.json"
+        chmod 600 "${CODEX_HOME}/.codex/auth.json"
 
         # Write Codex CLI config so chatgpt.com/backend-api calls go through the proxy.
         # chatgpt_base_url overrides the default https://chatgpt.com/backend-api/ endpoint
         # used by Codex CLI for rate-limit and account-info requests (ChatGPT auth mode only).
-        mkdir -p /home/codex/.config/codex
-        cat > /home/codex/.config/codex/config.toml <<EOF
+        mkdir -p "${CODEX_HOME}/.config/codex"
+        cat > "${CODEX_HOME}/.config/codex/config.toml" <<EOF
 chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 EOF
-        chmod 600 /home/codex/.config/codex/config.toml
+        chmod 600 "${CODEX_HOME}/.config/codex/config.toml"
 
         log "OAuth credentials acquired (refresh_token withheld; proxy handles refresh via CODEX_REFRESH_TOKEN_URL_OVERRIDE)."
     else
