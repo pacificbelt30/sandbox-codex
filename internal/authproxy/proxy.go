@@ -73,7 +73,7 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		}
 		p.oauthCreds = creds
 		if cfg.Verbose {
-			fmt.Fprintln(os.Stderr, "Auth Proxy: OAuth mode (access_token only will be issued to containers)")
+			fmt.Fprintln(os.Stderr, "Auth Proxy: OAuth mode (placeholder tokens issued to containers; proxy injects real credentials on outbound requests)")
 		}
 	} else {
 		apiKey := loadAPIKey()
@@ -221,14 +221,17 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if p.oauthCreds != nil {
-		// OAuth mode: pass only access_token and id_token to the container.
-		// refresh_token is intentionally withheld; the container must use
-		// /oauth/token (CODEX_REFRESH_TOKEN_URL_OVERRIDE) to refresh via the proxy.
+		// OAuth mode: return a placeholder access_token (the container's CODEX_TOKEN).
+		// The real access_token never leaves the proxy; it is injected by
+		// reverseProxy/handleWebSocketProxy on every outbound API request.
+		// id_token is passed through so Codex CLI can extract account/plan claims
+		// for UI display and ChatGPT-Account-Id header construction.
+		// refresh_token is intentionally withheld.
 		p.mu.RLock()
 		creds := *p.oauthCreds
 		p.mu.RUnlock()
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"oauth_access_token": creds.AccessToken,
+			"oauth_access_token": found.Token, // placeholder; real token injected by proxy
 			"oauth_id_token":     creds.IDToken,
 			"oauth_account_id":   creds.AccountID,
 			"oauth_last_refresh": creds.LastRefresh,
@@ -236,8 +239,10 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 			// oauth_refresh_token intentionally omitted
 		})
 	} else {
+		// API key mode: return a placeholder api_key (the container's CODEX_TOKEN).
+		// The real API key is injected by reverseProxy on every outbound request.
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"api_key":        p.apiKey,
+			"api_key":        found.Token, // placeholder; real key injected by proxy
 			"container_name": found.ContainerName,
 		})
 	}
@@ -419,6 +424,13 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	// Strip refresh_token before returning to the container.
 	delete(tokenResp, "refresh_token")
 
+	// Replace real access_token with the container's placeholder token so the
+	// real credential never reaches the container.  The proxy injects the real
+	// access_token on every outbound API request via injectCredentials.
+	if _, ok := tokenResp["access_token"].(string); ok {
+		tokenResp["access_token"] = found.Token
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(tokenResp)
 
@@ -491,17 +503,44 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 	defer upstreamConn.Close() //nolint:errcheck
 
 	// Send the HTTP upgrade request to the upstream, forwarding all client headers.
+	// Authorization and ChatGPT-Account-Id are skipped here and replaced with
+	// real host credentials below so placeholder tokens never reach the upstream.
 	reqURI := targetURL.RequestURI()
 	if _, err := fmt.Fprintf(upstreamConn, "%s %s HTTP/1.1\r\nHost: %s\r\n", r.Method, reqURI, targetURL.Host); err != nil {
 		http.Error(w, "writing upgrade request: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	for k, vv := range r.Header {
+		if strings.EqualFold(k, "authorization") || strings.EqualFold(k, "chatgpt-account-id") {
+			continue
+		}
 		for _, v := range vv {
 			if _, err := fmt.Fprintf(upstreamConn, "%s: %s\r\n", k, v); err != nil {
 				http.Error(w, "writing headers: "+err.Error(), http.StatusBadGateway)
 				return
 			}
+		}
+	}
+	// Inject real host credentials.
+	if p.oauthCreds != nil {
+		p.mu.RLock()
+		accessToken := p.oauthCreds.AccessToken
+		accountID := p.oauthCreds.AccountID
+		p.mu.RUnlock()
+		if _, err := fmt.Fprintf(upstreamConn, "Authorization: Bearer %s\r\n", accessToken); err != nil {
+			http.Error(w, "writing auth header: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		if accountID != "" {
+			if _, err := fmt.Fprintf(upstreamConn, "ChatGPT-Account-Id: %s\r\n", accountID); err != nil {
+				http.Error(w, "writing account-id header: "+err.Error(), http.StatusBadGateway)
+				return
+			}
+		}
+	} else if p.apiKey != "" {
+		if _, err := fmt.Fprintf(upstreamConn, "Authorization: Bearer %s\r\n", p.apiKey); err != nil {
+			http.Error(w, "writing auth header: "+err.Error(), http.StatusBadGateway)
+			return
 		}
 	}
 	if _, err := fmt.Fprint(upstreamConn, "\r\n"); err != nil {
@@ -584,6 +623,26 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 	<-errc
 }
 
+// injectCredentials overwrites Authorization (and ChatGPT-Account-Id in OAuth mode)
+// in h with the real host credentials, replacing any placeholder value the container sent.
+// Safe to call concurrently.
+func (p *Proxy) injectCredentials(h http.Header) {
+	if p.oauthCreds != nil {
+		p.mu.RLock()
+		accessToken := p.oauthCreds.AccessToken
+		accountID := p.oauthCreds.AccountID
+		p.mu.RUnlock()
+		h.Set("Authorization", "Bearer "+accessToken)
+		if accountID != "" {
+			h.Set("ChatGPT-Account-Id", accountID)
+		}
+		return
+	}
+	if p.apiKey != "" {
+		h.Set("Authorization", "Bearer "+p.apiKey)
+	}
+}
+
 // reverseProxy strips stripPrefix from r.URL.Path, appends it to targetBase,
 // and forwards the request upstream, copying status, headers, and body back.
 func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix, targetBase string) {
@@ -630,6 +689,8 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 			req.Header.Add(k, v)
 		}
 	}
+	// Inject real host credentials, overriding any placeholder the container sent.
+	p.injectCredentials(req.Header)
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
