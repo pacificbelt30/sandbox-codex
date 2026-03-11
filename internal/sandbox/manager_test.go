@@ -135,9 +135,6 @@ func TestValidApprovalMode(t *testing.T) {
 
 func TestInt64Ptr(t *testing.T) {
 	v := int64ptr(512)
-	if v == nil {
-		t.Fatal("int64ptr returned nil")
-	}
 	if *v != 512 {
 		t.Errorf("*int64ptr(512) = %d; want 512", *v)
 	}
