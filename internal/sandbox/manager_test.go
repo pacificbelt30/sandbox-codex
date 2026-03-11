@@ -39,11 +39,44 @@ func TestBuildCodexArgs_Minimal(t *testing.T) {
 	}
 }
 
-func TestBuildCodexArgs_FullAuto(t *testing.T) {
-	opts := RunOptions{FullAuto: true}
+func TestBuildCodexArgs_ApprovalMode_Suggest(t *testing.T) {
+	opts := RunOptions{ApprovalMode: ApprovalModeSuggest}
+	args := buildCodexArgs(opts)
+	for _, a := range args {
+		if a == "--ask-for-approval" || a == "--dangerously-bypass-approvals-and-sandbox" {
+			t.Errorf("buildCodexArgs(suggest) should add no approval flags, got %v", args)
+		}
+	}
+}
+
+func TestBuildCodexArgs_ApprovalMode_AutoEdit(t *testing.T) {
+	opts := RunOptions{ApprovalMode: ApprovalModeAutoEdit}
+	args := buildCodexArgs(opts)
+	if !containsSequence(args, "--ask-for-approval", "unless-allow-listed") {
+		t.Errorf("buildCodexArgs(auto-edit) = %v; missing --ask-for-approval unless-allow-listed", args)
+	}
+}
+
+func TestBuildCodexArgs_ApprovalMode_FullAuto(t *testing.T) {
+	opts := RunOptions{ApprovalMode: ApprovalModeFullAuto}
 	args := buildCodexArgs(opts)
 	if !containsSequence(args, "--ask-for-approval", "never") {
-		t.Errorf("buildCodexArgs(FullAuto) = %v; missing --ask-for-approval never", args)
+		t.Errorf("buildCodexArgs(full-auto) = %v; missing --ask-for-approval never", args)
+	}
+}
+
+func TestBuildCodexArgs_ApprovalMode_Danger(t *testing.T) {
+	opts := RunOptions{ApprovalMode: ApprovalModeDanger}
+	args := buildCodexArgs(opts)
+	found := false
+	for _, a := range args {
+		if a == "--dangerously-bypass-approvals-and-sandbox" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("buildCodexArgs(danger) = %v; missing --dangerously-bypass-approvals-and-sandbox", args)
 	}
 }
 
@@ -66,9 +99,9 @@ func TestBuildCodexArgs_Task(t *testing.T) {
 
 func TestBuildCodexArgs_All(t *testing.T) {
 	opts := RunOptions{
-		FullAuto: true,
-		Model:    "o4-mini",
-		Task:     "Refactor auth module",
+		ApprovalMode: ApprovalModeFullAuto,
+		Model:        "o4-mini",
+		Task:         "Refactor auth module",
 	}
 	args := buildCodexArgs(opts)
 	if args[0] != "codex" {
@@ -85,11 +118,23 @@ func TestBuildCodexArgs_All(t *testing.T) {
 	}
 }
 
+func TestValidApprovalMode(t *testing.T) {
+	valid := []ApprovalMode{ApprovalModeSuggest, ApprovalModeAutoEdit, ApprovalModeFullAuto, ApprovalModeDanger}
+	for _, m := range valid {
+		if !ValidApprovalMode(m) {
+			t.Errorf("ValidApprovalMode(%q) = false; want true", m)
+		}
+	}
+	if ValidApprovalMode("unknown") {
+		t.Error("ValidApprovalMode(\"unknown\") = true; want false")
+	}
+	if ValidApprovalMode("") {
+		t.Error("ValidApprovalMode(\"\") = true; want false")
+	}
+}
+
 func TestInt64Ptr(t *testing.T) {
 	v := int64ptr(512)
-	if v == nil {
-		t.Fatal("int64ptr returned nil")
-	}
 	if *v != 512 {
 		t.Errorf("*int64ptr(512) = %d; want 512", *v)
 	}

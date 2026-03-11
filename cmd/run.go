@@ -16,6 +16,12 @@ import (
 // userMode is the raw value of --user before resolution.
 var userMode string
 
+// approvalModeFlag holds the raw value of --approval-mode before validation.
+var approvalModeFlag string
+
+// fullAutoFlag is a deprecated alias for --approval-mode full-auto.
+var fullAutoFlag bool
+
 var runOpts sandbox.RunOptions
 
 var runCmd = &cobra.Command{
@@ -39,7 +45,17 @@ func init() {
 	f.BoolVarP(&runOpts.NewBranch, "new-branch", "B", false, "Create new branch (requires --worktree and --branch)")
 	f.StringVarP(&runOpts.Name, "name", "n", "", "Container name (auto-generated if omitted)")
 	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for Codex")
-	f.BoolVar(&runOpts.FullAuto, "full-auto", false, "Run Codex with --ask-for-approval never")
+	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Approval mode for Codex CLI.
+  suggest   ask for approval on every action (default, safest)
+  auto-edit auto-apply file edits; ask before running shell commands
+  full-auto never ask for approval (--ask-for-approval never)
+  danger    bypass all approvals and sandbox restrictions
+            (--dangerously-bypass-approvals-and-sandbox)
+            Docker container isolation provides the safety boundary.`)
+	f.BoolVar(&fullAutoFlag, "full-auto", false, "Deprecated: use --approval-mode full-auto")
+	if err := f.MarkDeprecated("full-auto", "use --approval-mode full-auto instead"); err != nil {
+		panic(err)
+	}
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
@@ -69,6 +85,17 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving --user: %w", err)
 	}
 	runOpts.ContainerUser = containerUser
+
+	// Resolve approval mode: --full-auto (deprecated) maps to "full-auto"
+	// when --approval-mode has not been explicitly set from its default.
+	mode := sandbox.ApprovalMode(approvalModeFlag)
+	if fullAutoFlag && approvalModeFlag == "suggest" {
+		mode = sandbox.ApprovalModeFullAuto
+	}
+	if !sandbox.ValidApprovalMode(mode) {
+		return fmt.Errorf("invalid --approval-mode %q; valid values: suggest, auto-edit, full-auto, danger", approvalModeFlag)
+	}
+	runOpts.ApprovalMode = mode
 
 	// Ensure dock-net exists
 	netMgr, err := network.NewManager()
