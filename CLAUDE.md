@@ -176,14 +176,20 @@ Source: `.golangci.yml`
 **Core rule**: API keys and OAuth credentials never reach containers directly.
 
 ```
-API Key ──▶ Auth Proxy (127.0.0.1) ──▶ short-lived token ──▶ container (TTL-scoped)
+API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ container
+                  │                     (cdx-xxxx, TTL-scoped)
+                  │
+                  └─ injects real Authorization header on every outbound request
 ```
 
+- Containers receive only a **placeholder token** (`cdx-xxxx`) — never the real API key or OAuth access_token.
+- The proxy overwrites `Authorization` (and `ChatGPT-Account-Id` in OAuth mode) on every proxied request with the real host credentials.
+- OAuth refresh responses also have `access_token` replaced with the placeholder before returning to containers.
 - Containers run as non-root (`uid:1000`, `USER codex`).
 - `--cap-drop ALL` + `--security-opt no-new-privileges` + `--pids-limit 512`.
 - `dock-net` bridge network with ICC (inter-container communication) disabled.
-- `auth.json` is never bind-mounted into containers.
-- `CODEX_TOKEN` (`cdx-xxxx…`) expires on TTL; revocation on container stop is **not yet wired** (F-AUTH-04).
+- Container `auth.json` contains a placeholder `access_token`; `refresh_token` is empty.
+- `CODEX_TOKEN` (`cdx-xxxx…`) expires on TTL; revoked on container stop.
 
 ---
 
@@ -193,13 +199,19 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ short-lived token ──▶ c
 
 | ID | Issue | Notes |
 |---|---|---|
-| F-AUTH-04 | Token not revoked on container stop | `proxy.RevokeToken()` exists but is not called from `sandbox.Manager.Stop()` |
 | F-NET-04 | Auth Proxy unreachable from dock-net | Proxy listens on `127.0.0.1` (loopback), not inside dock-net |
 | NF-SEC-01 | Auth Proxy uses plain HTTP | TLS or UNIX socket required per SRS |
 | F-UI-02 | TUI `[R]` start key unimplemented | Key handler missing |
 | F-UI-03 | TUI log view shows stub text | `mgr.Logs()` not called |
 | `--agents-md` | `CODEX_AGENTS_MD` env var not set in container | `entrypoint.sh` handler exists but env var not injected |
 | `mountMode` | `ReadOnly` applied via `Mounts[0].ReadOnly`, `mountMode` var is dead code | |
+
+**Resolved gaps** (no longer applicable):
+
+| ID | Resolution |
+|---|---|
+| F-AUTH-04 | `proxy.RevokeToken()` is called from `sandbox.Manager.Stop()` and `runSingle()` |
+| access_token leak | Containers now receive only a placeholder; proxy injects real credentials on every outbound request (`injectCredentials`) |
 
 ---
 
@@ -249,8 +261,8 @@ Auth files:
 3. **Test coverage targets**: `internal/sandbox`, `internal/authproxy`, `internal/worktree`, `internal/config`.
 4. **No new global state** — config flows through Viper/Cobra flag bindings.
 5. **`internal/` is the right place** for new business logic; `cmd/` is for CLI wiring only.
-6. **Do not pass credentials to containers** — maintain the Auth Proxy pattern for any new auth flows.
-7. **When fixing F-AUTH-04**, call `proxy.RevokeToken()` inside `sandbox.Manager.Stop()` or in the `cmd/run.go` stop flow.
+6. **Do not pass credentials to containers** — containers receive only placeholder `cdx-xxxx` tokens. The proxy injects real credentials via `injectCredentials()` on every outbound request.
+7. **Credential injection is in `reverseProxy` and `handleWebSocketProxy`** — any new proxy endpoints must also call `injectCredentials()` or inject credentials manually.
 8. **When fixing F-NET-04**, the Auth Proxy must bind to a dock-net interface address, not `127.0.0.1`.
 9. **Documentation is in Japanese** (`doc/`). New docs may be written in English or Japanese consistently with existing files.
 10. **`go mod tidy` must leave `go.mod`/`go.sum` clean** — CI checks this with `git diff --exit-code`.

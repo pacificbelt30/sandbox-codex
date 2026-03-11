@@ -67,7 +67,7 @@ chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 EOF
         chmod 600 "${CODEX_HOME}/.config/codex/config.toml"
 
-        log "OAuth credentials acquired (refresh_token withheld; proxy handles refresh via CODEX_REFRESH_TOKEN_URL_OVERRIDE)."
+        log "OAuth credentials acquired (access_token is a placeholder; proxy injects real credentials on outbound API requests)."
     else
         # API key mode: extract api_key and set as environment variable
         API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || true)
@@ -78,7 +78,7 @@ EOF
         fi
 
         export OPENAI_API_KEY="$API_KEY"
-        log "API key acquired successfully."
+        log "Placeholder key acquired (real API key injected by proxy on outbound requests)."
     fi
 
     # Clear the temporary token from environment for security

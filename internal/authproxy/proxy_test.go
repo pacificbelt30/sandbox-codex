@@ -105,8 +105,12 @@ func TestHandleToken_Valid(t *testing.T) {
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatalf("response not valid JSON: %v", err)
 	}
-	if m["api_key"] != "sk-test-key-12345" {
-		t.Errorf("api_key = %q; want sk-test-key-12345", m["api_key"])
+	// api_key must be a placeholder (the container's CODEX_TOKEN), not the real key.
+	if m["api_key"] == "sk-test-key-12345" {
+		t.Error("api_key must not be the real API key; containers receive a placeholder only")
+	}
+	if !strings.HasPrefix(m["api_key"], "cdx-") {
+		t.Errorf("api_key placeholder = %q; want cdx- prefix", m["api_key"])
 	}
 	if m["container_name"] != "ctr-ok" {
 		t.Errorf("container_name = %q; want ctr-ok", m["container_name"])
@@ -388,9 +392,12 @@ func TestHandleToken_OAuthMode_ReturnsAccessToken(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	// access_token must be present
-	if m["oauth_access_token"] != "at-container-visible" {
-		t.Errorf("oauth_access_token = %q; want at-container-visible", m["oauth_access_token"])
+	// oauth_access_token must be a placeholder (the CODEX_TOKEN), not the real access token.
+	if m["oauth_access_token"] == "at-container-visible" {
+		t.Error("oauth_access_token must not be the real access token; containers receive a placeholder only")
+	}
+	if !strings.HasPrefix(m["oauth_access_token"], "cdx-") {
+		t.Errorf("oauth_access_token placeholder = %q; want cdx- prefix", m["oauth_access_token"])
 	}
 	// container_name must match
 	if m["container_name"] != "ctr-oauth" {
@@ -420,8 +427,12 @@ func TestHandleToken_OAuthMode_RefreshTokenNotLeaked(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if m["oauth_access_token"] != "at-no-leak" {
-		t.Errorf("oauth_access_token = %q; want at-no-leak", m["oauth_access_token"])
+	// oauth_access_token must be a placeholder, not the real token.
+	if m["oauth_access_token"] == "at-no-leak" {
+		t.Error("oauth_access_token must not be the real access token (security: real token never leaves proxy)")
+	}
+	if !strings.HasPrefix(m["oauth_access_token"], "cdx-") {
+		t.Errorf("oauth_access_token = %q; want cdx- placeholder", m["oauth_access_token"])
 	}
 	// refresh_token must never be returned to containers.
 	if _, ok := m["oauth_refresh_token"]; ok {
@@ -626,8 +637,13 @@ func TestHandleOAuthTokenRefresh_HappyPath(t *testing.T) {
 	if _, ok := resp["refresh_token"]; ok {
 		t.Error("refresh_token must not be returned to container")
 	}
-	if resp["access_token"] != "at-new" {
-		t.Errorf("access_token = %v; want at-new", resp["access_token"])
+	// access_token returned to container must be a placeholder, not the real new token.
+	at, _ := resp["access_token"].(string)
+	if at == "at-new" {
+		t.Error("access_token must not be the real new token; container receives placeholder only")
+	}
+	if !strings.HasPrefix(at, "cdx-") {
+		t.Errorf("access_token placeholder = %q; want cdx- prefix", at)
 	}
 }
 
@@ -855,7 +871,8 @@ func TestHandleAPIProxy_APIKeyMode_ForwardsToAPIUpstream(t *testing.T) {
 	if gotPath != "/models" {
 		t.Errorf("upstream path = %q; want /models", gotPath)
 	}
-	// Authorization header must be forwarded as-is
+	// Authorization header must be injected with the proxy's real API key,
+	// regardless of whatever the container sent.
 	if gotAuth != "Bearer sk-test-key-12345" {
 		t.Errorf("upstream Authorization = %q; want Bearer sk-test-key-12345", gotAuth)
 	}
@@ -1274,4 +1291,199 @@ func TestWebSocketProxy_Tunnel(t *testing.T) {
 	}
 
 	<-serverDone
+}
+
+// ── injectCredentials tests ───────────────────────────────────────────────────
+
+func TestInjectCredentials_APIKeyMode(t *testing.T) {
+	p := newTestProxy(t)
+	h := http.Header{}
+	h.Set("Authorization", "Bearer cdx-placeholder-token")
+	p.injectCredentials(h)
+	if h.Get("Authorization") != "Bearer sk-test-key-12345" {
+		t.Errorf("Authorization = %q; want Bearer sk-test-key-12345", h.Get("Authorization"))
+	}
+}
+
+func TestInjectCredentials_OAuthMode(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-real-access")
+	p.oauthCreds.AccountID = "acc-123"
+	h := http.Header{}
+	h.Set("Authorization", "Bearer cdx-placeholder")
+	p.injectCredentials(h)
+	if h.Get("Authorization") != "Bearer at-real-access" {
+		t.Errorf("Authorization = %q; want Bearer at-real-access", h.Get("Authorization"))
+	}
+	if h.Get("ChatGPT-Account-Id") != "acc-123" {
+		t.Errorf("ChatGPT-Account-Id = %q; want acc-123", h.Get("ChatGPT-Account-Id"))
+	}
+}
+
+func TestInjectCredentials_OAuthMode_NoAccountID(t *testing.T) {
+	p := newOAuthTestProxy(t, "at-real")
+	p.oauthCreds.AccountID = ""
+	h := http.Header{}
+	p.injectCredentials(h)
+	if h.Get("Authorization") != "Bearer at-real" {
+		t.Errorf("Authorization = %q; want Bearer at-real", h.Get("Authorization"))
+	}
+	if v := h.Get("ChatGPT-Account-Id"); v != "" {
+		t.Errorf("ChatGPT-Account-Id should not be set when AccountID is empty, got %q", v)
+	}
+}
+
+// TestHandleAPIProxy_PlaceholderReplacedWithRealKey verifies that even when the
+// container sends a dummy placeholder token, the upstream receives the real API key.
+func TestHandleAPIProxy_PlaceholderReplacedWithRealKey(t *testing.T) {
+	var gotAuth string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newTestProxy(t) // apiKey = "sk-test-key-12345"
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	// Container sends a placeholder cdx- token, not the real key.
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer cdx-placeholder-fake-token")
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if gotAuth != "Bearer sk-test-key-12345" {
+		t.Errorf("upstream Authorization = %q; want real key Bearer sk-test-key-12345", gotAuth)
+	}
+}
+
+// TestHandleAPIProxy_PlaceholderReplacedWithRealToken_OAuthMode verifies that in
+// OAuth mode the upstream receives the real access_token, not the container's placeholder.
+func TestHandleAPIProxy_PlaceholderReplacedWithRealToken_OAuthMode(t *testing.T) {
+	var gotAuth string
+	var gotAccountID string
+	upstream := newFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAccountID = r.Header.Get("ChatGPT-Account-Id")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	p := newOAuthTestProxy(t, "at-real-oauth-token")
+	p.oauthCreds.AccountID = "acc-real-456"
+	p.chatgptURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	// Container sends a placeholder cdx- token.
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer cdx-placeholder")
+	req.Header.Set("ChatGPT-Account-Id", "acc-wrong")
+	w := httptest.NewRecorder()
+	p.handleAPIProxy(w, req)
+
+	if gotAuth != "Bearer at-real-oauth-token" {
+		t.Errorf("upstream Authorization = %q; want Bearer at-real-oauth-token", gotAuth)
+	}
+	if gotAccountID != "acc-real-456" {
+		t.Errorf("upstream ChatGPT-Account-Id = %q; want acc-real-456", gotAccountID)
+	}
+}
+
+// TestWebSocketProxy_InjectsRealCredentials verifies that the WebSocket tunnel
+// sends the real host credentials to the upstream, not the placeholder the container sent.
+func TestWebSocketProxy_InjectsRealCredentials(t *testing.T) {
+	var gotAuth string
+	var gotAccountID string
+
+	// Minimal WebSocket server that captures headers from the HTTP upgrade request.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close() //nolint:errcheck
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close() //nolint:errcheck
+
+		br := bufio.NewReader(conn)
+		// Read request line.
+		_, _ = br.ReadString('\n')
+		// Read headers.
+		for {
+			line, err := br.ReadString('\n')
+			if err != nil || line == "\r\n" {
+				break
+			}
+			line = strings.TrimRight(line, "\r\n")
+			if strings.HasPrefix(strings.ToLower(line), "authorization:") {
+				gotAuth = strings.TrimSpace(line[len("authorization:"):])
+			}
+			if strings.HasPrefix(strings.ToLower(line), "chatgpt-account-id:") {
+				gotAccountID = strings.TrimSpace(line[len("chatgpt-account-id:"):])
+			}
+		}
+		// Send 101 and immediately close; we only need to verify headers were received.
+		_, _ = fmt.Fprint(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+	}()
+
+	p := newOAuthTestProxy(t, "at-ws-real")
+	p.oauthCreds.AccountID = "acc-ws-real"
+	// In OAuth mode, /v1/* proxies to chatgptURL+"/codex/*".
+	p.chatgptURL = "http://" + ln.Addr().String()
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	proxyAddr := strings.TrimPrefix(p.Endpoint(), "http://")
+	clientConn, err := net.Dial("tcp", proxyAddr)
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer clientConn.Close() //nolint:errcheck
+
+	// Send WebSocket upgrade with placeholder credentials.
+	_, err = fmt.Fprintf(clientConn,
+		"GET /v1/responses HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
+			"Authorization: Bearer cdx-placeholder-ws\r\nChatGPT-Account-Id: acc-wrong\r\n"+
+			"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		proxyAddr)
+	if err != nil {
+		t.Fatalf("writing upgrade request: %v", err)
+	}
+
+	// Read the 101 response.
+	br2 := bufio.NewReader(clientConn)
+	statusLine, err := br2.ReadString('\n')
+	if err != nil {
+		t.Fatalf("reading status line: %v", err)
+	}
+	if !strings.Contains(statusLine, "101") {
+		t.Fatalf("expected 101 Switching Protocols, got: %q", statusLine)
+	}
+	for {
+		line, err := br2.ReadString('\n')
+		if err != nil || line == "\r\n" {
+			break
+		}
+	}
+
+	<-serverDone
+
+	if gotAuth != "Bearer at-ws-real" {
+		t.Errorf("WebSocket upstream Authorization = %q; want Bearer at-ws-real", gotAuth)
+	}
+	if gotAccountID != "acc-ws-real" {
+		t.Errorf("WebSocket upstream ChatGPT-Account-Id = %q; want acc-ws-real", gotAccountID)
+	}
 }

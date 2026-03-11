@@ -2,7 +2,7 @@
 
 Auth Proxy は codex-dock のセキュリティの核となるコンポーネントです。
 コンテナに実際の API キーや OAuth クレデンシャルを渡さず、短命トークンを介して安全に認証情報を提供します。
-また、Codex CLI が呼ぶすべての OpenAI API トラフィック（Responses API・トークンリフレッシュ・ChatGPT backend-api）をプロキシし、認証情報がコンテナから外部に直接届かない構造を実現します。
+また、Codex CLI が呼ぶすべての OpenAI API トラフィック（Responses API・トークンリフレッシュ・ChatGPT backend-api）をプロキシし、**コンテナが保持するのはプレースホルダートークンのみ**とすることで、本物のクレデンシャルがコンテナに届かない構造を実現します。
 
 ---
 
@@ -60,17 +60,18 @@ Auth Proxy は codex-dock のセキュリティの核となるコンポーネン
   │  X-Codex-Token: cdx-<hex64>                   │
   │  ◀─────────────────────────────────────────── │
   │                                                │
-  │  200 OK {"api_key": "sk-..."}                 │
+  │  200 OK {"api_key": "cdx-<hex64>"}  ← プレースホルダー
   │ ───────────────────────────────────────────▶  │
   │                                                │
-  │                                                │ export OPENAI_API_KEY=sk-...
+  │                                                │ export OPENAI_API_KEY=cdx-<hex64>  ← ダミー値
   │                                                │ unset CODEX_TOKEN
   │                                                │ exec codex
   │                                                │
   │  POST /v1/responses ← Codex CLI               │
-  │  Authorization: Bearer sk-...                  │
+  │  Authorization: Bearer cdx-<hex64>  ← ダミー  │
   │  ◀─────────────────────────────────────────── │
   │                                                │
+  │  Authorization を差し替え: Bearer sk-...      │ ← プロキシがインジェクト
   │  転送先: https://api.openai.com/v1/responses  │
   │ ─────────────────────────────────────────────▶│ (OpenAI)
 ```
@@ -98,14 +99,15 @@ Auth Proxy は codex-dock のセキュリティの核となるコンポーネン
   │  ◀─────────────────────────────────────────── │
   │                                                │
   │  200 OK                                        │
-  │  {"oauth_access_token": "ey...",              │
-  │   "oauth_id_token":     "ey...",              │
+  │  {"oauth_access_token": "cdx-<hex64>",        │ ← プレースホルダー (CODEX_TOKEN と同じ値)
+  │   "oauth_id_token":     "ey...",              │ ← 本物 (claims 抽出用)
   │   "oauth_account_id":   "...",                │
   │   "oauth_last_refresh": "..."}                │
-  │  ※ oauth_refresh_token は含まない              │
+  │  ※ oauth_access_token は本物でない / oauth_refresh_token は含まない
   │ ───────────────────────────────────────────▶  │
   │                                                │
   │                                                │ /home/codex/.codex/auth.json 生成
+  │                                                │   access_token: "cdx-<hex64>"  ← ダミー
   │                                                │   refresh_token: "" (空)
   │                                                │ /home/codex/.config/codex/config.toml
   │                                                │   chatgpt_base_url=http://proxy/chatgpt/
@@ -113,9 +115,12 @@ Auth Proxy は codex-dock のセキュリティの核となるコンポーネン
   │                                                │ exec codex
   │                                                │
   │  POST /v1/responses ← Codex CLI               │
-  │  Authorization: Bearer <access_token>          │
+  │  Authorization: Bearer cdx-<hex64>  ← ダミー  │
+  │  ChatGPT-Account-Id: <account_id>             │
   │  ◀─────────────────────────────────────────── │
   │                                                │
+  │  Authorization を差し替え: Bearer <本物 access_token>  ← プロキシがインジェクト
+  │  ChatGPT-Account-Id: <account_id>  ← プロキシが正値で上書き
   │  転送先: https://chatgpt.com/backend-api/codex/responses
   │ ─────────────────────────────────────────────▶│ (OpenAI)
   │                                                │
@@ -126,12 +131,14 @@ Auth Proxy は codex-dock のセキュリティの核となるコンポーネン
   │                                                │
   │  プロキシがホストの refresh_token を注入し     │
   │  https://auth.openai.com/oauth/token に転送   │
-  │  新しい access_token を返す (refresh_token は除外)
+  │  新 access_token → "cdx-<hex64>" に差し替えて返す
+  │                    (refresh_token は除外)      │
   │ ───────────────────────────────────────────▶  │
 ```
 
-> **セキュリティ**: `refresh_token` はコンテナに渡されません。
-> コンテナが侵害されても攻撃者はトークンを更新できず、現在の `access_token` の TTL が切れれば無効になります。
+> **セキュリティ**: `refresh_token` および本物の `access_token` はコンテナに渡されません。
+> コンテナが保持するのは CODEX_TOKEN と同一のプレースホルダーのみで、プロキシがすべての送信リクエストの Authorization ヘッダーを本物の access_token で差し替えます。
+> コンテナが侵害されてもプレースホルダーは OpenAI への直接アクセスに使えず、CODEX_TOKEN が失効すれば `/oauth/token` リフレッシュも不可能になります。
 
 ---
 
@@ -155,10 +162,13 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "api_key": "sk-...",
+  "api_key": "cdx-a1b2c3d4...",
   "container_name": "codex-brave-atlas"
 }
 ```
+
+> `api_key` は本物の API キーではなく、`CODEX_TOKEN` と同じプレースホルダー値です。
+> 本物の API キーはプロキシが送信時に `Authorization` ヘッダーへインジェクトします。
 
 **レスポンス（OAuth モード）**
 
@@ -167,7 +177,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "oauth_access_token": "eyJhbGci...",
+  "oauth_access_token": "cdx-a1b2c3d4...",
   "oauth_id_token":     "eyJhbGci...",
   "oauth_account_id":   "user_xxx",
   "oauth_last_refresh": "2026-03-08T00:00:00Z",
@@ -175,7 +185,9 @@ Content-Type: application/json
 }
 ```
 
-> `oauth_refresh_token` は返しません（セキュリティ上の設計）。
+> - `oauth_access_token` は本物のアクセストークンではなく、`CODEX_TOKEN` と同じプレースホルダー値です。本物のアクセストークンはプロキシが送信時にインジェクトします。
+> - `oauth_id_token` は本物の JWT です。Codex CLI が `chatgpt_account_id` や `chatgpt_plan_type` などの claims をローカルで読み取るために必要です（署名検証は行われません）。
+> - `oauth_refresh_token` は返しません（セキュリティ上の設計）。
 
 **エラーレスポンス**
 
@@ -232,11 +244,13 @@ Content-Type: application/json
 | `grant_type` | そのまま通過 | 変更不要 |
 | その他フィールド | そのまま通過 | 変更不要 |
 | `refresh_token` (レスポンス) | **レスポンスから除外** | コンテナに新しい refresh_token を渡さない |
-| その他レスポンスフィールド | そのまま通過 | `access_token`・`id_token` 等はコンテナに返す |
+| `access_token` (レスポンス) | **プレースホルダーに差し替え** | 本物の新 access_token をコンテナに渡さない（プロキシ内部で更新） |
+| `id_token` (レスポンス) | そのまま通過 | claims 抽出用（認証 credential ではない） |
+| その他レスポンスフィールド | そのまま通過 | — |
 
 **コンテナへのレスポンス**
 
-OpenAI のレスポンスから `refresh_token` を除いて返します。
+OpenAI のレスポンスから `refresh_token` を除き、`access_token` をプレースホルダー（`cdx-<hex64>`）に差し替えて返します。
 ホスト側の `access_token`・`id_token`・`refresh_token` はプロキシ内部で更新します（RFC 6749 §6 のトークンローテーションに対応）。
 
 **エラーレスポンス**
@@ -259,17 +273,19 @@ Codex CLI は `OPENAI_BASE_URL=http://proxy/v1` を参照し、すべての Resp
 | API キー | `https://api.openai.com/v1/<path>` |
 | OAuth / ChatGPT | `https://chatgpt.com/backend-api/codex/<path>` |
 
-- リクエストヘッダー（`Authorization` 含む）はそのまま転送します
+- `Authorization` ヘッダーはコンテナのプレースホルダー値を**ホストの本物のクレデンシャルで上書き**します
+- OAuth モードでは `ChatGPT-Account-Id` ヘッダーも `oauthCreds.AccountID` の正しい値で上書きします
 - hop-by-hop ヘッダー（`Connection`・`Transfer-Encoding` 等）は除去します
 - レスポンスのステータス・ヘッダー・ボディをそのままコンテナに返します
+- WebSocket アップグレードリクエストも同様に `Authorization` と `ChatGPT-Account-Id` を差し替えてトンネリングします
 
-**Codex CLI が付けるヘッダー（参考）**
+**上流への実際のヘッダー（プロキシが差し替え後）**
 
 ```
-Authorization: Bearer <access_token or api_key>
+Authorization: Bearer <本物の access_token または api_key>  ← プロキシがインジェクト
 Content-Type: application/json
 version: 0.110.0
-chatgpt-account-id: <account_id>   ← ChatGPT auth時のみ
+chatgpt-account-id: <account_id>   ← OAuth時: プロキシが正値で上書き
 OpenAI-Organization: <org>         ← $OPENAI_ORGANIZATION があれば
 ```
 
@@ -325,8 +341,11 @@ POST /revoke?container=<コンテナ名> HTTP/1.1
 
 | ファイル | 内容 |
 |---|---|
-| `/home/codex/.codex/auth.json` | `access_token`・`id_token` のみ（`refresh_token` は空文字） |
+| `/home/codex/.codex/auth.json` | `access_token`：プレースホルダー（`cdx-<hex64>`）、`id_token`：本物、`refresh_token`：空文字 |
 | `/home/codex/.config/codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
+
+> コンテナの `auth.json` に含まれる `access_token` は本物ではありません。
+> Codex CLI が API リクエストを送る際のダミー Bearer トークンとして機能し、プロキシが本物の access_token に差し替えます。
 
 ---
 
@@ -394,12 +413,13 @@ OAuth モードは `~/.codex/auth.json` に `refresh_token` または `auth_mode
 
 | 保護 | 実装 | 詳細 |
 |---|---|---|
-| API キーの隔離 | ✅ | コンテナに直接渡さず Auth Proxy 経由でのみ提供 |
+| API キーの隔離 | ✅ | コンテナには `CODEX_TOKEN` と同じプレースホルダーのみ渡す。本物のキーはプロキシがインジェクト |
+| access_token の隔離 | ✅ | OAuth モードでも本物の access_token はコンテナに渡らない。プレースホルダーをプロキシが差し替え |
 | refresh_token の保護 | ✅ | コンテナに渡さない。リフレッシュは `/oauth/token` 中継で実現 |
 | 短命トークン | ✅ | TTL 付き、コンテナ停止時に即時失効 |
 | API トラフィックの中継 | ✅ | `/v1/` と `/chatgpt/` のリバースプロキシで外部 API への直接通信を排除 |
 | クレデンシャルのログ出力禁止 | ✅ | 認証情報を stdout/stderr に出力しない |
-| `auth.json` の bind mount 禁止 | ✅ | OAuth モードでも `refresh_token` を含まない auth.json をコンテナ内に生成 |
+| `auth.json` の bind mount 禁止 | ✅ | コンテナ内の auth.json は access_token がプレースホルダーの安全なコピー |
 
 ### 既知の問題・制限
 
