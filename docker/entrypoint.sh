@@ -89,9 +89,23 @@ fi
 # ── Build Codex arguments ───────────────────────────────────────────────────
 CODEX_ARGS=()
 
-if [[ "${CODEX_FULL_AUTO:-0}" == "1" ]]; then
-    CODEX_ARGS+=("--ask-for-approval" "never")
-fi
+# CODEX_APPROVAL_MODE controls how Codex CLI asks for approval.
+# Values: suggest (default), auto-edit, full-auto, danger
+case "${CODEX_APPROVAL_MODE:-suggest}" in
+    auto-edit)
+        CODEX_ARGS+=("--ask-for-approval" "unless-allow-listed")
+        ;;
+    full-auto)
+        CODEX_ARGS+=("--ask-for-approval" "never")
+        ;;
+    danger)
+        # Docker container isolation provides the safety boundary.
+        CODEX_ARGS+=("--dangerously-bypass-approvals-and-sandbox")
+        ;;
+    suggest|*)
+        # Default: interactive mode — no extra flags needed.
+        ;;
+esac
 
 if [[ -n "${CODEX_MODEL:-}" ]]; then
     CODEX_ARGS+=("--model" "$CODEX_MODEL")

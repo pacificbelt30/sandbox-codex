@@ -134,8 +134,8 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	if opts.Model != "" {
 		env = append(env, "CODEX_MODEL="+opts.Model)
 	}
-	if opts.FullAuto {
-		env = append(env, "CODEX_FULL_AUTO=1")
+	if opts.ApprovalMode != "" && opts.ApprovalMode != ApprovalModeSuggest {
+		env = append(env, "CODEX_APPROVAL_MODE="+string(opts.ApprovalMode))
 	}
 	if opts.AgentsMD != "" {
 		env = append(env, "CODEX_AGENTS_MD="+opts.AgentsMD)
@@ -467,8 +467,13 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 
 func buildCodexArgs(opts RunOptions) []string {
 	args := []string{"codex"}
-	if opts.FullAuto {
+	switch opts.ApprovalMode {
+	case ApprovalModeAutoEdit:
+		args = append(args, "--ask-for-approval", "unless-allow-listed")
+	case ApprovalModeFullAuto:
 		args = append(args, "--ask-for-approval", "never")
+	case ApprovalModeDanger:
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)

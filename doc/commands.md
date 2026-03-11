@@ -35,7 +35,8 @@ codex-dock run [OPTIONS]
 | `--new-branch` | `-B` | `false` | 新規ブランチを作成する（`--worktree` と `--branch` が必要） |
 | `--name` | `-n` | 自動生成 | コンテナ名（省略すると `codex-<形容詞>-<名詞>` 形式で自動生成） |
 | `--task` | `-t` | | Codex に渡す初期タスクプロンプト |
-| `--full-auto` | | `false` | Codex を `--ask-for-approval never` モードで実行 |
+| `--approval-mode` | | `suggest` | Codex CLI の承認モード（詳細は下記） |
+| `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
 | `--model` | `-m` | | Codex に渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
 | `--no-internet` | | `false` | コンテナ内のインターネットアクセスを無効化 |
@@ -44,6 +45,36 @@ codex-dock run [OPTIONS]
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
 | `--user` | | `""` | コンテナ内の実行ユーザ（詳細は下記） |
+
+### `--approval-mode` — Codex 承認モードの指定
+
+`--approval-mode` フラグで Codex CLI がアクションを実行する際の承認動作を制御します。
+Docker コンテナによるサンドボックス隔離を前提に設計されています。
+
+| 値 | Codex CLI フラグ | 動作 |
+|---|---|---|
+| `suggest`（デフォルト） | なし | すべてのアクションで承認を求める（最も安全） |
+| `auto-edit` | `--ask-for-approval unless-allow-listed` | ファイル編集は自動適用、コマンド実行は承認を求める |
+| `full-auto` | `--ask-for-approval never` | 承認を一切求めない |
+| `danger` | `--dangerously-bypass-approvals-and-sandbox` | すべての承認・サンドボックス制限をバイパスする |
+
+> **`danger` モードについて**: Codex CLI 組み込みのサンドボックスを無効化しますが、
+> Docker コンテナ自体が隔離境界を提供します（`--cap-drop ALL`、専用ネットワーク、
+> pids-limit など）。Docker を使用しているため、ホスト環境への影響はありません。
+
+```bash
+# デフォルト（対話的に承認を求める）
+codex-dock run --task "テストを書いて"
+
+# ファイル編集は自動、コマンドは確認
+codex-dock run --approval-mode auto-edit --task "リファクタリング"
+
+# 完全自動実行（承認なし）
+codex-dock run --approval-mode full-auto --task "バグ修正"
+
+# Docker 隔離を活用して全制限をバイパス
+codex-dock run --approval-mode danger --task "ビルドスクリプトを実行"
+```
 
 ### `--user` — コンテナ実行ユーザの指定
 
@@ -68,7 +99,7 @@ codex-dock run [OPTIONS]
 codex-dock run
 
 # タスクを指定して完全自動実行
-codex-dock run --task "ユニットテストを書いて" --full-auto
+codex-dock run --task "ユニットテストを書いて" --approval-mode full-auto
 
 # git worktree を使って feature ブランチで作業
 codex-dock run --worktree --branch feature-auth --new-branch
@@ -82,8 +113,8 @@ codex-dock run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
 # packages.dock ファイルを使用
 codex-dock run --pkg-file ./packages.dock
 
-# バックグラウンドで実行
-codex-dock run --task "リファクタリング" --full-auto --detach
+# バックグラウンドで完全自動実行
+codex-dock run --task "リファクタリング" --approval-mode full-auto --detach
 
 # 読み取り専用・インターネットなしでセキュアに実行
 codex-dock run --read-only --no-internet --task "コードレビュー"

@@ -223,6 +223,6 @@ codex-dock が使用する認証関連ファイルの場所：
 | `CODEX_TOKEN` | 短命トークン | 不可（自動発行） |
 | `CODEX_TASK` | タスクプロンプト | `--task` で指定 |
 | `CODEX_MODEL` | モデル名 | `--model` で指定 |
-| `CODEX_FULL_AUTO` | 完全自動モード | `--full-auto` で指定 |
+| `CODEX_APPROVAL_MODE` | 承認モード (`auto-edit` / `full-auto` / `danger`) | `--approval-mode` で指定 |
 | `CODEX_INSTALL_SCRIPT` | パッケージインストールスクリプト | `--pkg` で指定 |
 | `CODEX_AGENTS_MD` | AGENTS.md のパス | `--agents-md` で指定 |
