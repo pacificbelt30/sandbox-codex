@@ -294,6 +294,18 @@ func (m *Manager) RevokeToken(containerID string) {
 	}
 }
 
+// ImageExists reports whether the named image tag is present in the local Docker daemon.
+func (m *Manager) ImageExists(tag string) (bool, error) {
+	_, _, err := m.cli.ImageInspectWithRaw(context.Background(), tag)
+	if err != nil {
+		if client.IsErrNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // Remove removes a container by ID.
 func (m *Manager) Remove(containerID string, force bool) error {
 	return m.cli.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: force})
