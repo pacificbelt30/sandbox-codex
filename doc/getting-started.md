@@ -41,10 +41,19 @@ codex-dock build
 ```
 
 **内部で行われること：**
-- `docker/Dockerfile` を使ってイメージを作成
+- Dockerfile を自動検出（カレントディレクトリ → `~/.config/codex-dock/`）
 - Node.js 22 ベース + Codex CLI (`@openai/codex`) をインストール
-- 非 root ユーザー `codex` (uid:1000) を作成
+- 非 root ユーザー `codex` (uid:1001) を作成
 - デフォルトタグ: `codex-dock:latest`
+
+> **省略可能**: `codex-dock run` 実行時にイメージが存在しない場合は自動的にビルドされます。
+> 初回は `codex-dock run` だけで完結します。
+
+カスタム Dockerfile を使いたい場合は `-f` で指定できます：
+
+```bash
+codex-dock build -f ./my/Dockerfile --tag my-codex:v1
+```
 
 ---
 
@@ -221,7 +230,7 @@ codex-dock run --verbose --debug
 
 よくある原因：
 - Docker が起動していない → `docker ps` で確認
-- イメージが存在しない → `codex-dock build` を実行
+- イメージのビルドに失敗した → `codex-dock build --verbose` で確認
 - API キーが未設定 → `codex-dock auth show` で確認
 
 ### 認証エラー
