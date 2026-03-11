@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
@@ -292,6 +293,18 @@ func (m *Manager) RevokeToken(containerID string) {
 	if name, err := m.resolveNameByID(ctx, containerID); err == nil {
 		m.proxy.RevokeToken(name)
 	}
+}
+
+// ImageExists reports whether the named image tag is present in the local Docker daemon.
+func (m *Manager) ImageExists(tag string) (bool, error) {
+	_, err := m.cli.ImageInspect(context.Background(), tag)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // Remove removes a container by ID.

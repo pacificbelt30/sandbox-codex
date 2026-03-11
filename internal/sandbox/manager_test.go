@@ -1,9 +1,12 @@
 package sandbox
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/docker/docker/client"
 )
 
 func TestAbsolutePath_Absolute(t *testing.T) {
@@ -115,6 +118,30 @@ func TestLogOptions_Output_FieldExists(t *testing.T) {
 	}
 	if opts.Output == nil {
 		t.Error("LogOptions.Output should not be nil after assignment")
+	}
+}
+
+// TestImageExists_NotFound verifies that ImageExists returns false (not an
+// error) for an image tag that does not exist in the local Docker daemon.
+// The test is skipped when Docker is unavailable.
+func TestImageExists_NotFound(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skip("Docker client unavailable:", err)
+	}
+	defer cli.Close() //nolint:errcheck
+
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skip("Docker daemon not running:", err)
+	}
+
+	mgr := &Manager{cli: cli}
+	exists, err := mgr.ImageExists("codex-dock-nonexistent-test-image:impossible-tag-xyz-9999")
+	if err != nil {
+		t.Fatalf("ImageExists returned unexpected error: %v", err)
+	}
+	if exists {
+		t.Error("ImageExists returned true for a clearly nonexistent image")
 	}
 }
 

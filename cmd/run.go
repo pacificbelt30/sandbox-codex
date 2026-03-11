@@ -123,6 +123,20 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating sandbox manager: %w", err)
 	}
 
+	// Auto-build the sandbox image when it is not present locally.
+	if exists, err := sbMgr.ImageExists(runOpts.Image); err != nil {
+		return fmt.Errorf("checking image %s: %w", runOpts.Image, err)
+	} else if !exists {
+		fmt.Printf("Image %s not found locally, building...\n", runOpts.Image)
+		dockerfile, buildCtx, err := resolveDockerfile("")
+		if err != nil {
+			return fmt.Errorf("auto-build: %w", err)
+		}
+		if err := executeBuild(runOpts.Image, dockerfile, buildCtx); err != nil {
+			return fmt.Errorf("auto-build: %w", err)
+		}
+	}
+
 	if runOpts.Parallel > 1 {
 		return runParallel(sbMgr, proxy, sigCh)
 	}
