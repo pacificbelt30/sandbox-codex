@@ -92,13 +92,13 @@ func (p *Proxy) IsOAuthMode() bool {
 }
 
 // Start begins listening on a random port on the configured address.
-// If ListenAddr is empty it defaults to "127.0.0.1:0" (loopback only).
-// Pass the dock-net gateway address (e.g. "192.168.200.1:0") so containers
-// can reach the proxy over the bridge network (F-NET-04).
+// If ListenAddr is empty it defaults to "0.0.0.0:0" (all interfaces).
+// Binding to all interfaces allows worker containers to reach the proxy
+// via host.docker.internal (resolves to the Docker bridge gateway IP).
 func (p *Proxy) Start() error {
 	addr := p.cfg.ListenAddr
 	if addr == "" {
-		addr = "127.0.0.1:0"
+		addr = "0.0.0.0:0"
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -148,9 +148,26 @@ func (p *Proxy) Stop() {
 	p.mu.Unlock()
 }
 
-// Endpoint returns the proxy URL reachable from containers on dock-net.
+// Port returns the TCP port the proxy is listening on.
+// Only valid after Start() has been called.
+func (p *Proxy) Port() string {
+	_, port, _ := net.SplitHostPort(p.addr)
+	return port
+}
+
+// Endpoint returns the proxy URL for host-side access (e.g. health checks, tests).
+// Always uses 127.0.0.1 regardless of bind address.
 func (p *Proxy) Endpoint() string {
-	return "http://" + p.addr
+	return "http://127.0.0.1:" + p.Port()
+}
+
+// ContainerEndpoint returns the proxy URL that worker containers should use.
+// Containers reach the proxy via host.docker.internal which Docker resolves
+// to the host's bridge gateway IP at container creation time.
+// Requires Docker Engine >= 20.10 and --add-host=host.docker.internal:host-gateway
+// to be set on the worker container (manager.go handles this automatically).
+func (p *Proxy) ContainerEndpoint() string {
+	return "http://host.docker.internal:" + p.Port()
 }
 
 // IssueToken creates and stores a short-lived token for a container.

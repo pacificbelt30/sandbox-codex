@@ -105,14 +105,19 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("issuing auth token: %w", err)
 		}
-		proxyEndpoint := m.proxy.Endpoint()
+		// ContainerEndpoint() returns http://host.docker.internal:PORT.
+		// Docker resolves host.docker.internal to the bridge gateway IP so
+		// containers can reach the Auth Proxy running on the host.
+		// The --add-host=host.docker.internal:host-gateway ExtraHost below
+		// ensures the name resolves correctly (required on Linux Docker Engine).
+		containerProxyURL := m.proxy.ContainerEndpoint()
 		env = append(env,
-			"CODEX_AUTH_PROXY_URL="+proxyEndpoint,
+			"CODEX_AUTH_PROXY_URL="+containerProxyURL,
 			"CODEX_TOKEN="+token,
 			// Route all Responses API traffic through the proxy so the proxy can
 			// substitute credentials. OPENAI_BASE_URL overrides the Codex CLI default
 			// (https://chatgpt.com/backend-api/codex) in all auth modes.
-			"OPENAI_BASE_URL="+proxyEndpoint+"/v1",
+			"OPENAI_BASE_URL="+containerProxyURL+"/v1",
 		)
 		// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
 		// The proxy substitutes the host's real refresh_token so it never reaches
@@ -120,7 +125,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		// because Codex CLI does not add custom headers to refresh requests.
 		if m.proxy.IsOAuthMode() {
 			env = append(env,
-				"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+proxyEndpoint+"/oauth/token?cdx="+token,
+				"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+containerProxyURL+"/oauth/token?cdx="+token,
 			)
 		}
 		if m.debug {
@@ -173,20 +178,12 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		labelTask:    opts.Task,
 	}
 
-	// Security: drop all capabilities, non-root user
-	hostConfig := &container.HostConfig{
-		NetworkMode: container.NetworkMode(sandboxNetName),
-		Mounts:      mounts,
-		CapDrop:     []string{"ALL"},
-		SecurityOpt: []string{"no-new-privileges:true"},
-		Resources: container.Resources{
-			PidsLimit: int64ptr(512),
-		},
+	if opts.ReadOnly {
+		mounts[0].ReadOnly = true
 	}
 
-	if opts.ReadOnly {
-		hostConfig.Mounts[0].ReadOnly = true
-	}
+	// Security: drop all capabilities, non-root user
+	hostConfig := buildHostConfig(mounts)
 
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
@@ -493,6 +490,28 @@ func absolutePath(path string) (string, error) {
 		return "", err
 	}
 	return wd + "/" + path, nil
+}
+
+// buildHostConfig constructs the container HostConfig with security defaults.
+// ExtraHosts adds host.docker.internal:host-gateway so containers can reach the
+// Auth Proxy on the host via http://host.docker.internal:PORT regardless of which
+// Docker bridge network the container is attached to.
+// host-gateway is resolved by Docker Engine (>= 20.10) to the default bridge
+// gateway IP (typically 172.17.0.1) at container creation time.
+func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
+	return &container.HostConfig{
+		NetworkMode: container.NetworkMode(sandboxNetName),
+		Mounts:      mounts,
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges:true"},
+		// Allow containers to reach the Auth Proxy on the host.
+		// Docker resolves host-gateway to the bridge gateway IP; the proxy
+		// listens on 0.0.0.0 so it is reachable on that interface.
+		ExtraHosts: []string{"host.docker.internal:host-gateway"},
+		Resources: container.Resources{
+			PidsLimit: int64ptr(512),
+		},
+	}
 }
 
 func int64ptr(i int64) *int64 { return &i }
