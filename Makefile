@@ -59,6 +59,7 @@ test:
 		-race \
 		-coverprofile=coverage.out \
 		-covermode=atomic \
+		./cmd/... \
 		./internal/sandbox/... \
 		./internal/authproxy/... \
 		./internal/worktree/... \
