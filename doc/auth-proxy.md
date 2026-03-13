@@ -1,5 +1,7 @@
 # Auth Proxy 技術仕様
 
+> **日本語** | [English](en/auth-proxy.md)
+
 Auth Proxy は codex-dock のセキュリティの核となるコンポーネントです。
 コンテナに実際の API キーや OAuth クレデンシャルを渡さず、短命トークンを介して安全に認証情報を提供します。
 また、Codex CLI が呼ぶすべての OpenAI API トラフィック（Responses API・トークンリフレッシュ・ChatGPT backend-api）をプロキシし、**コンテナが保持するのはプレースホルダートークンのみ**とすることで、本物のクレデンシャルがコンテナに届かない構造を実現します。
@@ -17,26 +19,25 @@ Auth Proxy は codex-dock のセキュリティの核となるコンポーネン
 │          │                           │                                 │
 │          └───────────┬───────────────┘                                 │
 │                      ▼                                                 │
-│           ┌─────────────────────────────┐                              │
-│           │        Auth Proxy            │                              │
-│           │  <dock-net-gateway>:PORT     │  ← ランダムポート            │
-│           │                             │                              │
-│           │  GET  /token                │  トークン検証 → クレデンシャル返却
-│           │  GET  /health               │  ヘルスチェック              │
-│           │  POST /revoke               │  トークン失効                │
-│           │  POST /oauth/token          │  OAuthトークンリフレッシュ中継│
-│           │  ANY  /v1/*                 │  Responses API リバースプロキシ
-│           │  ANY  /chatgpt/*            │  ChatGPT backend-api プロキシ│
-│           └─────────┬───────────────────┘                              │
-│                     │ 短命トークン (cdx-xxxx)                           │
-│                     ▼                                                  │
-│           ┌─────────────────────┐                                      │
-│           │  サンドボックスコンテナ│                                      │
-│           │  CODEX_TOKEN        │                                      │
-│           │  CODEX_AUTH_PROXY_URL                                      │
-│           │  OPENAI_BASE_URL    │  ← /v1 プロキシを向く                │
-│           │  CODEX_REFRESH_TOKEN_URL_OVERRIDE (OAuth時のみ)            │
-│           └─────────────────────┘                                      │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  Auth Proxy (<dock-net-gateway>:PORT)      ← ランダムポート      │ │
+│  │                                                                  │ │
+│  │  GET  /token        トークン検証 → クレデンシャル返却            │ │
+│  │  GET  /health       ヘルスチェック                               │ │
+│  │  POST /revoke       トークン失効                                 │ │
+│  │  POST /oauth/token  OAuthトークンリフレッシュ中継                │ │
+│  │  ANY  /v1/*         Responses API リバースプロキシ               │ │
+│  │  ANY  /chatgpt/*    ChatGPT backend-api プロキシ                 │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│                      │ 短命トークン (cdx-xxxx)                         │
+│                      ▼                                                 │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  サンドボックスコンテナ                                           │ │
+│  │  CODEX_TOKEN                                                     │ │
+│  │  CODEX_AUTH_PROXY_URL                                            │ │
+│  │  OPENAI_BASE_URL            ← /v1 プロキシを向く                 │ │
+│  │  CODEX_REFRESH_TOKEN_URL_OVERRIDE (OAuth時のみ)                  │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 

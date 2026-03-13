@@ -1,5 +1,7 @@
 # クイックスタート
 
+> **日本語** | [English](en/getting-started.md)
+
 codex-dock のインストールから最初のコンテナ起動までの手順を説明します。
 
 ---

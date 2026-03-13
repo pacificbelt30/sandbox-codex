@@ -1,5 +1,7 @@
 # ネットワーク仕様 (dock-net)
 
+> **日本語** | [English](en/network.md)
+
 codex-dock は専用の Docker ブリッジネットワーク **dock-net** を使用してコンテナを隔離します。
 
 ---

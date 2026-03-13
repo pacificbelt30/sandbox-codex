@@ -1,5 +1,7 @@
 # 設定リファレンス
 
+> **日本語** | [English](en/configuration.md)
+
 codex-dock の設定は `~/.config/codex-dock/config.toml` に記述します。
 TOML 形式で、コマンドラインフラグのデフォルト値を変更できます。
 

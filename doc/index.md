@@ -1,5 +1,7 @@
 # codex-dock ドキュメント
 
+> **日本語** | [English](en/index.md)
+
 **codex-dock** は [Codex CLI](https://github.com/openai/codex) を Docker コンテナ内で安全に実行するための **AI サンドボックスコンテナマネージャー**です。
 認証情報をコンテナから隔離する Auth Proxy、専用ブリッジネットワーク、並列ワーカー管理などを提供します。
 
