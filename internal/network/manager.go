@@ -111,6 +111,36 @@ func (m *Manager) EnsureNetwork(opts EnsureOptions) error {
 	return nil
 }
 
+// EnsureContainerAttached connects a container to dock-net when it exists.
+// This is used to keep service-discovery names (e.g. codex-auth-proxy)
+// reachable from worker containers on dock-net.
+func (m *Manager) EnsureContainerAttached(containerName string) error {
+	ctx := context.Background()
+	existing, err := m.findNetwork(ctx)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return ErrDockNetNotFound
+	}
+	if containerName == "" {
+		return nil
+	}
+	inspect, err := m.cli.ContainerInspect(ctx, containerName)
+	if err != nil {
+		return err
+	}
+	if inspect.NetworkSettings != nil {
+		if _, ok := inspect.NetworkSettings.Networks[NetworkName]; ok {
+			return nil
+		}
+	}
+	if err := m.cli.NetworkConnect(ctx, existing.ID, inspect.ID, nil); err != nil {
+		return fmt.Errorf("connecting container %s to %s: %w", containerName, NetworkName, err)
+	}
+	return nil
+}
+
 // ApplyFirewall applies firewall rules to dock-net if possible.
 // Returns a warning (non-nil error) for unsupported/non-root environments.
 func (m *Manager) ApplyFirewall(opts EnsureOptions) error {

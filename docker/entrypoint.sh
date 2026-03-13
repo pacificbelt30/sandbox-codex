@@ -15,7 +15,7 @@ fi
 
 # ── Auth token acquisition ──────────────────────────────────────────────────
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
-    log "Fetching credentials from Auth Proxy..."
+    log "Fetching credentials from Auth Proxy (${CODEX_AUTH_PROXY_URL})..."
     ORIGINAL_CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_URL}"
 
     fetch_token() {
