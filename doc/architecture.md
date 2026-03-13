@@ -1,5 +1,7 @@
 # アーキテクチャ概要
 
+> **日本語** | [English](en/architecture.md)
+
 codex-dock は大きく **4 つのコンポーネント**で構成されています。
 
 ---
