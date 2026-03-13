@@ -291,3 +291,20 @@ func TestIptablesFirewallRunOutputClassifiesRuleMissingPhrase(t *testing.T) {
 		t.Fatalf("runOutput() err = %v; want ErrFirewallRuleNotFound", err)
 	}
 }
+
+func TestIptablesFirewallRunOutputClassifiesChainDoesNotExist(t *testing.T) {
+	runner := &errorRunner{
+		err:    errors.New("exit status 2"),
+		stdout: []byte("iptables v1.8.10 (nf_tables): Chain 'CODEX-DOCK' does not exist"),
+	}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+	}
+
+	_, err := fw.runOutput(context.Background(), "-C", dockerUserChain, "-i", BridgeName, "-j", managedChain)
+	if !errors.Is(err, ErrFirewallChainNotFound) {
+		t.Fatalf("runOutput() err = %v; want ErrFirewallChainNotFound", err)
+	}
+}

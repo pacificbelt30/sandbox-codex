@@ -303,6 +303,8 @@ func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byt
 		return out, ErrFirewallRuleNotFound
 	case strings.Contains(msg, "does a matching rule exist in that chain"):
 		return out, ErrFirewallRuleNotFound
+	case strings.Contains(msg, "chain '") && strings.Contains(msg, "does not exist"):
+		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "no such file or directory"):
 		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "permission denied"):
