@@ -254,6 +254,14 @@ func TestBuildProxyFallbackURL(t *testing.T) {
 	}
 }
 
+func TestBuildProxyFallbackURLWithHost(t *testing.T) {
+	got := buildProxyFallbackURLWithHost("http://codex-auth-proxy:18080", "10.200.0.1")
+	want := "http://10.200.0.1:18080"
+	if got != want {
+		t.Errorf("buildProxyFallbackURLWithHost() = %q; want %q", got, want)
+	}
+}
+
 func TestBuildHostConfig_ReadOnly(t *testing.T) {
 	mounts := []mount.Mount{
 		{Type: mount.TypeBind, Source: "/tmp", Target: "/workspace"},

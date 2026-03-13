@@ -26,24 +26,32 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     }
 
     RESPONSE=$(fetch_token "${CODEX_AUTH_PROXY_URL}") || {
-        if [[ -n "${CODEX_AUTH_PROXY_FALLBACK_URL:-}" && "${CODEX_AUTH_PROXY_FALLBACK_URL}" != "${CODEX_AUTH_PROXY_URL}" ]]; then
-            log "Primary Auth Proxy endpoint unreachable (${CODEX_AUTH_PROXY_URL}), retrying fallback (${CODEX_AUTH_PROXY_FALLBACK_URL})..."
-            RESPONSE=$(fetch_token "${CODEX_AUTH_PROXY_FALLBACK_URL}") || {
-                log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL} (fallback: ${CODEX_AUTH_PROXY_FALLBACK_URL})"
-                exit 1
-            }
-            CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_FALLBACK_URL}"
+        FALLBACKS_RAW="${CODEX_AUTH_PROXY_FALLBACK_URLS:-${CODEX_AUTH_PROXY_FALLBACK_URL:-}}"
+        SELECTED=""
+        if [[ -n "${FALLBACKS_RAW}" ]]; then
+            IFS=',' read -r -a FALLBACKS <<< "${FALLBACKS_RAW}"
+            for endpoint in "${FALLBACKS[@]}"; do
+                [[ -z "${endpoint}" || "${endpoint}" == "${CODEX_AUTH_PROXY_URL}" ]] && continue
+                log "Primary Auth Proxy endpoint unreachable (${CODEX_AUTH_PROXY_URL}), retrying fallback (${endpoint})..."
+                if RESPONSE=$(fetch_token "${endpoint}"); then
+                    SELECTED="${endpoint}"
+                    break
+                fi
+            done
+        fi
 
-            # Keep downstream proxy endpoints consistent with the selected URL.
-            if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
-                export OPENAI_BASE_URL="${OPENAI_BASE_URL/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
-            fi
-            if [[ -n "${CODEX_REFRESH_TOKEN_URL_OVERRIDE:-}" ]]; then
-                export CODEX_REFRESH_TOKEN_URL_OVERRIDE="${CODEX_REFRESH_TOKEN_URL_OVERRIDE/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
-            fi
-        else
-            log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
+        if [[ -z "${SELECTED}" ]]; then
+            log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL} (fallbacks: ${FALLBACKS_RAW:-none})"
             exit 1
+        fi
+
+        CODEX_AUTH_PROXY_URL="${SELECTED}"
+        # Keep downstream proxy endpoints consistent with the selected URL.
+        if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+            export OPENAI_BASE_URL="${OPENAI_BASE_URL/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
+        fi
+        if [[ -n "${CODEX_REFRESH_TOKEN_URL_OVERRIDE:-}" ]]; then
+            export CODEX_REFRESH_TOKEN_URL_OVERRIDE="${CODEX_REFRESH_TOKEN_URL_OVERRIDE/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
         fi
     }
 

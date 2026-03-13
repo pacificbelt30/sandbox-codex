@@ -117,7 +117,31 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 			"OPENAI_BASE_URL="+containerProxyURL+"/v1",
 		)
 		if fallbackURL := buildProxyFallbackURL(containerProxyURL); fallbackURL != "" {
-			env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URL="+fallbackURL)
+			fallbacks := make([]string, 0, 2)
+			if m.network != nil {
+				if gateway, err := m.network.GatewayAddr(); err == nil {
+					if u := buildProxyFallbackURLWithHost(containerProxyURL, gateway); u != "" {
+						fallbacks = append(fallbacks, u)
+					}
+				}
+			}
+			fallbacks = append(fallbacks, fallbackURL)
+
+			seen := map[string]struct{}{}
+			unique := make([]string, 0, len(fallbacks))
+			for _, u := range fallbacks {
+				if u == "" {
+					continue
+				}
+				if _, ok := seen[u]; ok {
+					continue
+				}
+				seen[u] = struct{}{}
+				unique = append(unique, u)
+			}
+			if len(unique) > 0 {
+				env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URLS="+strings.Join(unique, ","))
+			}
 		}
 		// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
 		// The proxy substitutes the host's real refresh_token so it never reaches
@@ -510,6 +534,10 @@ func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
 }
 
 func buildProxyFallbackURL(primary string) string {
+	return buildProxyFallbackURLWithHost(primary, "host.docker.internal")
+}
+
+func buildProxyFallbackURLWithHost(primary, host string) string {
 	u, err := url.Parse(primary)
 	if err != nil {
 		return ""
@@ -526,7 +554,7 @@ func buildProxyFallbackURL(primary string) string {
 			port = "80"
 		}
 	}
-	u.Host = "host.docker.internal:" + port
+	u.Host = host + ":" + port
 	return u.String()
 }
 
