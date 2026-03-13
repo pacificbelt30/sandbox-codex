@@ -58,6 +58,20 @@ func TestIptablesFirewallApplyNonRootNoopWhenRulesAlreadyInstalled(t *testing.T)
 	}
 }
 
+func TestIptablesFirewallApplyNonRootNoWarningWhenStatusPermissionDenied(t *testing.T) {
+	runner := &permissionDeniedStatusRunner{}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 1000 },
+	}
+
+	err := fw.Apply(context.Background(), firewallConfig{BridgeName: BridgeName})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+}
+
 func TestNormalizeHostEndpoints(t *testing.T) {
 	got := normalizeHostEndpoints([]HostEndpoint{
 		{IP: "10.0.0.5", Port: 18080},
@@ -275,6 +289,23 @@ func (missingIptablesRunner) Run(_ context.Context, name string, args ...string)
 	return nil, nil
 }
 
+func TestIptablesFirewallRunOutputClassifiesPermissionDenied(t *testing.T) {
+	runner := &errorRunner{
+		err:    errors.New("exit status 4"),
+		stdout: []byte("iptables v1.8.10 (nf_tables): Could not fetch rule set generation id: Permission denied (you must be root)"),
+	}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+	}
+
+	_, err := fw.runOutput(context.Background(), "-S", managedChain)
+	if !errors.Is(err, ErrFirewallPermissionDenied) {
+		t.Fatalf("runOutput() err = %v; want ErrFirewallPermissionDenied", err)
+	}
+}
+
 func TestIptablesFirewallRunOutputClassifiesRuleMissingPhrase(t *testing.T) {
 	runner := &errorRunner{
 		err:    errors.New("exit status 1"),
@@ -307,4 +338,17 @@ func TestIptablesFirewallRunOutputClassifiesChainDoesNotExist(t *testing.T) {
 	if !errors.Is(err, ErrFirewallChainNotFound) {
 		t.Fatalf("runOutput() err = %v; want ErrFirewallChainNotFound", err)
 	}
+}
+
+type permissionDeniedStatusRunner struct{}
+
+func (permissionDeniedStatusRunner) LookPath(file string) (string, error) {
+	return "/usr/sbin/" + file, nil
+}
+
+func (permissionDeniedStatusRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if len(args) > 0 && args[0] == "-S" {
+		return []byte("iptables v1.8.10 (nf_tables): Could not fetch rule set generation id: Permission denied (you must be root)"), errors.New("exit status 4")
+	}
+	return nil, nil
 }

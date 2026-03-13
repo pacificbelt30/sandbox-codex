@@ -32,6 +32,7 @@ var (
 	ErrFirewallIptablesNotFound = errors.New("iptables not found")
 	ErrFirewallRuleNotFound     = errors.New("iptables rule not found")
 	ErrFirewallChainNotFound    = errors.New("iptables chain not found")
+	ErrFirewallPermissionDenied = errors.New("iptables permission denied")
 )
 
 type firewallController interface {
@@ -107,7 +108,13 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 			return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
 		}
 		// Avoid noisy warnings when rules are already installed by root.
-		if st, err := f.Status(ctx, cfg); err == nil && st.ChainExists && st.JumpRuleExists {
+		if st, err := f.Status(ctx, cfg); err == nil {
+			if st.ChainExists && st.JumpRuleExists {
+				return nil
+			}
+		} else if errors.Is(err, ErrFirewallPermissionDenied) {
+			// Some environments disallow non-root iptables reads.
+			// Do not emit false root-required warnings in that case.
 			return nil
 		}
 		return fmt.Errorf("%w", ErrFirewallRootRequired)
@@ -308,7 +315,7 @@ func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byt
 	case strings.Contains(msg, "no such file or directory"):
 		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "permission denied"):
-		return out, fmt.Errorf("iptables command failed: permission denied (run codex-dock as root): %w", err)
+		return out, fmt.Errorf("%w: iptables command failed: permission denied (run codex-dock as root): %w", ErrFirewallPermissionDenied, err)
 	default:
 		return out, fmt.Errorf("iptables %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
