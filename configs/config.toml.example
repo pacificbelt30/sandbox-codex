@@ -18,3 +18,12 @@ verbose = false
 
 # Enable debug output by default
 debug = false
+
+[run]
+# Default user mode for `codex-dock run --user`
+# current | codex | dir | "" | <uid>[:<gid>]
+user = "current"
+
+# Default approval mode for `codex-dock run --approval-mode`
+# suggest | auto-edit | full-auto | danger
+approval_mode = "suggest"

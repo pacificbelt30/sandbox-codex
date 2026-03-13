@@ -6,6 +6,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // TestResolveContainerUser_Empty verifies that an empty mode returns "" (image default).
@@ -32,6 +35,16 @@ func TestResolveContainerUser_Current(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("got %q; want %q", got, want)
+	}
+}
+
+func TestResolveContainerUser_Codex(t *testing.T) {
+	got, err := resolveContainerUser("codex", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "1001:1001" {
+		t.Errorf("got %q; want %q", got, "1001:1001")
 	}
 }
 
@@ -124,5 +137,108 @@ func TestResolveProjectDir_Absolute(t *testing.T) {
 	}
 	if got != "/tmp/myproject" {
 		t.Errorf("got %q; want /tmp/myproject", got)
+	}
+}
+
+func TestApplyRunConfigDefaults(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevUserMode := userMode
+	prevApprovalMode := approvalModeFlag
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		userMode = prevUserMode
+		approvalModeFlag = prevApprovalMode
+	})
+
+	runOpts.Image = "codex-dock:latest"
+	runOpts.TokenTTL = 3600
+	userMode = "current"
+	approvalModeFlag = "suggest"
+
+	viper.Set("run.image", "custom-image:1")
+	viper.Set("run.token_ttl", 90)
+	viper.Set("run.user", "dir")
+	viper.Set("run.approval_mode", "auto-edit")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "custom-image:1" {
+		t.Errorf("runOpts.Image = %q; want custom-image:1", runOpts.Image)
+	}
+	if runOpts.TokenTTL != 90 {
+		t.Errorf("runOpts.TokenTTL = %d; want 90", runOpts.TokenTTL)
+	}
+	if userMode != "dir" {
+		t.Errorf("userMode = %q; want dir", userMode)
+	}
+	if approvalModeFlag != "auto-edit" {
+		t.Errorf("approvalModeFlag = %q; want auto-edit", approvalModeFlag)
+	}
+}
+
+func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevUserMode := userMode
+	prevApprovalMode := approvalModeFlag
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		userMode = prevUserMode
+		approvalModeFlag = prevApprovalMode
+	})
+
+	runOpts.Image = "flag-image"
+	runOpts.TokenTTL = 123
+	userMode = "current"
+	approvalModeFlag = "danger"
+
+	viper.Set("run.image", "config-image")
+	viper.Set("run.token_ttl", 999)
+	viper.Set("run.user", "dir")
+	viper.Set("run.approval_mode", "auto-edit")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	if err := cmd.Flags().Set("image", "flag-image"); err != nil {
+		t.Fatalf("set image: %v", err)
+	}
+	if err := cmd.Flags().Set("token-ttl", "123"); err != nil {
+		t.Fatalf("set token-ttl: %v", err)
+	}
+	if err := cmd.Flags().Set("approval-mode", "danger"); err != nil {
+		t.Fatalf("set approval-mode: %v", err)
+	}
+	if err := cmd.Flags().Set("user", "current"); err != nil {
+		t.Fatalf("set user: %v", err)
+	}
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "flag-image" {
+		t.Errorf("runOpts.Image = %q; want flag-image", runOpts.Image)
+	}
+	if runOpts.TokenTTL != 123 {
+		t.Errorf("runOpts.TokenTTL = %d; want 123", runOpts.TokenTTL)
+	}
+	if userMode != "current" {
+		t.Errorf("userMode = %q; want current", userMode)
+	}
+	if approvalModeFlag != "danger" {
+		t.Errorf("approvalModeFlag = %q; want danger", approvalModeFlag)
 	}
 }

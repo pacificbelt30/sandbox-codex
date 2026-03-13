@@ -88,6 +88,45 @@ default_token_ttl = 28800
 
 ---
 
+
+### `run.user`
+
+`codex-dock run --user` のデフォルト値を指定します。
+
+```toml
+[run]
+user = "current"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"current"` |
+| 対応フラグ | `run --user` |
+| 推奨値 | `current`, `codex`, `dir`, `uid[:gid]` |
+
+`codex` を指定すると、従来のデフォルト挙動（コンテナ内 `codex` ユーザ `1001:1001`）で実行されます。
+
+---
+
+### `run.approval_mode`
+
+`codex-dock run --approval-mode` のデフォルト値を指定します。
+
+```toml
+[run]
+approval_mode = "suggest"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"suggest"` |
+| 対応フラグ | `run --approval-mode` |
+| 許可値 | `suggest`, `auto-edit`, `full-auto`, `danger` |
+
+---
+
 ### `network_name`
 
 使用する Docker ネットワーク名。
@@ -169,6 +208,13 @@ verbose = false
 
 # デバッグログ（開発・トラブルシューティング時のみ）
 debug = false
+
+[run]
+# run サブコマンドのデフォルトユーザ
+user = "current"
+
+# run サブコマンドの承認モード
+approval_mode = "suggest"
 ```
 
 ---
