@@ -204,3 +204,12 @@ Host (Auth Proxy)                    Container
 > F-NET-04 (Auth Proxy unreachable from containers): resolved — Auth Proxy binds to `0.0.0.0` and worker containers get `--add-host=host.docker.internal:host-gateway`. Containers reach the proxy via `http://host.docker.internal:PORT`.
 
 See [Auth Proxy Specification](auth-proxy.md) and [Network Specification](network.md) for details.
+
+---
+
+## Related Documentation
+
+- [Security Design](security.md) — Container settings, protections, known issues
+- [Auth Proxy Specification](auth-proxy.md) — Authentication proxy details
+- [Network Specification](network.md) — dock-net configuration
+- [`codex-dock run` command](commands/run.md) — All run options

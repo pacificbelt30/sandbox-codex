@@ -2,6 +2,12 @@
 
 > [日本語](../auth-proxy.md) | **English**
 
+- **Overview & Deployment** ← this page
+- [API Endpoint Reference](auth-proxy/endpoints.md)
+- [Token Lifecycle & Security](auth-proxy/tokens.md)
+
+---
+
 The Auth Proxy is the core security component of codex-dock.
 It provides authentication information safely to containers via short-lived tokens, without passing actual API keys or OAuth credentials.
 It also proxies all OpenAI API traffic called by Codex CLI (Responses API, token refresh, ChatGPT backend-api), ensuring that **containers hold only placeholder tokens** and real credentials never reach them.
@@ -462,3 +468,13 @@ proxy.RevokeToken("my-container")
 // Stop proxy (clears all tokens)
 defer proxy.Stop()
 ```
+
+---
+
+## Related Documentation
+
+- [API Endpoint Reference](auth-proxy/endpoints.md) — Full endpoint specifications
+- [Token Lifecycle & Security](auth-proxy/tokens.md) — Token lifecycle and security considerations
+- [Using Auth Proxy Standalone](proxy-standalone.md) — Configure Codex CLI without `codex-dock run`
+- [Network Specification](network.md) — dock-net and host reachability
+- [`codex-dock proxy` command](commands/proxy.md) — How to start the proxy

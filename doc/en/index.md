@@ -9,14 +9,47 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 
 ## Documentation Index
 
+### Getting Started
+
 | Document | Description |
 |---|---|
-| [Architecture Overview](architecture.md) | System architecture diagram and component descriptions |
-| [Auth Proxy Specification](auth-proxy.md) | Auth proxy technical details and flow diagrams |
-| [Network Specification](network.md) | dock-net configuration and security policy |
-| [Command Reference](commands.md) | All commands and options |
-| [Configuration Reference](configuration.md) | All config.toml settings |
 | [Quick Start](getting-started.md) | From installation to first run |
+| [Architecture Overview](architecture.md) | System diagram, components, startup sequence |
+| [Security Design](security.md) | Container settings, protections, known issues |
+
+### Auth Proxy
+
+| Document | Description |
+|---|---|
+| [Auth Proxy Overview & Deployment](auth-proxy.md) | How the proxy works, startup, auth modes |
+| [API Endpoint Reference](auth-proxy/endpoints.md) | Full request/response spec for all endpoints |
+| [Token Lifecycle & Security](auth-proxy/tokens.md) | Token lifecycle and security considerations |
+| [Using Auth Proxy Standalone](proxy-standalone.md) | Configure Codex CLI without `codex-dock run` ✨ |
+
+### Network
+
+| Document | Description |
+|---|---|
+| [Network Specification](network.md) | dock-net configuration, security policy, troubleshooting |
+
+### Command Reference
+
+| Document | Description |
+|---|---|
+| [Command Reference (Index)](commands.md) | All commands index and global options |
+| [`codex-dock run`](commands/run.md) | Container startup, approval modes, parallel execution |
+| [`codex-dock proxy`](commands/proxy.md) | Auth Proxy build / run / serve / stop / rm |
+| [Worker Management (ps / stop / rm / logs)](commands/worker.md) | List, stop, remove, view logs |
+| [`codex-dock auth`](commands/auth.md) | Auth show / set / rotate |
+| [`codex-dock network`](commands/network-cmd.md) | dock-net create / rm / status |
+| [`codex-dock build`](commands/build.md) | Build sandbox image |
+| [`codex-dock ui`](commands/ui.md) | TUI dashboard key bindings |
+
+### Configuration
+
+| Document | Description |
+|---|---|
+| [Configuration Reference](configuration.md) | All config.toml settings, env vars, auth files |
 
 ---
 
@@ -27,14 +60,14 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 │  Host Environment                                            │
 │                                                              │
 │  ┌──────────────┐    ┌────────────────────────────────────┐ │
-│  │  codex-dock  │    │  Auth Proxy (127.0.0.1:PORT)       │ │
+│  │  codex-dock  │    │  Auth Proxy (0.0.0.0:PORT)         │ │
 │  │  (CLI)       │───▶│  - Issues short-lived tokens       │ │
 │  └──────────────┘    │  - Protects API keys / OAuth creds │ │
 │         │            └──────────┬─────────────────────────┘ │
-│         │                       │                            │
+│         │                       │ host.docker.internal:PORT  │
 │         ▼                       │                            │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  dock-net (192.168.200.0/24)  Docker bridge network  │   │
+│  │  dock-net (10.200.0.0/24)  Docker bridge network     │   │
 │  │                                                       │   │
 │  │  ┌──────────────┐  ┌──────────────┐                  │   │
 │  │  │ Container A  │  │ Container B  │  (ICC disabled)  │   │
