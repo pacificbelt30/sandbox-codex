@@ -130,16 +130,16 @@ export OPENAI_API_KEY=sk-...
 codex-dock auth set
 
 # 3. カレントディレクトリをマウントして起動
-codex-dock run
+codex-dock run --user current --approval-mode full-auto
 
 # タスクを指定して全自動・バックグラウンド実行
-codex-dock run --task "Write unit tests for auth module" --full-auto --detach
+codex-dock run --user current --approval-mode full-auto --task "Write unit tests for auth module" --detach
 
 # git worktree を使ってブランチを切り離して作業
-codex-dock run --worktree --branch feature-auth --new-branch
+codex-dock run --user current --approval-mode full-auto --worktree --branch feature-auth --new-branch
 
 # 3 つのワーカーを並列実行
-codex-dock run --parallel 3 --worktree --detach
+codex-dock run --user current --approval-mode full-auto --parallel 3 --worktree --detach
 
 # TUI でワーカーを管理（↑↓選択・Enter でログ・S 停止・R 再起動・D 削除）
 codex-dock ui

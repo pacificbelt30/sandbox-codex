@@ -139,8 +139,12 @@ codex-dock auth show
 
 ```bash
 # Mount current directory to /workspace and start Codex
-codex-dock run
+codex-dock run --user current --approval-mode full-auto
 ```
+
+`--user current` keeps file ownership aligned with the host user, so it should be the default choice for typical local development.
+
+`--approval-mode full-auto` is the recommended replacement for the deprecated `--full-auto` flag.
 
 **What happens automatically:**
 
@@ -174,8 +178,9 @@ codex-dock run
 
 ```bash
 codex-dock run \
+  --user current \
+  --approval-mode full-auto \
   --task "Add unit tests to src/auth.go" \
-  --full-auto \
   --detach
 ```
 
@@ -192,6 +197,8 @@ Work on a new branch without modifying the original repository.
 
 ```bash
 codex-dock run \
+  --user current \
+  --approval-mode full-auto \
   --worktree \
   --branch feature-auth \
   --new-branch \
@@ -204,7 +211,7 @@ The worktree is automatically deleted when the container exits.
 
 ```bash
 # Run on 3 branches in parallel
-codex-dock run --parallel 3 --worktree --detach
+codex-dock run --user current --approval-mode full-auto --parallel 3 --worktree --detach
 ```
 
 Monitor all workers with TUI:
