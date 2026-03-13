@@ -9,14 +9,47 @@
 
 ## ドキュメント一覧
 
+### はじめに
+
 | ドキュメント | 内容 |
 |---|---|
-| [アーキテクチャ概要](architecture.md) | システム全体の構成図・コンポーネント説明 |
-| [Auth Proxy 技術仕様](auth-proxy.md) | 認証プロキシの詳細仕様・フロー図 |
-| [ネットワーク仕様](network.md) | dock-net の構成・セキュリティポリシー |
-| [コマンドリファレンス](commands.md) | 全コマンドとオプションの説明 |
-| [設定リファレンス](configuration.md) | config.toml の全設定項目 |
 | [クイックスタート](getting-started.md) | インストールから初回実行まで |
+| [アーキテクチャ概要](architecture.md) | システム全体の構成図・コンポーネント説明・起動シーケンス |
+| [セキュリティ設計](security.md) | コンテナ設定・保護の仕組み・既知の問題 |
+
+### Auth Proxy
+
+| ドキュメント | 内容 |
+|---|---|
+| [Auth Proxy 概要・デプロイ](auth-proxy.md) | 認証プロキシの仕組み・起動方法・認証モード |
+| [API エンドポイント仕様](auth-proxy/endpoints.md) | 全エンドポイントのリクエスト/レスポンス仕様 |
+| [トークンの仕組みとセキュリティ](auth-proxy/tokens.md) | トークンライフサイクル・セキュリティ考慮事項 |
+| [Auth Proxy のみを使う](proxy-standalone.md) | `codex-dock run` を使わずに Codex CLI を設定する方法 ✨ |
+
+### ネットワーク
+
+| ドキュメント | 内容 |
+|---|---|
+| [ネットワーク仕様](network.md) | dock-net の構成・セキュリティポリシー・トラブルシューティング |
+
+### コマンドリファレンス
+
+| ドキュメント | 内容 |
+|---|---|
+| [コマンドリファレンス（一覧）](commands.md) | 全コマンドのインデックス・グローバルオプション |
+| [`codex-dock run`](commands/run.md) | コンテナ起動・承認モード・並列実行・パッケージ管理 |
+| [`codex-dock proxy`](commands/proxy.md) | Auth Proxy の build / run / serve / stop / rm |
+| [ワーカー管理 (ps / stop / rm / logs)](commands/worker.md) | コンテナの一覧・停止・削除・ログ表示 |
+| [`codex-dock auth`](commands/auth.md) | 認証情報の show / set / rotate |
+| [`codex-dock network`](commands/network-cmd.md) | dock-net の create / rm / status |
+| [`codex-dock build`](commands/build.md) | サンドボックスイメージのビルド |
+| [`codex-dock ui`](commands/ui.md) | TUI ダッシュボードのキーバインド |
+
+### 設定
+
+| ドキュメント | 内容 |
+|---|---|
+| [設定リファレンス](configuration.md) | config.toml の全設定項目・環境変数・認証ファイル |
 
 ---
 
@@ -27,15 +60,14 @@
 │  ホスト環境                                                   │
 │                                                               │
 │  ┌──────────────┐    ┌────────────────────────────────────┐  │
-│  │  codex-dock  │    │  Auth Proxy (127.0.0.1:PORT)       │  │
+│  │  codex-dock  │    │  Auth Proxy (0.0.0.0:PORT)         │  │
 │  │  (CLI)       │───▶│  - 短命トークン発行                │  │
 │  └──────────────┘    │  - API キー / OAuth を保護          │  │
 │         │            └──────────┬─────────────────────────┘  │
-│         │                       │ ※現在の制限: コンテナ      │
-│         │                       │   からは到達不可            │
+│         │                       │ host.docker.internal:PORT   │
 │         ▼                       │                             │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │  dock-net (192.168.200.0/24)  Docker ブリッジネット  │    │
+│  │  dock-net (10.200.0.0/24)  Docker ブリッジネット     │    │
 │  │                                                       │    │
 │  │  ┌──────────────┐  ┌──────────────┐                  │    │
 │  │  │ コンテナ A   │  │ コンテナ B   │  (ICC 無効)      │    │
@@ -64,4 +96,4 @@
 ## 要件
 
 - Go 1.24 以上
-- Docker Engine
+- Docker Engine 20.10 以上
