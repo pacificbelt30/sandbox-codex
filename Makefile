@@ -62,6 +62,7 @@ test:
 		./cmd/... \
 		./internal/sandbox/... \
 		./internal/authproxy/... \
+		./internal/network/... \
 		./internal/worktree/... \
 		./internal/config/...
 
