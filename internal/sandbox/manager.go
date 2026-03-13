@@ -175,9 +175,9 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 
 	// When a custom container user is specified, the uid may not exist in the
 	// image's /etc/passwd, causing Docker to set HOME="/".
-	// Use the image home to avoid creating extra directories under /workspace.
+	// Use a writable non-workspace home to avoid permission errors and avoid creating extra directories under /workspace.
 	if opts.ContainerUser != "" {
-		env = append(env, "HOME=/home/codex")
+		env = append(env, "HOME=/var/tmp/codex-home")
 	}
 
 	mounts := []mount.Mount{

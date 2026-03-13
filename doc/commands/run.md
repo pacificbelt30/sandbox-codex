@@ -90,7 +90,7 @@ codex-dock run --approval-mode danger --task "ビルドスクリプトを実行"
 | `uid` または `uid:gid` | 明示的に指定（例: `1000`, `1000:1000`） |
 
 > **注意**: カスタムユーザを指定した場合、そのユーザがコンテナの `/etc/passwd` に存在しない
-> ことがあります。`codex-dock` は `HOME=/home/codex` を自動注入します。認証ファイルや
+> ことがあります。`codex-dock` は `HOME=/var/tmp/codex-home` を自動注入します。認証ファイルや
 > Codex CLI 設定はその `HOME` 配下に作成され、`/workspace` 配下に補助ディレクトリは作成しません。
 
 ---
