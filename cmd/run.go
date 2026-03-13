@@ -106,19 +106,12 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
 
-	// Determine Auth Proxy listen address.
-	// Use the dock-net gateway so containers can reach the proxy (F-NET-04).
-	// Fall back to loopback when Docker is unavailable or the network is missing.
-	listenAddr := ""
-	if gwAddr, err := netMgr.GatewayAddr(); err == nil {
-		listenAddr = gwAddr + ":0"
-	}
-
-	// Start Auth Proxy
+	// Start Auth Proxy on 0.0.0.0 (all interfaces) so worker containers can
+	// reach it via host.docker.internal (resolved by Docker to the bridge
+	// gateway IP). ListenAddr is left empty to use the default (0.0.0.0:0).
 	proxy, err := authproxy.NewProxy(authproxy.Config{
-		TokenTTL:   runOpts.TokenTTL,
-		Verbose:    verbose,
-		ListenAddr: listenAddr,
+		TokenTTL: runOpts.TokenTTL,
+		Verbose:  verbose,
 	})
 	if err != nil {
 		return fmt.Errorf("starting auth proxy: %w", err)

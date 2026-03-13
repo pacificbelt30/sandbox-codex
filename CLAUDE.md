@@ -199,7 +199,6 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 
 | ID | Issue | Notes |
 |---|---|---|
-| F-NET-04 | Auth Proxy unreachable from dock-net | Proxy listens on `127.0.0.1` (loopback), not inside dock-net |
 | NF-SEC-01 | Auth Proxy uses plain HTTP | TLS or UNIX socket required per SRS |
 | F-UI-02 | TUI `[R]` start key unimplemented | Key handler missing |
 | F-UI-03 | TUI log view shows stub text | `mgr.Logs()` not called |
@@ -212,6 +211,7 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 |---|---|
 | F-AUTH-04 | `proxy.RevokeToken()` is called from `sandbox.Manager.Stop()` and `runSingle()` |
 | access_token leak | Containers now receive only a placeholder; proxy injects real credentials on every outbound request (`injectCredentials`) |
+| F-NET-04 | Proxy binds to `0.0.0.0`; workers get `--add-host=host.docker.internal:host-gateway` via `buildHostConfig()`; env uses `ContainerEndpoint()` → `http://host.docker.internal:PORT` |
 
 ---
 
@@ -263,6 +263,6 @@ Auth files:
 5. **`internal/` is the right place** for new business logic; `cmd/` is for CLI wiring only.
 6. **Do not pass credentials to containers** — containers receive only placeholder `cdx-xxxx` tokens. The proxy injects real credentials via `injectCredentials()` on every outbound request.
 7. **Credential injection is in `reverseProxy` and `handleWebSocketProxy`** — any new proxy endpoints must also call `injectCredentials()` or inject credentials manually.
-8. **When fixing F-NET-04**, the Auth Proxy must bind to a dock-net interface address, not `127.0.0.1`.
+8. **F-NET-04 is resolved**: Auth Proxy binds to `0.0.0.0`; worker containers have `--add-host=host.docker.internal:host-gateway` (Docker resolves this to the bridge gateway IP); `CODEX_AUTH_PROXY_URL` uses `proxy.ContainerEndpoint()` → `http://host.docker.internal:PORT`. Requires Docker Engine >= 20.10.
 9. **Documentation is in Japanese** (`doc/`). New docs may be written in English or Japanese consistently with existing files.
 10. **`go mod tidy` must leave `go.mod`/`go.sum` clean** — CI checks this with `git diff --exit-code`.

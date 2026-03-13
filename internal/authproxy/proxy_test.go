@@ -520,9 +520,47 @@ func TestStart_DefaultListenAddr(t *testing.T) {
 	}
 	defer p.Stop()
 
-	// Default should be loopback.
+	// Endpoint() always returns 127.0.0.1 for host-side access regardless of
+	// the actual bind address (default is 0.0.0.0 to allow container access).
 	if !strings.HasPrefix(p.Endpoint(), "http://127.0.0.1:") {
 		t.Errorf("default Endpoint() = %q; expected http://127.0.0.1:...", p.Endpoint())
+	}
+}
+
+func TestProxy_Port(t *testing.T) {
+	p := newTestProxy(t)
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	port := p.Port()
+	if port == "" {
+		t.Fatal("Port() is empty after Start")
+	}
+	// Port must be a valid decimal number.
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			t.Errorf("Port() = %q; contains non-digit character %q", port, c)
+		}
+	}
+}
+
+func TestProxy_ContainerEndpoint(t *testing.T) {
+	p := newTestProxy(t)
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	ce := p.ContainerEndpoint()
+	if !strings.HasPrefix(ce, "http://host.docker.internal:") {
+		t.Errorf("ContainerEndpoint() = %q; expected http://host.docker.internal:...", ce)
+	}
+	// Port in ContainerEndpoint must match Port().
+	wantSuffix := ":" + p.Port()
+	if !strings.HasSuffix(ce, wantSuffix) {
+		t.Errorf("ContainerEndpoint() = %q; should end with %q", ce, wantSuffix)
 	}
 }
 
