@@ -106,7 +106,8 @@ and drops worker egress to private/link-local destinations.
 | Host → Container | ✅ Controllable | Docker default policy |
 
 > **Note**: This firewall automation depends on Linux `iptables`. It is not auto-applied on macOS / Windows (Docker Desktop).
-> On Linux, `codex-dock run` and `codex-dock network create` must run as root to install/remove these rules.
+> On Linux, `codex-dock run` attempts firewall setup and continues with a warning if it cannot apply rules.
+> To apply firewall rules explicitly, run `codex-dock firewall create` as root.
 
 ---
 
@@ -173,7 +174,8 @@ codex-dock network create
 
 Also created automatically by `codex-dock run`.
 
-> **Note**: On Linux this also installs `iptables` rules, so root privileges are required.
+> **Note**: `network create` only provisions the Docker network.
+> To install Linux `iptables` rules, run `codex-dock firewall create`.
 
 ### Delete Network
 

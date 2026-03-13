@@ -16,7 +16,34 @@ codex-dock network create [--no-internet]
 ```
 
 > Automatically created by `codex-dock run` if it doesn't exist.
-> On Linux this also installs `iptables` rules, so root privileges are required.
+
+---
+
+## `firewall create`
+
+```bash
+codex-dock firewall create [--no-internet]
+```
+
+> Applies Linux `iptables` rules for dock-net.
+> If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
+
+## `firewall status`
+
+```bash
+codex-dock firewall status
+```
+
+Shows dock-net firewall state (Linux support, root execution, iptables presence, chain and jump rule presence).
+
+## `firewall rm`
+
+```bash
+codex-dock firewall rm
+```
+
+Removes dock-net firewall rules.
+If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
 
 ---
 

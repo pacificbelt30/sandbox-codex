@@ -128,6 +128,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
+	if err := netMgr.ApplyFirewall(ensureOpts); err != nil {
+		if network.IsFirewallWarning(err) {
+			fmt.Printf("Warning: dock-net firewall rules were not applied: %v\n", err)
+		} else {
+			return fmt.Errorf("ensuring dock-net firewall: %w", err)
+		}
+	}
 
 	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, runProxyAdminSecret)
 	if err != nil {

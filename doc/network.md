@@ -106,7 +106,8 @@ Linux では `dock-net` 作成時に `DOCKER-USER` チェーンへ `CODEX-DOCK` 
 | ホスト → コンテナ | ✅ 制御可能 | Docker デフォルトポリシー |
 
 > **注意**: この firewall 制御は Linux の `iptables` 前提です。macOS / Windows (Docker Desktop) では自動適用されません。
-> Linux では `codex-dock run` / `codex-dock network create` を root で実行する必要があります。
+> Linux では `codex-dock run` は firewall 適用を試み、失敗時は Warning を表示して継続します。
+> firewall を明示的に設定する場合は `codex-dock firewall create` を root で実行してください。
 
 ---
 
@@ -173,7 +174,8 @@ codex-dock network create
 
 `codex-dock run` でも自動的に作成されます。
 
-> **注意**: Linux では network 作成時に `iptables` ルールも投入するため root 権限が必要です。
+> **注意**: `network create` はネットワーク作成のみを行います。
+> Linux で `iptables` を適用する場合は `codex-dock firewall create` を実行してください。
 
 ### ネットワーク削除
 
