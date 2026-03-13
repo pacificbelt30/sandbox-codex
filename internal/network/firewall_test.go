@@ -44,6 +44,20 @@ func TestIptablesFirewallApplyReturnsRootRequiredOnLinux(t *testing.T) {
 	}
 }
 
+func TestIptablesFirewallApplyNonRootNoopWhenRulesAlreadyInstalled(t *testing.T) {
+	runner := &statusRunner{}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 1000 },
+	}
+
+	err := fw.Apply(context.Background(), firewallConfig{BridgeName: BridgeName})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+}
+
 func TestNormalizeHostEndpoints(t *testing.T) {
 	got := normalizeHostEndpoints([]HostEndpoint{
 		{IP: "10.0.0.5", Port: 18080},
@@ -211,6 +225,12 @@ func TestIptablesFirewallStatus(t *testing.T) {
 	if !st.Supported || !st.Root || !st.IptablesFound || !st.ChainExists || !st.JumpRuleExists {
 		t.Fatalf("unexpected status: %+v", st)
 	}
+	if st.DockerUserDefaultPolicy != "DROP" {
+		t.Fatalf("DockerUserDefaultPolicy=%q want DROP", st.DockerUserDefaultPolicy)
+	}
+	if st.ManagedChainFinalVerdict != "RETURN" {
+		t.Fatalf("ManagedChainFinalVerdict=%q want RETURN", st.ManagedChainFinalVerdict)
+	}
 }
 
 func TestIptablesFirewallStatusMissingIptables(t *testing.T) {
@@ -238,6 +258,12 @@ func (statusRunner) LookPath(file string) (string, error) {
 }
 
 func (statusRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if len(args) >= 2 && args[0] == "-S" && args[1] == dockerUserChain {
+		return []byte("-P DOCKER-USER DROP\n"), nil
+	}
+	if len(args) >= 2 && args[0] == "-S" && args[1] == managedChain {
+		return []byte("-N CODEX-DOCK\n-A CODEX-DOCK -j RETURN\n"), nil
+	}
 	return nil, nil
 }
 
@@ -247,4 +273,21 @@ func (missingIptablesRunner) LookPath(file string) (string, error) {
 
 func (missingIptablesRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
 	return nil, nil
+}
+
+func TestIptablesFirewallRunOutputClassifiesRuleMissingPhrase(t *testing.T) {
+	runner := &errorRunner{
+		err:    errors.New("exit status 1"),
+		stdout: []byte("iptables: Bad rule (does a matching rule exist in that chain?)."),
+	}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+	}
+
+	_, err := fw.runOutput(context.Background(), "-C", dockerUserChain, "-j", managedChain)
+	if !errors.Is(err, ErrFirewallRuleNotFound) {
+		t.Fatalf("runOutput() err = %v; want ErrFirewallRuleNotFound", err)
+	}
 }

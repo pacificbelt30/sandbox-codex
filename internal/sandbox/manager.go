@@ -174,11 +174,15 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	}
 
 	// When a custom container user is specified, the uid may not exist in the
-	// image's /etc/passwd, causing Docker to set HOME="/".  Inject HOME=/tmp so
-	// the entrypoint can write auth files to a writable location regardless of
-	// which uid the container runs as.
+	// image's /etc/passwd, causing Docker to set HOME="/". Inject HOME to a
+	// writable non-temporary path when possible so Codex can install helper bins
+	// without PATH update warnings.
 	if opts.ContainerUser != "" {
-		env = append(env, "HOME=/tmp")
+		home := "/home/codex"
+		if !opts.ReadOnly {
+			home = "/workspace/.home"
+		}
+		env = append(env, "HOME="+home)
 	}
 
 	mounts := []mount.Mount{

@@ -32,11 +32,13 @@ type NetworkInfo struct {
 
 // FirewallInfo holds status information about dock-net firewall rules.
 type FirewallInfo struct {
-	Supported      bool
-	Root           bool
-	IptablesFound  bool
-	ChainExists    bool
-	JumpRuleExists bool
+	Supported                bool
+	Root                     bool
+	IptablesFound            bool
+	ChainExists              bool
+	JumpRuleExists           bool
+	DockerUserDefaultPolicy  string
+	ManagedChainFinalVerdict string
 }
 
 // Manager handles the lifecycle of the dock-net Docker network.
@@ -188,11 +190,13 @@ func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
 		return nil, fmt.Errorf("getting dock-net firewall status: %w", err)
 	}
 	return &FirewallInfo{
-		Supported:      st.Supported,
-		Root:           st.Root,
-		IptablesFound:  st.IptablesFound,
-		ChainExists:    st.ChainExists,
-		JumpRuleExists: st.JumpRuleExists,
+		Supported:                st.Supported,
+		Root:                     st.Root,
+		IptablesFound:            st.IptablesFound,
+		ChainExists:              st.ChainExists,
+		JumpRuleExists:           st.JumpRuleExists,
+		DockerUserDefaultPolicy:  st.DockerUserDefaultPolicy,
+		ManagedChainFinalVerdict: st.ManagedChainFinalVerdict,
 	}, nil
 }
 

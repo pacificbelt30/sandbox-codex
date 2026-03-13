@@ -42,11 +42,13 @@ type firewallController interface {
 
 // FirewallStatus represents dock-net firewall installation status.
 type FirewallStatus struct {
-	Supported      bool
-	Root           bool
-	IptablesFound  bool
-	ChainExists    bool
-	JumpRuleExists bool
+	Supported                bool
+	Root                     bool
+	IptablesFound            bool
+	ChainExists              bool
+	JumpRuleExists           bool
+	DockerUserDefaultPolicy  string
+	ManagedChainFinalVerdict string
 }
 
 type firewallConfig struct {
@@ -101,6 +103,13 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		return nil
 	}
 	if f.euid() != 0 {
+		if _, err := f.runner.LookPath("iptables"); err != nil {
+			return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
+		}
+		// Avoid noisy warnings when rules are already installed by root.
+		if st, err := f.Status(ctx, cfg); err == nil && st.ChainExists && st.JumpRuleExists {
+			return nil
+		}
 		return fmt.Errorf("%w", ErrFirewallRootRequired)
 	}
 	if _, err := f.runner.LookPath("iptables"); err != nil {
@@ -213,6 +222,15 @@ func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (Fire
 
 	if err := f.runMaybeMissing(ctx, "-S", managedChain); err == nil {
 		status.ChainExists = true
+		if out, err := f.runOutput(ctx, "-S", managedChain); err == nil {
+			status.ManagedChainFinalVerdict = managedChainFinalVerdict(out)
+		}
+	} else if !errors.Is(err, ErrFirewallChainNotFound) {
+		return status, err
+	}
+
+	if out, err := f.runMaybeMissingOutput(ctx, "-S", dockerUserChain); err == nil {
+		status.DockerUserDefaultPolicy = chainDefaultPolicy(out, dockerUserChain)
 	} else if !errors.Is(err, ErrFirewallChainNotFound) {
 		return status, err
 	}
@@ -264,6 +282,10 @@ func (f *iptablesFirewall) runMaybeMissing(ctx context.Context, args ...string) 
 	return err
 }
 
+func (f *iptablesFirewall) runMaybeMissingOutput(ctx context.Context, args ...string) ([]byte, error) {
+	return f.runOutput(ctx, args...)
+}
+
 func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byte, error) {
 	out, err := f.runner.Run(ctx, "iptables", args...)
 	if err == nil {
@@ -279,11 +301,46 @@ func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byt
 		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "bad rule"):
 		return out, ErrFirewallRuleNotFound
+	case strings.Contains(msg, "does a matching rule exist in that chain"):
+		return out, ErrFirewallRuleNotFound
+	case strings.Contains(msg, "no such file or directory"):
+		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "permission denied"):
 		return out, fmt.Errorf("iptables command failed: permission denied (run codex-dock as root): %w", err)
 	default:
 		return out, fmt.Errorf("iptables %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
+}
+
+func chainDefaultPolicy(out []byte, chain string) string {
+	prefix := "-P " + chain + " "
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
+}
+
+func managedChainFinalVerdict(out []byte) string {
+	lastJump := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "-A "+managedChain+" ") {
+			if strings.Contains(line, " -j ") {
+				lastJump = line
+			}
+		}
+	}
+	if lastJump == "" {
+		return ""
+	}
+	idx := strings.LastIndex(lastJump, " -j ")
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(lastJump[idx+4:])
 }
 
 func IsFirewallWarning(err error) bool {
