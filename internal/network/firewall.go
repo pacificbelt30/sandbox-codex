@@ -54,6 +54,8 @@ type FirewallStatus struct {
 
 type firewallConfig struct {
 	BridgeName           string
+	BridgeSubnet         string
+	AllowTCPPorts        []int
 	AllowTCPDestinations []HostEndpoint
 }
 
@@ -148,6 +150,23 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		}
 		if err := f.run(ctx, rule...); err != nil {
 			return err
+		}
+	}
+
+	if cfg.BridgeSubnet != "" {
+		for _, port := range normalizePorts(cfg.AllowTCPPorts) {
+			rule := []string{
+				"-A", managedChain,
+				"-d", cfg.BridgeSubnet,
+				"-p", "tcp",
+				"--dport", strconv.Itoa(port),
+				"-m", "comment",
+				"--comment", "codex-dock-allow-bridge-subnet",
+				"-j", "RETURN",
+			}
+			if err := f.run(ctx, rule...); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -354,6 +373,23 @@ func managedChainFinalVerdict(out []byte) string {
 
 func IsFirewallWarning(err error) bool {
 	return errors.Is(err, ErrFirewallRootRequired) || errors.Is(err, ErrFirewallIptablesNotFound)
+}
+
+func normalizePorts(ports []int) []int {
+	seen := map[int]struct{}{}
+	normalized := make([]int, 0, len(ports))
+	for _, port := range ports {
+		if port <= 0 || port > 65535 {
+			continue
+		}
+		if _, ok := seen[port]; ok {
+			continue
+		}
+		seen[port] = struct{}{}
+		normalized = append(normalized, port)
+	}
+	slices.Sort(normalized)
+	return normalized
 }
 
 func normalizeHostEndpoints(endpoints []HostEndpoint) []HostEndpoint {

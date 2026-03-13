@@ -72,6 +72,19 @@ func TestIptablesFirewallApplyNonRootNoWarningWhenStatusPermissionDenied(t *test
 	}
 }
 
+func TestNormalizePorts(t *testing.T) {
+	got := normalizePorts([]int{18080, 18080, 0, 65536, 443})
+	want := []int{443, 18080}
+	if len(got) != len(want) {
+		t.Fatalf("normalizePorts() len=%d want=%d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("normalizePorts()[%d]=%d want=%d", i, got[i], want[i])
+		}
+	}
+}
+
 func TestNormalizeHostEndpoints(t *testing.T) {
 	got := normalizeHostEndpoints([]HostEndpoint{
 		{IP: "10.0.0.5", Port: 18080},
@@ -109,7 +122,9 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 	}
 
 	err := fw.Apply(context.Background(), firewallConfig{
-		BridgeName: BridgeName,
+		BridgeName:    BridgeName,
+		BridgeSubnet:  "10.200.0.0/24",
+		AllowTCPPorts: []int{18080},
 		AllowTCPDestinations: []HostEndpoint{
 			{IP: "172.17.0.1", Port: 18080},
 		},
@@ -127,6 +142,7 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 		"iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK",
 		"iptables -F CODEX-DOCK",
 		"iptables -A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -m comment --comment codex-dock-allow-host -j RETURN",
+		"iptables -A CODEX-DOCK -d 10.200.0.0/24 -p tcp --dport 18080 -m comment --comment codex-dock-allow-bridge-subnet -j RETURN",
 		"iptables -A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment codex-dock-drop-private -j DROP",
 		"iptables -A CODEX-DOCK -j RETURN",
 	} {

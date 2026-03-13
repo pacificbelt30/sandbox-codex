@@ -357,12 +357,14 @@ func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockerne
 
 func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNet *dockernetwork.Summary) (firewallConfig, error) {
 	cfg := firewallConfig{
-		BridgeName: BridgeName,
+		BridgeName:   BridgeName,
+		BridgeSubnet: gatewaySubnet(dockNet),
 	}
 
 	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
+	cfg.AllowTCPPorts = normalizePorts(opts.AllowHostTCPPorts)
 
-	if len(opts.AllowHostTCPPorts) == 0 {
+	if len(cfg.AllowTCPPorts) == 0 {
 		return cfg, nil
 	}
 
@@ -374,7 +376,7 @@ func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNe
 		hostIPs = append(hostIPs, gateway)
 	}
 
-	for _, port := range opts.AllowHostTCPPorts {
+	for _, port := range cfg.AllowTCPPorts {
 		if port <= 0 || port > 65535 {
 			continue
 		}
@@ -413,6 +415,13 @@ func gatewayFromSummary(net *dockernetwork.Summary) string {
 		return ""
 	}
 	return gateway
+}
+
+func gatewaySubnet(net *dockernetwork.Summary) string {
+	if net == nil || len(net.IPAM.Config) == 0 {
+		return ""
+	}
+	return net.IPAM.Config[0].Subnet
 }
 
 func AllowHostEndpoint(rawURL string) (HostEndpoint, bool) {
