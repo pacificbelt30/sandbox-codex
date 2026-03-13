@@ -101,7 +101,7 @@ func (p *Proxy) Start() error {
 	if addr == "" {
 		addr = "0.0.0.0:0"
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("starting auth proxy: %w", err)
 	}
@@ -480,7 +480,7 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "calling OAuth endpoint: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -585,9 +585,11 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 
 	var upstreamConn net.Conn
 	if useTLS {
-		upstreamConn, err = tls.Dial("tcp", host, &tls.Config{ServerName: targetURL.Hostname()})
+		d := &tls.Dialer{Config: &tls.Config{ServerName: targetURL.Hostname()}}
+		upstreamConn, err = d.DialContext(r.Context(), "tcp", host)
 	} else {
-		upstreamConn, err = net.Dial("tcp", host)
+		d := &net.Dialer{}
+		upstreamConn, err = d.DialContext(r.Context(), "tcp", host)
 	}
 	if err != nil {
 		http.Error(w, "connecting to upstream WebSocket: "+err.Error(), http.StatusBadGateway)
@@ -790,7 +792,7 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	for k, vv := range resp.Header {
 		for _, v := range vv {

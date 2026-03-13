@@ -27,7 +27,7 @@ var psCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tSTATUS\tUPTIME\tBRANCH\tTASK\tIMAGE")
+		_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tUPTIME\tBRANCH\tTASK\tIMAGE")
 		for _, wk := range workers {
 			uptime := "-"
 			if wk.StartedAt != nil {
@@ -41,7 +41,7 @@ var psCmd = &cobra.Command{
 			if task == "" {
 				task = "(interactive)"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				wk.Name, statusIcon(wk.Status)+wk.Status, uptime, branch, truncate(task, 30), wk.Image)
 		}
 		return w.Flush()

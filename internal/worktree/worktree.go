@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -52,7 +53,7 @@ func Create(opts CreateOptions) (string, error) {
 		args = append(args, opts.Branch)
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(context.Background(), "git", args...)
 	cmd.Dir = projectAbs
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -79,7 +80,7 @@ func Remove(wtPath string) error {
 		return os.RemoveAll(wtAbs)
 	}
 
-	cmd := exec.Command("git", "worktree", "remove", "--force", wtAbs)
+	cmd := exec.CommandContext(context.Background(), "git", "worktree", "remove", "--force", wtAbs)
 	cmd.Dir = mainRepo
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -89,7 +90,7 @@ func Remove(wtPath string) error {
 
 // List returns all worktrees for a given project directory.
 func List(projectDir string) ([]string, error) {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd := exec.CommandContext(context.Background(), "git", "worktree", "list", "--porcelain")
 	cmd.Dir = projectDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -106,14 +107,14 @@ func List(projectDir string) ([]string, error) {
 }
 
 func verifyGitRepo(dir string) error {
-	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", "--is-inside-work-tree")
 	cmd.Dir = dir
 	return cmd.Run()
 }
 
 func findMainRepo(wtPath string) (string, error) {
 	// git rev-parse --git-common-dir gives us the common git dir
-	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
+	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", "--git-common-dir")
 	cmd.Dir = wtPath
 	out, err := cmd.Output()
 	if err != nil {

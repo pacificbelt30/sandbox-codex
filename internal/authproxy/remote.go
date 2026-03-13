@@ -55,7 +55,7 @@ func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("issue token failed: status %d", resp.StatusCode)
 	}
@@ -96,7 +96,7 @@ func (r *RemoteProxy) fetchOAuthMode() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("connecting remote auth proxy (%s): %w%s", r.adminURL, err, connectionHint(err))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("checking remote auth proxy mode failed: status %d", resp.StatusCode)
 	}

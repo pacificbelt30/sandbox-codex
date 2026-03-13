@@ -394,7 +394,7 @@ func (m *Manager) Logs(opts LogOptions) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	out := opts.Output
 	if out == nil {

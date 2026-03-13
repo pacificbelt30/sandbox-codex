@@ -150,7 +150,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("auto-build: %w", err)
 		}
-		if err := executeBuild(runOpts.Image, dockerfile, buildCtx); err != nil {
+		if err := executeBuild(cmd.Context(), runOpts.Image, dockerfile, buildCtx); err != nil {
 			return fmt.Errorf("auto-build: %w", err)
 		}
 	}

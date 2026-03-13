@@ -10,6 +10,7 @@ import (
 // Config holds all codex-dock configuration.
 type Config struct {
 	DefaultImage    string `mapstructure:"default_image"`
+	ProxyImage      string `mapstructure:"proxy_image"`
 	DefaultTokenTTL int    `mapstructure:"default_token_ttl"`
 	NetworkName     string `mapstructure:"network_name"`
 	Verbose         bool   `mapstructure:"verbose"`
@@ -29,6 +30,7 @@ func Load() (*Config, error) {
 
 	// Defaults
 	viper.SetDefault("default_image", "codex-dock:latest")
+	viper.SetDefault("proxy_image", "codex-dock-proxy:latest")
 	viper.SetDefault("default_token_ttl", 3600)
 	viper.SetDefault("network_name", "dock-net")
 
@@ -46,6 +48,7 @@ func Load() (*Config, error) {
 func defaultConfig() *Config {
 	return &Config{
 		DefaultImage:    "codex-dock:latest",
+		ProxyImage:      "codex-dock-proxy:latest",
 		DefaultTokenTTL: 3600,
 		NetworkName:     "dock-net",
 	}

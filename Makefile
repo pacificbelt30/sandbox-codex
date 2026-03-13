@@ -3,6 +3,7 @@
 BINARY      := codex-dock
 MODULE      := github.com/pacificbelt30/codex-dock
 IMAGE       := codex-dock:latest
+PROXY_IMAGE := codex-dock-proxy:latest
 PREFIX      ?= /usr/local
 BINDIR      := $(PREFIX)/bin
 # When invoked with sudo, use the original user's home instead of /root
@@ -13,10 +14,10 @@ CONFIG_FILE := $(CONFIG_DIR)/config.toml
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build install install-config install-all docker uninstall clean test lint vet tidy help
+.PHONY: all build install install-config install-all docker proxy-docker uninstall clean test lint vet tidy help
 
-## all: build binary and Docker image
-all: build docker
+## all: build binary and Docker images
+all: build docker proxy-docker
 
 ## build: compile the binary for the current platform
 build:
@@ -45,6 +46,11 @@ install-all: install install-config
 docker:
 	docker build -t $(IMAGE) -f docker/Dockerfile docker/
 	@echo "Docker image built: $(IMAGE)"
+
+## proxy-docker: build the auth proxy Docker image
+proxy-docker:
+	docker build -t $(PROXY_IMAGE) -f docker/auth-proxy.Dockerfile .
+	@echo "Proxy image built: $(PROXY_IMAGE)"
 
 ## uninstall: remove the installed binary
 uninstall:
