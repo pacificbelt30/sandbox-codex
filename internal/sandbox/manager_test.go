@@ -222,6 +222,17 @@ func TestBuildHostConfig_NetworkMode(t *testing.T) {
 	}
 }
 
+func TestBuildHostConfig_ProxyHostGatewayFallback(t *testing.T) {
+	hc := buildHostConfig(nil)
+	want := "codex-auth-proxy:host-gateway"
+	for _, h := range hc.ExtraHosts {
+		if h == want {
+			return
+		}
+	}
+	t.Errorf("ExtraHosts = %v; missing %q", hc.ExtraHosts, want)
+}
+
 func TestBuildHostConfig_ReadOnly(t *testing.T) {
 	mounts := []mount.Mount{
 		{Type: mount.TypeBind, Source: "/tmp", Target: "/workspace"},

@@ -493,6 +493,11 @@ func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
 	return &container.HostConfig{
 		NetworkMode: container.NetworkMode(sandboxNetName),
 		Mounts:      mounts,
+		// Resolve codex-auth-proxy to the Docker host gateway as a fallback.
+		// This makes the default --proxy-container-url work when the auth proxy
+		// is started as a local host process (codex-dock proxy serve) while still
+		// allowing Docker-network DNS when applicable.
+		ExtraHosts: []string{"codex-auth-proxy:host-gateway"},
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 		Resources: container.Resources{
