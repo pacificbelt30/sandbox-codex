@@ -32,6 +32,7 @@ var (
 	ErrFirewallIptablesNotFound = errors.New("iptables not found")
 	ErrFirewallRuleNotFound     = errors.New("iptables rule not found")
 	ErrFirewallChainNotFound    = errors.New("iptables chain not found")
+	ErrFirewallPermissionDenied = errors.New("iptables permission denied")
 )
 
 type firewallController interface {
@@ -42,15 +43,19 @@ type firewallController interface {
 
 // FirewallStatus represents dock-net firewall installation status.
 type FirewallStatus struct {
-	Supported      bool
-	Root           bool
-	IptablesFound  bool
-	ChainExists    bool
-	JumpRuleExists bool
+	Supported                bool
+	Root                     bool
+	IptablesFound            bool
+	ChainExists              bool
+	JumpRuleExists           bool
+	DockerUserDefaultPolicy  string
+	ManagedChainFinalVerdict string
 }
 
 type firewallConfig struct {
 	BridgeName           string
+	BridgeSubnet         string
+	AllowTCPPorts        []int
 	AllowTCPDestinations []HostEndpoint
 }
 
@@ -101,6 +106,19 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		return nil
 	}
 	if f.euid() != 0 {
+		if _, err := f.runner.LookPath("iptables"); err != nil {
+			return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
+		}
+		// Avoid noisy warnings when rules are already installed by root.
+		if st, err := f.Status(ctx, cfg); err == nil {
+			if st.ChainExists && st.JumpRuleExists {
+				return nil
+			}
+		} else if errors.Is(err, ErrFirewallPermissionDenied) {
+			// Some environments disallow non-root iptables reads.
+			// Do not emit false root-required warnings in that case.
+			return nil
+		}
 		return fmt.Errorf("%w", ErrFirewallRootRequired)
 	}
 	if _, err := f.runner.LookPath("iptables"); err != nil {
@@ -132,6 +150,23 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		}
 		if err := f.run(ctx, rule...); err != nil {
 			return err
+		}
+	}
+
+	if cfg.BridgeSubnet != "" {
+		for _, port := range normalizePorts(cfg.AllowTCPPorts) {
+			rule := []string{
+				"-A", managedChain,
+				"-d", cfg.BridgeSubnet,
+				"-p", "tcp",
+				"--dport", strconv.Itoa(port),
+				"-m", "comment",
+				"--comment", "codex-dock-allow-bridge-subnet",
+				"-j", "RETURN",
+			}
+			if err := f.run(ctx, rule...); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -213,6 +248,15 @@ func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (Fire
 
 	if err := f.runMaybeMissing(ctx, "-S", managedChain); err == nil {
 		status.ChainExists = true
+		if out, err := f.runOutput(ctx, "-S", managedChain); err == nil {
+			status.ManagedChainFinalVerdict = managedChainFinalVerdict(out)
+		}
+	} else if !errors.Is(err, ErrFirewallChainNotFound) {
+		return status, err
+	}
+
+	if out, err := f.runMaybeMissingOutput(ctx, "-S", dockerUserChain); err == nil {
+		status.DockerUserDefaultPolicy = chainDefaultPolicy(out, dockerUserChain)
 	} else if !errors.Is(err, ErrFirewallChainNotFound) {
 		return status, err
 	}
@@ -264,6 +308,10 @@ func (f *iptablesFirewall) runMaybeMissing(ctx context.Context, args ...string) 
 	return err
 }
 
+func (f *iptablesFirewall) runMaybeMissingOutput(ctx context.Context, args ...string) ([]byte, error) {
+	return f.runOutput(ctx, args...)
+}
+
 func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byte, error) {
 	out, err := f.runner.Run(ctx, "iptables", args...)
 	if err == nil {
@@ -279,15 +327,69 @@ func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byt
 		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "bad rule"):
 		return out, ErrFirewallRuleNotFound
+	case strings.Contains(msg, "does a matching rule exist in that chain"):
+		return out, ErrFirewallRuleNotFound
+	case strings.Contains(msg, "chain '") && strings.Contains(msg, "does not exist"):
+		return out, ErrFirewallChainNotFound
+	case strings.Contains(msg, "no such file or directory"):
+		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "permission denied"):
-		return out, fmt.Errorf("iptables command failed: permission denied (run codex-dock as root): %w", err)
+		return out, fmt.Errorf("%w: iptables command failed: permission denied (run codex-dock as root): %w", ErrFirewallPermissionDenied, err)
 	default:
 		return out, fmt.Errorf("iptables %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 }
 
+func chainDefaultPolicy(out []byte, chain string) string {
+	prefix := "-P " + chain + " "
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
+}
+
+func managedChainFinalVerdict(out []byte) string {
+	lastJump := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "-A "+managedChain+" ") {
+			if strings.Contains(line, " -j ") {
+				lastJump = line
+			}
+		}
+	}
+	if lastJump == "" {
+		return ""
+	}
+	idx := strings.LastIndex(lastJump, " -j ")
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(lastJump[idx+4:])
+}
+
 func IsFirewallWarning(err error) bool {
 	return errors.Is(err, ErrFirewallRootRequired) || errors.Is(err, ErrFirewallIptablesNotFound)
+}
+
+func normalizePorts(ports []int) []int {
+	seen := map[int]struct{}{}
+	normalized := make([]int, 0, len(ports))
+	for _, port := range ports {
+		if port <= 0 || port > 65535 {
+			continue
+		}
+		if _, ok := seen[port]; ok {
+			continue
+		}
+		seen[port] = struct{}{}
+		normalized = append(normalized, port)
+	}
+	slices.Sort(normalized)
+	return normalized
 }
 
 func normalizeHostEndpoints(endpoints []HostEndpoint) []HostEndpoint {

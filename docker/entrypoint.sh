@@ -7,6 +7,19 @@ log() {
     echo "[codex-dock] $*" >&2
 }
 
+
+resolve_codex_home() {
+    local candidate
+    for candidate in "${HOME:-}" "/var/tmp/codex-home" "/tmp/codex-home"; do
+        [[ -z "$candidate" ]] && continue
+        if mkdir -p "$candidate" 2>/dev/null && [[ -w "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    echo "/tmp"
+}
+
 # ── Package installation ────────────────────────────────────────────────────
 if [[ -n "${CODEX_INSTALL_SCRIPT:-}" ]]; then
     log "Installing packages..."
@@ -15,7 +28,7 @@ fi
 
 # ── Auth token acquisition ──────────────────────────────────────────────────
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
-    log "Fetching credentials from Auth Proxy..."
+    log "Fetching credentials from Auth Proxy (${CODEX_AUTH_PROXY_URL})..."
     ORIGINAL_CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_URL}"
 
     fetch_token() {
@@ -69,7 +82,8 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
         # Use $HOME so the correct directory is used regardless of which uid the
         # container runs as (codex-dock --user flag).  Falls back to /home/codex
         # when HOME is unset (image default behaviour).
-        CODEX_HOME="${HOME:-/home/codex}"
+        CODEX_HOME="$(resolve_codex_home)"
+        export HOME="${CODEX_HOME}"
         mkdir -p "${CODEX_HOME}/.codex"
         python3 -c "
 import sys, json
