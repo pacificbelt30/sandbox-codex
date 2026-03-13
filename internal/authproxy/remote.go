@@ -2,6 +2,7 @@ package authproxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -39,7 +40,7 @@ func (r *RemoteProxy) IsOAuthMode() bool         { return r.oauthMode }
 
 func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, error) {
 	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec})
-	req, err := http.NewRequest(http.MethodPost, r.adminURL+"/admin/issue", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.adminURL+"/admin/issue", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -67,7 +68,7 @@ func (r *RemoteProxy) RevokeToken(containerName string) {
 	q := u.Query()
 	q.Set("container", containerName)
 	u.RawQuery = q.Encode()
-	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, u.String(), nil)
 	if err != nil {
 		return
 	}
@@ -81,7 +82,7 @@ func (r *RemoteProxy) RevokeToken(containerName string) {
 }
 
 func (r *RemoteProxy) fetchOAuthMode() (bool, error) {
-	req, err := http.NewRequest(http.MethodGet, r.adminURL+"/admin/mode", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.adminURL+"/admin/mode", nil)
 	if err != nil {
 		return false, err
 	}
