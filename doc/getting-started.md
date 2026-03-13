@@ -18,7 +18,49 @@ codex-dock のインストールから最初のコンテナ起動までの手順
 
 ## インストール
 
-### ソースからビルド
+### Makefile を使う（推奨）
+
+Makefile を使うと、バイナリのビルド・インストール・デフォルト設定ファイルの配置・Docker イメージの作成をまとめて行えます。
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/pacificbelt30/codex-dock.git
+cd codex-dock
+
+# バイナリをビルドし、codex-dock:latest イメージを作成
+make all
+
+# バイナリを /usr/local/bin に配置し、デフォルト設定を ~/.config/codex-dock/config.toml に配置
+sudo make install-all
+```
+
+上記 3 ステップで以下がすべて完了します：
+
+| 完了する内容 | 場所 |
+|---|---|
+| バイナリ配置 | `/usr/local/bin/codex-dock` |
+| デフォルト設定 | `~/.config/codex-dock/config.toml` |
+| サンドボックスイメージ | `codex-dock:latest`（Docker） |
+
+> **注意**: `sudo make install-all` は `$SUDO_USER` を参照して実行ユーザーのホームディレクトリを特定するため、config は `/root/.config/` ではなく `~/config/codex-dock/` に配置されます。
+
+インストール先を変更したい場合：
+
+```bash
+sudo make install PREFIX=/opt/codex-dock
+```
+
+ステップごとに個別実行することもできます：
+
+```bash
+make build          # バイナリのみビルド
+make docker         # Docker イメージのみビルド
+make install-config # 設定ファイルのみ配置（既存ならスキップ）
+make uninstall      # バイナリをアンインストール
+make clean          # ビルド成果物を削除
+```
+
+### ソースからビルド（手動）
 
 ```bash
 # リポジトリをクローン

@@ -52,7 +52,49 @@ go install github.com/pacificbelt30/codex-dock@latest
 
 インストール後、`$(go env GOPATH)/bin` が `PATH` に含まれていることを確認してください。
 
-### ソースからビルド
+### Makefile を使う（ソースから一括セットアップ）
+
+バイナリのインストール・デフォルト設定ファイルの配置・サンドボックスイメージのビルドを一括で行えます。
+
+```bash
+git clone https://github.com/pacificbelt30/codex-dock.git
+cd codex-dock
+
+# バイナリ + 設定ファイル + Docker イメージをまとめてセットアップ
+make all             # バイナリをビルドし codex-dock:latest イメージを作成
+sudo make install    # /usr/local/bin にバイナリを配置
+make install-config  # ~/.config/codex-dock/config.toml を配置（既存の場合はスキップ）
+```
+
+または `install-all` で binary + config を一括インストール：
+
+```bash
+sudo make install-all
+```
+
+インストール先を変更したい場合は `PREFIX` を指定します：
+
+```bash
+sudo make install PREFIX=/opt/codex-dock
+```
+
+主要な Make ターゲット一覧：
+
+| ターゲット | 内容 |
+|---|---|
+| `make build` | 現在のプラットフォーム向けにバイナリをビルド |
+| `make install` | `$(PREFIX)/bin`（デフォルト `/usr/local/bin`）にバイナリを配置 |
+| `make install-config` | `~/.config/codex-dock/config.toml` にデフォルト設定を配置 |
+| `make install-all` | `install` + `install-config` を一括実行 |
+| `make docker` | `codex-dock:latest` Docker イメージをビルド |
+| `make all` | `build` + `docker`（デフォルトターゲット） |
+| `make build-all` | darwin/arm64・darwin/amd64・linux/arm64 のクロスコンパイル |
+| `make test` | テストスイートを実行（race detector + coverage） |
+| `make lint` | golangci-lint を実行 |
+| `make uninstall` | インストール済みバイナリを削除 |
+| `make clean` | ビルド成果物を削除 |
+
+### ソースからビルド（手動）
 
 ```bash
 git clone https://github.com/pacificbelt30/codex-dock.git

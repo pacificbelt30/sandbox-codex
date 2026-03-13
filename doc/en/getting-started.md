@@ -18,7 +18,49 @@ This guide walks you through installing codex-dock and launching your first cont
 
 ## Installation
 
-### Build from Source
+### Using Makefile (Recommended)
+
+The Makefile lets you build the binary, install it, place the default config file, and build the Docker image all at once.
+
+```bash
+# Clone the repository
+git clone https://github.com/pacificbelt30/codex-dock.git
+cd codex-dock
+
+# Build the binary and the codex-dock:latest image
+make all
+
+# Install the binary to /usr/local/bin and place the default config
+sudo make install-all
+```
+
+The above steps complete the following:
+
+| What | Where |
+|---|---|
+| Binary | `/usr/local/bin/codex-dock` |
+| Default config | `~/.config/codex-dock/config.toml` |
+| Sandbox image | `codex-dock:latest` (Docker) |
+
+> **Note**: `sudo make install-all` detects the invoking user's home directory via `$SUDO_USER`, so the config is placed under your home (`~/.config/codex-dock/`), not `/root/.config/`.
+
+To install to a custom location:
+
+```bash
+sudo make install PREFIX=/opt/codex-dock
+```
+
+You can also run targets individually:
+
+```bash
+make build          # build binary only
+make docker         # build Docker image only
+make install-config # place config only (skipped if already exists)
+make uninstall      # remove installed binary
+make clean          # remove build artifacts
+```
+
+### Build from Source (Manual)
 
 ```bash
 # Clone the repository
