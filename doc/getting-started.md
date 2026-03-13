@@ -186,8 +186,13 @@ codex-dock auth show
 
 ```bash
 # カレントディレクトリを /workspace にマウントして Codex を起動
-codex-dock run
+codex-dock run --user current --approval-mode full-auto
 ```
+
+`--user current` を付けると、ホスト側の現在ユーザーと同じ uid:gid でコンテナを起動できます。
+生成されるファイルの所有者がずれにくいため、通常はこの指定を推奨します。
+
+`--approval-mode full-auto` は現在の推奨設定です。旧 `--full-auto` フラグは非推奨です。
 
 **実行時に行われること：**
 
@@ -221,8 +226,9 @@ codex-dock run
 
 ```bash
 codex-dock run \
+  --user current \
+  --approval-mode full-auto \
   --task "src/auth.go のユニットテストを追加してください" \
-  --full-auto \
   --detach
 ```
 
@@ -239,6 +245,8 @@ codex-dock logs codex-brave-atlas --tail 50
 
 ```bash
 codex-dock run \
+  --user current \
+  --approval-mode full-auto \
   --worktree \
   --branch feature-auth \
   --new-branch \
@@ -251,7 +259,7 @@ codex-dock run \
 
 ```bash
 # 3 つのブランチで並列実行
-codex-dock run --parallel 3 --worktree --detach
+codex-dock run --user current --approval-mode full-auto --parallel 3 --worktree --detach
 ```
 
 TUI で全ワーカーを監視：
