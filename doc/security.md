@@ -99,7 +99,7 @@ codex-dock のセキュリティは **「コンテナに秘密情報を直接渡
 | ID | 問題 | 影響度 | 詳細 |
 |---|---|---|---|
 | NF-SEC-01 | Auth Proxy が平文 HTTP 通信 | 高 | TLS または UNIX ソケットが未実装。同一ホスト上の Docker 内部通信のみで使用することを想定 |
-| F-NET-02 | コンテナ→ホスト通信の遮断は Linux 依存 | 中 | Linux では `DOCKER-USER` + `iptables` で private/link-local 宛を遮断。root 権限が必要。macOS / Windows は未実装 |
+| F-NET-02 | コンテナ→ホスト通信の遮断は Linux 依存 | 中 | Linux では `DOCKER-USER` + `iptables` で private/link-local 宛を遮断。`run` は失敗時 Warning で継続し、`firewall create` で明示適用可能。macOS / Windows は未実装 |
 | F-AUTH-06 | コンテナ ID による照合なし | 中 | トークンはコンテナ名と紐付けられているが、コンテナ ID との照合なし |
 
 ---

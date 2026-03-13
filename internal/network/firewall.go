@@ -27,6 +27,13 @@ var blockedPrivateCIDRs = []string{
 	"127.0.0.0/8",
 }
 
+var (
+	ErrFirewallRootRequired     = errors.New("dock-net firewall rules require root on Linux")
+	ErrFirewallIptablesNotFound = errors.New("iptables not found")
+	ErrFirewallRuleNotFound     = errors.New("iptables rule not found")
+	ErrFirewallChainNotFound    = errors.New("iptables chain not found")
+)
+
 type firewallController interface {
 	Apply(ctx context.Context, cfg firewallConfig) error
 	Remove(ctx context.Context, cfg firewallConfig) error
@@ -84,10 +91,10 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		return nil
 	}
 	if f.euid() != 0 {
-		return fmt.Errorf("applying dock-net firewall rules requires root on Linux")
+		return fmt.Errorf("%w", ErrFirewallRootRequired)
 	}
 	if _, err := f.runner.LookPath("iptables"); err != nil {
-		return fmt.Errorf("iptables is required on Linux to protect dock-net egress: %w", err)
+		return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
 	}
 
 	if err := f.ensureChain(ctx, dockerUserChain); err != nil {
@@ -145,16 +152,16 @@ func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error
 		return nil
 	}
 	if f.euid() != 0 {
-		return fmt.Errorf("removing dock-net firewall rules requires root on Linux")
+		return fmt.Errorf("%w", ErrFirewallRootRequired)
 	}
 	if _, err := f.runner.LookPath("iptables"); err != nil {
-		return fmt.Errorf("iptables is required on Linux to protect dock-net egress: %w", err)
+		return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
 	}
 
 	rule := []string{"-i", cfg.BridgeName, "-j", managedChain}
 	for {
 		if err := f.deleteRule(ctx, dockerUserChain, rule); err != nil {
-			if errors.Is(err, errRuleNotFound) || errors.Is(err, errChainNotFound) {
+			if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
 				break
 			}
 			return err
@@ -162,26 +169,21 @@ func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error
 	}
 
 	if err := f.runMaybeMissing(ctx, "-F", managedChain); err != nil {
-		if !errors.Is(err, errChainNotFound) {
+		if !errors.Is(err, ErrFirewallChainNotFound) {
 			return err
 		}
 	}
 	if err := f.runMaybeMissing(ctx, "-X", managedChain); err != nil {
-		if !errors.Is(err, errChainNotFound) {
+		if !errors.Is(err, ErrFirewallChainNotFound) {
 			return err
 		}
 	}
 	return nil
 }
 
-var (
-	errRuleNotFound  = errors.New("iptables rule not found")
-	errChainNotFound = errors.New("iptables chain not found")
-)
-
 func (f *iptablesFirewall) ensureChain(ctx context.Context, chain string) error {
 	if err := f.runMaybeMissing(ctx, "-S", chain); err != nil {
-		if !errors.Is(err, errChainNotFound) {
+		if !errors.Is(err, ErrFirewallChainNotFound) {
 			return err
 		}
 		return f.run(ctx, "-N", chain)
@@ -193,7 +195,7 @@ func (f *iptablesFirewall) ensureRule(ctx context.Context, chain string, rule []
 	checkArgs := append([]string{"-C", chain}, rule...)
 	if err := f.runMaybeMissing(ctx, checkArgs...); err == nil {
 		return nil
-	} else if !errors.Is(err, errRuleNotFound) {
+	} else if !errors.Is(err, ErrFirewallRuleNotFound) {
 		return err
 	}
 
@@ -221,21 +223,25 @@ func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byt
 	if err == nil {
 		return out, nil
 	}
-	if errors.Is(err, errRuleNotFound) || errors.Is(err, errChainNotFound) {
+	if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
 		return out, err
 	}
 
 	msg := strings.ToLower(string(bytes.TrimSpace(out)))
 	switch {
 	case strings.Contains(msg, "no chain/target/match by that name"):
-		return out, errChainNotFound
+		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "bad rule"):
-		return out, errRuleNotFound
+		return out, ErrFirewallRuleNotFound
 	case strings.Contains(msg, "permission denied"):
 		return out, fmt.Errorf("iptables command failed: permission denied (run codex-dock as root): %w", err)
 	default:
 		return out, fmt.Errorf("iptables %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
+}
+
+func IsFirewallWarning(err error) bool {
+	return errors.Is(err, ErrFirewallRootRequired) || errors.Is(err, ErrFirewallIptablesNotFound)
 }
 
 func normalizeHostEndpoints(endpoints []HostEndpoint) []HostEndpoint {

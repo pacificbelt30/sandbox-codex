@@ -7,6 +7,43 @@ import (
 	"testing"
 )
 
+func TestIsFirewallWarning(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "root required", err: ErrFirewallRootRequired, want: true},
+		{name: "iptables missing", err: ErrFirewallIptablesNotFound, want: true},
+		{name: "wrapped root", err: errors.New("noop"), want: true},
+		{name: "rule not found", err: ErrFirewallRuleNotFound, want: false},
+		{name: "nil", err: nil, want: false},
+	}
+
+	tests[2].err = errors.Join(errors.New("wrapped"), ErrFirewallRootRequired)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsFirewallWarning(tt.err); got != tt.want {
+				t.Fatalf("IsFirewallWarning(%v)=%v want=%v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIptablesFirewallApplyReturnsRootRequiredOnLinux(t *testing.T) {
+	fw := &iptablesFirewall{
+		runner:  &stubIptablesRunner{},
+		isLinux: func() bool { return true },
+		euid:    func() int { return 1000 },
+	}
+
+	err := fw.Apply(context.Background(), firewallConfig{BridgeName: BridgeName})
+	if !errors.Is(err, ErrFirewallRootRequired) {
+		t.Fatalf("Apply() err=%v want ErrFirewallRootRequired", err)
+	}
+}
+
 func TestNormalizeHostEndpoints(t *testing.T) {
 	got := normalizeHostEndpoints([]HostEndpoint{
 		{IP: "10.0.0.5", Port: 18080},
@@ -34,7 +71,7 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 	runner := &stubIptablesRunner{
 		chainErrors: map[string]error{
 			dockerUserChain: nil,
-			managedChain:    errChainNotFound,
+			managedChain:    ErrFirewallChainNotFound,
 		},
 	}
 	fw := &iptablesFirewall{
@@ -88,7 +125,7 @@ func (s *stubIptablesRunner) Run(_ context.Context, name string, args ...string)
 		}
 	}
 	if len(args) >= 2 && args[0] == "-C" {
-		return nil, errRuleNotFound
+		return nil, ErrFirewallRuleNotFound
 	}
 	return nil, nil
 }
@@ -121,10 +158,10 @@ func (r *removeRunner) LookPath(file string) (string, error) {
 func (r *removeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
 	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
 	if len(args) >= 1 && args[0] == "-D" {
-		return nil, errRuleNotFound
+		return nil, ErrFirewallRuleNotFound
 	}
 	if len(args) >= 2 && (args[0] == "-F" || args[0] == "-X") {
-		return nil, errChainNotFound
+		return nil, ErrFirewallChainNotFound
 	}
 	return nil, nil
 }
@@ -141,8 +178,8 @@ func TestIptablesFirewallRunOutputClassifiesErrors(t *testing.T) {
 	}
 
 	_, err := fw.runOutput(context.Background(), "-C", managedChain, "-j", "RETURN")
-	if !errors.Is(err, errRuleNotFound) {
-		t.Fatalf("runOutput() err = %v; want errRuleNotFound", err)
+	if !errors.Is(err, ErrFirewallRuleNotFound) {
+		t.Fatalf("runOutput() err = %v; want ErrFirewallRuleNotFound", err)
 	}
 }
 
