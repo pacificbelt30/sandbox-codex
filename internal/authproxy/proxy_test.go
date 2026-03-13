@@ -1575,3 +1575,19 @@ func TestRemoteProxy_IssueToken(t *testing.T) {
 	}
 	r.RevokeToken("worker-r1")
 }
+
+func TestConnectionHint_ConnectionRefused(t *testing.T) {
+	err := &net.OpError{Err: fmt.Errorf("connect: connection refused")}
+	hint := connectionHint(err)
+	if !strings.Contains(hint, "auth proxy is not running") {
+		t.Fatalf("hint = %q; want startup guidance", hint)
+	}
+}
+
+func TestConnectionHint_NonConnectionRefused(t *testing.T) {
+	err := &net.OpError{Err: fmt.Errorf("i/o timeout")}
+	hint := connectionHint(err)
+	if hint != "" {
+		t.Fatalf("hint = %q; want empty", hint)
+	}
+}

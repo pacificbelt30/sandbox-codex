@@ -110,12 +110,17 @@ sudo mv codex-dock /usr/local/bin/
 ## Quick Start
 
 ```bash
-# 0. Auth Proxy を Docker コンテナとして起動（固定ポート 18080）
+# 0. Auth Proxy を起動（必須）
+codex-dock network create
+
 docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
 docker run -d --name codex-auth-proxy --network dock-net \
   -p 127.0.0.1:18080:18080 \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
   codex-dock-auth-proxy:latest
+
+# （代替）ローカルプロセスで起動
+# codex-dock proxy serve --listen 0.0.0.0:18080
 
 # 1. サンドボックスイメージをビルド
 codex-dock build
@@ -142,6 +147,9 @@ codex-dock ui
 
 `codex-dock run` は外部 Auth Proxy（デフォルト `http://127.0.0.1:18080`）へ接続します。
 必要に応じて `--proxy-admin-url` / `--proxy-container-url` / `--proxy-admin-secret` を指定してください。
+
+`connecting external auth proxy: connecting remote auth proxy ... connect: connection refused`
+が出る場合は Auth Proxy が未起動です。先に上記の Step 0 を実行してください。
 
 > **詳細な手順は [doc/getting-started.md](doc/getting-started.md) を参照してください。**
 
