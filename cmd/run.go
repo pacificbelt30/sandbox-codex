@@ -13,6 +13,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/worktree"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // userMode is the raw value of --user before resolution.
@@ -74,14 +75,17 @@ func init() {
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start an interactive bash shell instead of Codex")
-	f.StringVar(&userMode, "user", "", `User to run as inside the container.
-  ""        image default (uid:1001 codex user)
-  "current" current command user (uid:gid)
-  "dir"     project directory owner (uid:gid)
-  "uid"     explicit uid (e.g. "1000" or "1000:1000")`)
+	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
+	  "current" current command user (uid:gid, default)
+	  "codex"   codex user in image (uid:1001)
+	  ""        image default user
+	  "dir"     project directory owner (uid:gid)
+	  "uid"     explicit uid (e.g. "1000" or "1000:1000")`)
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {
+	applyRunConfigDefaults(cmd)
+
 	// Resolve project directory
 	projectDir, err := resolveProjectDir(runOpts.ProjectDir)
 	if err != nil {
@@ -171,6 +175,34 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+func applyRunConfigDefaults(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	if !flags.Changed("image") {
+		if v := viper.GetString("run.image"); v != "" {
+			runOpts.Image = v
+		} else if v := viper.GetString("default_image"); v != "" {
+			runOpts.Image = v
+		}
+	}
+
+	if !flags.Changed("token-ttl") {
+		if viper.IsSet("run.token_ttl") {
+			runOpts.TokenTTL = viper.GetInt("run.token_ttl")
+		} else if viper.IsSet("default_token_ttl") {
+			runOpts.TokenTTL = viper.GetInt("default_token_ttl")
+		}
+	}
+
+	if !flags.Changed("approval-mode") && viper.IsSet("run.approval_mode") {
+		approvalModeFlag = viper.GetString("run.approval_mode")
+	}
+
+	if !flags.Changed("user") && viper.IsSet("run.user") {
+		userMode = viper.GetString("run.user")
+	}
 }
 
 func allowedHostPort(rawURL string) (int, bool) {
@@ -307,6 +339,7 @@ func resolveProjectDir(dir string) (string, error) {
 //
 //	""        → "" (use image default)
 //	"current" → "<uid>:<gid>" of the process running this command
+//	"codex"   → "1001:1001" (codex user used by the default image)
 //	"dir"     → "<uid>:<gid>" of the owner of projectDir
 //	anything else is returned as-is (e.g. "1000", "1000:1000")
 func resolveContainerUser(mode, projectDir string) (string, error) {
@@ -317,6 +350,8 @@ func resolveContainerUser(mode, projectDir string) (string, error) {
 		uid := syscall.Getuid()
 		gid := syscall.Getgid()
 		return fmt.Sprintf("%d:%d", uid, gid), nil
+	case "codex":
+		return "1001:1001", nil
 	case "dir":
 		info, err := os.Stat(projectDir)
 		if err != nil {

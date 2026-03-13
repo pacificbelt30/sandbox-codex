@@ -5,6 +5,12 @@
 codex-dock の設定は `~/.config/codex-dock/config.toml` に記述します。
 TOML 形式で、コマンドラインフラグのデフォルト値を変更できます。
 
+設定ファイルがまだない場合は、最初に次を実行してください。
+
+```bash
+make install-config
+```
+
 ---
 
 ## 設定ファイルの場所
@@ -36,6 +42,8 @@ TOML 形式で、コマンドラインフラグのデフォルト値を変更で
 ---
 
 ## 設定項目一覧
+
+> すべての設定キーは [`configs/config.toml.example`](../configs/config.toml.example) にまとまっています。
 
 ### `default_image`
 
@@ -85,6 +93,100 @@ default_token_ttl = 28800
 
 > **セキュリティ**: TTL を短くするほど、トークンが漏洩した際のリスクが下がります。
 > 通常の作業では 1〜2 時間程度が推奨されます。
+
+---
+
+### `proxy_image`
+
+Auth Proxy コンテナに使用する Docker イメージのデフォルト値。
+
+```toml
+proxy_image = "codex-dock-proxy:latest"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"codex-dock-proxy:latest"` |
+| 対応箇所 | `proxy build`, `proxy run` |
+| 環境変数 | `CODEX_DOCK_PROXY_IMAGE` |
+
+---
+
+### `run.image`
+
+`codex-dock run --image` のデフォルト値を指定します。
+
+```toml
+[run]
+image = "codex-dock:latest"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | 未設定（`default_image` を参照） |
+| 対応フラグ | `run --image`, `-i` |
+
+> `run.image` を指定すると、`default_image` より優先されます。
+
+---
+
+### `run.token_ttl`
+
+`codex-dock run --token-ttl` のデフォルト値を指定します。
+
+```toml
+[run]
+token_ttl = 3600
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 整数 |
+| デフォルト | 未設定（`default_token_ttl` を参照） |
+| 対応フラグ | `run --token-ttl` |
+
+> `run.token_ttl` を指定すると、`default_token_ttl` より優先されます。
+
+---
+
+
+### `run.user`
+
+`codex-dock run --user` のデフォルト値を指定します。
+
+```toml
+[run]
+user = "current"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"current"` |
+| 対応フラグ | `run --user` |
+| 推奨値 | `current`, `codex`, `dir`, `uid[:gid]` |
+
+`codex` を指定すると、従来のデフォルト挙動（コンテナ内 `codex` ユーザ `1001:1001`）で実行されます。
+
+---
+
+### `run.approval_mode`
+
+`codex-dock run --approval-mode` のデフォルト値を指定します。
+
+```toml
+[run]
+approval_mode = "suggest"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"suggest"` |
+| 対応フラグ | `run --approval-mode` |
+| 許可値 | `suggest`, `auto-edit`, `full-auto`, `danger` |
 
 ---
 
@@ -169,6 +271,19 @@ verbose = false
 
 # デバッグログ（開発・トラブルシューティング時のみ）
 debug = false
+
+[run]
+# run サブコマンドのデフォルトイメージ（未指定なら default_image を使用）
+image = "codex-dock:latest"
+
+# run サブコマンドのトークン TTL（未指定なら default_token_ttl を使用）
+token_ttl = 3600
+
+# run サブコマンドのデフォルトユーザ
+user = "current"
+
+# run サブコマンドの承認モード
+approval_mode = "suggest"
 ```
 
 ---

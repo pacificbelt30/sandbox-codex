@@ -81,8 +81,9 @@ codex-dock run --approval-mode danger --task "ビルドスクリプトを実行"
 
 | 値 | 動作 |
 |---|---|
-| `""` (省略) | イメージのデフォルトユーザ（`codex` uid:1001） |
-| `current` | `codex-dock` コマンドを実行しているユーザの uid:gid を自動取得 |
+| `current` (省略時のデフォルト) | `codex-dock` コマンドを実行しているユーザの uid:gid を自動取得 |
+| `codex` | 従来のデフォルト挙動。コンテナ内 `codex` ユーザ（`1001:1001`）で実行 |
+| `""` | イメージのデフォルトユーザを使用 |
 | `dir` | `--project` で指定したディレクトリ所有者の uid:gid を自動取得 |
 | `uid` または `uid:gid` | 明示的に指定（例: `1000`, `1000:1000`） |
 
@@ -166,7 +167,13 @@ codex-dock run --image my-custom-codex:v2
 # カスタムモデルを指定
 codex-dock run --model "o3"
 
-# コマンド実行ユーザと同じ uid:gid でコンテナを起動（ファイル権限の整合性確保）
+# デフォルトで、コマンド実行ユーザと同じ uid:gid でコンテナを起動
+codex-dock run
+
+# 従来どおり codex(1001:1001) ユーザで実行
+codex-dock run --user codex
+
+# 明示的にコマンド実行ユーザを指定
 codex-dock run --user current
 
 # プロジェクトディレクトリの所有者と同じ uid:gid でコンテナを起動

@@ -18,3 +18,20 @@ verbose = false
 
 # Enable debug output by default
 debug = false
+
+[run]
+# Default image for `codex-dock run --image`
+# If unset, `default_image` is used.
+image = "codex-dock:latest"
+
+# Default token TTL for `codex-dock run --token-ttl`
+# If unset, `default_token_ttl` is used.
+token_ttl = 3600
+
+# Default user mode for `codex-dock run --user`
+# current | codex | dir | "" | <uid>[:<gid>]
+user = "current"
+
+# Default approval mode for `codex-dock run --approval-mode`
+# suggest | auto-edit | full-auto | danger
+approval_mode = "suggest"
