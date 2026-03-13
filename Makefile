@@ -5,7 +5,9 @@ MODULE      := github.com/pacificbelt30/codex-dock
 IMAGE       := codex-dock:latest
 PREFIX      ?= /usr/local
 BINDIR      := $(PREFIX)/bin
-CONFIG_DIR  := $(HOME)/.config/codex-dock
+# When invoked with sudo, use the original user's home instead of /root
+REAL_HOME   := $(if $(SUDO_USER),$(shell getent passwd $(SUDO_USER) | cut -d: -f6),$(HOME))
+CONFIG_DIR  := $(REAL_HOME)/.config/codex-dock
 CONFIG_FILE := $(CONFIG_DIR)/config.toml
 
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")

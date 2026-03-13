@@ -42,6 +42,8 @@ sudo make install-all
 | デフォルト設定 | `~/.config/codex-dock/config.toml` |
 | サンドボックスイメージ | `codex-dock:latest`（Docker） |
 
+> **注意**: `sudo make install-all` は `$SUDO_USER` を参照して実行ユーザーのホームディレクトリを特定するため、config は `/root/.config/` ではなく `~/config/codex-dock/` に配置されます。
+
 インストール先を変更したい場合：
 
 ```bash
