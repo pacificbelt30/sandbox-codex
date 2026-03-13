@@ -62,5 +62,5 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 
 ## Requirements
 
-- Go 1.22 or later
+- Go 1.24 or later
 - Docker Engine 20.10 or later

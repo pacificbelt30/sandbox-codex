@@ -16,12 +16,43 @@ fi
 # ── Auth token acquisition ──────────────────────────────────────────────────
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     log "Fetching credentials from Auth Proxy..."
+    ORIGINAL_CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_URL}"
 
-    RESPONSE=$(curl -sf \
-        -H "X-Codex-Token: ${CODEX_TOKEN}" \
-        "${CODEX_AUTH_PROXY_URL}/token") || {
-        log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
-        exit 1
+    fetch_token() {
+        local endpoint="$1"
+        curl -sf --connect-timeout 3 --max-time 10 \
+            -H "X-Codex-Token: ${CODEX_TOKEN}" \
+            "${endpoint}/token"
+    }
+
+    RESPONSE=$(fetch_token "${CODEX_AUTH_PROXY_URL}") || {
+        FALLBACKS_RAW="${CODEX_AUTH_PROXY_FALLBACK_URLS:-${CODEX_AUTH_PROXY_FALLBACK_URL:-}}"
+        SELECTED=""
+        if [[ -n "${FALLBACKS_RAW}" ]]; then
+            IFS=',' read -r -a FALLBACKS <<< "${FALLBACKS_RAW}"
+            for endpoint in "${FALLBACKS[@]}"; do
+                [[ -z "${endpoint}" || "${endpoint}" == "${CODEX_AUTH_PROXY_URL}" ]] && continue
+                log "Primary Auth Proxy endpoint unreachable (${CODEX_AUTH_PROXY_URL}), retrying fallback (${endpoint})..."
+                if RESPONSE=$(fetch_token "${endpoint}"); then
+                    SELECTED="${endpoint}"
+                    break
+                fi
+            done
+        fi
+
+        if [[ -z "${SELECTED}" ]]; then
+            log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL} (fallbacks: ${FALLBACKS_RAW:-none})"
+            exit 1
+        fi
+
+        CODEX_AUTH_PROXY_URL="${SELECTED}"
+        # Keep downstream proxy endpoints consistent with the selected URL.
+        if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+            export OPENAI_BASE_URL="${OPENAI_BASE_URL/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
+        fi
+        if [[ -n "${CODEX_REFRESH_TOKEN_URL_OVERRIDE:-}" ]]; then
+            export CODEX_REFRESH_TOKEN_URL_OVERRIDE="${CODEX_REFRESH_TOKEN_URL_OVERRIDE/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
+        fi
     }
 
     # Detect OAuth mode: proxy returns oauth_access_token instead of api_key
@@ -124,6 +155,11 @@ fi
 # ── Launch Codex ────────────────────────────────────────────────────────────
 log "Starting Codex CLI..."
 cd /workspace
+
+# Give Docker networking/proxy sidecars a brief moment to settle before the
+# first Codex request. This reduces flaky startup failures right after container
+# boot when auth proxy connectivity is still converging.
+sleep 1
 
 if [[ -n "${CODEX_TASK:-}" ]]; then
     log "Task: ${CODEX_TASK}"

@@ -10,7 +10,7 @@ This guide walks you through installing codex-dock and launching your first cont
 
 | Requirement | Version | How to Check |
 |---|---|---|
-| Go | 1.22 or later | `go version` |
+| Go | 1.24 or later | `go version` |
 | Docker Engine | 20.10 or later | `docker version` |
 | git | any | required for worktree feature |
 
