@@ -222,15 +222,36 @@ func TestBuildHostConfig_NetworkMode(t *testing.T) {
 	}
 }
 
-func TestBuildHostConfig_ProxyHostGatewayFallback(t *testing.T) {
+func TestBuildHostConfig_HostDockerInternalGatewayMapping(t *testing.T) {
 	hc := buildHostConfig(nil)
-	want := "codex-auth-proxy:host-gateway"
+	want := "host.docker.internal:host-gateway"
 	for _, h := range hc.ExtraHosts {
 		if h == want {
 			return
 		}
 	}
 	t.Errorf("ExtraHosts = %v; missing %q", hc.ExtraHosts, want)
+}
+
+func TestBuildProxyFallbackURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		primary string
+		want    string
+	}{
+		{name: "default proxy host", primary: "http://codex-auth-proxy:18080", want: "http://host.docker.internal:18080"},
+		{name: "https no explicit port", primary: "https://codex-auth-proxy", want: "https://host.docker.internal:443"},
+		{name: "custom host no fallback", primary: "http://proxy.internal:18080", want: ""},
+		{name: "invalid URL", primary: "://bad", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildProxyFallbackURL(tt.primary); got != tt.want {
+				t.Errorf("buildProxyFallbackURL(%q) = %q; want %q", tt.primary, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestBuildHostConfig_ReadOnly(t *testing.T) {

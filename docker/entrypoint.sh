@@ -16,12 +16,25 @@ fi
 # ── Auth token acquisition ──────────────────────────────────────────────────
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     log "Fetching credentials from Auth Proxy..."
+    fetch_token() {
+        local endpoint="$1"
+        curl -sf \
+            -H "X-Codex-Token: ${CODEX_TOKEN}" \
+            "${endpoint}/token"
+    }
 
-    RESPONSE=$(curl -sf \
-        -H "X-Codex-Token: ${CODEX_TOKEN}" \
-        "${CODEX_AUTH_PROXY_URL}/token") || {
-        log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
-        exit 1
+    RESPONSE=$(fetch_token "${CODEX_AUTH_PROXY_URL}") || {
+        if [[ -n "${CODEX_AUTH_PROXY_FALLBACK_URL:-}" && "${CODEX_AUTH_PROXY_FALLBACK_URL}" != "${CODEX_AUTH_PROXY_URL}" ]]; then
+            log "Primary Auth Proxy endpoint unreachable (${CODEX_AUTH_PROXY_URL}), retrying fallback (${CODEX_AUTH_PROXY_FALLBACK_URL})..."
+            RESPONSE=$(fetch_token "${CODEX_AUTH_PROXY_FALLBACK_URL}") || {
+                log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL} (fallback: ${CODEX_AUTH_PROXY_FALLBACK_URL})"
+                exit 1
+            }
+            CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_FALLBACK_URL}"
+        else
+            log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
+            exit 1
+        fi
     }
 
     # Detect OAuth mode: proxy returns oauth_access_token instead of api_key

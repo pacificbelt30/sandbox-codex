@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -115,6 +116,9 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 			// (https://chatgpt.com/backend-api/codex) in all auth modes.
 			"OPENAI_BASE_URL="+containerProxyURL+"/v1",
 		)
+		if fallbackURL := buildProxyFallbackURL(containerProxyURL); fallbackURL != "" {
+			env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URL="+fallbackURL)
+		}
 		// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
 		// The proxy substitutes the host's real refresh_token so it never reaches
 		// the container. The short-lived token is embedded as ?cdx= for authentication
@@ -493,17 +497,37 @@ func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
 	return &container.HostConfig{
 		NetworkMode: container.NetworkMode(sandboxNetName),
 		Mounts:      mounts,
-		// Resolve codex-auth-proxy to the Docker host gateway as a fallback.
-		// This makes the default --proxy-container-url work when the auth proxy
-		// is started as a local host process (codex-dock proxy serve) while still
-		// allowing Docker-network DNS when applicable.
-		ExtraHosts: []string{"codex-auth-proxy:host-gateway"},
+		// Ensure host.docker.internal resolves on Linux too.
+		// Worker entrypoint can retry auth proxy calls via this host-gateway alias
+		// when codex-auth-proxy (Docker DNS) is not reachable.
+		ExtraHosts:  []string{"host.docker.internal:host-gateway"},
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 		Resources: container.Resources{
 			PidsLimit: int64ptr(512),
 		},
 	}
+}
+
+func buildProxyFallbackURL(primary string) string {
+	u, err := url.Parse(primary)
+	if err != nil {
+		return ""
+	}
+	if !strings.EqualFold(u.Hostname(), "codex-auth-proxy") {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "https":
+			port = "443"
+		default:
+			port = "80"
+		}
+	}
+	u.Host = "host.docker.internal:" + port
+	return u.String()
 }
 
 func int64ptr(i int64) *int64 { return &i }

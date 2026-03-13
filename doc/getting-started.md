@@ -10,7 +10,7 @@ codex-dock のインストールから最初のコンテナ起動までの手順
 
 | 要件 | バージョン | 確認方法 |
 |---|---|---|
-| Go | 1.22 以上 | `go version` |
+| Go | 1.24 以上 | `go version` |
 | Docker Engine | 20.10 以上 | `docker version` |
 | git | 任意 | worktree 機能を使う場合に必要 |
 

@@ -63,5 +63,5 @@
 
 ## 要件
 
-- Go 1.22 以上
+- Go 1.24 以上
 - Docker Engine
