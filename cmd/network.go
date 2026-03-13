@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var networkCreateNoInternet bool
+
 var networkCmd = &cobra.Command{
 	Use:   "network",
 	Short: "Manage dock-net Docker network",
@@ -20,7 +22,7 @@ var networkCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := mgr.EnsureNetwork(false); err != nil {
+		if err := mgr.EnsureNetwork(network.EnsureOptions{NoInternet: networkCreateNoInternet}); err != nil {
 			return fmt.Errorf("creating dock-net: %w", err)
 		}
 		fmt.Println("dock-net created.")
@@ -74,4 +76,5 @@ func init() {
 	networkCmd.AddCommand(networkCreateCmd)
 	networkCmd.AddCommand(networkRmCmd)
 	networkCmd.AddCommand(networkStatusCmd)
+	networkCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 }

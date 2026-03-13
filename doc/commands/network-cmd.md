@@ -20,6 +20,7 @@ codex-dock network create [--no-internet]
 | `--no-internet` | IP Masquerade を無効化してインターネットを遮断 |
 
 > `codex-dock run` 実行時に自動的に作成されます。
+> Linux では `iptables` ルールも同時に投入するため root 権限が必要です。
 
 ---
 

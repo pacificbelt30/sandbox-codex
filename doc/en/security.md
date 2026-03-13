@@ -98,7 +98,7 @@ Each sandbox container has the following security settings applied:
 | ID | Issue | Severity | Details |
 |---|---|---|---|
 | NF-SEC-01 | Auth Proxy uses plaintext HTTP | High | TLS/UNIX socket not implemented; designed for Docker internal use only |
-| F-NET-02 | Incomplete container-to-host blocking | Medium | `enable_icc=false` only blocks inter-container traffic; iptables rules for host blocking not implemented |
+| F-NET-02 | Container-to-host blocking is Linux-specific | Medium | Linux blocks private/link-local egress with `DOCKER-USER` + `iptables` and requires root; macOS / Windows automation is not implemented |
 | F-AUTH-06 | No container ID verification | Medium | Token tied to container name but not container ID |
 
 ---

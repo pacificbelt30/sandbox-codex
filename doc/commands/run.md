@@ -6,6 +6,8 @@
 
 Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネットワーク隔離が自動的に設定されます。
 
+> **Linux の注意**: 起動時に `dock-net` 用の `iptables` ルールを適用するため、`codex-dock run` は root 権限での実行が必要です。
+
 > **イメージの自動ビルド**: `--image` で指定したイメージがローカルに存在しない場合、`codex-dock build` と同じロジックで自動的にビルドしてからコンテナを起動します。
 
 ```bash
