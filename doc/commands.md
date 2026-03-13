@@ -174,6 +174,38 @@ codex-dock run --parallel 3 --worktree --branch myfeature
 
 `--branch` を指定しない場合は `worker-1`, `worker-2`, `worker-3` が使用されます。
 
+
+---
+
+## `codex-dock proxy` — Auth Proxy のビルド・起動
+
+Auth Proxy コンテナのビルドと起動をサブコマンドで実行します。
+
+```bash
+codex-dock proxy build [OPTIONS]
+codex-dock proxy run [OPTIONS]
+```
+
+### `codex-dock proxy build` オプション
+
+| オプション | 省略形 | デフォルト | 説明 |
+|---|---|---|---|
+| `--tag` | `-t` | `codex-dock-auth-proxy:latest` | ビルドするイメージタグ |
+| `--dockerfile` | `-f` | 自動検出 | Auth Proxy Dockerfile のパス |
+
+`--dockerfile` 未指定時は、`docker/auth-proxy.Dockerfile` → `auth-proxy.Dockerfile` の順で探索し、見つからない場合は `~/.config/codex-dock/auth-proxy.Dockerfile` を自動生成して使用します。
+
+### `codex-dock proxy run` オプション
+
+| オプション | 省略形 | デフォルト | 説明 |
+|---|---|---|---|
+| `--image` | `-i` | `codex-dock-auth-proxy:latest` | 起動するイメージ |
+| `--name` | `-n` | `codex-auth-proxy` | コンテナ名 |
+| `--network` | | `dock-net` | 接続する Docker ネットワーク |
+| `--admin-secret` | | `""` | `/admin/*` エンドポイント用シークレット |
+
+`proxy run` は `dock-net` が存在しない場合に自動作成し、既存の同名コンテナがあれば置き換えて起動します。
+
 ---
 
 ## `codex-dock ps` — ワーカー一覧

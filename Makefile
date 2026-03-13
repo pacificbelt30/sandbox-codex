@@ -13,7 +13,7 @@ CONFIG_FILE := $(CONFIG_DIR)/config.toml
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build install install-config install-all docker uninstall clean test lint vet tidy help
+.PHONY: all build install install-config install-all docker proxy-docker proxy-run uninstall clean test lint vet tidy help
 
 ## all: build binary and Docker image
 all: build docker
@@ -46,6 +46,18 @@ docker:
 	docker build -t $(IMAGE) -f docker/Dockerfile docker/
 	@echo "Docker image built: $(IMAGE)"
 
+
+## proxy-docker: build auth proxy Docker image
+proxy-docker:
+	docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
+	@echo "Auth proxy image built: codex-dock-auth-proxy:latest"
+
+## proxy-run: run auth proxy container on dock-net
+proxy-run:
+	docker network inspect dock-net >/dev/null 2>&1 || docker network create dock-net
+	-docker rm -f codex-auth-proxy >/dev/null 2>&1
+	docker run -d --name codex-auth-proxy --network dock-net -p 127.0.0.1:18080:18080 codex-dock-auth-proxy:latest
+	@echo "Auth proxy running at http://127.0.0.1:18080"
 ## uninstall: remove the installed binary
 uninstall:
 	rm -f $(BINDIR)/$(BINARY)

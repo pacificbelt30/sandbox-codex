@@ -11,3 +11,8 @@ var Dockerfile []byte
 //
 //go:embed entrypoint.sh
 var Entrypoint []byte
+
+// AuthProxyDockerfile is the default auth proxy image definition.
+//
+//go:embed auth-proxy.Dockerfile
+var AuthProxyDockerfile []byte

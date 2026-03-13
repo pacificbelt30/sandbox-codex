@@ -91,6 +91,8 @@ sudo make install PREFIX=/opt/codex-dock
 | `make build-all` | darwin/arm64・darwin/amd64・linux/arm64 のクロスコンパイル |
 | `make test` | テストスイートを実行（race detector + coverage） |
 | `make lint` | golangci-lint を実行 |
+| `make proxy-docker` | Auth Proxy イメージをビルド |
+| `make proxy-run` | Auth Proxy コンテナを起動 |
 | `make uninstall` | インストール済みバイナリを削除 |
 | `make clean` | ビルド成果物を削除 |
 
@@ -113,11 +115,12 @@ sudo mv codex-dock /usr/local/bin/
 # 0. Auth Proxy を起動（必須）
 codex-dock network create
 
-docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
-docker run -d --name codex-auth-proxy --network dock-net \
-  -p 127.0.0.1:18080:18080 \
-  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  codex-dock-auth-proxy:latest
+codex-dock proxy build
+codex-dock proxy run
+
+# （Makefile から実行する場合）
+# make proxy-docker
+# make proxy-run
 
 # （代替）ローカルプロセスで起動
 # codex-dock proxy serve --listen 0.0.0.0:18080
@@ -166,6 +169,8 @@ codex-dock ui
 | `codex-dock auth` | Manage authentication |
 | `codex-dock network` | Manage dock-net |
 | `codex-dock build` | Build sandbox image |
+| `codex-dock proxy build` | Build auth proxy image |
+| `codex-dock proxy run` | Run auth proxy container |
 
 ## Documentation
 
