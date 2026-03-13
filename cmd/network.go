@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var networkCreateNoInternet bool
+var (
+	networkCreateNoInternet  bool
+	networkProxyContainerURL string
+)
 
 var networkCmd = &cobra.Command{
 	Use:   "network",
@@ -84,7 +87,14 @@ var firewallCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		err = mgr.ApplyFirewall(network.EnsureOptions{NoInternet: networkCreateNoInternet})
+		ensureOpts := network.EnsureOptions{NoInternet: networkCreateNoInternet}
+		if port, ok := allowedHostPort(networkProxyContainerURL); ok {
+			ensureOpts.AllowHostTCPPorts = []int{port}
+		}
+		if endpoint, ok := network.AllowHostEndpoint(networkProxyContainerURL); ok {
+			ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
+		}
+		err = mgr.ApplyFirewall(ensureOpts)
 		if err != nil {
 			if network.IsFirewallWarning(err) {
 				fmt.Printf("Warning: dock-net firewall rules were not applied: %v\n", err)
@@ -136,6 +146,16 @@ var firewallStatusCmd = &cobra.Command{
 		fmt.Printf("iptables found:    %v\n", info.IptablesFound)
 		fmt.Printf("Chain exists:      %v\n", info.ChainExists)
 		fmt.Printf("Jump rule exists:  %v\n", info.JumpRuleExists)
+		if info.DockerUserDefaultPolicy != "" {
+			fmt.Printf("DOCKER-USER policy: %s\n", info.DockerUserDefaultPolicy)
+		} else {
+			fmt.Println("DOCKER-USER policy: (unknown)")
+		}
+		if info.ManagedChainFinalVerdict != "" {
+			fmt.Printf("CODEX-DOCK final jump: %s\n", info.ManagedChainFinalVerdict)
+		} else {
+			fmt.Println("CODEX-DOCK final jump: (unknown)")
+		}
 		return nil
 	},
 }
@@ -152,4 +172,5 @@ func init() {
 	firewallCmd.AddCommand(firewallRmCmd)
 	firewallCmd.AddCommand(firewallStatusCmd)
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
+	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
 }

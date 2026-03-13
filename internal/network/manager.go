@@ -32,11 +32,13 @@ type NetworkInfo struct {
 
 // FirewallInfo holds status information about dock-net firewall rules.
 type FirewallInfo struct {
-	Supported      bool
-	Root           bool
-	IptablesFound  bool
-	ChainExists    bool
-	JumpRuleExists bool
+	Supported                bool
+	Root                     bool
+	IptablesFound            bool
+	ChainExists              bool
+	JumpRuleExists           bool
+	DockerUserDefaultPolicy  string
+	ManagedChainFinalVerdict string
 }
 
 // Manager handles the lifecycle of the dock-net Docker network.
@@ -106,6 +108,36 @@ func (m *Manager) EnsureNetwork(opts EnsureOptions) error {
 		}
 	}
 
+	return nil
+}
+
+// EnsureContainerAttached connects a container to dock-net when it exists.
+// This is used to keep service-discovery names (e.g. codex-auth-proxy)
+// reachable from worker containers on dock-net.
+func (m *Manager) EnsureContainerAttached(containerName string) error {
+	ctx := context.Background()
+	existing, err := m.findNetwork(ctx)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return ErrDockNetNotFound
+	}
+	if containerName == "" {
+		return nil
+	}
+	inspect, err := m.cli.ContainerInspect(ctx, containerName)
+	if err != nil {
+		return err
+	}
+	if inspect.NetworkSettings != nil {
+		if _, ok := inspect.NetworkSettings.Networks[NetworkName]; ok {
+			return nil
+		}
+	}
+	if err := m.cli.NetworkConnect(ctx, existing.ID, inspect.ID, nil); err != nil {
+		return fmt.Errorf("connecting container %s to %s: %w", containerName, NetworkName, err)
+	}
 	return nil
 }
 
@@ -188,11 +220,13 @@ func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
 		return nil, fmt.Errorf("getting dock-net firewall status: %w", err)
 	}
 	return &FirewallInfo{
-		Supported:      st.Supported,
-		Root:           st.Root,
-		IptablesFound:  st.IptablesFound,
-		ChainExists:    st.ChainExists,
-		JumpRuleExists: st.JumpRuleExists,
+		Supported:                st.Supported,
+		Root:                     st.Root,
+		IptablesFound:            st.IptablesFound,
+		ChainExists:              st.ChainExists,
+		JumpRuleExists:           st.JumpRuleExists,
+		DockerUserDefaultPolicy:  st.DockerUserDefaultPolicy,
+		ManagedChainFinalVerdict: st.ManagedChainFinalVerdict,
 	}, nil
 }
 
@@ -353,12 +387,14 @@ func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockerne
 
 func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNet *dockernetwork.Summary) (firewallConfig, error) {
 	cfg := firewallConfig{
-		BridgeName: BridgeName,
+		BridgeName:   BridgeName,
+		BridgeSubnet: gatewaySubnet(dockNet),
 	}
 
 	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
+	cfg.AllowTCPPorts = normalizePorts(opts.AllowHostTCPPorts)
 
-	if len(opts.AllowHostTCPPorts) == 0 {
+	if len(cfg.AllowTCPPorts) == 0 {
 		return cfg, nil
 	}
 
@@ -370,7 +406,7 @@ func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNe
 		hostIPs = append(hostIPs, gateway)
 	}
 
-	for _, port := range opts.AllowHostTCPPorts {
+	for _, port := range cfg.AllowTCPPorts {
 		if port <= 0 || port > 65535 {
 			continue
 		}
@@ -409,6 +445,13 @@ func gatewayFromSummary(net *dockernetwork.Summary) string {
 		return ""
 	}
 	return gateway
+}
+
+func gatewaySubnet(net *dockernetwork.Summary) string {
+	if net == nil || len(net.IPAM.Config) == 0 {
+		return ""
+	}
+	return net.IPAM.Config[0].Subnet
 }
 
 func AllowHostEndpoint(rawURL string) (HostEndpoint, bool) {

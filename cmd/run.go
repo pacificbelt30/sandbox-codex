@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
@@ -128,6 +130,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
+	if name, ok := proxyContainerName(proxyContainerURL); ok {
+		if err := netMgr.EnsureContainerAttached(name); err != nil && verbose {
+			fmt.Printf("Warning: could not attach %s to dock-net: %v\n", name, err)
+		}
+	}
 	if err := netMgr.ApplyFirewall(ensureOpts); err != nil {
 		if network.IsFirewallWarning(err) {
 			fmt.Printf("Warning: dock-net firewall rules were not applied: %v\n", err)
@@ -222,6 +229,24 @@ func allowedHostPort(rawURL string) (int, bool) {
 		return 0, false
 	}
 	return port, true
+}
+
+func proxyContainerName(rawURL string) (string, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+	host := strings.TrimSpace(u.Hostname())
+	if host == "" {
+		return "", false
+	}
+	if strings.EqualFold(host, "host.docker.internal") {
+		return "", false
+	}
+	if net.ParseIP(host) != nil {
+		return "", false
+	}
+	return host, true
 }
 
 func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
