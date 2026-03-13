@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 )
 
@@ -187,6 +188,66 @@ func TestImageExists_NotFound(t *testing.T) {
 	}
 	if exists {
 		t.Error("ImageExists returned true for a clearly nonexistent image")
+	}
+}
+
+// TestBuildHostConfig_ExtraHosts verifies that worker containers are configured
+// with host.docker.internal:host-gateway so they can reach the Auth Proxy on
+// the host (resolves F-NET-04).
+func TestBuildHostConfig_ExtraHosts(t *testing.T) {
+	hc := buildHostConfig(nil)
+	found := false
+	for _, h := range hc.ExtraHosts {
+		if h == "host.docker.internal:host-gateway" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("buildHostConfig ExtraHosts = %v; missing host.docker.internal:host-gateway", hc.ExtraHosts)
+	}
+}
+
+func TestBuildHostConfig_Security(t *testing.T) {
+	hc := buildHostConfig(nil)
+
+	// Must drop all capabilities.
+	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" {
+		t.Errorf("CapDrop = %v; want [ALL]", hc.CapDrop)
+	}
+	// Must prevent privilege escalation.
+	found := false
+	for _, opt := range hc.SecurityOpt {
+		if opt == "no-new-privileges:true" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("SecurityOpt = %v; missing no-new-privileges:true", hc.SecurityOpt)
+	}
+	// PID limit must be set.
+	if hc.PidsLimit == nil || *hc.PidsLimit != 512 {
+		t.Errorf("PidsLimit = %v; want 512", hc.PidsLimit)
+	}
+}
+
+func TestBuildHostConfig_NetworkMode(t *testing.T) {
+	hc := buildHostConfig(nil)
+	if string(hc.NetworkMode) != sandboxNetName {
+		t.Errorf("NetworkMode = %q; want %q", hc.NetworkMode, sandboxNetName)
+	}
+}
+
+func TestBuildHostConfig_ReadOnly(t *testing.T) {
+	mounts := []mount.Mount{
+		{Type: mount.TypeBind, Source: "/tmp", Target: "/workspace"},
+	}
+	// ReadOnly is set by the caller (Run) before passing mounts in.
+	mounts[0].ReadOnly = true
+	hc := buildHostConfig(mounts)
+	if !hc.Mounts[0].ReadOnly {
+		t.Error("ReadOnly mount not preserved in buildHostConfig")
 	}
 }
 
