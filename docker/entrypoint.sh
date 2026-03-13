@@ -156,6 +156,11 @@ fi
 log "Starting Codex CLI..."
 cd /workspace
 
+# Give Docker networking/proxy sidecars a brief moment to settle before the
+# first Codex request. This reduces flaky startup failures right after container
+# boot when auth proxy connectivity is still converging.
+sleep 1
+
 if [[ -n "${CODEX_TASK:-}" ]]; then
     log "Task: ${CODEX_TASK}"
     exec codex "${CODEX_ARGS[@]}" "$CODEX_TASK"
