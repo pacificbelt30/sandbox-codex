@@ -32,6 +32,23 @@ codex-dock firewall create [--no-internet]
 > Linux の `iptables` ルールを適用します。
 > root 権限がない場合や `iptables` 未導入の場合は Warning を表示して継続します。
 
+## `firewall status` — firewall ルール状態確認
+
+```bash
+codex-dock firewall status
+```
+
+`dock-net` firewall の適用状態（Linux 対応可否、root 実行、iptables 検出、chain/jump rule の有無）を表示します。
+
+## `firewall rm` — firewall ルール削除
+
+```bash
+codex-dock firewall rm
+```
+
+`dock-net` 用に設定した firewall ルールを削除します。
+root 権限がない場合や `iptables` 未導入の場合は Warning を表示して継続します。
+
 ---
 
 ## `network rm` — ネットワーク削除

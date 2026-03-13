@@ -97,6 +97,49 @@ var firewallCreateCmd = &cobra.Command{
 	},
 }
 
+var firewallRmCmd = &cobra.Command{
+	Use:   "rm",
+	Short: "Remove dock-net firewall rules",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		mgr, err := network.NewManager()
+		if err != nil {
+			return err
+		}
+		err = mgr.RemoveFirewall()
+		if err != nil {
+			if network.IsFirewallWarning(err) {
+				fmt.Printf("Warning: dock-net firewall rules were not removed: %v\n", err)
+				return nil
+			}
+			return fmt.Errorf("removing dock-net firewall rules: %w", err)
+		}
+		fmt.Println("dock-net firewall rules removed.")
+		return nil
+	},
+}
+
+var firewallStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show dock-net firewall status",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		mgr, err := network.NewManager()
+		if err != nil {
+			return err
+		}
+		info, err := mgr.FirewallStatus()
+		if err != nil {
+			return fmt.Errorf("getting dock-net firewall status: %w", err)
+		}
+
+		fmt.Printf("Supported (Linux): %v\n", info.Supported)
+		fmt.Printf("Running as root:   %v\n", info.Root)
+		fmt.Printf("iptables found:    %v\n", info.IptablesFound)
+		fmt.Printf("Chain exists:      %v\n", info.ChainExists)
+		fmt.Printf("Jump rule exists:  %v\n", info.JumpRuleExists)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(networkCmd)
 	networkCmd.AddCommand(networkCreateCmd)
@@ -106,5 +149,7 @@ func init() {
 
 	rootCmd.AddCommand(firewallCmd)
 	firewallCmd.AddCommand(firewallCreateCmd)
+	firewallCmd.AddCommand(firewallRmCmd)
+	firewallCmd.AddCommand(firewallStatusCmd)
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 }

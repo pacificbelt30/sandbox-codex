@@ -30,6 +30,15 @@ type NetworkInfo struct {
 	Subnet       string
 }
 
+// FirewallInfo holds status information about dock-net firewall rules.
+type FirewallInfo struct {
+	Supported      bool
+	Root           bool
+	IptablesFound  bool
+	ChainExists    bool
+	JumpRuleExists bool
+}
+
 // Manager handles the lifecycle of the dock-net Docker network.
 type Manager struct {
 	cli      *client.Client
@@ -127,6 +136,64 @@ func (m *Manager) ApplyFirewall(opts EnsureOptions) error {
 		return fmt.Errorf("applying dock-net firewall rules: %w", err)
 	}
 	return nil
+}
+
+// RemoveFirewall removes firewall rules associated with dock-net.
+func (m *Manager) RemoveFirewall() error {
+	ctx := context.Background()
+	existing, err := m.findNetwork(ctx)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return ErrDockNetNotFound
+	}
+	if m.firewall == nil {
+		return nil
+	}
+
+	cfg, err := m.firewallConfig(ctx, EnsureOptions{}, existing)
+	if err != nil {
+		return err
+	}
+	if err := m.firewall.Remove(ctx, cfg); err != nil {
+		if IsFirewallWarning(err) {
+			return err
+		}
+		return fmt.Errorf("removing dock-net firewall rules: %w", err)
+	}
+	return nil
+}
+
+// FirewallStatus returns information about dock-net firewall rule installation.
+func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
+	ctx := context.Background()
+	existing, err := m.findNetwork(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, ErrDockNetNotFound
+	}
+	if m.firewall == nil {
+		return &FirewallInfo{}, nil
+	}
+
+	cfg, err := m.firewallConfig(ctx, EnsureOptions{}, existing)
+	if err != nil {
+		return nil, err
+	}
+	st, err := m.firewall.Status(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("getting dock-net firewall status: %w", err)
+	}
+	return &FirewallInfo{
+		Supported:      st.Supported,
+		Root:           st.Root,
+		IptablesFound:  st.IptablesFound,
+		ChainExists:    st.ChainExists,
+		JumpRuleExists: st.JumpRuleExists,
+	}, nil
 }
 
 // RemoveNetwork removes dock-net.

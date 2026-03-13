@@ -195,3 +195,56 @@ func (r *errorRunner) LookPath(file string) (string, error) {
 func (r *errorRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
 	return r.stdout, r.err
 }
+
+func TestIptablesFirewallStatus(t *testing.T) {
+	runner := &statusRunner{}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+	}
+
+	st, err := fw.Status(context.Background(), firewallConfig{BridgeName: BridgeName})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !st.Supported || !st.Root || !st.IptablesFound || !st.ChainExists || !st.JumpRuleExists {
+		t.Fatalf("unexpected status: %+v", st)
+	}
+}
+
+func TestIptablesFirewallStatusMissingIptables(t *testing.T) {
+	fw := &iptablesFirewall{
+		runner:  missingIptablesRunner{},
+		isLinux: func() bool { return true },
+		euid:    func() int { return 1000 },
+	}
+
+	st, err := fw.Status(context.Background(), firewallConfig{BridgeName: BridgeName})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !st.Supported || st.IptablesFound {
+		t.Fatalf("unexpected status: %+v", st)
+	}
+}
+
+type missingIptablesRunner struct{}
+
+type statusRunner struct{}
+
+func (statusRunner) LookPath(file string) (string, error) {
+	return "/usr/sbin/" + file, nil
+}
+
+func (statusRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (missingIptablesRunner) LookPath(file string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (missingIptablesRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	return nil, nil
+}

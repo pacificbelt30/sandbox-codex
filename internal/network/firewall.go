@@ -37,6 +37,16 @@ var (
 type firewallController interface {
 	Apply(ctx context.Context, cfg firewallConfig) error
 	Remove(ctx context.Context, cfg firewallConfig) error
+	Status(ctx context.Context, cfg firewallConfig) (FirewallStatus, error)
+}
+
+// FirewallStatus represents dock-net firewall installation status.
+type FirewallStatus struct {
+	Supported      bool
+	Root           bool
+	IptablesFound  bool
+	ChainExists    bool
+	JumpRuleExists bool
 }
 
 type firewallConfig struct {
@@ -179,6 +189,42 @@ func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error
 		}
 	}
 	return nil
+}
+
+func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (FirewallStatus, error) {
+	if f.isLinux == nil {
+		f.isLinux = func() bool { return runtime.GOOS == "linux" }
+	}
+	if f.euid == nil {
+		f.euid = os.Geteuid
+	}
+
+	status := FirewallStatus{
+		Supported: f.isLinux(),
+		Root:      f.euid() == 0,
+	}
+	if !status.Supported {
+		return status, nil
+	}
+	if _, err := f.runner.LookPath("iptables"); err != nil {
+		return status, nil
+	}
+	status.IptablesFound = true
+
+	if err := f.runMaybeMissing(ctx, "-S", managedChain); err == nil {
+		status.ChainExists = true
+	} else if !errors.Is(err, ErrFirewallChainNotFound) {
+		return status, err
+	}
+
+	rule := []string{"-C", dockerUserChain, "-i", cfg.BridgeName, "-j", managedChain}
+	if err := f.runMaybeMissing(ctx, rule...); err == nil {
+		status.JumpRuleExists = true
+	} else if !errors.Is(err, ErrFirewallRuleNotFound) && !errors.Is(err, ErrFirewallChainNotFound) {
+		return status, err
+	}
+
+	return status, nil
 }
 
 func (f *iptablesFirewall) ensureChain(ctx context.Context, chain string) error {

@@ -28,6 +28,23 @@ codex-dock firewall create [--no-internet]
 > Applies Linux `iptables` rules for dock-net.
 > If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
 
+## `firewall status`
+
+```bash
+codex-dock firewall status
+```
+
+Shows dock-net firewall state (Linux support, root execution, iptables presence, chain and jump rule presence).
+
+## `firewall rm`
+
+```bash
+codex-dock firewall rm
+```
+
+Removes dock-net firewall rules.
+If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
+
 ---
 
 ## `network rm`
