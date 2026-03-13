@@ -5,6 +5,12 @@
 codex-dock is configured via `~/.config/codex-dock/config.toml`.
 It uses TOML format and lets you change default values for command-line flags.
 
+If you don't have a config file yet, run this first:
+
+```bash
+make install-config
+```
+
 ---
 
 ## Config File Location
@@ -36,6 +42,8 @@ Configuration values are resolved in the following priority order (higher takes 
 ---
 
 ## Configuration Settings
+
+> All available keys are listed in [`configs/config.toml.example`](../../configs/config.toml.example).
 
 ### `default_image`
 
@@ -85,6 +93,99 @@ default_token_ttl = 28800
 
 > **Security**: Shorter TTL reduces risk if a token is leaked.
 > 1–2 hours is recommended for typical usage.
+
+---
+
+### `proxy_image`
+
+Default Docker image for the Auth Proxy container.
+
+```toml
+proxy_image = "codex-dock-proxy:latest"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"codex-dock-proxy:latest"` |
+| Used by | `proxy build`, `proxy run` |
+| Environment variable | `CODEX_DOCK_PROXY_IMAGE` |
+
+---
+
+### `run.image`
+
+Default value for `codex-dock run --image`.
+
+```toml
+[run]
+image = "codex-dock:latest"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | unset (falls back to `default_image`) |
+| Corresponding flag | `run --image`, `-i` |
+
+> `run.image` takes precedence over `default_image`.
+
+---
+
+### `run.token_ttl`
+
+Default value for `codex-dock run --token-ttl`.
+
+```toml
+[run]
+token_ttl = 3600
+```
+
+| Item | Value |
+|---|---|
+| Type | integer |
+| Default | unset (falls back to `default_token_ttl`) |
+| Corresponding flag | `run --token-ttl` |
+
+> `run.token_ttl` takes precedence over `default_token_ttl`.
+
+---
+
+### `run.user`
+
+Default value for `codex-dock run --user`.
+
+```toml
+[run]
+user = "current"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"current"` |
+| Corresponding flag | `run --user` |
+| Recommended values | `current`, `codex`, `dir`, `uid[:gid]` |
+
+`codex` matches the historical default behavior (run as container `codex` user `1001:1001`).
+
+---
+
+### `run.approval_mode`
+
+Default value for `codex-dock run --approval-mode`.
+
+```toml
+[run]
+approval_mode = "suggest"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"suggest"` |
+| Corresponding flag | `run --approval-mode` |
+| Allowed values | `suggest`, `auto-edit`, `full-auto`, `danger` |
 
 ---
 
@@ -169,6 +270,19 @@ verbose = false
 
 # Debug logging (only for development/troubleshooting)
 debug = false
+
+[run]
+# run subcommand default image (if unset, default_image is used)
+image = "codex-dock:latest"
+
+# run subcommand token TTL (if unset, default_token_ttl is used)
+token_ttl = 3600
+
+# run subcommand default user
+user = "current"
+
+# run subcommand default approval mode
+approval_mode = "suggest"
 ```
 
 ---
