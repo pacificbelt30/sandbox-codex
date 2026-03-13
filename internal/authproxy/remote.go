@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // RemoteProxy talks to an externally running auth proxy service.
@@ -91,7 +94,7 @@ func (r *RemoteProxy) fetchOAuthMode() (bool, error) {
 	}
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("connecting remote auth proxy: %w", err)
+		return false, fmt.Errorf("connecting remote auth proxy (%s): %w%s", r.adminURL, err, connectionHint(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -102,4 +105,15 @@ func (r *RemoteProxy) fetchOAuthMode() (bool, error) {
 		return false, err
 	}
 	return out["oauth_mode"], nil
+}
+
+func connectionHint(err error) string {
+	var netErr *net.OpError
+	if !errors.As(err, &netErr) {
+		return ""
+	}
+	if !strings.Contains(strings.ToLower(netErr.Err.Error()), "connection refused") {
+		return ""
+	}
+	return "\nHint: auth proxy is not running. Start it with `codex-dock proxy serve --listen 0.0.0.0:18080` or run the Docker quick-start command in doc/getting-started.md."
 }

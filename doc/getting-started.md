@@ -76,6 +76,38 @@ sudo mv codex-dock /usr/local/bin/
 
 ---
 
+## Step 0: Auth Proxy を起動する（必須）
+
+`codex-dock run` は外部 Auth Proxy（既定: `http://127.0.0.1:18080`）へ接続します。先に Auth Proxy を起動してください。
+
+### Docker で起動（推奨）
+
+```bash
+# 1) dock-net を作成（初回のみ）
+codex-dock network create
+
+# 2) Auth Proxy イメージを作成
+docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
+
+# 3) Auth Proxy コンテナを起動
+docker run -d --name codex-auth-proxy --network dock-net \
+  -p 127.0.0.1:18080:18080 \
+  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+  codex-dock-auth-proxy:latest
+```
+
+### ローカルプロセスとして起動
+
+```bash
+codex-dock proxy serve --listen 0.0.0.0:18080
+```
+
+この場合、ワーカーコンテナから到達できる URL を `--proxy-container-url` で指定してください。
+
+> `connecting external auth proxy: connecting remote auth proxy ... connect: connection refused` が出る場合は、Auth Proxy が未起動です。上記のどちらかの方法で起動後に `codex-dock run` を再実行してください。
+
+---
+
 ## Step 1: サンドボックスイメージのビルド
 
 コンテナ内で Codex CLI を実行するためのイメージをビルドします。
@@ -142,14 +174,14 @@ codex-dock auth show
 codex-dock run
 ```
 
-**自動的に行われること：**
+**実行時に行われること：**
 
 ```
-1. dock-net の作成（初回のみ）
+1. dock-net の作成確認（なければ作成）
        │
        ▼
-2. Auth Proxy を起動
-   (127.0.0.1:ランダムポート)
+2. 外部 Auth Proxy へ接続確認
+   (既定: http://127.0.0.1:18080)
        │
        ▼
 3. 短命トークンを発行
