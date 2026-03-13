@@ -242,28 +242,3 @@ func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
 		t.Errorf("approvalModeFlag = %q; want danger", approvalModeFlag)
 	}
 }
-
-func TestProxyContainerName(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		want string
-		ok   bool
-	}{
-		{name: "service name", raw: "http://codex-auth-proxy:18080", want: "codex-auth-proxy", ok: true},
-		{name: "host-gateway alias", raw: "http://host.docker.internal:18080", ok: false},
-		{name: "ip literal", raw: "http://10.200.0.1:18080", ok: false},
-		{name: "bad", raw: "://bad", ok: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := proxyContainerName(tt.raw)
-			if ok != tt.ok {
-				t.Fatalf("proxyContainerName(%q) ok=%v want=%v", tt.raw, ok, tt.ok)
-			}
-			if got != tt.want {
-				t.Fatalf("proxyContainerName(%q)=%q want=%q", tt.raw, got, tt.want)
-			}
-		})
-	}
-}

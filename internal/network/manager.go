@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/url"
 	"strconv"
-	"strings"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -110,63 +109,6 @@ func (m *Manager) EnsureNetwork(opts EnsureOptions) error {
 	}
 
 	return nil
-}
-
-// EnsureContainerAttached connects a container to dock-net when it exists.
-// This is used to keep service-discovery names (e.g. codex-auth-proxy)
-// reachable from worker containers on dock-net.
-func (m *Manager) EnsureContainerAttached(containerName string) error {
-	ctx := context.Background()
-	existing, err := m.findNetwork(ctx)
-	if err != nil {
-		return err
-	}
-	if existing == nil {
-		return ErrDockNetNotFound
-	}
-	if containerName == "" {
-		return nil
-	}
-	inspect, err := m.cli.ContainerInspect(ctx, containerName)
-	if err != nil {
-		return err
-	}
-	if inspect.NetworkSettings != nil {
-		if _, ok := inspect.NetworkSettings.Networks[NetworkName]; ok {
-			return nil
-		}
-	}
-	if err := m.cli.NetworkConnect(ctx, existing.ID, inspect.ID, nil); err != nil {
-		return fmt.Errorf("connecting container %s to %s: %w", containerName, NetworkName, err)
-	}
-	return nil
-}
-
-// ContainerTCPEndpoints returns IPv4 endpoints for a container across all attached Docker networks.
-func (m *Manager) ContainerTCPEndpoints(containerName string, port int) ([]HostEndpoint, error) {
-	if containerName == "" || port <= 0 || port > 65535 {
-		return nil, nil
-	}
-	ctx := context.Background()
-	inspect, err := m.cli.ContainerInspect(ctx, containerName)
-	if err != nil {
-		return nil, err
-	}
-	endpoints := make([]HostEndpoint, 0, len(inspect.NetworkSettings.Networks))
-	if inspect.NetworkSettings == nil {
-		return endpoints, nil
-	}
-	for _, netCfg := range inspect.NetworkSettings.Networks {
-		if netCfg == nil {
-			continue
-		}
-		ip := strings.TrimSpace(netCfg.IPAddress)
-		if net.ParseIP(ip) == nil {
-			continue
-		}
-		endpoints = append(endpoints, HostEndpoint{IP: ip, Port: port})
-	}
-	return normalizeHostEndpoints(endpoints), nil
 }
 
 // ApplyFirewall applies firewall rules to dock-net if possible.
