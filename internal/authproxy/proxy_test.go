@@ -1525,3 +1525,53 @@ func TestWebSocketProxy_InjectsRealCredentials(t *testing.T) {
 		t.Errorf("WebSocket upstream ChatGPT-Account-Id = %q; want acc-ws-real", gotAccountID)
 	}
 }
+
+func TestHandleAdminIssue(t *testing.T) {
+	p := newTestProxy(t)
+	p.cfg.AdminSecret = "secret"
+	req := httptest.NewRequest(http.MethodPost, "/admin/issue", strings.NewReader(`{"container":"worker-1","ttl":60}`))
+	req.Header.Set("X-Proxy-Admin-Secret", "secret")
+	w := httptest.NewRecorder()
+	p.handleAdminIssue(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var out map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.HasPrefix(out["token"], "cdx-") {
+		t.Fatalf("unexpected token: %q", out["token"])
+	}
+}
+
+func TestRemoteProxy_IssueToken(t *testing.T) {
+	p := newTestProxy(t)
+	p.cfg.AdminSecret = "secret"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/mode":
+			p.handleAdminMode(w, r)
+		case "/admin/issue":
+			p.handleAdminIssue(w, r)
+		case "/admin/revoke":
+			p.handleAdminRevoke(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	r, err := NewRemoteProxy(ts.URL, "http://codex-auth-proxy:18080", "secret")
+	if err != nil {
+		t.Fatalf("NewRemoteProxy: %v", err)
+	}
+	token, err := r.IssueToken("worker-r1", 60)
+	if err != nil {
+		t.Fatalf("IssueToken: %v", err)
+	}
+	if !strings.HasPrefix(token, "cdx-") {
+		t.Fatalf("unexpected token: %s", token)
+	}
+	r.RevokeToken("worker-r1")
+}

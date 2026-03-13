@@ -23,6 +23,11 @@ var approvalModeFlag string
 var fullAutoFlag bool
 
 var runOpts sandbox.RunOptions
+var (
+	proxyAdminURL       string
+	proxyContainerURL   string
+	runProxyAdminSecret string
+)
 
 var runCmd = &cobra.Command{
 	Use:   "run",
@@ -61,6 +66,9 @@ func init() {
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
+	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18080", "External auth proxy admin URL")
+	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
+	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start an interactive bash shell instead of Codex")
@@ -106,20 +114,10 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
 
-	// Start Auth Proxy on 0.0.0.0 (all interfaces) so worker containers can
-	// reach it via host.docker.internal (resolved by Docker to the bridge
-	// gateway IP). ListenAddr is left empty to use the default (0.0.0.0:0).
-	proxy, err := authproxy.NewProxy(authproxy.Config{
-		TokenTTL: runOpts.TokenTTL,
-		Verbose:  verbose,
-	})
+	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, runProxyAdminSecret)
 	if err != nil {
-		return fmt.Errorf("starting auth proxy: %w", err)
+		return fmt.Errorf("connecting external auth proxy: %w", err)
 	}
-	if err := proxy.Start(); err != nil {
-		return fmt.Errorf("starting auth proxy: %w", err)
-	}
-	defer proxy.Stop()
 
 	// Load packages.dock if present and no --pkg-file given
 	if runOpts.PkgFile == "" {
@@ -158,13 +156,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	if runOpts.Parallel > 1 {
-		return runParallel(sbMgr, proxy, sigCh)
+		return runParallel(sbMgr, sigCh)
 	}
 
-	return runSingle(sbMgr, proxy, sigCh)
+	return runSingle(sbMgr, sigCh)
 }
 
-func runSingle(mgr *sandbox.Manager, proxy *authproxy.Proxy, sigCh <-chan os.Signal) error {
+func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	opts := runOpts
 
 	// Handle worktree
@@ -208,7 +206,7 @@ func runSingle(mgr *sandbox.Manager, proxy *authproxy.Proxy, sigCh <-chan os.Sig
 	}
 }
 
-func runParallel(mgr *sandbox.Manager, proxy *authproxy.Proxy, sigCh <-chan os.Signal) error {
+func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	opts := runOpts
 	n := opts.Parallel
 	fmt.Printf("Starting %d parallel workers...\n", n)

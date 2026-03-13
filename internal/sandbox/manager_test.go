@@ -191,23 +191,6 @@ func TestImageExists_NotFound(t *testing.T) {
 	}
 }
 
-// TestBuildHostConfig_ExtraHosts verifies that worker containers are configured
-// with host.docker.internal:host-gateway so they can reach the Auth Proxy on
-// the host (resolves F-NET-04).
-func TestBuildHostConfig_ExtraHosts(t *testing.T) {
-	hc := buildHostConfig(nil)
-	found := false
-	for _, h := range hc.ExtraHosts {
-		if h == "host.docker.internal:host-gateway" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("buildHostConfig ExtraHosts = %v; missing host.docker.internal:host-gateway", hc.ExtraHosts)
-	}
-}
-
 func TestBuildHostConfig_Security(t *testing.T) {
 	hc := buildHostConfig(nil)
 

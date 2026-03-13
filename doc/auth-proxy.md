@@ -2,6 +2,16 @@
 
 > **日本語** | [English](en/auth-proxy.md)
 
+## デプロイ方式（現在）
+
+Auth Proxy は `codex-dock run` プロセス内ではなく、**Docker コンテナとして外部常駐**させる前提です。
+
+- 管理 API（ホスト側）: `http://127.0.0.1:18080`
+- ワーカーからの到達先: `http://codex-auth-proxy:18080`
+- `codex-dock run` は `--proxy-admin-url` / `--proxy-container-url` / `--proxy-admin-secret` で接続先を調整できます。
+
+---
+
 Auth Proxy は codex-dock のセキュリティの核となるコンポーネントです。
 コンテナに実際の API キーや OAuth クレデンシャルを渡さず、短命トークンを介して安全に認証情報を提供します。
 また、Codex CLI が呼ぶすべての OpenAI API トラフィック（Responses API・トークンリフレッシュ・ChatGPT backend-api）をプロキシし、**コンテナが保持するのはプレースホルダートークンのみ**とすることで、本物のクレデンシャルがコンテナに届かない構造を実現します。
