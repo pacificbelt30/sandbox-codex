@@ -131,8 +131,15 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
 	if name, ok := proxyContainerName(proxyContainerURL); ok {
-		if err := netMgr.EnsureContainerAttached(name); err != nil && verbose {
+		if err := netMgr.EnsureContainerAttached(name); err != nil {
 			fmt.Printf("Warning: could not attach %s to dock-net: %v\n", name, err)
+		}
+		if port, ok := allowedHostPort(proxyContainerURL); ok {
+			if eps, err := netMgr.ContainerTCPEndpoints(name, port); err != nil {
+				fmt.Printf("Warning: could not inspect proxy container %s endpoints: %v\n", name, err)
+			} else if len(eps) > 0 {
+				ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, eps...)
+			}
 		}
 	}
 	if err := netMgr.ApplyFirewall(ensureOpts); err != nil {
