@@ -268,9 +268,7 @@ func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNe
 		BridgeName: BridgeName,
 	}
 
-	for _, endpoint := range normalizeHostEndpoints(opts.AllowTCPDestinations) {
-		cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, endpoint)
-	}
+	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
 
 	if len(opts.AllowHostTCPPorts) == 0 {
 		return cfg, nil
