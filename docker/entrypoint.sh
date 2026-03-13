@@ -16,9 +16,11 @@ fi
 # ── Auth token acquisition ──────────────────────────────────────────────────
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     log "Fetching credentials from Auth Proxy..."
+    ORIGINAL_CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_URL}"
+
     fetch_token() {
         local endpoint="$1"
-        curl -sf \
+        curl -sf --connect-timeout 3 --max-time 10 \
             -H "X-Codex-Token: ${CODEX_TOKEN}" \
             "${endpoint}/token"
     }
@@ -31,6 +33,14 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
                 exit 1
             }
             CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_FALLBACK_URL}"
+
+            # Keep downstream proxy endpoints consistent with the selected URL.
+            if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+                export OPENAI_BASE_URL="${OPENAI_BASE_URL/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
+            fi
+            if [[ -n "${CODEX_REFRESH_TOKEN_URL_OVERRIDE:-}" ]]; then
+                export CODEX_REFRESH_TOKEN_URL_OVERRIDE="${CODEX_REFRESH_TOKEN_URL_OVERRIDE/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
+            fi
         else
             log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
             exit 1
