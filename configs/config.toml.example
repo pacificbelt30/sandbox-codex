@@ -4,6 +4,9 @@
 # Default Docker image for sandbox containers
 default_image = "codex-dock:latest"
 
+# Default Docker image for the auth proxy container
+proxy_image = "codex-dock-proxy:latest"
+
 # Default token TTL in seconds
 default_token_ttl = 3600
 

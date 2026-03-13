@@ -11,3 +11,8 @@ var Dockerfile []byte
 //
 //go:embed entrypoint.sh
 var Entrypoint []byte
+
+// ProxyDockerfile is the Dockerfile for the auth proxy container image.
+//
+//go:embed auth-proxy.Dockerfile
+var ProxyDockerfile []byte
