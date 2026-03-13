@@ -31,7 +31,7 @@ const (
 
 // ManagerConfig holds configuration for the sandbox manager.
 type ManagerConfig struct {
-	Proxy   *authproxy.Proxy
+	Proxy   authproxy.Service
 	Network *network.Manager
 	Verbose bool
 	Debug   bool
@@ -40,7 +40,7 @@ type ManagerConfig struct {
 // Manager handles container lifecycle for codex-dock workers.
 type Manager struct {
 	cli     *client.Client
-	proxy   *authproxy.Proxy
+	proxy   authproxy.Service
 	network *network.Manager
 	verbose bool
 	debug   bool
@@ -105,11 +105,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("issuing auth token: %w", err)
 		}
-		// ContainerEndpoint() returns http://host.docker.internal:PORT.
-		// Docker resolves host.docker.internal to the bridge gateway IP so
-		// containers can reach the Auth Proxy running on the host.
-		// The --add-host=host.docker.internal:host-gateway ExtraHost below
-		// ensures the name resolves correctly (required on Linux Docker Engine).
+		// ContainerEndpoint() returns the auth proxy URL reachable from workers.
 		containerProxyURL := m.proxy.ContainerEndpoint()
 		env = append(env,
 			"CODEX_AUTH_PROXY_URL="+containerProxyURL,
@@ -493,21 +489,12 @@ func absolutePath(path string) (string, error) {
 }
 
 // buildHostConfig constructs the container HostConfig with security defaults.
-// ExtraHosts adds host.docker.internal:host-gateway so containers can reach the
-// Auth Proxy on the host via http://host.docker.internal:PORT regardless of which
-// Docker bridge network the container is attached to.
-// host-gateway is resolved by Docker Engine (>= 20.10) to the default bridge
-// gateway IP (typically 172.17.0.1) at container creation time.
 func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
 	return &container.HostConfig{
 		NetworkMode: container.NetworkMode(sandboxNetName),
 		Mounts:      mounts,
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
-		// Allow containers to reach the Auth Proxy on the host.
-		// Docker resolves host-gateway to the bridge gateway IP; the proxy
-		// listens on 0.0.0.0 so it is reachable on that interface.
-		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 		Resources: container.Resources{
 			PidsLimit: int64ptr(512),
 		},
