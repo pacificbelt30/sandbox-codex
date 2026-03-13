@@ -50,7 +50,7 @@ func LoadPackageFile(path string) ([]Package, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening package file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var pkgs []Package
 	scanner := bufio.NewScanner(f)

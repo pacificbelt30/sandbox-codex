@@ -370,6 +370,105 @@ dock-net status:
 
 ---
 
+## `codex-dock proxy` — Auth Proxy の管理
+
+Auth Proxy コンテナのビルド・起動・停止・削除を行います。
+
+### `proxy build` — Auth Proxy イメージのビルド
+
+```bash
+codex-dock proxy build [OPTIONS]
+```
+
+| オプション | 省略形 | デフォルト | 説明 |
+|---|---|---|---|
+| `--tag` | `-t` | `proxy_image`（config） | イメージのタグ |
+| `--dockerfile` | `-f` | （自動検出） | auth-proxy.Dockerfile のパス |
+
+#### Dockerfile の検索順序
+
+`-f` を省略した場合、以下の順序で自動検出します：
+
+1. カレントディレクトリの `auth-proxy.Dockerfile`
+2. カレントディレクトリの `docker/auth-proxy.Dockerfile`
+3. `~/.config/codex-dock/auth-proxy.Dockerfile`（存在しない場合は組み込みデフォルトを自動書き出し）
+
+> ビルドコンテキストは常にカレントディレクトリ（`.`）です。Auth Proxy イメージは Go ソースから
+> バイナリをコンパイルするため、リポジトリルートで実行してください。
+
+**使用例：**
+
+```bash
+# デフォルト設定でビルド
+codex-dock proxy build
+
+# カスタムタグでビルド
+codex-dock proxy build --tag my-proxy:v1
+```
+
+---
+
+### `proxy run` — Auth Proxy コンテナの起動
+
+```bash
+codex-dock proxy run [OPTIONS]
+```
+
+| オプション | 省略形 | デフォルト | 説明 |
+|---|---|---|---|
+| `--name` | | `codex-dock-proxy` | コンテナ名 |
+| `--port` | `-p` | `18080` | ホスト側のポート番号 |
+| `--admin-secret` | | | `/admin/*` エンドポイントの認証シークレット |
+
+#### 認証情報の自動バインド
+
+`proxy run` は以下のすべての認証ソースを自動的に検出してコンテナへバインドします：
+
+| 認証方式 | ホスト側のソース | コンテナへの渡し方 |
+|---|---|---|
+| API キー（環境変数） | `OPENAI_API_KEY` | `-e OPENAI_API_KEY=<値>` |
+| API キー（保存済み） | `~/.config/codex-dock/apikey` | bind-mount（読み取り専用） |
+| OAuth / ChatGPT | `~/.codex/auth.json` | bind-mount（読み取り専用） |
+
+存在するすべてのソースが同時にバインドされます。プロキシ自身の優先順位は `OPENAI_API_KEY` 環境変数 → 保存済みキーファイル → OAuth です。
+
+**使用例：**
+
+```bash
+# デフォルト設定で起動（認証情報は自動検出）
+codex-dock proxy run
+
+# ポートとシークレットを指定
+codex-dock proxy run --port 9090 --admin-secret mysecret
+```
+
+---
+
+### `proxy stop` — Auth Proxy コンテナの停止
+
+```bash
+codex-dock proxy stop [OPTIONS]
+```
+
+| オプション | 省略形 | デフォルト | 説明 |
+|---|---|---|---|
+| `--name` | | `codex-dock-proxy` | コンテナ名 |
+
+---
+
+### `proxy rm` — Auth Proxy コンテナの削除
+
+```bash
+codex-dock proxy rm [OPTIONS]
+```
+
+| オプション | 省略形 | デフォルト | 説明 |
+|---|---|---|---|
+| `--name` | | `codex-dock-proxy` | コンテナ名 |
+| `--force` | `-f` | `false` | 実行中のコンテナも強制削除 |
+
+---
+
 ## `codex-dock build` — イメージのビルド
 
 サンドボックス用の Docker イメージをビルドします。

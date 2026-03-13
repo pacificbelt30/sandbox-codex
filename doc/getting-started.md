@@ -41,6 +41,7 @@ sudo make install-all
 | バイナリ配置 | `/usr/local/bin/codex-dock` |
 | デフォルト設定 | `~/.config/codex-dock/config.toml` |
 | サンドボックスイメージ | `codex-dock:latest`（Docker） |
+| Auth Proxy イメージ | `codex-dock-proxy:latest`（Docker） |
 
 > **注意**: `sudo make install-all` は `$SUDO_USER` を参照して実行ユーザーのホームディレクトリを特定するため、config は `/root/.config/` ではなく `~/config/codex-dock/` に配置されます。
 
@@ -86,14 +87,28 @@ sudo mv codex-dock /usr/local/bin/
 # 1) dock-net を作成（初回のみ）
 codex-dock network create
 
-# 2) Auth Proxy イメージを作成
-docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
+# 2) Auth Proxy イメージをビルド
+codex-dock proxy build
 
-# 3) Auth Proxy コンテナを起動
-docker run -d --name codex-auth-proxy --network dock-net \
-  -p 127.0.0.1:18080:18080 \
-  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  codex-dock-auth-proxy:latest
+# 3) Auth Proxy コンテナを起動（認証情報は自動検出）
+codex-dock proxy run
+```
+
+`codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
+
+| 認証方式 | ホスト側のソース | コンテナへの渡し方 |
+|---|---|---|
+| API キー（環境変数） | `OPENAI_API_KEY` | `-e OPENAI_API_KEY=<値>` |
+| API キー（保存済み） | `~/.config/codex-dock/apikey` | bind-mount（読み取り専用） |
+| OAuth / ChatGPT | `~/.codex/auth.json` | bind-mount（読み取り専用） |
+
+存在するすべてのソースが同時にバインドされます。プロキシ起動時の優先順位は `OPENAI_API_KEY` 環境変数 → 保存済みキーファイル → OAuth の順です。
+
+#### コンテナの停止・削除
+
+```bash
+codex-dock proxy stop   # コンテナを停止
+codex-dock proxy rm     # コンテナを削除
 ```
 
 ### ローカルプロセスとして起動

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,7 +22,7 @@ var buildCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return executeBuild(buildTag, dockerfile, buildCtx)
+		return executeBuild(cmd.Context(), buildTag, dockerfile, buildCtx)
 	},
 }
 
@@ -48,7 +49,7 @@ func resolveDockerfile(flagValue string) (string, string, error) {
 	// Fall back to the default Dockerfile written into the config directory.
 	configDir, err := defaultConfigDir()
 	if err != nil {
-		return "", "", fmt.Errorf("Dockerfile not found; use -f to specify path")
+		return "", "", fmt.Errorf("dockerfile not found; use -f to specify path")
 	}
 	if err := ensureDefaultDockerfile(configDir); err != nil {
 		return "", "", fmt.Errorf("writing default Dockerfile to config dir: %w", err)
@@ -87,9 +88,9 @@ func ensureDefaultDockerfile(dir string) error {
 }
 
 // executeBuild runs "docker build" with the given tag, Dockerfile, and build context.
-func executeBuild(tag, dockerfile, buildCtx string) error {
+func executeBuild(ctx context.Context, tag, dockerfile, buildCtx string) error {
 	fmt.Printf("Building image %s from %s...\n", tag, dockerfile)
-	c := exec.Command("docker", "build", "-t", tag, "-f", dockerfile, buildCtx)
+	c := exec.CommandContext(ctx, "docker", "build", "-t", tag, "-f", dockerfile, buildCtx)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {
