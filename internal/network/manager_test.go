@@ -1,6 +1,10 @@
 package network
 
-import "testing"
+import (
+	"testing"
+
+	dockernetwork "github.com/docker/docker/api/types/network"
+)
 
 func TestDeriveGateway(t *testing.T) {
 	tests := []struct {
@@ -64,5 +68,57 @@ func TestParseIPv4Network(t *testing.T) {
 				t.Errorf("parseIPv4Network(%q) = %v; want %v", tt.cidr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAllowHostEndpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want HostEndpoint
+		ok   bool
+	}{
+		{
+			name: "literal ip",
+			raw:  "http://192.168.1.9:18080",
+			want: HostEndpoint{IP: "192.168.1.9", Port: 18080},
+			ok:   true,
+		},
+		{
+			name: "hostname ignored",
+			raw:  "http://host.docker.internal:18080",
+			ok:   false,
+		},
+		{
+			name: "invalid url",
+			raw:  "://bad",
+			ok:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := AllowHostEndpoint(tt.raw)
+			if ok != tt.ok {
+				t.Fatalf("AllowHostEndpoint(%q) ok=%v want=%v", tt.raw, ok, tt.ok)
+			}
+			if got != tt.want {
+				t.Fatalf("AllowHostEndpoint(%q)=%+v want=%+v", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGatewayFromSummary(t *testing.T) {
+	net := &dockernetwork.Summary{
+		IPAM: dockernetwork.IPAM{
+			Config: []dockernetwork.IPAMConfig{
+				{Subnet: "10.200.0.0/24"},
+			},
+		},
+	}
+
+	if got := gatewayFromSummary(net); got != "10.200.0.1" {
+		t.Fatalf("gatewayFromSummary()=%q want 10.200.0.1", got)
 	}
 }

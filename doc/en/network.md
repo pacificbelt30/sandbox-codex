@@ -51,7 +51,7 @@ codex-dock uses a dedicated Docker bridge network **dock-net** to isolate contai
 | Subnet | `10.200.0.0/24` | Address space for containers |
 | ICC | Disabled (`false`) | Blocks inter-container communication |
 | IP Masquerade | Enabled (`true`) | NAT from containers to internet |
-| Host access blocking | ⚠️ Partial | iptables rules not yet implemented |
+| Host access blocking | Enabled on Linux | Blocks private/link-local egress via `DOCKER-USER` + `iptables` |
 
 ---
 
@@ -93,16 +93,20 @@ Can be disabled with the `--no-internet` flag:
 Container ──✗──▶ Internet   (when --no-internet is specified)
 ```
 
-### Container → Host Communication (Partial Implementation)
+### Container → Host Communication (Linux)
 
-**Current implementation status (F-NET-02)**: iptables rules to block container-to-host communication are not yet implemented.
+On Linux, `dock-net` setup installs a `CODEX-DOCK` chain under `DOCKER-USER`
+and drops worker egress to private/link-local destinations.
 
 | Direction | Status | Details |
 |---|---|---|
 | Container → Internet | ✅ Allowed | Via IP Masquerade |
 | Inter-container (ICC) | ✅ Blocked | `enable_icc=false` |
-| Container → Host | ⚠️ Not blocked | iptables rules not implemented |
+| Container → Host/LAN | Linux: ✅ Blocked | `DOCKER-USER` drops `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8` |
 | Host → Container | ✅ Controllable | Docker default policy |
+
+> **Note**: This firewall automation depends on Linux `iptables`. It is not auto-applied on macOS / Windows (Docker Desktop).
+> On Linux, `codex-dock run` and `codex-dock network create` must run as root to install/remove these rules.
 
 ---
 
@@ -169,6 +173,8 @@ codex-dock network create
 
 Also created automatically by `codex-dock run`.
 
+> **Note**: On Linux this also installs `iptables` rules, so root privileges are required.
+
 ### Delete Network
 
 ```bash
@@ -190,11 +196,46 @@ Containers reach the proxy via `http://host.docker.internal:PORT`.
 Container ──▶ host.docker.internal:PORT ──▶ Host (172.17.0.1, etc.) ──▶ Auth Proxy   ✅ reachable
 ```
 
-### F-NET-02: Incomplete Container → Host Communication Blocking
+### F-NET-02: Container → Host Blocking Is Linux-Specific
 
-**Problem**: `enable_icc=false` blocks inter-container communication but does not block container-to-host communication.
+**Current state**: Linux is enforced with `iptables`, but equivalent automatic controls are not implemented on macOS / Windows.
 
-**Workaround (not implemented)**: Add iptables rules using `coreos/go-iptables` or similar.
+**Workaround**: On Docker Desktop, add matching host-side firewall egress rules manually.
+
+---
+
+## Manual Firewall Setup (Linux)
+
+If you want to install the same policy by hand, run the following as root.
+This example allows only an Auth Proxy on host `18080/tcp`.
+
+```bash
+sudo iptables -N CODEX-DOCK 2>/dev/null || true
+sudo iptables -C DOCKER-USER -i dock-net0 -j CODEX-DOCK 2>/dev/null || \
+  sudo iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK
+sudo iptables -F CODEX-DOCK
+
+# Optional: allow the Auth Proxy on the host bridge gateway
+sudo iptables -A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -j RETURN
+
+# Block private/link-local destinations on the host/LAN
+sudo iptables -A CODEX-DOCK -d 10.0.0.0/8 -j DROP
+sudo iptables -A CODEX-DOCK -d 172.16.0.0/12 -j DROP
+sudo iptables -A CODEX-DOCK -d 192.168.0.0/16 -j DROP
+sudo iptables -A CODEX-DOCK -d 169.254.0.0/16 -j DROP
+sudo iptables -A CODEX-DOCK -d 127.0.0.0/8 -j DROP
+sudo iptables -A CODEX-DOCK -j RETURN
+```
+
+To remove the rules:
+
+```bash
+sudo iptables -D DOCKER-USER -i dock-net0 -j CODEX-DOCK 2>/dev/null || true
+sudo iptables -F CODEX-DOCK 2>/dev/null || true
+sudo iptables -X CODEX-DOCK 2>/dev/null || true
+```
+
+> **Note**: `172.17.0.1` is a common Linux bridge gateway example. On Docker Desktop or custom bridge layouts, replace it with the actual host-side gateway IP used by your Auth Proxy path.
 
 ---
 

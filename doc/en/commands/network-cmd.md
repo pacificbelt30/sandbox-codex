@@ -16,6 +16,7 @@ codex-dock network create [--no-internet]
 ```
 
 > Automatically created by `codex-dock run` if it doesn't exist.
+> On Linux this also installs `iptables` rules, so root privileges are required.
 
 ---
 

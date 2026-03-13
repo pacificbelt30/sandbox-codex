@@ -3,13 +3,19 @@ package network
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
 
 const (
-	NetworkName = "dock-net"
+	NetworkName   = "dock-net"
+	BridgeName    = "dock-net0"
+	NetworkSubnet = "10.200.0.0/24"
+	NetworkGW     = "10.200.0.1"
 )
 
 // NetworkInfo holds status information about dock-net.
@@ -23,7 +29,15 @@ type NetworkInfo struct {
 
 // Manager handles the lifecycle of the dock-net Docker network.
 type Manager struct {
-	cli *client.Client
+	cli      *client.Client
+	firewall firewallController
+}
+
+// EnsureOptions configures dock-net creation and host egress exceptions.
+type EnsureOptions struct {
+	NoInternet           bool
+	AllowHostTCPPorts    []int
+	AllowTCPDestinations []HostEndpoint
 }
 
 // NewManager creates a new network Manager.
@@ -32,46 +46,64 @@ func NewManager() (*Manager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connecting to Docker: %w", err)
 	}
-	return &Manager{cli: cli}, nil
+	return &Manager{cli: cli, firewall: newSystemFirewall()}, nil
 }
 
 // EnsureNetwork creates dock-net if it does not already exist.
-func (m *Manager) EnsureNetwork(noInternet bool) error {
+func (m *Manager) EnsureNetwork(opts EnsureOptions) error {
 	ctx := context.Background()
 
 	existing, err := m.findNetwork(ctx)
 	if err != nil {
 		return err
 	}
-	if existing != nil {
-		return nil // already exists
-	}
 
-	options := map[string]string{
-		"com.docker.network.bridge.enable_icc":           "false",
-		"com.docker.network.bridge.enable_ip_masquerade": "true",
-		"com.docker.network.bridge.name":                 "dock-net0",
-	}
+	if existing == nil {
+		options := map[string]string{
+			"com.docker.network.bridge.enable_icc":           "false",
+			"com.docker.network.bridge.enable_ip_masquerade": "true",
+			"com.docker.network.bridge.name":                 BridgeName,
+		}
 
-	if noInternet {
-		options["com.docker.network.bridge.enable_ip_masquerade"] = "false"
-	}
+		if opts.NoInternet {
+			options["com.docker.network.bridge.enable_ip_masquerade"] = "false"
+		}
 
-	_, err = m.cli.NetworkCreate(ctx, NetworkName, dockernetwork.CreateOptions{
-		Driver:  "bridge",
-		Options: options,
-		Labels: map[string]string{
-			"codex-dock.managed": "true",
-		},
-		IPAM: &dockernetwork.IPAM{
-			Driver: "default",
-			Config: []dockernetwork.IPAMConfig{
-				{Subnet: "10.200.0.0/24", Gateway: "10.200.0.1"},
+		_, err = m.cli.NetworkCreate(ctx, NetworkName, dockernetwork.CreateOptions{
+			Driver:  "bridge",
+			Options: options,
+			Labels: map[string]string{
+				"codex-dock.managed": "true",
 			},
-		},
-	})
+			IPAM: &dockernetwork.IPAM{
+				Driver: "default",
+				Config: []dockernetwork.IPAMConfig{
+					{Subnet: NetworkSubnet, Gateway: NetworkGW},
+				},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("creating dock-net: %w", err)
+		}
+		existing, err = m.findNetwork(ctx)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return fmt.Errorf("dock-net created but could not be reloaded")
+		}
+	}
+
+	if m.firewall == nil {
+		return nil
+	}
+
+	cfg, err := m.firewallConfig(ctx, opts, existing)
 	if err != nil {
-		return fmt.Errorf("creating dock-net: %w", err)
+		return err
+	}
+	if err := m.firewall.Apply(ctx, cfg); err != nil {
+		return fmt.Errorf("applying dock-net firewall rules: %w", err)
 	}
 	return nil
 }
@@ -85,6 +117,15 @@ func (m *Manager) RemoveNetwork() error {
 	}
 	if existing == nil {
 		return fmt.Errorf("dock-net does not exist")
+	}
+	if m.firewall != nil {
+		cfg, err := m.firewallConfig(ctx, EnsureOptions{}, existing)
+		if err != nil {
+			return err
+		}
+		if err := m.firewall.Remove(ctx, cfg); err != nil {
+			return fmt.Errorf("removing dock-net firewall rules: %w", err)
+		}
 	}
 	return m.cli.NetworkRemove(ctx, existing.ID)
 }
@@ -206,14 +247,91 @@ func parseIPv4Network(cidr string) ([4]byte, error) {
 }
 
 func (m *Manager) findNetwork(ctx context.Context) (*dockernetwork.Summary, error) {
+	return m.findNetworkByName(ctx, NetworkName)
+}
+
+func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockernetwork.Summary, error) {
 	nets, err := m.cli.NetworkList(ctx, dockernetwork.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("listing networks: %w", err)
 	}
 	for i := range nets {
-		if nets[i].Name == NetworkName {
+		if nets[i].Name == name {
 			return &nets[i], nil
 		}
 	}
 	return nil, nil
+}
+
+func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNet *dockernetwork.Summary) (firewallConfig, error) {
+	cfg := firewallConfig{
+		BridgeName: BridgeName,
+	}
+
+	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
+
+	if len(opts.AllowHostTCPPorts) == 0 {
+		return cfg, nil
+	}
+
+	hostIPs := make([]string, 0, 2)
+	if gateway := gatewayFromSummary(dockNet); gateway != "" {
+		hostIPs = append(hostIPs, gateway)
+	}
+	if gateway, err := m.hostGatewayAddr(ctx); err == nil && gateway != "" {
+		hostIPs = append(hostIPs, gateway)
+	}
+
+	for _, port := range opts.AllowHostTCPPorts {
+		if port <= 0 || port > 65535 {
+			continue
+		}
+		for _, ip := range hostIPs {
+			cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, HostEndpoint{IP: ip, Port: port})
+		}
+	}
+
+	cfg.AllowTCPDestinations = normalizeHostEndpoints(cfg.AllowTCPDestinations)
+	return cfg, nil
+}
+
+func (m *Manager) hostGatewayAddr(ctx context.Context) (string, error) {
+	bridge, err := m.findNetworkByName(ctx, "bridge")
+	if err != nil {
+		return "", err
+	}
+	return gatewayFromSummary(bridge), nil
+}
+
+func gatewayFromSummary(net *dockernetwork.Summary) string {
+	if net == nil {
+		return ""
+	}
+	if len(net.IPAM.Config) == 0 {
+		return ""
+	}
+	if net.IPAM.Config[0].Gateway != "" {
+		return net.IPAM.Config[0].Gateway
+	}
+	if net.IPAM.Config[0].Subnet == "" {
+		return ""
+	}
+	gateway, err := deriveGateway(net.IPAM.Config[0].Subnet)
+	if err != nil {
+		return ""
+	}
+	return gateway
+}
+
+func AllowHostEndpoint(rawURL string) (HostEndpoint, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return HostEndpoint{}, false
+	}
+	host := u.Hostname()
+	port, err := strconv.Atoi(u.Port())
+	if err != nil || net.ParseIP(host) == nil {
+		return HostEndpoint{}, false
+	}
+	return HostEndpoint{IP: host, Port: port}, true
 }

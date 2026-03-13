@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
@@ -110,7 +112,16 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating network manager: %w", err)
 	}
-	if err := netMgr.EnsureNetwork(runOpts.NoInternet); err != nil {
+	ensureOpts := network.EnsureOptions{
+		NoInternet: runOpts.NoInternet,
+	}
+	if port, ok := allowedHostPort(proxyContainerURL); ok {
+		ensureOpts.AllowHostTCPPorts = []int{port}
+	}
+	if endpoint, ok := network.AllowHostEndpoint(proxyContainerURL); ok {
+		ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
+	}
+	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
 
@@ -160,6 +171,18 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+func allowedHostPort(rawURL string) (int, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Port() == "" {
+		return 0, false
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, false
+	}
+	return port, true
 }
 
 func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {

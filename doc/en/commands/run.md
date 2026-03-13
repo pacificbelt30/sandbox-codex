@@ -6,6 +6,8 @@
 
 Runs Codex CLI inside a Docker container with Auth Proxy and network isolation configured automatically.
 
+> **Linux note**: `codex-dock run` installs `iptables` rules for `dock-net`, so it must be run with root privileges on Linux.
+
 > **Automatic image build**: If the image specified by `--image` does not exist locally, it is built automatically using the same logic as `codex-dock build`.
 
 ```bash
