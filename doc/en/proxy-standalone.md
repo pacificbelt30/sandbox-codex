@@ -69,13 +69,27 @@ codex-dock network create
 sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
 ```
 
+When running `firewall create`, if `dock-net` / `dock-net-proxy` are missing,
+`codex-dock` shows a warning and prompts whether to create them (`Create <network> now? [y/N]:`).
+Choosing `y` creates the required network and then continues firewall setup.
+
 Validation command (order matters):
 
 ```bash
 sudo iptables -S DOCKER-USER
-# Expected: dock-net0 -> dock-net-proxy0 ACCEPT rules appear before
-#           -i dock-net0 -j CODEX-DOCK
+# Expected: proxy allow rules come first,
+#           -i dock-net0 -j CODEX-DOCK is the final rule
 ```
+
+Example (conceptual order):
+
+```text
+ACCEPT ... -i dock-net-proxy0 -o dock-net0  -m conntrack --ctstate RELATED,ESTABLISHED
+ACCEPT ... -i dock-net0       -o dock-net-proxy0 -p tcp --dport 18080
+CODEX-DOCK ... -i dock-net0
+```
+
+> If `CODEX-DOCK` appears earlier, traffic may never reach proxy allow rules and connectivity can fail.
 
 > **Security**: Without `--admin-secret`, the admin API has no authentication.
 > Always set it to restrict who can issue tokens.

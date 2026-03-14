@@ -69,13 +69,27 @@ codex-dock network create
 sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
 ```
 
+`firewall create` 実行時に `dock-net` / `dock-net-proxy` が存在しない場合、
+`codex-dock` は警告を表示して作成可否を確認します（`Create <network> now? [y/N]:`）。
+この確認で `y` を選ぶと必要なネットワークが作成され、続けて firewall ルールが適用されます。
+
 確認コマンド（順序が重要）：
 
 ```bash
 sudo iptables -S DOCKER-USER
-# 期待: dock-net0 -> dock-net-proxy0 ACCEPT が先、
-#       その後に -i dock-net0 -j CODEX-DOCK が続く
+# 期待: proxy 許可ルールが先、
+#       -i dock-net0 -j CODEX-DOCK は最後尾
 ```
+
+例（概念的な順序）:
+
+```text
+ACCEPT ... -i dock-net-proxy0 -o dock-net0  -m conntrack --ctstate RELATED,ESTABLISHED
+ACCEPT ... -i dock-net0       -o dock-net-proxy0 -p tcp --dport 18080
+CODEX-DOCK ... -i dock-net0
+```
+
+> `CODEX-DOCK` が先頭側にあると proxy 許可ルールまで到達せず、通信失敗の原因になります。
 
 > **セキュリティ**: `--admin-secret` を設定しないと管理 API への認証がなくなります。
 > トークンを発行できる相手を限定するために必ず設定してください。
