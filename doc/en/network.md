@@ -2,450 +2,80 @@
 
 > [日本語](../network.md) | **English**
 
-codex-dock uses a dedicated Docker bridge network **dock-net** to isolate containers.
+codex-dock uses a dedicated Docker bridge network **dock-net** to isolate worker containers.
 
 ---
 
-## dock-net Configuration
+## Current Network / Firewall Specification
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Host Environment                                              │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │  dock-net  (Docker bridge network)                    │    │
-│  │  Subnet: 10.200.0.0/24                               │    │
-│  │  Bridge device: dock-net0                             │    │
-│  │                                                       │    │
-│  │  ┌─────────────┐   ✗ICC   ┌─────────────┐            │    │
-│  │  │ Container A │◀────────▶│ Container B │            │    │
-│  │  │ (worker-1)  │ blocked  │ (worker-2)  │            │    │
-│  │  └──────┬──────┘          └──────┬──────┘            │    │
-│  └─────────┼───────────────────────┼────────────────────┘    │
-│            │ host.docker.internal  │                          │
-│            │ (via host-gateway)    │                          │
-│            ▼                       ▼                          │
-│  ┌──────────────────────────────────────┐                     │
-│  │  Auth Proxy (0.0.0.0:PORT)           │                     │
-│  │  Reachable via host.docker.internal:PORT from containers   │
-│  └──────────────────────────────────────┘                     │
-│            │                                                   │
-│            ▼                                                   │
-│  ┌──────────────────────────────────────┐                     │
-│  │  Host External Network               │                     │
-│  │  (Internet / OpenAI API, etc.)       │                     │
-│  └──────────────────────────────────────┘                     │
-│                                                                │
-└──────────────────────────────────────────────────────────────┘
-```
+### dock-net base configuration
 
----
-
-## Network Configuration Parameters
-
-| Parameter | Value | Description |
-|---|---|---|
-| Network name | `dock-net` | Docker network name |
-| Driver | `bridge` | Docker bridge driver |
-| Bridge device name | `dock-net0` | Network interface name on host |
-| Subnet | `10.200.0.0/24` | Address space for containers |
-| ICC | Disabled (`false`) | Blocks inter-container communication |
-| IP Masquerade | Enabled (`true`) | NAT from containers to internet |
-| Host access blocking | Enabled on Linux | Blocks private/link-local egress via `DOCKER-USER` + `iptables` |
-
----
-
-## Docker Network Options (Internal)
-
-```go
-options := map[string]string{
-    "com.docker.network.bridge.enable_icc":           "false",  // ← block inter-container comm
-    "com.docker.network.bridge.enable_ip_masquerade": "true",   // ← allow internet access
-    "com.docker.network.bridge.name":                 "dock-net0",
-}
-```
-
----
-
-## Security Policy
-
-### Inter-Container Communication (ICC) Disabled
-
-Disabling ICC prevents containers on the same `dock-net` from communicating with each other.
-
-```
-Container A ──✗──▶ Container B   (no communication within dock-net)
-```
-
-**Effect**: Even when multiple parallel workers are running, if one container is compromised it cannot affect others.
-
-### Internet Access
-
-By default, IP Masquerade (NAT) is enabled, allowing containers to access the OpenAI API and other services.
-
-```
-Container ──▶ NAT ──▶ Internet (OpenAI API, etc.)   ✅ default
-```
-
-Can be disabled with the `--no-internet` flag:
-
-```
-Container ──✗──▶ Internet   (when --no-internet is specified)
-```
-
-### Container → Host Communication (Linux)
-
-On Linux, `dock-net` setup installs a `CODEX-DOCK` chain under `DOCKER-USER`
-and drops worker egress to private/link-local destinations.
-
-| Direction | Status | Details |
-|---|---|---|
-| Container → Internet | ✅ Allowed | Via IP Masquerade |
-| Inter-container (ICC) | ✅ Blocked | `enable_icc=false` |
-| Container → Host/LAN | Linux: ✅ Blocked | `DOCKER-USER` drops `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8` |
-| Host → Container | ✅ Controllable | Docker default policy |
-
-> **Note**: This firewall automation depends on Linux `iptables`. It is not auto-applied on macOS / Windows (Docker Desktop).
-> On Linux, `codex-dock run` attempts firewall setup and continues with a warning if it cannot apply rules.
-> To apply firewall rules explicitly, run `codex-dock firewall create` as root.
-
----
-
-## `--no-internet` Flag
-
-Disables internet access from containers.
-
-```bash
-codex-dock run --no-internet
-```
-
-Internally sets IP Masquerade to `false`:
-
-```go
-if noInternet {
-    options["com.docker.network.bridge.enable_ip_masquerade"] = "false"
-}
-```
-
-> **Note**: With `--no-internet`, containers cannot connect to the OpenAI API either.
-> This setting is suitable for code review or read-only tasks.
-
----
-
-## Container Network Configuration
-
-Each container is started connected to `dock-net`, and `ExtraHosts` is configured so containers can reach the host via `host.docker.internal`:
-
-```go
-hostConfig := &container.HostConfig{
-    NetworkMode: container.NetworkMode("dock-net"),
-    ExtraHosts:  []string{"host.docker.internal:host-gateway"},
-    // ...
-}
-```
-
-`host-gateway` is a special value automatically resolved by Docker Engine to the host gateway IP as seen from containers (typically `docker0`'s `172.17.0.1`).
-
----
-
-## Network Management Commands
-
-### Check Network Status
-
-```bash
-codex-dock network status
-```
-
-**Example output:**
-```
-dock-net status:
-  ID:           a1b2c3d4e5f6...
-  Driver:       bridge
-  Subnet:       10.200.0.0/24
-  ICC:          disabled
-  IP Masquerade: enabled
-```
-
-### Create Network
-
-```bash
-codex-dock network create
-```
-
-Also created automatically by `codex-dock run`.
-
-> **Note**: `network create` only provisions the Docker network.
-> To install Linux `iptables` rules, run `codex-dock firewall create`.
-
-### Delete Network
-
-```bash
-codex-dock network rm
-```
-
-> **Note**: Stop any running containers before deleting the network.
-
----
-
-## Known Issues
-
-### ~~F-NET-04~~: Auth Proxy Unreachable ✅ Resolved
-
-Auth Proxy listens on `0.0.0.0:PORT`, and containers have `--add-host=host.docker.internal:host-gateway`.
-Containers reach the proxy via `http://host.docker.internal:PORT`.
-
-```
-Container ──▶ host.docker.internal:PORT ──▶ Host (172.17.0.1, etc.) ──▶ Auth Proxy   ✅ reachable
-```
-
-### F-NET-02: Container → Host Blocking Is Linux-Specific
-
-**Current state**: Linux is enforced with `iptables`, but equivalent automatic controls are not implemented on macOS / Windows.
-
-**Workaround**: On Docker Desktop, add matching host-side firewall egress rules manually.
-
----
-
-## Manual Firewall Setup (Linux)
-
-If you want to install the same policy by hand, run the following as root.
-This example allows only an Auth Proxy on host `18080/tcp`.
-
-```bash
-sudo iptables -N CODEX-DOCK 2>/dev/null || true
-sudo iptables -C DOCKER-USER -i dock-net0 -j CODEX-DOCK 2>/dev/null || \
-  sudo iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK
-sudo iptables -F CODEX-DOCK
-
-# Optional: allow the Auth Proxy on the host bridge gateway
-sudo iptables -A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -j RETURN
-
-# Block private/link-local destinations on the host/LAN
-sudo iptables -A CODEX-DOCK -d 10.0.0.0/8 -j DROP
-sudo iptables -A CODEX-DOCK -d 172.16.0.0/12 -j DROP
-sudo iptables -A CODEX-DOCK -d 192.168.0.0/16 -j DROP
-sudo iptables -A CODEX-DOCK -d 169.254.0.0/16 -j DROP
-sudo iptables -A CODEX-DOCK -d 127.0.0.0/8 -j DROP
-sudo iptables -A CODEX-DOCK -j RETURN
-```
-
-To remove the rules:
-
-```bash
-sudo iptables -D DOCKER-USER -i dock-net0 -j CODEX-DOCK 2>/dev/null || true
-sudo iptables -F CODEX-DOCK 2>/dev/null || true
-sudo iptables -X CODEX-DOCK 2>/dev/null || true
-```
-
-> **Note**: `172.17.0.1` is a common Linux bridge gateway example. On Docker Desktop or custom bridge layouts, replace it with the actual host-side gateway IP used by your Auth Proxy path.
-
----
-
-## host.docker.internal Troubleshooting
-
-Common issues and solutions for the Auth Proxy reachability path using `host.docker.internal:host-gateway`.
-
-### Prerequisites
-
-| Item | Requirement |
+| Item | Value |
 |---|---|
-| Docker Engine | **20.10 or later** (`host-gateway` special value available) |
-| OS | Linux / macOS (Docker Desktop) / Windows (Docker Desktop or WSL2) |
-| Network | `docker0` bridge interface must exist |
+| Network name | `dock-net` |
+| Driver | `bridge` |
+| Bridge name | `dock-net0` |
+| Subnet | `10.200.0.0/24` |
+| Gateway | `10.200.0.1` |
+| ICC | `false` (inter-container traffic disabled) |
+| IP Masquerade | `true` by default (`false` with `--no-internet`) |
 
-Check Docker Engine version:
-```bash
-docker version --format '{{.Server.Version}}'
-```
+### Linux firewall rules
 
----
+On Linux, codex-dock manages `iptables` rules by linking `DOCKER-USER` to a managed chain named `CODEX-DOCK`.
 
-### Issue 1: Container Cannot Connect to Auth Proxy (Connection refused)
+Rule application order:
 
-**Symptom**:
-```
-[codex-dock] ERROR: Failed to fetch credentials from Auth Proxy at http://host.docker.internal:PORT
-curl: (7) Failed to connect to host.docker.internal port PORT after 0 ms: Connection refused
-```
+1. Insert `-i dock-net0 -j CODEX-DOCK` into `DOCKER-USER`
+2. Flush `CODEX-DOCK`
+3. Add allow rules for:
+   - `IP:PORT` parsed from `--proxy-container-url`
+   - `dock-net` subnet to the same proxy port
+4. Drop private/link-local destinations (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`)
+5. Add final `RETURN`
 
-**Cause and Resolution**:
-
-#### Cause A: `host-gateway` Cannot Be Resolved (Docker Engine < 20.10)
-
-The `host-gateway` special value is only supported on Docker Engine 20.10 and later.
-
-```bash
-# Check version
-docker version --format '{{.Server.Version}}'
-# Upgrade required if below 20.10
-```
-
-#### Cause B: `docker0` Interface Does Not Exist
-
-`host-gateway` resolves to the default bridge (`docker0`) gateway IP.
-Resolution fails in environments where `docker0` is disabled (some cloud VMs or minimal configurations).
-
-```bash
-# Check docker0
-ip addr show docker0
-
-# If docker0 is absent, specify gateway IP explicitly in daemon config
-# /etc/docker/daemon.json
-{
-  "host-gateway-ip": "192.168.1.1"  # ← specify host LAN IP
-}
-sudo systemctl restart docker
-```
-
-#### Cause C: Host Firewall Blocking Port
-
-Auth Proxy uses a random port (`:0`), determined at startup.
-
-```bash
-# Allow access from Docker bridge via iptables
-sudo iptables -I INPUT -i docker0 -j ACCEPT
-sudo iptables -I INPUT -i br-+ -j ACCEPT
-
-# Persist (Ubuntu/Debian)
-sudo apt install iptables-persistent
-sudo netfilter-persistent save
-```
+> `codex-dock run` attempts firewall setup automatically. If root privileges are missing or `iptables` is unavailable, it continues with a warning.
 
 ---
 
-### Issue 2: Cannot Connect in WSL2 Environment
+## Command Behavior
 
-**Symptom**: When running codex-dock on Docker in WSL2, containers cannot reach `host.docker.internal`.
-
-**Background**:
-WSL2 runs on a Hyper-V-based VM, with a network boundary between host Windows and WSL2 Linux.
-Docker Desktop handles this transparently, but running Docker Engine directly inside WSL2 requires extra care.
-
-#### When Using Docker Desktop (Windows)
-
-Docker Desktop automatically configures `host.docker.internal`, so no additional setup is usually needed.
+### `codex-dock firewall create`
 
 ```bash
-# Verify from inside container
-docker run --rm alpine cat /etc/hosts | grep host.docker.internal
-# → 192.168.65.2  host.docker.internal (added automatically by Docker Desktop)
+codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 ```
 
-#### When Using Docker Engine Directly Inside WSL2
+- Applies rules on Linux when run as root and `iptables` is available.
+- Default `--proxy-container-url` is `http://codex-auth-proxy:18080`.
 
-WSL2's `eth0` interface is separate from the Windows network, and `docker0` only exists inside WSL2.
+### `codex-dock firewall status`
 
 ```bash
-# Check docker0 IP in WSL2
-ip addr show docker0 | grep 'inet '
-# → inet 172.17.0.1/16 scope global docker0
-
-# Connection from docker0 to Auth Proxy should work
-# If it fails, specify IP explicitly with --host-gateway-ip
-# /etc/docker/daemon.json (inside WSL2)
-{
-  "host-gateway-ip": "172.17.0.1"
-}
+codex-dock firewall status
 ```
 
-#### When Windows Firewall is Blocking
+Shows:
 
-Windows Firewall may block WSL2 → host Windows communication.
+- Linux support
+- Root execution status
+- `iptables` detection
+- `CODEX-DOCK` chain existence
+- `DOCKER-USER -> CODEX-DOCK` jump rule existence
+- `DOCKER-USER` default policy
+- Final jump verdict in `CODEX-DOCK`
 
-```powershell
-# Allow WSL2 inbound in PowerShell (Administrator)
-New-NetFirewallRule -DisplayName "WSL2 Docker Inbound" `
-  -Direction Inbound -Protocol TCP `
-  -LocalPort 1024-65535 `
-  -RemoteAddress 172.16.0.0/12 `
-  -Action Allow
+### `codex-dock firewall rm`
+
+```bash
+codex-dock firewall rm
 ```
+
+Removes the `DOCKER-USER -> CODEX-DOCK` jump rule and deletes the `CODEX-DOCK` chain.
 
 ---
 
-### Issue 3: Notes for macOS (Docker Desktop)
+## Notes
 
-On macOS, Docker containers run on a lightweight Linux VM (Lima or HyperKit), not natively.
-
-```bash
-# Check if host.docker.internal resolves from inside container
-docker run --rm --add-host=host.docker.internal:host-gateway alpine \
-  sh -c 'getent hosts host.docker.internal'
-```
-
-**Docker Desktop for Mac** automatically configures `host.docker.internal`, so no additional setup is usually needed.
-Duplicate `--add-host=host.docker.internal:host-gateway` specification is harmless.
-
----
-
-### Issue 4: `host-gateway` Resolves to Unexpected Address
-
-The IP that `host-gateway` resolves to varies by Docker daemon configuration and environment.
-
-```bash
-# Check actual resolved IP
-docker run --rm --add-host=host.docker.internal:host-gateway alpine \
-  cat /etc/hosts
-# → 172.17.0.1  host.docker.internal  (docker0 gateway IP)
-```
-
-If the resolved address is not as expected, you can specify it explicitly in `daemon.json`:
-
-```json
-// /etc/docker/daemon.json
-{
-  "host-gateway-ip": "172.17.0.1"
-}
-```
-
-```bash
-sudo systemctl restart docker
-```
-
----
-
-### Verification Steps
-
-After launching codex-dock, use the following commands to verify Auth Proxy reachability.
-
-#### 1. Check Auth Proxy Port
-
-```bash
-# Launch codex-dock run with --verbose
-codex-dock run --verbose ...
-# → Auth Proxy listening on 0.0.0.0:PORT
-```
-
-#### 2. Manual Connection Test from Inside Container
-
-```bash
-# Enter worker container shell
-codex-dock run --shell
-
-# Connection test inside container
-curl -sf http://host.docker.internal:PORT/health
-# → {"active_tokens":1,"status":"ok"}
-```
-
-#### 3. Verify host.docker.internal Name Resolution
-
-```bash
-# Inside container
-getent hosts host.docker.internal
-# or
-cat /etc/hosts | grep host.docker.internal
-```
-
----
-
-### Checklist
-
-If you cannot connect, check the following in order:
-
-- [ ] `docker version` confirms Docker Engine >= 20.10
-- [ ] `ip addr show docker0` confirms docker0 interface exists
-- [ ] `docker run --rm --add-host=host.docker.internal:host-gateway alpine cat /etc/hosts` confirms name resolution works
-- [ ] `codex-dock run --verbose` shows proxy listen address (`0.0.0.0:PORT`)
-- [ ] Host firewall allows traffic from Docker bridge
-- [ ] For WSL2: verify whether using Docker Desktop or direct install
-- [ ] For macOS: verify Docker Desktop is running
+- macOS / Windows (Docker Desktop) do not have equivalent automatic Linux `iptables` control.
+- `network create` provisions the Docker network only; it does not install firewall rules.

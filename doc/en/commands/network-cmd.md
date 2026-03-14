@@ -22,7 +22,7 @@ codex-dock network create [--no-internet]
 ## `firewall create`
 
 ```bash
-codex-dock firewall create [--no-internet]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 ```
 
 > Applies Linux `iptables` rules for dock-net.
@@ -34,7 +34,7 @@ codex-dock firewall create [--no-internet]
 codex-dock firewall status
 ```
 
-Shows dock-net firewall state (Linux support, root execution, iptables presence, chain and jump rule presence).
+Shows dock-net firewall state (Linux support, root execution, iptables presence, chain/jump rule presence, DOCKER-USER policy, and CODEX-DOCK final jump).
 
 ## `firewall rm`
 
@@ -64,12 +64,11 @@ codex-dock network status
 ```
 
 ```
-dock-net status:
-  ID:            a1b2c3d4e5f6789012345678
-  Driver:        bridge
-  Subnet:        10.200.0.0/24
-  ICC:           disabled
-  IP Masquerade: enabled
+dock-net ID:     a1b2c3d4e5f6
+Driver:          bridge
+ICC disabled:    true
+IP Masquerade:   true
+Subnet:          10.200.0.0/24
 ```
 
 ---
