@@ -5,7 +5,8 @@
 > [← コマンドリファレンス一覧](../commands.md)
 
 `dock-net` Docker ネットワークを管理します。
-dock-net の仕様・セキュリティポリシーの詳細は [ネットワーク仕様](../network.md) を参照してください。
+
+> Linux `iptables` firewall 管理は別コマンドです：[`codex-dock firewall`](firewall.md)
 
 ---
 
@@ -20,35 +21,6 @@ codex-dock network create [--no-internet]
 | `--no-internet` | IP Masquerade を無効化してインターネットを遮断 |
 
 > `codex-dock run` 実行時に自動的に作成されます。
-
----
-
-## `firewall create` — firewall ルール作成
-
-```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL]
-```
-
-> Linux の `iptables` ルールを適用します。
-> root 権限がない場合や `iptables` 未導入の場合は Warning を表示して継続します。
-> `dock-net` / `dock-net-proxy` がない場合は警告を表示し、作成するか対話で確認します。
-
-## `firewall status` — firewall ルール状態確認
-
-```bash
-codex-dock firewall status
-```
-
-`dock-net` firewall の適用状態（Linux 対応可否、root 実行、iptables 検出、chain/jump rule、DOCKER-USER policy、CODEX-DOCK final jump）を表示します。
-
-## `firewall rm` — firewall ルール削除
-
-```bash
-codex-dock firewall rm
-```
-
-`dock-net` 用に設定した firewall ルールを削除します。
-root 権限がない場合や `iptables` 未導入の場合は Warning を表示して継続します。
 
 ---
 
@@ -82,4 +54,6 @@ Subnet:          10.200.0.0/24
 
 ## 関連ドキュメント
 
-- [ネットワーク仕様](../network.md) — dock-net の構成・セキュリティポリシー・トラブルシューティング
+- [ネットワーク仕様](../network.md)
+- [`codex-dock firewall` コマンド](firewall.md)
+- [firewall 仕様・運用ガイド](../firewall.md)

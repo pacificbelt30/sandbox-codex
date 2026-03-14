@@ -30,7 +30,8 @@
 
 | ドキュメント | 内容 |
 |---|---|
-| [ネットワーク仕様](network.md) | dock-net の構成・セキュリティポリシー・トラブルシューティング |
+| [ネットワーク仕様](network.md) | dock-net の構成・ネットワーク管理の基本 |
+| [firewall 仕様・運用ガイド](firewall.md) | Linux `iptables` 制御・許可/拒否ルール・運用手順 |
 
 ### コマンドリファレンス
 
@@ -42,6 +43,7 @@
 | [ワーカー管理 (ps / stop / rm / logs)](commands/worker.md) | コンテナの一覧・停止・削除・ログ表示 |
 | [`codex-dock auth`](commands/auth.md) | 認証情報の show / set / rotate |
 | [`codex-dock network`](commands/network-cmd.md) | dock-net の create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | firewall の create / status / rm |
 | [`codex-dock build`](commands/build.md) | サンドボックスイメージのビルド |
 | [`codex-dock ui`](commands/ui.md) | TUI ダッシュボードのキーバインド |
 

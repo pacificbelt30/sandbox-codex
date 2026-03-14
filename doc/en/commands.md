@@ -18,6 +18,7 @@ Full command reference for codex-dock. See the individual pages below for detail
 | [`codex-dock logs`](commands/worker.md#codex-dock-logs) | View logs | Tail and follow |
 | [`codex-dock auth`](commands/auth.md) | Manage authentication | show / set / rotate |
 | [`codex-dock network`](commands/network-cmd.md) | Manage network | create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | Manage firewall | create / status / rm |
 | [`codex-dock build`](commands/build.md) | Build sandbox image | Dockerfile auto-detection |
 | [`codex-dock ui`](commands/ui.md) | TUI dashboard | Key bindings |
 

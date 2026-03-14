@@ -39,11 +39,15 @@ There are two common standalone Auth Proxy patterns.
 
 > For pattern B, keep proxy container name as `codex-auth-proxy` so it matches the default `codex-dock run --proxy-container-url` (`http://codex-auth-proxy:18080`).
 
+> This setup will be configurable with Docker Compose in a future update.
+
 ---
 
 ## Step 1: Start the Auth Proxy
 
 ### Option A: Run as a Docker Container (Recommended)
+
+#### Executor: Host
 
 ```bash
 # Build the Auth Proxy image (first time only)
@@ -60,6 +64,8 @@ codex-dock proxy run \
 The management API is accessible from the host at `http://localhost:18080`.
 
 If you use the proxy from `codex-dock run` or custom worker containers, also run:
+
+#### Executor: Host (includes root-required command)
 
 ```bash
 # Create worker network
@@ -95,6 +101,8 @@ CODEX-DOCK ... -i dock-net0
 > Always set it to restrict who can issue tokens.
 
 ### Option B: Run as a Local Process
+
+#### Executor: Host
 
 ```bash
 codex-dock proxy serve --listen 127.0.0.1:18080 --admin-secret YOUR_SECRET
@@ -135,6 +143,8 @@ echo "Token: $TOKEN"
 Set the token and proxy URL for Codex CLI.
 
 ### API Key Mode
+
+#### Executor: Host/container running Codex CLI
 
 ```bash
 PROXY_URL="http://localhost:18080"

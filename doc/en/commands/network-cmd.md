@@ -5,7 +5,8 @@
 > [← Command Reference](../commands.md)
 
 Manages the `dock-net` Docker network.
-For dock-net specifications and security policy, see [Network Specification](../network.md).
+
+> Linux `iptables` firewall management is a separate command: [`codex-dock firewall`](firewall.md)
 
 ---
 
@@ -19,42 +20,13 @@ codex-dock network create [--no-internet]
 
 ---
 
-## `firewall create`
-
-```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL]
-```
-
-> Applies Linux `iptables` rules for dock-net.
-> If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
-> If `dock-net` / `dock-net-proxy` are missing, a warning is shown and you are prompted whether to create them.
-
-## `firewall status`
-
-```bash
-codex-dock firewall status
-```
-
-Shows dock-net firewall state (Linux support, root execution, iptables presence, chain/jump rule presence, DOCKER-USER policy, and CODEX-DOCK final jump).
-
-## `firewall rm`
-
-```bash
-codex-dock firewall rm
-```
-
-Removes dock-net firewall rules.
-If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
-
----
-
 ## `network rm`
 
 ```bash
 codex-dock network rm
 ```
 
-> Stop all running containers before removing the network.
+> Stop running containers before removing the network.
 
 ---
 
@@ -76,4 +48,6 @@ Subnet:          10.200.0.0/24
 
 ## Related Documentation
 
-- [Network Specification](../network.md) — dock-net configuration, security policy, and troubleshooting
+- [Network Specification](../network.md)
+- [`codex-dock firewall` Command](firewall.md)
+- [Firewall Specification & Operations Guide](../firewall.md)

@@ -30,7 +30,8 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 
 | Document | Description |
 |---|---|
-| [Network Specification](network.md) | dock-net configuration, security policy, troubleshooting |
+| [Network Specification](network.md) | dock-net layout and network management basics |
+| [Firewall Specification & Operations Guide](firewall.md) | Linux `iptables` control, allow/deny rules, and operations |
 
 ### Command Reference
 
@@ -42,6 +43,7 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 | [Worker Management (ps / stop / rm / logs)](commands/worker.md) | List, stop, remove, view logs |
 | [`codex-dock auth`](commands/auth.md) | Auth show / set / rotate |
 | [`codex-dock network`](commands/network-cmd.md) | dock-net create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | firewall create / status / rm |
 | [`codex-dock build`](commands/build.md) | Build sandbox image |
 | [`codex-dock ui`](commands/ui.md) | TUI dashboard key bindings |
 
