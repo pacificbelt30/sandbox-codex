@@ -82,6 +82,15 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		return "", fmt.Errorf("resolving workspace path: %w", err)
 	}
 
+	// Resolve proxy container IP on dock-net-proxy for in-container hostname resolution.
+	// When the auth proxy runs as a container on dock-net-proxy, workers cannot resolve
+	// "codex-auth-proxy" via Docker DNS (different networks). Injecting the container's
+	// dock-net-proxy IP via ExtraHosts lets the primary proxy URL work without fallbacks.
+	extraHosts := make([]string, 0, 1)
+	if proxyIP := m.resolveProxyContainerOnProxyNet(ctx); proxyIP != "" {
+		extraHosts = append(extraHosts, "codex-auth-proxy:"+proxyIP)
+	}
+
 	// Build package install script
 	var allPkgs []Package
 	for _, spec := range opts.Packages {
@@ -206,7 +215,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	}
 
 	// Security: drop all capabilities, non-root user
-	hostConfig := buildHostConfig(mounts)
+	hostConfig := buildHostConfig(mounts, extraHosts...)
 
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
@@ -516,20 +525,54 @@ func absolutePath(path string) (string, error) {
 }
 
 // buildHostConfig constructs the container HostConfig with security defaults.
-func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
+// extraHosts are appended after the standard host.docker.internal entry.
+func buildHostConfig(mounts []mount.Mount, extraHosts ...string) *container.HostConfig {
+	hosts := make([]string, 0, 1+len(extraHosts))
+	hosts = append(hosts, "host.docker.internal:host-gateway")
+	hosts = append(hosts, extraHosts...)
 	return &container.HostConfig{
 		NetworkMode: container.NetworkMode(sandboxNetName),
 		Mounts:      mounts,
 		// Ensure host.docker.internal resolves on Linux too.
 		// Worker entrypoint can retry auth proxy calls via this host-gateway alias
 		// when codex-auth-proxy (Docker DNS) is not reachable.
-		ExtraHosts:  []string{"host.docker.internal:host-gateway"},
+		ExtraHosts:  hosts,
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 		Resources: container.Resources{
 			PidsLimit: int64ptr(512),
 		},
 	}
+}
+
+// resolveProxyContainerOnProxyNet returns the IP of the "codex-auth-proxy" container
+// on the dock-net-proxy network. Workers add this as an ExtraHost so that the
+// hostname "codex-auth-proxy" resolves to the proxy's dock-net-proxy IP, which is
+// reachable via the NIC-level DOCKER-USER rules added by ApplyFirewall.
+// Returns "" if the container or network is not found.
+func (m *Manager) resolveProxyContainerOnProxyNet(ctx context.Context) string {
+	containers, err := m.cli.ContainerList(ctx, container.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("name", "codex-auth-proxy")),
+	})
+	if err != nil {
+		return ""
+	}
+	for _, c := range containers {
+		for _, n := range c.Names {
+			if n != "/codex-auth-proxy" {
+				continue
+			}
+			detail, err := m.cli.ContainerInspect(ctx, c.ID)
+			if err != nil || detail.NetworkSettings == nil {
+				return ""
+			}
+			ep, ok := detail.NetworkSettings.Networks[network.ProxyNetworkName]
+			if ok && ep.IPAddress != "" {
+				return ep.IPAddress
+			}
+		}
+	}
+	return ""
 }
 
 func buildProxyFallbackURL(primary string) string {
