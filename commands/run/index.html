@@ -1,0 +1,1134 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="AI サンドボックスコンテナマネージャー codex-dock の公式ドキュメント">
+      
+      
+      
+        <link rel="canonical" href="https://pacificbelt30.github.io/codex-dock/commands/run/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>codex-dock run — サンドボックスコンテナの起動 - codex-dock ドキュメント</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#codex-dock-run" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="codex-dock ドキュメント" class="md-header__button md-logo" aria-label="codex-dock ドキュメント" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            codex-dock ドキュメント
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              codex-dock run — サンドボックスコンテナの起動
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="ダークモードに切り替え"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードに切り替え" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="ライトモードに切り替え"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードに切り替え" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="共有" aria-label="共有" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/pacificbelt30/codex-dock" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    pacificbelt30/codex-dock
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="タブ" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  ホーム
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  はじめに
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  アーキテクチャ
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../auth-proxy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Auth Proxy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../network/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ネットワーク
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../firewall/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  firewall
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  コマンド
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  設定
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="codex-dock ドキュメント" class="md-nav__button md-logo" aria-label="codex-dock ドキュメント" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    codex-dock ドキュメント
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/pacificbelt30/codex-dock" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    pacificbelt30/codex-dock
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめに
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    アーキテクチャ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../auth-proxy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../network/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ネットワーク
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    firewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        オプション一覧
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-approval-mode-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --approval-mode — Codex 承認モードの指定
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --user — コンテナ実行ユーザの指定
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        パッケージ記述形式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        並列ワーカー
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        使用例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        関連ドキュメント
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="codex-dock-run"><code>codex-dock run</code> — サンドボックスコンテナの起動<a class="headerlink" href="#codex-dock-run" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>日本語</strong> | <a href="../../en/commands/run.md">English</a></p>
+<p><a href="../">← コマンドリファレンス一覧</a></p>
+</blockquote>
+<p>Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネットワーク隔離が自動的に設定されます。</p>
+<blockquote>
+<p><strong>Linux の注意</strong>: 起動時に <code>dock-net</code> 用の <code>iptables</code> ルール適用を試みます。
+root 権限がない場合は Warning を表示して起動を継続します。
+firewall を明示的に適用したい場合は <code>codex-dock firewall create</code> を使用してください。</p>
+<p><strong>イメージの自動ビルド</strong>: <code>--image</code> で指定したイメージがローカルに存在しない場合、<code>codex-dock build</code> と同じロジックで自動的にビルドしてからコンテナを起動します。</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>codex-dock<span class="w"> </span>run<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</code></pre></div>
+<hr />
+<h2 id="_1">オプション一覧<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>オプション</th>
+<th>省略形</th>
+<th>デフォルト</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--image</code></td>
+<td><code>-i</code></td>
+<td><code>codex-dock:latest</code></td>
+<td>サンドボックスに使用する Docker イメージ</td>
+</tr>
+<tr>
+<td><code>--pkg</code></td>
+<td><code>-p</code></td>
+<td></td>
+<td>追加パッケージ（繰り返し指定可）<code>apt:&lt;pkg&gt;</code>, <code>pip:&lt;pkg&gt;</code>, <code>npm:&lt;pkg&gt;</code></td>
+</tr>
+<tr>
+<td><code>--pkg-file</code></td>
+<td></td>
+<td></td>
+<td>パッケージ定義ファイルのパス (<code>packages.dock</code>)</td>
+</tr>
+<tr>
+<td><code>--project</code></td>
+<td><code>-d</code></td>
+<td><code>.</code>（カレント）</td>
+<td><code>/workspace</code> にマウントするプロジェクトディレクトリ</td>
+</tr>
+<tr>
+<td><code>--worktree</code></td>
+<td><code>-w</code></td>
+<td><code>false</code></td>
+<td>git worktree を使ってコンテナを分離する</td>
+</tr>
+<tr>
+<td><code>--branch</code></td>
+<td><code>-b</code></td>
+<td></td>
+<td>チェックアウトするブランチ名（<code>--worktree</code> が必要）</td>
+</tr>
+<tr>
+<td><code>--new-branch</code></td>
+<td><code>-B</code></td>
+<td><code>false</code></td>
+<td>新規ブランチを作成する（<code>--worktree</code> と <code>--branch</code> が必要）</td>
+</tr>
+<tr>
+<td><code>--name</code></td>
+<td><code>-n</code></td>
+<td>自動生成</td>
+<td>コンテナ名（省略すると <code>codex-&lt;形容詞&gt;-&lt;名詞&gt;</code> 形式で自動生成）</td>
+</tr>
+<tr>
+<td><code>--task</code></td>
+<td><code>-t</code></td>
+<td></td>
+<td>Codex に渡す初期タスクプロンプト</td>
+</tr>
+<tr>
+<td><code>--approval-mode</code></td>
+<td></td>
+<td><code>suggest</code></td>
+<td>Codex CLI の承認モード（<a href="#--approval-mode--codex-承認モードの指定">詳細</a>）</td>
+</tr>
+<tr>
+<td><code>--full-auto</code></td>
+<td></td>
+<td><code>false</code></td>
+<td><strong>非推奨</strong>: <code>--approval-mode full-auto</code> を使用してください</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td><code>-m</code></td>
+<td></td>
+<td>Codex に渡すモデル名</td>
+</tr>
+<tr>
+<td><code>--read-only</code></td>
+<td></td>
+<td><code>false</code></td>
+<td>プロジェクトディレクトリを読み取り専用でマウント</td>
+</tr>
+<tr>
+<td><code>--no-internet</code></td>
+<td></td>
+<td><code>false</code></td>
+<td>コンテナ内のインターネットアクセスを無効化</td>
+</tr>
+<tr>
+<td><code>--token-ttl</code></td>
+<td></td>
+<td><code>3600</code></td>
+<td>Auth Proxy トークンの有効期限（秒）</td>
+</tr>
+<tr>
+<td><code>--agents-md</code></td>
+<td></td>
+<td></td>
+<td><code>AGENTS.md</code> ファイルのパス</td>
+</tr>
+<tr>
+<td><code>--detach</code></td>
+<td><code>-D</code></td>
+<td><code>false</code></td>
+<td>バックグラウンドで実行（ログを表示しない）</td>
+</tr>
+<tr>
+<td><code>--parallel</code></td>
+<td><code>-P</code></td>
+<td><code>1</code></td>
+<td>並列ワーカー数</td>
+</tr>
+<tr>
+<td><code>--user</code></td>
+<td></td>
+<td><code>""</code></td>
+<td>コンテナ内の実行ユーザ（<a href="#--user--コンテナ実行ユーザの指定">詳細</a>）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="-approval-mode-codex"><code>--approval-mode</code> — Codex 承認モードの指定<a class="headerlink" href="#-approval-mode-codex" title="Permanent link">&para;</a></h2>
+<p><code>--approval-mode</code> フラグで Codex CLI がアクションを実行する際の承認動作を制御します。
+Docker コンテナによるサンドボックス隔離を前提に設計されています。</p>
+<table>
+<thead>
+<tr>
+<th>値</th>
+<th>Codex CLI フラグ</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suggest</code>（デフォルト）</td>
+<td>なし</td>
+<td>すべてのアクションで承認を求める（最も安全）</td>
+</tr>
+<tr>
+<td><code>auto-edit</code></td>
+<td><code>--ask-for-approval unless-allow-listed</code></td>
+<td>ファイル編集は自動適用、コマンド実行は承認を求める</td>
+</tr>
+<tr>
+<td><code>full-auto</code></td>
+<td><code>--ask-for-approval never</code></td>
+<td>承認を一切求めない</td>
+</tr>
+<tr>
+<td><code>danger</code></td>
+<td><code>--dangerously-bypass-approvals-and-sandbox</code></td>
+<td>すべての承認・サンドボックス制限をバイパスする</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong><code>danger</code> モードについて</strong>: Codex CLI 組み込みのサンドボックスを無効化しますが、
+Docker コンテナ自体が隔離境界を提供します（<code>--cap-drop ALL</code>、専用ネットワーク、
+pids-limit など）。Docker を使用しているため、ホスト環境への影響はありません。</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># デフォルト（対話的に承認を求める）</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;テストを書いて&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># ファイル編集は自動、コマンドは確認</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--approval-mode<span class="w"> </span>auto-edit<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;リファクタリング&quot;</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># 完全自動実行（承認なし）</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--approval-mode<span class="w"> </span>full-auto<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;バグ修正&quot;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># Docker 隔離を活用して全制限をバイパス</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--approval-mode<span class="w"> </span>danger<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;ビルドスクリプトを実行&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="-user"><code>--user</code> — コンテナ実行ユーザの指定<a class="headerlink" href="#-user" title="Permanent link">&para;</a></h2>
+<p><code>--user</code> フラグを使うと、コンテナ内のプロセスを任意の uid:gid で起動できます。
+ホストのファイルシステムとの権限整合性を確保するために使用します。</p>
+<table>
+<thead>
+<tr>
+<th>値</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>current</code> (省略時のデフォルト)</td>
+<td><code>codex-dock</code> コマンドを実行しているユーザの uid:gid を自動取得</td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td>従来のデフォルト挙動。コンテナ内 <code>codex</code> ユーザ（<code>1001:1001</code>）で実行</td>
+</tr>
+<tr>
+<td><code>""</code></td>
+<td>イメージのデフォルトユーザを使用</td>
+</tr>
+<tr>
+<td><code>dir</code></td>
+<td><code>--project</code> で指定したディレクトリ所有者の uid:gid を自動取得</td>
+</tr>
+<tr>
+<td><code>uid</code> または <code>uid:gid</code></td>
+<td>明示的に指定（例: <code>1000</code>, <code>1000:1000</code>）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>: カスタムユーザを指定した場合、そのユーザがコンテナの <code>/etc/passwd</code> に存在しない
+ことがあります。<code>codex-dock</code> は <code>HOME=/var/tmp/codex-home</code> を自動注入します。認証ファイルや
+Codex CLI 設定はその <code>HOME</code> 配下に作成され、<code>/workspace</code> 配下に補助ディレクトリは作成しません。</p>
+</blockquote>
+<hr />
+<h2 id="_2">パッケージ記述形式<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p><code>--pkg</code> または <code>packages.dock</code> ファイルで使用できるパッケージ形式：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>apt:libssl-dev          # apt でインストール
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pip:requests            # pip でインストール
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>npm:lodash              # npm でインストール
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>libssl-dev              # プレフィックスなし → apt 扱い（デフォルト）
+</code></pre></div>
+<p><code>packages.dock</code> ファイルの例：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a># コメントは # で始める
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>apt:libssl-dev
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>apt:postgresql-client
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>pip:requests
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>pip:numpy
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>npm:typescript
+</code></pre></div>
+<hr />
+<h2 id="_3">並列ワーカー<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p><code>--parallel N</code> を指定すると、N 個のコンテナが同時に起動します。</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--parallel<span class="w"> </span><span class="m">3</span><span class="w"> </span>--worktree<span class="w"> </span>--branch<span class="w"> </span>myfeature
+</code></pre></div>
+<p>自動的に以下のブランチが作成されます：
+- <code>myfeature-1</code>（worker 1）
+- <code>myfeature-2</code>（worker 2）
+- <code>myfeature-3</code>（worker 3）</p>
+<p><code>--branch</code> を指定しない場合は <code>worker-1</code>, <code>worker-2</code>, <code>worker-3</code> が使用されます。</p>
+<hr />
+<h2 id="_4">使用例<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># 基本的な実行（カレントディレクトリをマウント）</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>codex-dock<span class="w"> </span>run
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># タスクを指定して完全自動実行</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;ユニットテストを書いて&quot;</span><span class="w"> </span>--approval-mode<span class="w"> </span>full-auto
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># git worktree を使って feature ブランチで作業</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--worktree<span class="w"> </span>--branch<span class="w"> </span>feature-auth<span class="w"> </span>--new-branch
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1"># 並列ワーカー 3 つを起動（各ワーカーに別ブランチ）</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--parallel<span class="w"> </span><span class="m">3</span><span class="w"> </span>--worktree
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1"># 追加パッケージをインストールして実行</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--pkg<span class="w"> </span><span class="s2">&quot;apt:libssl-dev&quot;</span><span class="w"> </span>--pkg<span class="w"> </span><span class="s2">&quot;pip:requests&quot;</span><span class="w"> </span>--pkg<span class="w"> </span><span class="s2">&quot;npm:lodash&quot;</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="c1"># packages.dock ファイルを使用</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--pkg-file<span class="w"> </span>./packages.dock
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="c1"># バックグラウンドで完全自動実行</span>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;リファクタリング&quot;</span><span class="w"> </span>--approval-mode<span class="w"> </span>full-auto<span class="w"> </span>--detach
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="c1"># 読み取り専用・インターネットなしでセキュアに実行</span>
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--read-only<span class="w"> </span>--no-internet<span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;コードレビュー&quot;</span>
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="c1"># 特定の Docker イメージを使用</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--image<span class="w"> </span>my-custom-codex:v2
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="c1"># カスタムモデルを指定</span>
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span><span class="s2">&quot;o3&quot;</span>
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a>
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="c1"># デフォルトで、コマンド実行ユーザと同じ uid:gid でコンテナを起動</span>
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>codex-dock<span class="w"> </span>run
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="c1"># 従来どおり codex(1001:1001) ユーザで実行</span>
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--user<span class="w"> </span>codex
+<a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>
+<a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="c1"># 明示的にコマンド実行ユーザを指定</span>
+<a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--user<span class="w"> </span>current
+<a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a>
+<a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="c1"># プロジェクトディレクトリの所有者と同じ uid:gid でコンテナを起動</span>
+<a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--user<span class="w"> </span>dir<span class="w"> </span>--project<span class="w"> </span>/srv/myapp
+<a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a>
+<a id="__codelineno-5-43" name="__codelineno-5-43" href="#__codelineno-5-43"></a><span class="c1"># uid:gid を明示指定</span>
+<a id="__codelineno-5-44" name="__codelineno-5-44" href="#__codelineno-5-44"></a>codex-dock<span class="w"> </span>run<span class="w"> </span>--user<span class="w"> </span><span class="m">1000</span>:1000
+</code></pre></div>
+<hr />
+<h2 id="_5">関連ドキュメント<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../getting-started/">クイックスタート</a> — 初回実行の手順</li>
+<li><a href="../../architecture/">アーキテクチャ概要</a> — 起動シーケンスの詳細</li>
+<li><a href="../../auth-proxy/">Auth Proxy 技術仕様</a> — 認証の仕組み</li>
+<li><a href="../../network/">ネットワーク仕様</a> — dock-net の構成</li>
+<li><a href="../../configuration/">設定リファレンス</a> — config.toml の設定項目</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

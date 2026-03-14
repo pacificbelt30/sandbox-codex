@@ -1,0 +1,1608 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="AI サンドボックスコンテナマネージャー codex-dock の公式ドキュメント">
+      
+      
+      
+        <link rel="canonical" href="https://pacificbelt30.github.io/codex-dock/en/auth-proxy/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Auth Proxy Specification - codex-dock ドキュメント</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#auth-proxy-specification" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="codex-dock ドキュメント" class="md-header__button md-logo" aria-label="codex-dock ドキュメント" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            codex-dock ドキュメント
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Auth Proxy Specification
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="ダークモードに切り替え"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードに切り替え" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="ライトモードに切り替え"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードに切り替え" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="共有" aria-label="共有" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/pacificbelt30/codex-dock" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    pacificbelt30/codex-dock
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="タブ" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  ホーム
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  はじめに
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  アーキテクチャ
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../auth-proxy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Auth Proxy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../network/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ネットワーク
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../firewall/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  firewall
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../commands/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  コマンド
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  設定
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="codex-dock ドキュメント" class="md-nav__button md-logo" aria-label="codex-dock ドキュメント" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    codex-dock ドキュメント
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/pacificbelt30/codex-dock" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    pacificbelt30/codex-dock
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめに
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    アーキテクチャ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../auth-proxy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../network/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ネットワーク
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../firewall/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    firewall
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication Modes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authentication Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-key-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Key Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#oauth-mode-chatgpt-subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OAuth Mode (ChatGPT Subscription)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-endpoint-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Endpoint Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API Endpoint Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-token-credential-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /token — Credential Retrieval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-oauthtoken-oauth-token-refresh-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /oauth/token — OAuth Token Refresh Relay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#any-v1-responses-api-reverse-proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ANY /v1/* — Responses API Reverse Proxy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#any-chatgpt-chatgpt-backend-api-proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ANY /chatgpt/* — ChatGPT Backend-API Proxy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-health-health-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /health — Health Check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-revoke-token-revocation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /revoke — Token Revocation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#container-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Container Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#token-mechanics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token Mechanics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Token Mechanics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#token-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#token-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credential-priority-api-key-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credential Priority (API Key Mode)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Considerations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#implemented-protections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implemented Protections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-issues-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Issues / Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="auth-proxy-specification">Auth Proxy Specification<a class="headerlink" href="#auth-proxy-specification" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><a href="../../auth-proxy/">日本語</a> | <strong>English</strong></p>
+</blockquote>
+<ul>
+<li><strong>Overview &amp; Deployment</strong> ← this page</li>
+<li><a href="endpoints/">API Endpoint Reference</a></li>
+<li><a href="tokens/">Token Lifecycle &amp; Security</a></li>
+</ul>
+<hr />
+<p>The Auth Proxy is the core security component of codex-dock.
+It provides authentication information safely to containers via short-lived tokens, without passing actual API keys or OAuth credentials.
+It also proxies all OpenAI API traffic called by Codex CLI (Responses API, token refresh, ChatGPT backend-api), ensuring that <strong>containers hold only placeholder tokens</strong> and real credentials never reach them.</p>
+<hr />
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────────────────────────────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│  Host Environment                                                      │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│                                                                        │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│  ~/.codex/auth.json         ~/.config/codex-dock/apikey               │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│  (OAuth credentials)         (API key)                                 │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│          │                           │                                 │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│          └───────────┬───────────────┘                                 │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│                      ▼                                                 │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│  ┌──────────────────────────────────────────────────────────────────┐ │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│  │  Auth Proxy (&lt;dock-net-gateway&gt;:PORT)      ← random port         │ │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│  │                                                                  │ │
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│  │  GET  /token        Token validation → credential delivery       │ │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│  │  GET  /health       Health check                                 │ │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│  │  POST /revoke       Token revocation                             │ │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│  │  POST /oauth/token  OAuth token refresh relay                    │ │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│  │  ANY  /v1/*         Responses API reverse proxy                  │ │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│  │  ANY  /chatgpt/*    ChatGPT backend-api proxy                    │ │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│  └──────────────────────────────────────────────────────────────────┘ │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│                      │ short-lived token (cdx-xxxx)                    │
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│                      ▼                                                 │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│  ┌──────────────────────────────────────────────────────────────────┐ │
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│  │  Sandbox Container                                               │ │
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│  │  CODEX_TOKEN                                                     │ │
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│  │  CODEX_AUTH_PROXY_URL                                            │ │
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│  │  OPENAI_BASE_URL            ← points to /v1 proxy                │ │
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│  │  CODEX_REFRESH_TOKEN_URL_OVERRIDE (OAuth mode only)              │ │
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│  └──────────────────────────────────────────────────────────────────┘ │
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>└──────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<hr />
+<h2 id="authentication-modes">Authentication Modes<a class="headerlink" href="#authentication-modes" title="Permanent link">&para;</a></h2>
+<h3 id="api-key-mode">API Key Mode<a class="headerlink" href="#api-key-mode" title="Permanent link">&para;</a></h3>
+<p>Reads API key from the <code>OPENAI_API_KEY</code> environment variable or <code>~/.config/codex-dock/apikey</code> file.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Host (Auth Proxy)                          Container (entrypoint.sh)
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  │                                                │
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  │  Issue short-lived token                       │
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  │  env: CODEX_TOKEN=cdx-&lt;hex64&gt;                 │
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  │  env: OPENAI_BASE_URL=http://proxy/v1         │
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  │ ───────────────────────────────────────────▶  │
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  │                                                │ on startup
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  │  GET /token                                    │
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  │  X-Codex-Token: cdx-&lt;hex64&gt;                   │
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  │  ◀─────────────────────────────────────────── │
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>  │                                                │
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>  │  200 OK {&quot;api_key&quot;: &quot;cdx-&lt;hex64&gt;&quot;}  ← placeholder
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>  │ ───────────────────────────────────────────▶  │
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>  │                                                │
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>  │                                                │ export OPENAI_API_KEY=cdx-&lt;hex64&gt;  ← dummy
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>  │                                                │ unset CODEX_TOKEN
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>  │                                                │ exec codex
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>  │                                                │
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>  │  POST /v1/responses ← Codex CLI               │
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>  │  Authorization: Bearer cdx-&lt;hex64&gt;  ← dummy   │
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>  │  ◀─────────────────────────────────────────── │
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>  │                                                │
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>  │  Replace Authorization: Bearer sk-...         │ ← proxy injects real key
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>  │  Forward to: https://api.openai.com/v1/responses
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>  │ ─────────────────────────────────────────────▶│ (OpenAI)
+</code></pre></div>
+<h3 id="oauth-mode-chatgpt-subscription">OAuth Mode (ChatGPT Subscription)<a class="headerlink" href="#oauth-mode-chatgpt-subscription" title="Permanent link">&para;</a></h3>
+<p>Automatically activates OAuth mode when <code>~/.codex/auth.json</code> contains a <code>refresh_token</code> field or <code>auth_mode: "chatgpt"</code> is set.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Host (Auth Proxy)                          Container (entrypoint.sh)
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  │                                                │
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  │  Read from ~/.codex/auth.json:                 │
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  │   access_token, id_token,                     │
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  │   refresh_token (host only), account_id       │
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  │                                                │
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  │  Issue short-lived token                       │
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  │  env: CODEX_TOKEN=cdx-&lt;hex64&gt;                 │
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>  │  env: OPENAI_BASE_URL=http://proxy/v1         │
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  │  env: CODEX_REFRESH_TOKEN_URL_OVERRIDE=       │
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  │       http://proxy/oauth/token?cdx=&lt;token&gt;    │
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  │ ───────────────────────────────────────────▶  │
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>  │                                                │ on startup
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>  │  GET /token                                    │
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>  │  X-Codex-Token: cdx-&lt;hex64&gt;                   │
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>  │  ◀─────────────────────────────────────────── │
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  │                                                │
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  │  200 OK                                        │
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>  │  {&quot;oauth_access_token&quot;: &quot;cdx-&lt;hex64&gt;&quot;,        │ ← placeholder (same as CODEX_TOKEN)
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>  │   &quot;oauth_id_token&quot;:     &quot;ey...&quot;,              │ ← real JWT (for claims extraction)
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>  │   &quot;oauth_account_id&quot;:   &quot;...&quot;,                │
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>  │   &quot;oauth_last_refresh&quot;: &quot;...&quot;}                │
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>  │  ※ oauth_access_token is not real / no oauth_refresh_token
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>  │ ───────────────────────────────────────────▶  │
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>  │                                                │
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>  │                                                │ write /home/codex/.codex/auth.json
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>  │                                                │   access_token: &quot;cdx-&lt;hex64&gt;&quot;  ← dummy
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>  │                                                │   refresh_token: &quot;&quot; (empty)
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>  │                                                │ write /home/codex/.config/codex/config.toml
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>  │                                                │   chatgpt_base_url=http://proxy/chatgpt/
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>  │                                                │ unset CODEX_TOKEN
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>  │                                                │ exec codex
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>  │                                                │
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>  │  POST /v1/responses ← Codex CLI               │
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>  │  Authorization: Bearer cdx-&lt;hex64&gt;  ← dummy   │
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>  │  ChatGPT-Account-Id: &lt;account_id&gt;             │
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>  │  ◀─────────────────────────────────────────── │
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>  │                                                │
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>  │  Replace Authorization: Bearer &lt;real access_token&gt;  ← proxy injects
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>  │  Overwrite ChatGPT-Account-Id: &lt;account_id&gt;   ← proxy corrects value
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>  │  Forward to: https://chatgpt.com/backend-api/codex/responses
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>  │ ─────────────────────────────────────────────▶│ (OpenAI)
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>  │                                                │
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>  │  (after 8h) POST /oauth/token?cdx=&lt;token&gt;     │
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>  │  {&quot;grant_type&quot;:&quot;refresh_token&quot;,               │
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a>  │   &quot;refresh_token&quot;:&quot;&quot;,&quot;client_id&quot;:&quot;app_...&quot;}   │
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a>  │  ◀─────────────────────────────────────────── │
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a>  │                                                │
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a>  │  Proxy injects host refresh_token and         │
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a>  │  forwards to https://auth.openai.com/oauth/token
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a>  │  Replaces new access_token → &quot;cdx-&lt;hex64&gt;&quot; before returning
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a>  │                    (refresh_token excluded)    │
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a>  │ ───────────────────────────────────────────▶  │
+</code></pre></div>
+<blockquote>
+<p><strong>Security</strong>: Neither <code>refresh_token</code> nor the real <code>access_token</code> reaches the container.
+The container holds only the placeholder (same as CODEX_TOKEN), which cannot access OpenAI directly.
+Once <code>CODEX_TOKEN</code> expires, <code>/oauth/token</code> refresh becomes impossible as well.</p>
+</blockquote>
+<hr />
+<h2 id="api-endpoint-reference">API Endpoint Reference<a class="headerlink" href="#api-endpoint-reference" title="Permanent link">&para;</a></h2>
+<h3 id="get-token-credential-retrieval"><code>GET /token</code> — Credential Retrieval<a class="headerlink" href="#get-token-credential-retrieval" title="Permanent link">&para;</a></h3>
+<p>The endpoint through which containers retrieve authentication information using their short-lived token.</p>
+<p><strong>Request</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>GET /token HTTP/1.1
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>X-Codex-Token: cdx-&lt;64 hex digits&gt;
+</code></pre></div>
+<p><strong>Response (API Key Mode)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="err">HTTP/</span><span class="mf">1.1</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="err">OK</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="err">Co</span><span class="kc">ntent</span><span class="mi">-</span><span class="err">Type</span><span class="p">:</span><span class="w"> </span><span class="err">applica</span><span class="kc">t</span><span class="err">io</span><span class="kc">n</span><span class="err">/jso</span><span class="kc">n</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">{</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">&quot;api_key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cdx-a1b2c3d4...&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">&quot;container_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;codex-brave-atlas&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">}</span>
+</code></pre></div>
+<blockquote>
+<p><code>api_key</code> is not the real API key — it is the same placeholder value as <code>CODEX_TOKEN</code>.
+The proxy injects the real API key into the <code>Authorization</code> header on outbound requests.</p>
+</blockquote>
+<p><strong>Response (OAuth Mode)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="err">HTTP/</span><span class="mf">1.1</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="err">OK</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="err">Co</span><span class="kc">ntent</span><span class="mi">-</span><span class="err">Type</span><span class="p">:</span><span class="w"> </span><span class="err">applica</span><span class="kc">t</span><span class="err">io</span><span class="kc">n</span><span class="err">/jso</span><span class="kc">n</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">{</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">&quot;oauth_access_token&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cdx-a1b2c3d4...&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">&quot;oauth_id_token&quot;</span><span class="p">:</span><span class="w">     </span><span class="s2">&quot;eyJhbGci...&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span><span class="nt">&quot;oauth_account_id&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;user_xxx&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span><span class="nt">&quot;oauth_last_refresh&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-08T00:00:00Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span><span class="nt">&quot;container_name&quot;</span><span class="p">:</span><span class="w">     </span><span class="s2">&quot;codex-calm-beacon&quot;</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="p">}</span>
+</code></pre></div>
+<blockquote>
+<ul>
+<li><code>oauth_access_token</code> is a placeholder, not the real access token. The proxy injects the real value on outbound requests.</li>
+<li><code>oauth_id_token</code> is the real JWT, needed by Codex CLI to read claims like <code>chatgpt_account_id</code> locally (no signature verification).</li>
+<li><code>oauth_refresh_token</code> is never returned (by security design).</li>
+</ul>
+</blockquote>
+<p><strong>Error Responses</strong></p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>401 Unauthorized</code></td>
+<td><code>X-Codex-Token</code> header missing, invalid, or expired</td>
+</tr>
+<tr>
+<td><code>405 Method Not Allowed</code></td>
+<td>Non-GET method</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="post-oauthtoken-oauth-token-refresh-relay"><code>POST /oauth/token</code> — OAuth Token Refresh Relay<a class="headerlink" href="#post-oauthtoken-oauth-token-refresh-relay" title="Permanent link">&para;</a></h3>
+<p>The endpoint Codex CLI uses for token refresh via <code>CODEX_REFRESH_TOKEN_URL_OVERRIDE</code>.
+The proxy replaces <code>refresh_token</code> with the host's value and forwards to <code>https://auth.openai.com/oauth/token</code>.</p>
+<p><strong>Authentication</strong>: via query parameter <code>?cdx=&lt;short-lived token&gt;</code> (Codex CLI does not add custom headers to refresh requests).</p>
+<p><strong>Request format from Codex CLI</strong></p>
+<p>Codex CLI sends <code>application/json</code> (with <code>client_id</code> hardcoded by Codex CLI itself):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>POST /oauth/token?cdx=&lt;cdx-xxxx&gt; HTTP/1.1
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>Content-Type: application/json
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>{
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  &quot;client_id&quot;:    &quot;app_EMoamEEZ73f0CkXaXp7hrann&quot;,
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  &quot;grant_type&quot;:   &quot;refresh_token&quot;,
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  &quot;refresh_token&quot;: &quot;&quot;
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>}
+</code></pre></div>
+<p><strong>Format sent by proxy to OpenAI</strong></p>
+<p>Only the <code>refresh_token</code> field is replaced with the host's real value; all other fields are passed through:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>POST https://auth.openai.com/oauth/token HTTP/1.1
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Content-Type: application/json
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>{
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  &quot;client_id&quot;:    &quot;app_EMoamEEZ73f0CkXaXp7hrann&quot;,
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  &quot;grant_type&quot;:   &quot;refresh_token&quot;,
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  &quot;refresh_token&quot;: &quot;&lt;host&#39;s real refresh_token&gt;&quot;
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>}
+</code></pre></div>
+<p><strong>Field Processing Summary</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Processing</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>refresh_token</code> (request)</td>
+<td><strong>Replaced with host value</strong></td>
+<td>Container's <code>refresh_token</code> is empty</td>
+</tr>
+<tr>
+<td><code>client_id</code></td>
+<td>Passed through</td>
+<td>Hardcoded by Codex CLI; proxy does not touch it</td>
+</tr>
+<tr>
+<td><code>grant_type</code></td>
+<td>Passed through</td>
+<td>No modification needed</td>
+</tr>
+<tr>
+<td>Other request fields</td>
+<td>Passed through</td>
+<td>No modification needed</td>
+</tr>
+<tr>
+<td><code>refresh_token</code> (response)</td>
+<td><strong>Excluded from response</strong></td>
+<td>Do not pass new refresh_token to container</td>
+</tr>
+<tr>
+<td><code>access_token</code> (response)</td>
+<td><strong>Replaced with placeholder</strong></td>
+<td>Do not pass real new access_token to container</td>
+</tr>
+<tr>
+<td><code>id_token</code> (response)</td>
+<td>Passed through</td>
+<td>For claims extraction (not an auth credential)</td>
+</tr>
+<tr>
+<td>Other response fields</td>
+<td>Passed through</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Response to Container</strong></p>
+<p>Returns the OpenAI response with <code>refresh_token</code> removed and <code>access_token</code> replaced with the placeholder (<code>cdx-&lt;hex64&gt;</code>).
+The host's <code>access_token</code>, <code>id_token</code>, and <code>refresh_token</code> are updated internally (handles RFC 6749 §6 token rotation).</p>
+<p><strong>Error Responses</strong></p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>400 Bad Request</code></td>
+<td>Not in OAuth mode</td>
+</tr>
+<tr>
+<td><code>401 Unauthorized</code></td>
+<td><code>cdx</code> parameter missing, invalid, or expired</td>
+</tr>
+<tr>
+<td><code>405 Method Not Allowed</code></td>
+<td>Non-POST method</td>
+</tr>
+<tr>
+<td><code>502 Bad Gateway</code></td>
+<td>Forwarding to OpenAI failed</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="any-v1-responses-api-reverse-proxy"><code>ANY /v1/*</code> — Responses API Reverse Proxy<a class="headerlink" href="#any-v1-responses-api-reverse-proxy" title="Permanent link">&para;</a></h3>
+<p>Codex CLI points <code>OPENAI_BASE_URL=http://proxy/v1</code> and sends all Responses API requests through the proxy.</p>
+<table>
+<thead>
+<tr>
+<th>Auth Mode</th>
+<th>Forwarded To</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>API Key</td>
+<td><code>https://api.openai.com/v1/&lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>OAuth / ChatGPT</td>
+<td><code>https://chatgpt.com/backend-api/codex/&lt;path&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>The <code>Authorization</code> header's placeholder value is <strong>overwritten with the host's real credentials</strong></li>
+<li>In OAuth mode, <code>ChatGPT-Account-Id</code> header is also overwritten with the correct <code>oauthCreds.AccountID</code></li>
+<li>Hop-by-hop headers (<code>Connection</code>, <code>Transfer-Encoding</code>, etc.) are stripped</li>
+<li>Response status, headers, and body are returned as-is to the container</li>
+<li>WebSocket upgrade requests are tunneled with <code>Authorization</code> and <code>ChatGPT-Account-Id</code> replaced</li>
+</ul>
+<p><strong>Actual headers sent upstream (after proxy substitution)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Authorization: Bearer &lt;real access_token or api_key&gt;  ← proxy injects
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>Content-Type: application/json
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>version: 0.110.0
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>chatgpt-account-id: &lt;account_id&gt;   ← OAuth mode: proxy overwrites with correct value
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>OpenAI-Organization: &lt;org&gt;         ← if $OPENAI_ORGANIZATION is set
+</code></pre></div>
+<hr />
+<h3 id="any-chatgpt-chatgpt-backend-api-proxy"><code>ANY /chatgpt/*</code> — ChatGPT Backend-API Proxy<a class="headerlink" href="#any-chatgpt-chatgpt-backend-api-proxy" title="Permanent link">&para;</a></h3>
+<p>Forwards <code>/chatgpt/</code> paths to <code>https://chatgpt.com/backend-api/</code>.
+In OAuth mode, containers use <code>~/.config/codex/config.toml</code>'s <code>chatgpt_base_url=http://proxy/chatgpt/</code> for rate limit and account info requests.</p>
+<hr />
+<h3 id="get-health-health-check"><code>GET /health</code> — Health Check<a class="headerlink" href="#get-health-health-check" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="err">HTTP/</span><span class="mf">1.1</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="err">OK</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="err">Co</span><span class="kc">ntent</span><span class="mi">-</span><span class="err">Type</span><span class="p">:</span><span class="w"> </span><span class="err">applica</span><span class="kc">t</span><span class="err">io</span><span class="kc">n</span><span class="err">/jso</span><span class="kc">n</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">{</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">&quot;active_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">}</span>
+</code></pre></div>
+<hr />
+<h3 id="post-revoke-token-revocation"><code>POST /revoke</code> — Token Revocation<a class="headerlink" href="#post-revoke-token-revocation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>POST /revoke?container=&lt;container-name&gt; HTTP/1.1
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>200 OK</code></td>
+<td>Revocation successful</td>
+</tr>
+<tr>
+<td><code>400 Bad Request</code></td>
+<td><code>container</code> parameter missing</td>
+</tr>
+<tr>
+<td><code>405 Method Not Allowed</code></td>
+<td>Non-POST method</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="container-environment-variables">Container Environment Variables<a class="headerlink" href="#container-environment-variables" title="Permanent link">&para;</a></h2>
+<p>The following environment variables are injected into containers:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Content</th>
+<th>Post-use Handling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CODEX_AUTH_PROXY_URL</code></td>
+<td><code>http://&lt;proxy&gt;:&lt;PORT&gt;</code></td>
+<td><code>unset</code> (removed by entrypoint.sh)</td>
+</tr>
+<tr>
+<td><code>CODEX_TOKEN</code></td>
+<td><code>cdx-&lt;hex64&gt;</code> — used to call <code>/token</code></td>
+<td><code>unset</code> (removed by entrypoint.sh)</td>
+</tr>
+<tr>
+<td><code>OPENAI_BASE_URL</code></td>
+<td><code>http://&lt;proxy&gt;:&lt;PORT&gt;/v1</code></td>
+<td>Always active (referenced by Codex CLI)</td>
+</tr>
+<tr>
+<td><code>CODEX_REFRESH_TOKEN_URL_OVERRIDE</code></td>
+<td><code>http://&lt;proxy&gt;:&lt;PORT&gt;/oauth/token?cdx=&lt;token&gt;</code></td>
+<td>OAuth mode only</td>
+</tr>
+</tbody>
+</table>
+<p>In OAuth mode, <code>entrypoint.sh</code> also generates the following files:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/home/codex/.codex/auth.json</code></td>
+<td><code>access_token</code>: placeholder (<code>cdx-&lt;hex64&gt;</code>), <code>id_token</code>: real, <code>refresh_token</code>: empty string</td>
+</tr>
+<tr>
+<td><code>/home/codex/.config/codex/config.toml</code></td>
+<td><code>chatgpt_base_url = "http://&lt;proxy&gt;:&lt;PORT&gt;/chatgpt/"</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The <code>access_token</code> in the container's <code>auth.json</code> is not real.
+It serves as a dummy Bearer token for Codex CLI API requests, which the proxy replaces with the real access_token.</p>
+</blockquote>
+<hr />
+<h2 id="token-mechanics">Token Mechanics<a class="headerlink" href="#token-mechanics" title="Permanent link">&para;</a></h2>
+<h3 id="token-format">Token Format<a class="headerlink" href="#token-format" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>cdx-&lt;64 hex digits&gt;
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>Example: cdx-a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234
+</code></pre></div>
+<ul>
+<li>32 bytes of random data generated using <code>crypto/rand</code></li>
+<li>Hex-encoded with <code>cdx-</code> prefix</li>
+<li>Total 68 characters</li>
+</ul>
+<h3 id="token-lifecycle">Token Lifecycle<a class="headerlink" href="#token-lifecycle" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>                 IssueToken()
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>                      │
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>                      ▼
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>              ┌───────────────┐
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>              │ tokenRecord    │
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>              │ Token: &quot;cdx-&quot; │
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>              │ ContainerName │
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>              │ IssuedAt      │
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>              │ ExpiresAt     │  ← IssuedAt + TTL (default 3600s)
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>              └───────┬───────┘
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>                      │ stored in memory
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>                      ▼
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>              ┌───────────────┐
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>              │ tokens map    │◀─── RevokeToken() removes immediately
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>              │ [name -&gt; rec] │
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>              └───────┬───────┘
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>                      │
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>               scan every 30s
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>                      │
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>                      ▼
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>              delete expired tokens (expireLoop)
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>How to Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTL</td>
+<td>3600s (1 hour)</td>
+<td><code>--token-ttl &lt;seconds&gt;</code> or <code>config.toml</code>'s <code>default_token_ttl</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="credential-priority-api-key-mode">Credential Priority (API Key Mode)<a class="headerlink" href="#credential-priority-api-key-mode" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>1. OPENAI_API_KEY environment variable
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>2. ~/.config/codex-dock/apikey  (saved by codex-dock auth set)
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>3. ~/.codex/auth.json
+</code></pre></div>
+<p>OAuth mode is activated when <code>~/.codex/auth.json</code> contains <code>refresh_token</code> or <code>auth_mode: "chatgpt"</code>.</p>
+<hr />
+<h2 id="security-considerations">Security Considerations<a class="headerlink" href="#security-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="implemented-protections">Implemented Protections<a class="headerlink" href="#implemented-protections" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Protection</th>
+<th>Implemented</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>API key isolation</td>
+<td>✅</td>
+<td>Container receives only placeholder (same as CODEX_TOKEN); proxy injects real key</td>
+</tr>
+<tr>
+<td>access_token isolation</td>
+<td>✅</td>
+<td>Real access_token never reaches container even in OAuth mode; proxy replaces placeholder</td>
+</tr>
+<tr>
+<td>refresh_token protection</td>
+<td>✅</td>
+<td>Never passed to container; refresh handled via <code>/oauth/token</code> relay</td>
+</tr>
+<tr>
+<td>Short-lived tokens</td>
+<td>✅</td>
+<td>TTL-bound; immediately revoked on container stop</td>
+</tr>
+<tr>
+<td>API traffic relay</td>
+<td>✅</td>
+<td>Reverse proxy on <code>/v1/</code> and <code>/chatgpt/</code> eliminates direct external API access from containers</td>
+</tr>
+<tr>
+<td>No credential logging</td>
+<td>✅</td>
+<td>Auth information never written to stdout/stderr</td>
+</tr>
+<tr>
+<td>No auth.json bind mount</td>
+<td>✅</td>
+<td>Container's auth.json contains a safe copy with placeholder access_token</td>
+</tr>
+</tbody>
+</table>
+<h3 id="known-issues-limitations">Known Issues / Limitations<a class="headerlink" href="#known-issues-limitations" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Issue</th>
+<th>Severity</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F-NET-04</td>
+<td>Container may not reach Auth Proxy</td>
+<td>High</td>
+<td><code>127.0.0.1</code> is unreachable from containers; must bind to dock-net gateway address</td>
+</tr>
+<tr>
+<td>NF-SEC-01</td>
+<td>Plain HTTP communication</td>
+<td>High</td>
+<td>TLS or UNIX socket not yet implemented</td>
+</tr>
+<tr>
+<td>F-AUTH-06</td>
+<td>No container ID verification</td>
+<td>Medium</td>
+<td>Token is tied to container name but not verified against container ID</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="implementation-quick-reference">Implementation Quick Reference<a class="headerlink" href="#implementation-quick-reference" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1">// Create Auth Proxy</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nx">proxy</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">authproxy</span><span class="p">.</span><span class="nx">NewProxy</span><span class="p">(</span><span class="nx">authproxy</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nx">TokenTTL</span><span class="p">:</span><span class="w">   </span><span class="mi">3600</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nx">Verbose</span><span class="p">:</span><span class="w">    </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nx">ListenAddr</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;10.200.0.1:0&quot;</span><span class="p">,</span><span class="w"> </span><span class="c1">// dock-net gateway</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="p">})</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="c1">// Start</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="nx">proxy</span><span class="p">.</span><span class="nx">Start</span><span class="p">()</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="c1">// Issue token (call before container launch)</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="nx">token</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">proxy</span><span class="p">.</span><span class="nx">IssueToken</span><span class="p">(</span><span class="s">&quot;my-container&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">3600</span><span class="p">)</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="c1">// Check endpoint</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">proxy</span><span class="p">.</span><span class="nx">Endpoint</span><span class="p">())</span><span class="w"> </span><span class="c1">// &quot;http://10.200.0.1:XXXXX&quot;</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="c1">// Check OAuth mode</span>
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="k">if</span><span class="w"> </span><span class="nx">proxy</span><span class="p">.</span><span class="nx">IsOAuthMode</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="w">    </span><span class="c1">// set CODEX_REFRESH_TOKEN_URL_OVERRIDE</span>
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="p">}</span>
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>
+<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="c1">// Revoke token (call on container stop)</span>
+<a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="nx">proxy</span><span class="p">.</span><span class="nx">RevokeToken</span><span class="p">(</span><span class="s">&quot;my-container&quot;</span><span class="p">)</span>
+<a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a>
+<a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a><span class="c1">// Stop proxy (clears all tokens)</span>
+<a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a><span class="k">defer</span><span class="w"> </span><span class="nx">proxy</span><span class="p">.</span><span class="nx">Stop</span><span class="p">()</span>
+</code></pre></div>
+<hr />
+<h2 id="related-documentation">Related Documentation<a class="headerlink" href="#related-documentation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="endpoints/">API Endpoint Reference</a> — Full endpoint specifications</li>
+<li><a href="tokens/">Token Lifecycle &amp; Security</a> — Token lifecycle and security considerations</li>
+<li><a href="../proxy-standalone/">Using Auth Proxy Standalone</a> — Configure Codex CLI without <code>codex-dock run</code></li>
+<li><a href="../network/">Network Specification</a> — dock-net and host reachability</li>
+<li><a href="../commands/proxy/"><code>codex-dock proxy</code> command</a> — How to start the proxy</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
