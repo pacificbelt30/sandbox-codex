@@ -136,14 +136,14 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 
 	got := strings.Join(runner.calls, "\n")
 
-	jumpInsert := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK")
+	jumpAppend := strings.Index(got, "iptables -A DOCKER-USER -i dock-net0 -j CODEX-DOCK")
 	forwardInsert := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT")
 	reverseInsert := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT")
-	if jumpInsert < 0 || forwardInsert < 0 || reverseInsert < 0 {
-		t.Fatalf("Apply() missing expected insert commands\ncalls:\n%s", got)
+	if jumpAppend < 0 || forwardInsert < 0 || reverseInsert < 0 {
+		t.Fatalf("Apply() missing expected DOCKER-USER commands\ncalls:\n%s", got)
 	}
-	if !(jumpInsert < forwardInsert && jumpInsert < reverseInsert) {
-		t.Fatalf("Apply() inserted CODEX-DOCK jump after proxy accept rules; this breaks rule precedence\ncalls:\n%s", got)
+	if !(forwardInsert < jumpAppend && reverseInsert < jumpAppend) {
+		t.Fatalf("Apply() did not append CODEX-DOCK jump after proxy allow rules\ncalls:\n%s", got)
 	}
 
 	for _, want := range []string{
@@ -151,7 +151,7 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 		"iptables -S CODEX-DOCK",
 		"iptables -N CODEX-DOCK",
 		"iptables -C DOCKER-USER -i dock-net0 -j CODEX-DOCK",
-		"iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK",
+		"iptables -A DOCKER-USER -i dock-net0 -j CODEX-DOCK",
 		"iptables -C DOCKER-USER -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
 		"iptables -I DOCKER-USER 1 -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
 		"iptables -C DOCKER-USER -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
