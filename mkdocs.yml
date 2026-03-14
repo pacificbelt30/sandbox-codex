@@ -41,6 +41,7 @@ nav:
   - アーキテクチャ: architecture.md
   - Auth Proxy: auth-proxy.md
   - ネットワーク: network.md
+  - firewall: firewall.md
   - コマンド: commands.md
   - 設定: configuration.md
 

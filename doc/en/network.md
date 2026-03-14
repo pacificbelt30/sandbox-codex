@@ -6,9 +6,7 @@ codex-dock uses a dedicated Docker bridge network **dock-net** to isolate worker
 
 ---
 
-## Current Network / Firewall Specification
-
-### dock-net base configuration
+## dock-net Base Configuration
 
 | Item | Value |
 |---|---|
@@ -17,70 +15,54 @@ codex-dock uses a dedicated Docker bridge network **dock-net** to isolate worker
 | Bridge name | `dock-net0` |
 | Subnet | `10.200.0.0/24` |
 | Gateway | `10.200.0.1` |
-| ICC | `false` (inter-container traffic disabled) |
+| ICC | `false` (inter-container communication disabled) |
 | IP Masquerade | `true` by default (`false` with `--no-internet`) |
-
-### Linux firewall rules
-
-On Linux, codex-dock manages `iptables` rules by linking `DOCKER-USER` to a managed chain named `CODEX-DOCK`.
-
-Rule application order:
-
-1. (When `dock-net-proxy0` exists) insert NIC-level allow rules into `DOCKER-USER`
-   - `-i dock-net0 -o dock-net-proxy0 -p tcp --dport <proxy-port> -j ACCEPT`
-   - `-i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT`
-2. Insert `-i dock-net0 -j CODEX-DOCK` into `DOCKER-USER`
-3. Flush `CODEX-DOCK`
-4. Add allow rules for:
-   - `IP:PORT` parsed from `--proxy-container-url`
-   - `dock-net` subnet to the same proxy port
-5. Drop private/link-local destinations (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`)
-6. Add final `RETURN`
-
-> `codex-dock run` attempts firewall setup automatically. If root privileges are missing or `iptables` is unavailable, it continues with a warning.
 
 ---
 
-## Command Behavior
+## Network Management Commands
 
-### `codex-dock firewall create`
-
-```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL]
-```
-
-- Applies rules on Linux when run as root and `iptables` is available.
-- If `dock-net` is missing, codex-dock prints a warning and prompts whether to create it (if declined, firewall setup stops).
-- If `dock-net-proxy` is missing, codex-dock prints a warning and prompts whether to create it.
-- Default `--proxy-container-url` is `http://codex-auth-proxy:18080`.
-
-### `codex-dock firewall status`
+### `codex-dock network create`
 
 ```bash
-codex-dock firewall status
+codex-dock network create [--no-internet]
 ```
 
-Shows:
+- Creates `dock-net`.
+- `--no-internet` disables IP Masquerade to block outbound internet access.
+- `codex-dock run` auto-creates `dock-net` when missing.
 
-- Linux support
-- Root execution status
-- `iptables` detection
-- `CODEX-DOCK` chain existence
-- `DOCKER-USER -> CODEX-DOCK` jump rule existence
-- `DOCKER-USER` default policy
-- Final jump verdict in `CODEX-DOCK`
-
-### `codex-dock firewall rm`
+### `codex-dock network status`
 
 ```bash
-codex-dock firewall rm
+codex-dock network status
 ```
 
-Removes the `DOCKER-USER -> CODEX-DOCK` jump rule and deletes the `CODEX-DOCK` chain.
+Shows current `dock-net` state (driver / subnet / ICC / IP Masquerade).
+
+### `codex-dock network rm`
+
+```bash
+codex-dock network rm
+```
+
+Removes `dock-net`. Stop running containers that use it first.
+
+---
+
+## Relationship with Firewall
+
+- `network create` only creates Docker networks.
+- Linux `iptables` traffic control (`codex-dock firewall`) is a separate feature.
+- In real environments, configuring firewall after network creation is recommended.
+
+See the dedicated firewall docs for details:
+
+- [Firewall Specification & Operations Guide](firewall.md)
+- [`codex-dock firewall` Command Reference](commands/firewall.md)
 
 ---
 
 ## Notes
 
-- macOS / Windows (Docker Desktop) do not have equivalent automatic Linux `iptables` control.
-- `network create` provisions the Docker network only; it does not install firewall rules.
+- macOS / Windows (Docker Desktop) do not provide equivalent automatic Linux `iptables` control.

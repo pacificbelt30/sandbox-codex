@@ -18,6 +18,7 @@ codex-dock の全コマンドリファレンスです。各コマンドの詳細
 | [`codex-dock logs`](commands/worker.md#codex-dock-logs--ログの表示) | ログの表示 | tail・follow |
 | [`codex-dock auth`](commands/auth.md) | 認証管理 | show / set / rotate |
 | [`codex-dock network`](commands/network-cmd.md) | ネットワーク管理 | create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | firewall 管理 | create / status / rm |
 | [`codex-dock build`](commands/build.md) | サンドボックスイメージのビルド | Dockerfile の自動検出 |
 | [`codex-dock ui`](commands/ui.md) | TUI ダッシュボード | キーバインド一覧 |
 

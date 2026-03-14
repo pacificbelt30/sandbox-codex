@@ -92,7 +92,13 @@ codex-dock proxy build
 
 # 3) Auth Proxy コンテナを起動（認証情報は自動検出）
 codex-dock proxy run
+
+# 4) 推奨: firewall を設定（Linux + root）
+sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
 ```
+
+
+> **推奨**: `network create` と `proxy run` の後に firewall を設定してください。`codex-dock run` の通信制御が明確になります。詳細は [firewall 仕様・運用ガイド](firewall.md) を参照してください。
 
 `codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
 
