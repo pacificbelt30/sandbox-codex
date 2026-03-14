@@ -174,6 +174,87 @@ func (s *stubIptablesRunner) Run(_ context.Context, name string, args ...string)
 	return nil, nil
 }
 
+func TestIptablesFirewallApplyBuildsProxyRules(t *testing.T) {
+	runner := &stubIptablesRunner{
+		chainErrors: map[string]error{
+			dockerUserChain: nil,
+			managedChain:    ErrFirewallChainNotFound,
+		},
+	}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+	}
+
+	err := fw.Apply(context.Background(), firewallConfig{
+		BridgeName:      BridgeName,
+		BridgeSubnet:    "10.200.0.0/24",
+		ProxyBridgeName: ProxyBridgeName,
+		ProxyTCPPort:    18080,
+	})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	got := strings.Join(runner.calls, "\n")
+	for _, want := range []string{
+		// Forward rule: workers → proxy (should appear as ensureRule insert)
+		"iptables -C DOCKER-USER -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
+		"iptables -I DOCKER-USER 1 -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
+		// Return rule: proxy → workers (established/related)
+		"iptables -C DOCKER-USER -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
+		"iptables -I DOCKER-USER 1 -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
+		// CODEX-DOCK jump
+		"iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Apply() missing command %q\ncalls:\n%s", want, got)
+		}
+	}
+
+	// Verify CODEX-DOCK jump is inserted before proxy rules: CODEX-DOCK insert should appear
+	// before proxy rule inserts in the call sequence.
+	codexIdx := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK")
+	retIdx := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net-proxy0")
+	fwdIdx := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net0 -o dock-net-proxy0")
+	if codexIdx < 0 || retIdx < 0 || fwdIdx < 0 {
+		t.Fatalf("could not find expected insert commands in calls:\n%s", got)
+	}
+	if codexIdx >= retIdx || retIdx >= fwdIdx {
+		t.Fatalf("insert order wrong: CODEX-DOCK(%d) retRule(%d) fwdRule(%d); want codex<ret<fwd\ncalls:\n%s",
+			codexIdx, retIdx, fwdIdx, got)
+	}
+}
+
+func TestIptablesFirewallRemoveDeletesProxyRules(t *testing.T) {
+	runner := &removeRunner{}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+	}
+
+	err := fw.Remove(context.Background(), firewallConfig{
+		BridgeName:      BridgeName,
+		ProxyBridgeName: ProxyBridgeName,
+		ProxyTCPPort:    18080,
+	})
+	if err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+
+	got := strings.Join(runner.calls, "\n")
+	for _, want := range []string{
+		"iptables -D DOCKER-USER -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
+		"iptables -D DOCKER-USER -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Remove() missing command %q\ncalls:\n%s", want, got)
+		}
+	}
+}
+
 func TestIptablesFirewallRemoveIgnoresMissingManagedChain(t *testing.T) {
 	runner := &removeRunner{}
 	fw := &iptablesFirewall{

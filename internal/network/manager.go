@@ -17,6 +17,12 @@ const (
 	BridgeName    = "dock-net0"
 	NetworkSubnet = "10.200.0.0/24"
 	NetworkGW     = "10.200.0.1"
+
+	ProxyNetworkName    = "dock-net-proxy"
+	ProxyBridgeName     = "dock-net-proxy0"
+	ProxyNetworkSubnet  = "10.201.0.0/24"
+	ProxyNetworkGW      = "10.201.0.1"
+	ProxyNetworkTCPPort = 18080
 )
 
 var ErrDockNetNotFound = errors.New("dock-net does not exist")
@@ -200,6 +206,56 @@ func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
 	}, nil
 }
 
+// EnsureProxyNetwork creates dock-net-proxy if it does not already exist.
+// This network is intended for the auth proxy container to isolate it from worker containers.
+func (m *Manager) EnsureProxyNetwork() error {
+	ctx := context.Background()
+
+	existing, err := m.findNetworkByName(ctx, ProxyNetworkName)
+	if err != nil {
+		return err
+	}
+
+	if existing != nil {
+		return nil
+	}
+
+	_, err = m.cli.NetworkCreate(ctx, ProxyNetworkName, dockernetwork.CreateOptions{
+		Driver: "bridge",
+		Options: map[string]string{
+			"com.docker.network.bridge.enable_icc":           "false",
+			"com.docker.network.bridge.enable_ip_masquerade": "true",
+			"com.docker.network.bridge.name":                 ProxyBridgeName,
+		},
+		Labels: map[string]string{
+			"codex-dock.managed": "true",
+		},
+		IPAM: &dockernetwork.IPAM{
+			Driver: "default",
+			Config: []dockernetwork.IPAMConfig{
+				{Subnet: ProxyNetworkSubnet, Gateway: ProxyNetworkGW},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("creating dock-net-proxy: %w", err)
+	}
+	return nil
+}
+
+// RemoveProxyNetwork removes dock-net-proxy.
+func (m *Manager) RemoveProxyNetwork() error {
+	ctx := context.Background()
+	existing, err := m.findNetworkByName(ctx, ProxyNetworkName)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return fmt.Errorf("dock-net-proxy does not exist")
+	}
+	return m.cli.NetworkRemove(ctx, existing.ID)
+}
+
 // RemoveNetwork removes dock-net.
 func (m *Manager) RemoveNetwork() error {
 	ctx := context.Background()
@@ -363,6 +419,16 @@ func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNe
 
 	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
 	cfg.AllowTCPPorts = normalizePorts(opts.AllowHostTCPPorts)
+
+	// If dock-net-proxy exists, configure NIC-level rules to allow worker↔proxy communication.
+	proxyNet, err := m.findNetworkByName(ctx, ProxyNetworkName)
+	if err != nil {
+		return cfg, err
+	}
+	if proxyNet != nil {
+		cfg.ProxyBridgeName = ProxyBridgeName
+		cfg.ProxyTCPPort = ProxyNetworkTCPPort
+	}
 
 	if len(cfg.AllowTCPPorts) == 0 {
 		return cfg, nil

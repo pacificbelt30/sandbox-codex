@@ -49,6 +49,38 @@ var networkRmCmd = &cobra.Command{
 	},
 }
 
+var networkProxyCreateCmd = &cobra.Command{
+	Use:   "proxy-create",
+	Short: "Create dock-net-proxy network for the auth proxy container",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		mgr, err := network.NewManager()
+		if err != nil {
+			return err
+		}
+		if err := mgr.EnsureProxyNetwork(); err != nil {
+			return fmt.Errorf("creating dock-net-proxy: %w", err)
+		}
+		fmt.Println("dock-net-proxy created.")
+		return nil
+	},
+}
+
+var networkProxyRmCmd = &cobra.Command{
+	Use:   "proxy-rm",
+	Short: "Remove dock-net-proxy network",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		mgr, err := network.NewManager()
+		if err != nil {
+			return err
+		}
+		if err := mgr.RemoveProxyNetwork(); err != nil {
+			return fmt.Errorf("removing dock-net-proxy: %w", err)
+		}
+		fmt.Println("dock-net-proxy removed.")
+		return nil
+	},
+}
+
 var networkStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show dock-net status",
@@ -165,6 +197,8 @@ func init() {
 	networkCmd.AddCommand(networkCreateCmd)
 	networkCmd.AddCommand(networkRmCmd)
 	networkCmd.AddCommand(networkStatusCmd)
+	networkCmd.AddCommand(networkProxyCreateCmd)
+	networkCmd.AddCommand(networkProxyRmCmd)
 	networkCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 
 	rootCmd.AddCommand(firewallCmd)

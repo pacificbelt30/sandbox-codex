@@ -57,6 +57,10 @@ type firewallConfig struct {
 	BridgeSubnet         string
 	AllowTCPPorts        []int
 	AllowTCPDestinations []HostEndpoint
+	// ProxyBridgeName and ProxyTCPPort enable NIC-level DOCKER-USER rules that allow
+	// worker containers on BridgeName to reach the proxy container on ProxyBridgeName.
+	ProxyBridgeName string
+	ProxyTCPPort    int
 }
 
 // HostEndpoint is a single TCP destination that should remain reachable from workers.
@@ -131,8 +135,34 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 	if err := f.ensureChain(ctx, managedChain); err != nil {
 		return err
 	}
+	// Ensure the CODEX-DOCK jump rule first; proxy rules will be inserted before it.
 	if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.BridgeName, "-j", managedChain}); err != nil {
 		return err
+	}
+	// Insert NIC-level rules in DOCKER-USER to allow worker↔proxy container communication.
+	// ensureRule inserts at position 1, so we add in reverse desired order:
+	//   1. return rule → pos 1 (CODEX-DOCK moves to pos 2)
+	//   2. forward rule → pos 1 (return moves to pos 2, CODEX-DOCK to pos 3)
+	// Final order: fwd(1) ret(2) CODEX-DOCK(3)
+	if cfg.ProxyBridgeName != "" && cfg.ProxyTCPPort > 0 {
+		retRule := []string{
+			"-i", cfg.ProxyBridgeName,
+			"-o", cfg.BridgeName,
+			"-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED",
+			"-j", "ACCEPT",
+		}
+		if err := f.ensureRule(ctx, dockerUserChain, retRule); err != nil {
+			return err
+		}
+		fwdRule := []string{
+			"-i", cfg.BridgeName,
+			"-o", cfg.ProxyBridgeName,
+			"-p", "tcp", "--dport", strconv.Itoa(cfg.ProxyTCPPort),
+			"-j", "ACCEPT",
+		}
+		if err := f.ensureRule(ctx, dockerUserChain, fwdRule); err != nil {
+			return err
+		}
 	}
 	if err := f.run(ctx, "-F", managedChain); err != nil {
 		return err
@@ -210,6 +240,23 @@ func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error
 				break
 			}
 			return err
+		}
+	}
+
+	if cfg.ProxyBridgeName != "" && cfg.ProxyTCPPort > 0 {
+		proxyRules := [][]string{
+			{"-i", cfg.BridgeName, "-o", cfg.ProxyBridgeName, "-p", "tcp", "--dport", strconv.Itoa(cfg.ProxyTCPPort), "-j", "ACCEPT"},
+			{"-i", cfg.ProxyBridgeName, "-o", cfg.BridgeName, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"},
+		}
+		for _, pr := range proxyRules {
+			for {
+				if err := f.deleteRule(ctx, dockerUserChain, pr); err != nil {
+					if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
+						break
+					}
+					return err
+				}
+			}
 		}
 	}
 
