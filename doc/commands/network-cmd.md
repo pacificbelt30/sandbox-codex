@@ -26,7 +26,7 @@ codex-dock network create [--no-internet]
 ## `firewall create` — firewall ルール作成
 
 ```bash
-codex-dock firewall create [--no-internet]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 ```
 
 > Linux の `iptables` ルールを適用します。
@@ -38,7 +38,7 @@ codex-dock firewall create [--no-internet]
 codex-dock firewall status
 ```
 
-`dock-net` firewall の適用状態（Linux 対応可否、root 実行、iptables 検出、chain/jump rule の有無）を表示します。
+`dock-net` firewall の適用状態（Linux 対応可否、root 実行、iptables 検出、chain/jump rule、DOCKER-USER policy、CODEX-DOCK final jump）を表示します。
 
 ## `firewall rm` — firewall ルール削除
 
@@ -70,12 +70,11 @@ codex-dock network status
 **出力例：**
 
 ```
-dock-net status:
-  ID:            a1b2c3d4e5f6789012345678
-  Driver:        bridge
-  Subnet:        10.200.0.0/24
-  ICC:           disabled
-  IP Masquerade: enabled
+dock-net ID:     a1b2c3d4e5f6
+Driver:          bridge
+ICC disabled:    true
+IP Masquerade:   true
+Subnet:          10.200.0.0/24
 ```
 
 ---
