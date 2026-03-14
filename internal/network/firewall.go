@@ -133,6 +133,10 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		return err
 	}
 
+	if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.BridgeName, "-j", managedChain}); err != nil {
+		return err
+	}
+
 	for _, port := range normalizePorts(cfg.AllowTCPPorts) {
 		if cfg.ProxyBridgeName == "" {
 			continue
@@ -146,10 +150,6 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.ProxyBridgeName, "-o", cfg.BridgeName, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}); err != nil {
 			return err
 		}
-	}
-
-	if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.BridgeName, "-j", managedChain}); err != nil {
-		return err
 	}
 	if err := f.run(ctx, "-F", managedChain); err != nil {
 		return err
