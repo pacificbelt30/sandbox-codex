@@ -26,13 +26,16 @@ On Linux, codex-dock manages `iptables` rules by linking `DOCKER-USER` to a mana
 
 Rule application order:
 
-1. Insert `-i dock-net0 -j CODEX-DOCK` into `DOCKER-USER`
-2. Flush `CODEX-DOCK`
-3. Add allow rules for:
+1. (When `dock-net-proxy0` exists) insert NIC-level allow rules into `DOCKER-USER`
+   - `-i dock-net0 -o dock-net-proxy0 -p tcp --dport <proxy-port> -j ACCEPT`
+   - `-i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT`
+2. Insert `-i dock-net0 -j CODEX-DOCK` into `DOCKER-USER`
+3. Flush `CODEX-DOCK`
+4. Add allow rules for:
    - `IP:PORT` parsed from `--proxy-container-url`
    - `dock-net` subnet to the same proxy port
-4. Drop private/link-local destinations (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`)
-5. Add final `RETURN`
+5. Drop private/link-local destinations (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`)
+6. Add final `RETURN`
 
 > `codex-dock run` attempts firewall setup automatically. If root privileges are missing or `iptables` is unavailable, it continues with a warning.
 

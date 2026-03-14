@@ -17,6 +17,9 @@ const (
 	BridgeName    = "dock-net0"
 	NetworkSubnet = "10.200.0.0/24"
 	NetworkGW     = "10.200.0.1"
+
+	ProxyNetworkName = "dock-net-proxy"
+	ProxyBridgeName  = "dock-net-proxy0"
 )
 
 var ErrDockNetNotFound = errors.New("dock-net does not exist")
@@ -357,8 +360,15 @@ func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockerne
 
 func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNet *dockernetwork.Summary) (firewallConfig, error) {
 	cfg := firewallConfig{
-		BridgeName:   BridgeName,
-		BridgeSubnet: gatewaySubnet(dockNet),
+		BridgeName:      BridgeName,
+		ProxyBridgeName: ProxyBridgeName,
+		BridgeSubnet:    gatewaySubnet(dockNet),
+	}
+
+	if proxyNet, err := m.findNetworkByName(ctx, ProxyNetworkName); err == nil && proxyNet != nil {
+		if bridgeName := proxyNet.Options["com.docker.network.bridge.name"]; bridgeName != "" {
+			cfg.ProxyBridgeName = bridgeName
+		}
 	}
 
 	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
