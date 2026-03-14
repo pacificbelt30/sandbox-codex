@@ -43,8 +43,9 @@ codex-dock proxy run [OPTIONS]
 
 | Option | Short | Default | Description |
 |---|---|---|---|
-| `--name` | | `codex-dock-proxy` | Container name |
+| `--name` | | `codex-auth-proxy` | Container name |
 | `--port` | `-p` | `18080` | Host port |
+| `--network` | | `dock-net-proxy` | Docker network to attach to (auto-created if missing) |
 | `--admin-secret` | | | Secret for `/admin/*` endpoints |
 
 Automatically binds all detected auth sources to the container:
@@ -72,7 +73,7 @@ codex-dock proxy serve --listen 127.0.0.1:18080 [OPTIONS]
 ## `proxy stop`
 
 ```bash
-codex-dock proxy stop [--name codex-dock-proxy]
+codex-dock proxy stop [--name codex-auth-proxy]
 ```
 
 ---
@@ -80,7 +81,7 @@ codex-dock proxy stop [--name codex-dock-proxy]
 ## `proxy rm`
 
 ```bash
-codex-dock proxy rm [--name codex-dock-proxy] [--force]
+codex-dock proxy rm [--name codex-auth-proxy] [--force]
 ```
 
 ---

@@ -28,6 +28,17 @@ codex-dock の Auth Proxy コンポーネントだけを利用して、Codex CLI
 | Codex CLI インストール済み | `codex --version` |
 | 認証情報が設定済み | `codex-dock auth show` |
 
+### 利用パターン（重要）
+
+Auth Proxy 単体利用には、主に次の 2 パターンがあります。
+
+| パターン | 想定 | 推奨構成 |
+|---|---|---|
+| A. ホストで `codex` を直接実行 | ローカル開発 | Proxy は `localhost:18080` で起動 |
+| B. `codex-dock run` / 独自コンテナから Proxy を参照 | Docker コンテナ実行 | Proxy を `dock-net-proxy` に所属させ、firewall ルールを適用 |
+
+> B パターンでは、`codex-dock run` の既定 `--proxy-container-url`（`http://codex-auth-proxy:18080`）に合わせて、Proxy コンテナ名を `codex-auth-proxy` のまま使うのが安全です。
+
 ---
 
 ## Step 1: Auth Proxy を起動する
@@ -38,11 +49,47 @@ codex-dock の Auth Proxy コンポーネントだけを利用して、Codex CLI
 # Auth Proxy イメージをビルド（初回のみ）
 codex-dock proxy build
 
-# Auth Proxy を起動（--admin-secret を必ず設定すること）
-codex-dock proxy run --admin-secret YOUR_SECRET --port 18080
+# Proxy 専用ネットワークを利用して起動（推奨）
+codex-dock proxy run \
+  --name codex-auth-proxy \
+  --network dock-net-proxy \
+  --admin-secret YOUR_SECRET \
+  --port 18080
 ```
 
 起動後、ホスト上から `http://localhost:18080` で管理 API にアクセスできます。
+
+`codex-dock run` や独自 worker コンテナから使う場合は、追加で以下を実行してください。
+
+```bash
+# worker 側ネットワーク（dock-net）を作成
+codex-dock network create
+
+# worker -> proxy を許可する firewall ルールを適用
+sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
+```
+
+`firewall create` 実行時に `dock-net` / `dock-net-proxy` が存在しない場合、
+`codex-dock` は警告を表示して作成可否を確認します（`Create <network> now? [y/N]:`）。
+この確認で `y` を選ぶと必要なネットワークが作成され、続けて firewall ルールが適用されます。
+
+確認コマンド（順序が重要）：
+
+```bash
+sudo iptables -S DOCKER-USER
+# 期待: proxy 許可ルールが先、
+#       -i dock-net0 -j CODEX-DOCK は最後尾
+```
+
+例（概念的な順序）:
+
+```text
+ACCEPT ... -i dock-net-proxy0 -o dock-net0  -m conntrack --ctstate RELATED,ESTABLISHED
+ACCEPT ... -i dock-net0       -o dock-net-proxy0 -p tcp --dport 18080
+CODEX-DOCK ... -i dock-net0
+```
+
+> `CODEX-DOCK` が先頭側にあると proxy 許可ルールまで到達せず、通信失敗の原因になります。
 
 > **セキュリティ**: `--admin-secret` を設定しないと管理 API への認証がなくなります。
 > トークンを発行できる相手を限定するために必ず設定してください。
@@ -237,6 +284,24 @@ curl -sf http://localhost:18080/admin/mode \
 
 - Auth Proxy が起動していない → `codex-dock proxy run` または `codex-dock proxy serve` を実行してください
 - ポート番号が異なる → `PROXY_URL` の値を確認してください
+
+### `codex-dock run` で `codex-auth-proxy:18080` に到達できない
+
+以下を順番に確認してください。
+
+```bash
+# 1) Proxy コンテナが期待ネットワークに所属しているか
+docker inspect codex-auth-proxy --format '{{json .NetworkSettings.Networks}}'
+
+# 2) bridge NIC 名の確認（通常 dock-net-proxy0）
+ip a | rg 'dock-net|proxy'
+
+# 3) DOCKER-USER ルールの実体確認（-L ではなく -S 推奨）
+sudo iptables -S DOCKER-USER
+```
+
+- `proxy run --name` を変更した場合は、`run --proxy-container-url` も一致させてください。
+- `DOCKER-USER` で `CODEX-DOCK` が先頭にあり proxy 許可ルールが後ろにあると、通信が DROP されることがあります。`sudo codex-dock firewall rm && sudo codex-dock firewall create` で再作成してください。
 
 ### API キーモードなのに OAuth 用の設定が必要と言われる
 

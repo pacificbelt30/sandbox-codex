@@ -149,10 +149,10 @@ func TestEnsureProxyDockerfile_Content(t *testing.T) {
 // ---- buildProxyRunArgs ----------------------------------------------------
 
 func TestBuildProxyRunArgs_Basic(t *testing.T) {
-	args := buildProxyRunArgs("my-proxy", 18080, "codex-dock-proxy:latest",
+	args := buildProxyRunArgs("my-proxy", 18080, "dock-net-proxy", "codex-dock-proxy:latest",
 		"0.0.0.0:18080", "", "", "", "")
 
-	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "-p", "18080:18080")
+	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "18080:18080")
 	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080")
 
 	// No credential flags when nothing is set.
@@ -170,7 +170,7 @@ func TestBuildProxyRunArgs_Basic(t *testing.T) {
 }
 
 func TestBuildProxyRunArgs_APIKeyEnv(t *testing.T) {
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080", "",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
 		"sk-test-key", "", "")
 
 	if !containsSequence(args, "-e", "OPENAI_API_KEY=sk-test-key") {
@@ -184,7 +184,7 @@ func TestBuildProxyRunArgs_StoredKeyMount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080", "",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
 		"", keyFile, "")
 
 	wantMount := keyFile + ":/root/.config/codex-dock/apikey:ro"
@@ -199,7 +199,7 @@ func TestBuildProxyRunArgs_OAuthMount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080", "",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
 		"", "", authFile)
 
 	wantMount := authFile + ":/root/.codex/auth.json:ro"
@@ -218,7 +218,7 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080", "",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
 		"sk-env-key", keyFile, authFile)
 
 	if !containsSequence(args, "-e", "OPENAI_API_KEY=sk-env-key") {
@@ -233,7 +233,7 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 }
 
 func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080",
 		"s3cr3t", "", "", "")
 
 	if !containsSequence(args, "--admin-secret", "s3cr3t") {
@@ -242,7 +242,7 @@ func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
 }
 
 func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080",
 		"", "", "", "")
 
 	for _, a := range args {
@@ -254,7 +254,7 @@ func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
 
 func TestBuildProxyRunArgs_MissingFiles(t *testing.T) {
 	// Non-existent paths must not produce volume mounts.
-	args := buildProxyRunArgs("proxy", 18080, "img:latest", "0.0.0.0:18080", "",
+	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
 		"", "/nonexistent/apikey", "/nonexistent/auth.json")
 
 	for _, a := range args {

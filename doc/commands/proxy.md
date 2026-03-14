@@ -62,8 +62,9 @@ codex-dock proxy run [OPTIONS]
 
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
-| `--name` | | `codex-dock-proxy` | コンテナ名 |
+| `--name` | | `codex-auth-proxy` | コンテナ名 |
 | `--port` | `-p` | `18080` | ホスト側のポート番号 |
+| `--network` | | `dock-net-proxy` | 接続先 Docker ネットワーク（存在しない場合は自動作成） |
 | `--admin-secret` | | | `/admin/*` エンドポイントの認証シークレット |
 
 ### 認証情報の自動バインド
@@ -116,7 +117,7 @@ codex-dock proxy stop [OPTIONS]
 
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
-| `--name` | | `codex-dock-proxy` | コンテナ名 |
+| `--name` | | `codex-auth-proxy` | コンテナ名 |
 
 ---
 
@@ -128,7 +129,7 @@ codex-dock proxy rm [OPTIONS]
 
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
-| `--name` | | `codex-dock-proxy` | コンテナ名 |
+| `--name` | | `codex-auth-proxy` | コンテナ名 |
 | `--force` | `-f` | `false` | 実行中のコンテナも強制削除 |
 
 ---

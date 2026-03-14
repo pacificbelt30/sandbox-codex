@@ -9,11 +9,12 @@ import (
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-const defaultProxyContainerName = "codex-dock-proxy"
+const defaultProxyContainerName = "codex-auth-proxy"
 
 var (
 	proxyListenAddr  string
@@ -22,8 +23,9 @@ var (
 	proxyBuildTag        string
 	proxyBuildDockerfile string
 
-	proxyRunName string
-	proxyRunPort int
+	proxyRunName    string
+	proxyRunPort    int
+	proxyRunNetwork string
 
 	proxyStopName string
 
@@ -95,6 +97,10 @@ At least one credential source must be configured before running.`,
 		image := viper.GetString("proxy_image")
 		listenAddr := fmt.Sprintf("0.0.0.0:%d", proxyRunPort)
 
+		if err := ensureBridgeNetwork(cmd.Context(), proxyRunNetwork, network.ProxyBridgeName); err != nil {
+			return err
+		}
+
 		home, err := os.UserHomeDir()
 		if err != nil {
 			home = ""
@@ -103,12 +109,12 @@ At least one credential source must be configured before running.`,
 		oauthJSONPath := filepath.Join(home, ".codex", "auth.json")
 
 		dockerArgs := buildProxyRunArgs(
-			proxyRunName, proxyRunPort, image, listenAddr, proxyAdminSecret,
+			proxyRunName, proxyRunPort, proxyRunNetwork, image, listenAddr, proxyAdminSecret,
 			os.Getenv("OPENAI_API_KEY"), storedKeyPath, oauthJSONPath,
 		)
 
 		portMapping := fmt.Sprintf("%d:%d", proxyRunPort, proxyRunPort)
-		fmt.Printf("Starting proxy container %q (image: %s, port: %s)...\n", proxyRunName, image, portMapping)
+		fmt.Printf("Starting proxy container %q (image: %s, network: %s, port: %s)...\n", proxyRunName, image, proxyRunNetwork, portMapping)
 		c := exec.CommandContext(cmd.Context(), "docker", dockerArgs...)
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
@@ -183,6 +189,7 @@ func init() {
 	// run flags
 	proxyRunCmd.Flags().StringVar(&proxyRunName, "name", defaultProxyContainerName, "Container name")
 	proxyRunCmd.Flags().IntVarP(&proxyRunPort, "port", "p", 18080, "Host port to expose the proxy on")
+	proxyRunCmd.Flags().StringVar(&proxyRunNetwork, "network", network.ProxyNetworkName, "Docker network to attach the proxy container to")
 	proxyRunCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
 
 	// stop flags
@@ -202,11 +209,11 @@ func init() {
 // All present credential sources are bound so the container mirrors the host's
 // auth state. The proxy itself selects the active source in priority order:
 // OPENAI_API_KEY env > stored key file > OAuth/auth.json.
-func buildProxyRunArgs(name string, port int, image, listenAddr, adminSecret,
+func buildProxyRunArgs(name string, port int, networkName, image, listenAddr, adminSecret,
 	apiKeyEnv, storedKeyPath, oauthJSONPath string) []string {
 
 	portMapping := fmt.Sprintf("%d:%d", port, port)
-	args := []string{"run", "-d", "--name", name, "-p", portMapping}
+	args := []string{"run", "-d", "--name", name, "--network", networkName, "-p", portMapping}
 
 	// Inject OPENAI_API_KEY if set on the host.
 	if apiKeyEnv != "" {
@@ -230,6 +237,27 @@ func buildProxyRunArgs(name string, port int, image, listenAddr, adminSecret,
 	}
 
 	return args
+}
+
+func ensureBridgeNetwork(ctx context.Context, networkName, bridgeName string) error {
+	inspect := exec.CommandContext(ctx, "docker", "network", "inspect", networkName)
+	if err := inspect.Run(); err == nil {
+		return nil
+	}
+
+	args := []string{"network", "create", "--driver", "bridge"}
+	if bridgeName != "" {
+		args = append(args, "--opt", "com.docker.network.bridge.name="+bridgeName)
+	}
+	args = append(args, networkName)
+
+	create := exec.CommandContext(ctx, "docker", args...)
+	create.Stdout = os.Stdout
+	create.Stderr = os.Stderr
+	if err := create.Run(); err != nil {
+		return fmt.Errorf("ensuring docker network %q: %w", networkName, err)
+	}
+	return nil
 }
 
 // resolveProxyDockerfile returns the auth-proxy Dockerfile path and build

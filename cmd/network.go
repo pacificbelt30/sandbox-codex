@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
@@ -88,6 +90,47 @@ var firewallCreateCmd = &cobra.Command{
 			return err
 		}
 		ensureOpts := network.EnsureOptions{NoInternet: networkCreateNoInternet}
+
+		networkInfo, err := mgr.Status()
+		if err != nil {
+			return fmt.Errorf("checking %s: %w", network.NetworkName, err)
+		}
+		if networkInfo == nil {
+			fmt.Printf("Warning: %s network is not present. Firewall setup requires it.\n", network.NetworkName)
+			createNetwork, err := confirmCreateNetwork(cmd, network.NetworkName)
+			if err != nil {
+				return err
+			}
+			if createNetwork {
+				if err := mgr.EnsureNetwork(ensureOpts); err != nil {
+					return fmt.Errorf("creating %s: %w", network.NetworkName, err)
+				}
+				fmt.Printf("%s network created.\n", network.NetworkName)
+			} else {
+				return fmt.Errorf("%s network is required for firewall setup", network.NetworkName)
+			}
+		}
+
+		proxyNetworkExists, err := mgr.ProxyNetworkExists()
+		if err != nil {
+			return fmt.Errorf("checking %s: %w", network.ProxyNetworkName, err)
+		}
+		if !proxyNetworkExists {
+			fmt.Printf("Warning: %s network is not present. Proxy NIC-level firewall allow rules will not be installed.\n", network.ProxyNetworkName)
+			createNetwork, err := confirmCreateNetwork(cmd, network.ProxyNetworkName)
+			if err != nil {
+				return err
+			}
+			if createNetwork {
+				if err := mgr.EnsureProxyNetwork(); err != nil {
+					return fmt.Errorf("creating %s: %w", network.ProxyNetworkName, err)
+				}
+				fmt.Printf("%s network created.\n", network.ProxyNetworkName)
+			} else {
+				fmt.Printf("Skipping %s creation; only CODEX-DOCK rules will be applied.\n", network.ProxyNetworkName)
+			}
+		}
+
 		if port, ok := allowedHostPort(networkProxyContainerURL); ok {
 			ensureOpts.AllowHostTCPPorts = []int{port}
 		}
@@ -173,4 +216,28 @@ func init() {
 	firewallCmd.AddCommand(firewallStatusCmd)
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
+}
+
+func confirmCreateProxyNetwork(cmd *cobra.Command) (bool, error) {
+	return confirmCreateNetwork(cmd, network.ProxyNetworkName)
+}
+
+func confirmCreateNetwork(cmd *cobra.Command, networkName string) (bool, error) {
+	prompt := fmt.Sprintf("Create %s now? [y/N]: ", networkName)
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), prompt); err != nil {
+		return false, fmt.Errorf("prompting for %s creation: %w", networkName, err)
+	}
+
+	reader := bufio.NewReader(cmd.InOrStdin())
+	line, err := reader.ReadString('\n')
+	if err != nil && strings.TrimSpace(line) == "" {
+		return false, fmt.Errorf("reading confirmation input: %w", err)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
 }

@@ -28,6 +28,17 @@ Use this guide if you want to:
 | Codex CLI installed | `codex --version` |
 | Credentials configured | `codex-dock auth show` |
 
+### Usage Patterns (Important)
+
+There are two common standalone Auth Proxy patterns.
+
+| Pattern | Typical Use | Recommended Setup |
+|---|---|---|
+| A. Run `codex` directly on host | Local development | Run proxy on `localhost:18080` |
+| B. Use proxy from `codex-dock run` / custom containers | Dockerized workloads | Attach proxy to `dock-net-proxy` and apply firewall rules |
+
+> For pattern B, keep proxy container name as `codex-auth-proxy` so it matches the default `codex-dock run --proxy-container-url` (`http://codex-auth-proxy:18080`).
+
 ---
 
 ## Step 1: Start the Auth Proxy
@@ -38,11 +49,47 @@ Use this guide if you want to:
 # Build the Auth Proxy image (first time only)
 codex-dock proxy build
 
-# Start Auth Proxy (always set --admin-secret)
-codex-dock proxy run --admin-secret YOUR_SECRET --port 18080
+# Start proxy on dedicated network (recommended)
+codex-dock proxy run \
+  --name codex-auth-proxy \
+  --network dock-net-proxy \
+  --admin-secret YOUR_SECRET \
+  --port 18080
 ```
 
 The management API is accessible from the host at `http://localhost:18080`.
+
+If you use the proxy from `codex-dock run` or custom worker containers, also run:
+
+```bash
+# Create worker network
+codex-dock network create
+
+# Allow worker -> proxy communication
+sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
+```
+
+When running `firewall create`, if `dock-net` / `dock-net-proxy` are missing,
+`codex-dock` shows a warning and prompts whether to create them (`Create <network> now? [y/N]:`).
+Choosing `y` creates the required network and then continues firewall setup.
+
+Validation command (order matters):
+
+```bash
+sudo iptables -S DOCKER-USER
+# Expected: proxy allow rules come first,
+#           -i dock-net0 -j CODEX-DOCK is the final rule
+```
+
+Example (conceptual order):
+
+```text
+ACCEPT ... -i dock-net-proxy0 -o dock-net0  -m conntrack --ctstate RELATED,ESTABLISHED
+ACCEPT ... -i dock-net0       -o dock-net-proxy0 -p tcp --dport 18080
+CODEX-DOCK ... -i dock-net0
+```
+
+> If `CODEX-DOCK` appears earlier, traffic may never reach proxy allow rules and connectivity can fail.
 
 > **Security**: Without `--admin-secret`, the admin API has no authentication.
 > Always set it to restrict who can issue tokens.
@@ -231,6 +278,24 @@ curl -sf http://localhost:18080/admin/mode \
 
 - Auth Proxy is not running → start it with `codex-dock proxy run` or `codex-dock proxy serve`
 - Check that `PROXY_URL` port number is correct
+
+### `codex-dock run` cannot reach `codex-auth-proxy:18080`
+
+Check the following in order:
+
+```bash
+# 1) Verify proxy container network attachment
+docker inspect codex-auth-proxy --format '{{json .NetworkSettings.Networks}}'
+
+# 2) Verify bridge NIC names (usually dock-net-proxy0)
+ip a | rg 'dock-net|proxy'
+
+# 3) Verify actual DOCKER-USER rule order (prefer -S over -L)
+sudo iptables -S DOCKER-USER
+```
+
+- If you changed `proxy run --name`, also update `run --proxy-container-url` to match.
+- If `CODEX-DOCK` appears before proxy allow rules in `DOCKER-USER`, traffic may be dropped. Recreate rules with `sudo codex-dock firewall rm && sudo codex-dock firewall create`.
 
 ### API key mode expected but OAuth mode needed
 

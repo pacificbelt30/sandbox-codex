@@ -122,9 +122,10 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 	}
 
 	err := fw.Apply(context.Background(), firewallConfig{
-		BridgeName:    BridgeName,
-		BridgeSubnet:  "10.200.0.0/24",
-		AllowTCPPorts: []int{18080},
+		BridgeName:      BridgeName,
+		ProxyBridgeName: ProxyBridgeName,
+		BridgeSubnet:    "10.200.0.0/24",
+		AllowTCPPorts:   []int{18080},
 		AllowTCPDestinations: []HostEndpoint{
 			{IP: "172.17.0.1", Port: 18080},
 		},
@@ -134,12 +135,27 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 	}
 
 	got := strings.Join(runner.calls, "\n")
+
+	jumpAppend := strings.Index(got, "iptables -A DOCKER-USER -i dock-net0 -j CODEX-DOCK")
+	forwardInsert := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT")
+	reverseInsert := strings.Index(got, "iptables -I DOCKER-USER 1 -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT")
+	if jumpAppend < 0 || forwardInsert < 0 || reverseInsert < 0 {
+		t.Fatalf("Apply() missing expected DOCKER-USER commands\ncalls:\n%s", got)
+	}
+	if forwardInsert >= jumpAppend || reverseInsert >= jumpAppend {
+		t.Fatalf("Apply() did not append CODEX-DOCK jump after proxy allow rules\ncalls:\n%s", got)
+	}
+
 	for _, want := range []string{
 		"iptables -S DOCKER-USER",
 		"iptables -S CODEX-DOCK",
 		"iptables -N CODEX-DOCK",
 		"iptables -C DOCKER-USER -i dock-net0 -j CODEX-DOCK",
-		"iptables -I DOCKER-USER 1 -i dock-net0 -j CODEX-DOCK",
+		"iptables -A DOCKER-USER -i dock-net0 -j CODEX-DOCK",
+		"iptables -C DOCKER-USER -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
+		"iptables -I DOCKER-USER 1 -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
+		"iptables -C DOCKER-USER -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
+		"iptables -I DOCKER-USER 1 -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
 		"iptables -F CODEX-DOCK",
 		"iptables -A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -m comment --comment codex-dock-allow-host -j RETURN",
 		"iptables -A CODEX-DOCK -d 10.200.0.0/24 -p tcp --dport 18080 -m comment --comment codex-dock-allow-bridge-subnet -j RETURN",
@@ -182,12 +198,22 @@ func TestIptablesFirewallRemoveIgnoresMissingManagedChain(t *testing.T) {
 		euid:    func() int { return 0 },
 	}
 
-	err := fw.Remove(context.Background(), firewallConfig{BridgeName: BridgeName})
+	err := fw.Remove(context.Background(), firewallConfig{BridgeName: BridgeName, ProxyBridgeName: ProxyBridgeName, AllowTCPPorts: []int{18080}})
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}
 	if len(runner.calls) == 0 {
 		t.Fatal("Remove() did not execute any commands")
+	}
+	got := strings.Join(runner.calls, "\n")
+	for _, want := range []string{
+		"iptables -D DOCKER-USER -i dock-net0 -j CODEX-DOCK",
+		"iptables -D DOCKER-USER -i dock-net-proxy0 -o dock-net0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
+		"iptables -D DOCKER-USER -i dock-net0 -o dock-net-proxy0 -p tcp --dport 18080 -j ACCEPT",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Remove() missing command %q\ncalls:\n%s", want, got)
+		}
 	}
 }
 

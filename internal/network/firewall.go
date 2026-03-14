@@ -54,6 +54,7 @@ type FirewallStatus struct {
 
 type firewallConfig struct {
 	BridgeName           string
+	ProxyBridgeName      string
 	BridgeSubnet         string
 	AllowTCPPorts        []int
 	AllowTCPDestinations []HostEndpoint
@@ -131,9 +132,26 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 	if err := f.ensureChain(ctx, managedChain); err != nil {
 		return err
 	}
-	if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.BridgeName, "-j", managedChain}); err != nil {
+
+	for _, port := range normalizePorts(cfg.AllowTCPPorts) {
+		if cfg.ProxyBridgeName == "" {
+			continue
+		}
+		if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.BridgeName, "-o", cfg.ProxyBridgeName, "-p", "tcp", "--dport", strconv.Itoa(port), "-j", "ACCEPT"}); err != nil {
+			return err
+		}
+	}
+
+	if cfg.ProxyBridgeName != "" {
+		if err := f.ensureRule(ctx, dockerUserChain, []string{"-i", cfg.ProxyBridgeName, "-o", cfg.BridgeName, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}); err != nil {
+			return err
+		}
+	}
+
+	if err := f.ensureRuleLast(ctx, dockerUserChain, []string{"-i", cfg.BridgeName, "-j", managedChain}); err != nil {
 		return err
 	}
+
 	if err := f.run(ctx, "-F", managedChain); err != nil {
 		return err
 	}
@@ -210,6 +228,30 @@ func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error
 				break
 			}
 			return err
+		}
+	}
+
+	if cfg.ProxyBridgeName != "" {
+		reverseRule := []string{"-i", cfg.ProxyBridgeName, "-o", cfg.BridgeName, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}
+		for {
+			if err := f.deleteRule(ctx, dockerUserChain, reverseRule); err != nil {
+				if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
+					break
+				}
+				return err
+			}
+		}
+
+		for _, port := range normalizePorts(cfg.AllowTCPPorts) {
+			forwardRule := []string{"-i", cfg.BridgeName, "-o", cfg.ProxyBridgeName, "-p", "tcp", "--dport", strconv.Itoa(port), "-j", "ACCEPT"}
+			for {
+				if err := f.deleteRule(ctx, dockerUserChain, forwardRule); err != nil {
+					if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
+						break
+					}
+					return err
+				}
+			}
 		}
 	}
 
@@ -291,6 +333,29 @@ func (f *iptablesFirewall) ensureRule(ctx context.Context, chain string, rule []
 
 	insertArgs := append([]string{"-I", chain, "1"}, rule...)
 	return f.run(ctx, insertArgs...)
+}
+
+func (f *iptablesFirewall) ensureRuleLast(ctx context.Context, chain string, rule []string) error {
+	checkArgs := append([]string{"-C", chain}, rule...)
+	for {
+		err := f.runMaybeMissing(ctx, checkArgs...)
+		if err == nil {
+			if err := f.deleteRule(ctx, chain, rule); err != nil {
+				if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
+					break
+				}
+				return err
+			}
+			continue
+		}
+		if errors.Is(err, ErrFirewallRuleNotFound) || errors.Is(err, ErrFirewallChainNotFound) {
+			break
+		}
+		return err
+	}
+
+	appendArgs := append([]string{"-A", chain}, rule...)
+	return f.run(ctx, appendArgs...)
 }
 
 func (f *iptablesFirewall) deleteRule(ctx context.Context, chain string, rule []string) error {

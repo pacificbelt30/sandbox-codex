@@ -27,6 +27,7 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 
 > Applies Linux `iptables` rules for dock-net.
 > If root privileges are missing or `iptables` is unavailable, a warning is shown and execution continues.
+> If `dock-net` / `dock-net-proxy` are missing, a warning is shown and you are prompted whether to create them.
 
 ## `firewall status`
 
