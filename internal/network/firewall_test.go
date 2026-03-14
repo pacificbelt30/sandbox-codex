@@ -142,7 +142,7 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 	if jumpAppend < 0 || forwardInsert < 0 || reverseInsert < 0 {
 		t.Fatalf("Apply() missing expected DOCKER-USER commands\ncalls:\n%s", got)
 	}
-	if !(forwardInsert < jumpAppend && reverseInsert < jumpAppend) {
+	if forwardInsert >= jumpAppend || reverseInsert >= jumpAppend {
 		t.Fatalf("Apply() did not append CODEX-DOCK jump after proxy allow rules\ncalls:\n%s", got)
 	}
 
