@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const defaultProxyContainerName = "codex-dock-proxy"
+const defaultProxyContainerName = "codex-auth-proxy"
 
 var (
 	proxyListenAddr  string

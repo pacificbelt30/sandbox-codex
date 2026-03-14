@@ -172,5 +172,5 @@ func init() {
 	firewallCmd.AddCommand(firewallRmCmd)
 	firewallCmd.AddCommand(firewallStatusCmd)
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
-	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://10.200.0.1:18080", "Auth proxy URL reachable from worker containers")
+	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
 }

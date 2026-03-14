@@ -50,7 +50,7 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 ```
 
 - Applies rules on Linux when run as root and `iptables` is available.
-- Default `--proxy-container-url` is `http://10.200.0.1:18080`.
+- Default `--proxy-container-url` is `http://codex-auth-proxy:18080`.
 
 ### `codex-dock firewall status`
 
