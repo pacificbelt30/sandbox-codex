@@ -34,3 +34,31 @@ func TestConfirmCreateProxyNetworkNo(t *testing.T) {
 		t.Fatalf("confirmCreateProxyNetwork() = %v, want false", ok)
 	}
 }
+
+func TestConfirmCreateNetworkYes(t *testing.T) {
+	command := &cobra.Command{}
+	command.SetIn(bytes.NewBufferString("yes\n"))
+	command.SetOut(&bytes.Buffer{})
+
+	ok, err := confirmCreateNetwork(command, "dock-net")
+	if err != nil {
+		t.Fatalf("confirmCreateNetwork() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("confirmCreateNetwork() = %v, want true", ok)
+	}
+}
+
+func TestConfirmCreateNetworkDefaultNo(t *testing.T) {
+	command := &cobra.Command{}
+	command.SetIn(bytes.NewBufferString("\n"))
+	command.SetOut(&bytes.Buffer{})
+
+	ok, err := confirmCreateNetwork(command, "dock-net")
+	if err != nil {
+		t.Fatalf("confirmCreateNetwork() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("confirmCreateNetwork() = %v, want false", ok)
+	}
+}

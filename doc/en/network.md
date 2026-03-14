@@ -50,6 +50,7 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 ```
 
 - Applies rules on Linux when run as root and `iptables` is available.
+- If `dock-net` is missing, codex-dock prints a warning and prompts whether to create it (if declined, firewall setup stops).
 - If `dock-net-proxy` is missing, codex-dock prints a warning and prompts whether to create it.
 - Default `--proxy-container-url` is `http://codex-auth-proxy:18080`.
 

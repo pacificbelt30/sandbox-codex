@@ -91,13 +91,33 @@ var firewallCreateCmd = &cobra.Command{
 		}
 		ensureOpts := network.EnsureOptions{NoInternet: networkCreateNoInternet}
 
+		networkInfo, err := mgr.Status()
+		if err != nil {
+			return fmt.Errorf("checking %s: %w", network.NetworkName, err)
+		}
+		if networkInfo == nil {
+			fmt.Printf("Warning: %s network is not present. Firewall setup requires it.\n", network.NetworkName)
+			createNetwork, err := confirmCreateNetwork(cmd, network.NetworkName)
+			if err != nil {
+				return err
+			}
+			if createNetwork {
+				if err := mgr.EnsureNetwork(ensureOpts); err != nil {
+					return fmt.Errorf("creating %s: %w", network.NetworkName, err)
+				}
+				fmt.Printf("%s network created.\n", network.NetworkName)
+			} else {
+				return fmt.Errorf("%s network is required for firewall setup", network.NetworkName)
+			}
+		}
+
 		proxyNetworkExists, err := mgr.ProxyNetworkExists()
 		if err != nil {
 			return fmt.Errorf("checking %s: %w", network.ProxyNetworkName, err)
 		}
 		if !proxyNetworkExists {
 			fmt.Printf("Warning: %s network is not present. Proxy NIC-level firewall allow rules will not be installed.\n", network.ProxyNetworkName)
-			createNetwork, err := confirmCreateProxyNetwork(cmd)
+			createNetwork, err := confirmCreateNetwork(cmd, network.ProxyNetworkName)
 			if err != nil {
 				return err
 			}
@@ -199,9 +219,13 @@ func init() {
 }
 
 func confirmCreateProxyNetwork(cmd *cobra.Command) (bool, error) {
-	prompt := fmt.Sprintf("Create %s now? [y/N]: ", network.ProxyNetworkName)
+	return confirmCreateNetwork(cmd, network.ProxyNetworkName)
+}
+
+func confirmCreateNetwork(cmd *cobra.Command, networkName string) (bool, error) {
+	prompt := fmt.Sprintf("Create %s now? [y/N]: ", networkName)
 	if _, err := fmt.Fprint(cmd.OutOrStdout(), prompt); err != nil {
-		return false, fmt.Errorf("prompting for %s creation: %w", network.ProxyNetworkName, err)
+		return false, fmt.Errorf("prompting for %s creation: %w", networkName, err)
 	}
 
 	reader := bufio.NewReader(cmd.InOrStdin())

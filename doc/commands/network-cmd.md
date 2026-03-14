@@ -31,6 +31,7 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 
 > Linux の `iptables` ルールを適用します。
 > root 権限がない場合や `iptables` 未導入の場合は Warning を表示して継続します。
+> `dock-net` / `dock-net-proxy` がない場合は警告を表示し、作成するか対話で確認します。
 
 ## `firewall status` — firewall ルール状態確認
 
