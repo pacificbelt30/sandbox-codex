@@ -114,6 +114,42 @@ func (m *Manager) EnsureNetwork(opts EnsureOptions) error {
 	return nil
 }
 
+// ProxyNetworkExists reports whether dock-net-proxy exists.
+func (m *Manager) ProxyNetworkExists() (bool, error) {
+	ctx := context.Background()
+	net, err := m.findNetworkByName(ctx, ProxyNetworkName)
+	if err != nil {
+		return false, err
+	}
+	return net != nil, nil
+}
+
+// EnsureProxyNetwork creates dock-net-proxy if it does not exist.
+func (m *Manager) EnsureProxyNetwork() error {
+	ctx := context.Background()
+	existing, err := m.findNetworkByName(ctx, ProxyNetworkName)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+
+	_, err = m.cli.NetworkCreate(ctx, ProxyNetworkName, dockernetwork.CreateOptions{
+		Driver: "bridge",
+		Options: map[string]string{
+			"com.docker.network.bridge.name": ProxyBridgeName,
+		},
+		Labels: map[string]string{
+			"codex-dock.managed": "true",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", ProxyNetworkName, err)
+	}
+	return nil
+}
+
 // ApplyFirewall applies firewall rules to dock-net if possible.
 // Returns a warning (non-nil error) for unsupported/non-root environments.
 func (m *Manager) ApplyFirewall(opts EnsureOptions) error {

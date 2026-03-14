@@ -50,6 +50,7 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 ```
 
 - Linux + root + `iptables` が利用可能な場合にルールを適用します。
+- `dock-net-proxy` が存在しない場合は Warning を表示し、作成するか対話で確認します。
 - `--proxy-container-url` の既定値は `http://codex-auth-proxy:18080` です。
 
 ### `codex-dock firewall status`
