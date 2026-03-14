@@ -45,6 +45,7 @@ codex-dock proxy run [OPTIONS]
 |---|---|---|---|
 | `--name` | | `codex-dock-proxy` | Container name |
 | `--port` | `-p` | `18080` | Host port |
+| `--network` | | `dock-net-proxy` | Docker network to attach to (auto-created if missing) |
 | `--admin-secret` | | | Secret for `/admin/*` endpoints |
 
 Automatically binds all detected auth sources to the container:

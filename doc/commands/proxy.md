@@ -64,6 +64,7 @@ codex-dock proxy run [OPTIONS]
 |---|---|---|---|
 | `--name` | | `codex-dock-proxy` | コンテナ名 |
 | `--port` | `-p` | `18080` | ホスト側のポート番号 |
+| `--network` | | `dock-net-proxy` | 接続先 Docker ネットワーク（存在しない場合は自動作成） |
 | `--admin-secret` | | | `/admin/*` エンドポイントの認証シークレット |
 
 ### 認証情報の自動バインド

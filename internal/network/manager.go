@@ -360,12 +360,12 @@ func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockerne
 
 func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNet *dockernetwork.Summary) (firewallConfig, error) {
 	cfg := firewallConfig{
-		BridgeName:      BridgeName,
-		ProxyBridgeName: ProxyBridgeName,
-		BridgeSubnet:    gatewaySubnet(dockNet),
+		BridgeName:   BridgeName,
+		BridgeSubnet: gatewaySubnet(dockNet),
 	}
 
 	if proxyNet, err := m.findNetworkByName(ctx, ProxyNetworkName); err == nil && proxyNet != nil {
+		cfg.ProxyBridgeName = ProxyBridgeName
 		if bridgeName := proxyNet.Options["com.docker.network.bridge.name"]; bridgeName != "" {
 			cfg.ProxyBridgeName = bridgeName
 		}
