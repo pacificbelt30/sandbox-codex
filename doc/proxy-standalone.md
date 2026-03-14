@@ -43,18 +43,27 @@ Auth Proxy 単体利用には、主に次の 2 パターンがあります。
 
 ## Step 1: Auth Proxy を起動する
 
+`auth proxy standalone` 用サンプルは `examples/proxy-standalone/` に分離してあります。
+
+| ファイル | 用途 |
+|---|---|
+| `examples/proxy-standalone/docker-compose.yml` | Auth Proxy 単体起動用 Compose |
+| `examples/proxy-standalone/iptables-minimal.sh` | 最小限の iptables ルール適用スクリプト |
+
 ### 方法 A: Docker コンテナとして起動（推奨）
 
 ```bash
 # Auth Proxy イメージをビルド（初回のみ）
 codex-dock proxy build
 
-# Proxy 専用ネットワークを利用して起動（推奨）
-codex-dock proxy run \
-  --name codex-auth-proxy \
-  --network dock-net-proxy \
-  --admin-secret YOUR_SECRET \
-  --port 18080
+# Proxy 専用ネットワークを作成（初回のみ）
+docker network create dock-net-proxy 2>/dev/null || true
+
+# サンプル compose で起動
+docker compose -f examples/proxy-standalone/docker-compose.yml up -d
+
+# （同等）CLI から compose ベース起動
+codex-dock proxy run --network dock-net-proxy --port 18080
 ```
 
 起動後、ホスト上から `http://localhost:18080` で管理 API にアクセスできます。
@@ -67,11 +76,17 @@ codex-dock network create
 
 # worker -> proxy を許可する firewall ルールを適用
 sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
+
+# （代替）最小ルールのみをシェルスクリプトで適用
+sudo ./examples/proxy-standalone/iptables-minimal.sh
 ```
 
 `firewall create` 実行時に `dock-net` / `dock-net-proxy` が存在しない場合、
 `codex-dock` は警告を表示して作成可否を確認します（`Create <network> now? [y/N]:`）。
 この確認で `y` を選ぶと必要なネットワークが作成され、続けて firewall ルールが適用されます。
+
+`iptables-minimal.sh` も `dock-net0` / `dock-net-proxy0` が存在しない場合は
+対象ルールをスキップし、必要な作成手順を表示します。
 
 確認コマンド（順序が重要）：
 

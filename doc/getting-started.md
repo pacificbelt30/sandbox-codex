@@ -90,8 +90,11 @@ codex-dock network create
 # 2) Auth Proxy イメージをビルド
 codex-dock proxy build
 
-# 3) Auth Proxy コンテナを起動（認証情報は自動検出）
+# 3) Auth Proxy コンテナを起動（認証情報は自動検出 / compose ベース）
 codex-dock proxy run
+
+# （代替）standalone 用 compose サンプルを直接使う
+# docker compose -f examples/proxy-standalone/docker-compose.yml up -d
 ```
 
 `codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：

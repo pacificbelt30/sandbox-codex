@@ -113,11 +113,14 @@ sudo mv codex-dock /usr/local/bin/
 # 0. Auth Proxy を起動（必須）
 codex-dock network create
 
-docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
-docker run -d --name codex-auth-proxy --network dock-net \
-  -p 127.0.0.1:18080:18080 \
-  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  codex-dock-auth-proxy:latest
+docker network create dock-net-proxy 2>/dev/null || true
+codex-dock proxy build
+
+# compose サンプルで起動（auth proxy standalone 用）
+docker compose -f examples/proxy-standalone/docker-compose.yml up -d
+
+# （同等）CLI から compose ベースで起動
+# codex-dock proxy run --network dock-net-proxy --port 18080
 
 # （代替）ローカルプロセスで起動
 # codex-dock proxy serve --listen 0.0.0.0:18080

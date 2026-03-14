@@ -5,6 +5,7 @@
 > [← コマンドリファレンス一覧](../commands.md)
 
 Auth Proxy コンテナのビルド・起動・停止・削除を行います。
+`proxy run` は内部的に `docker compose up -d` を使用して起動します。
 
 ---
 
@@ -66,6 +67,8 @@ codex-dock proxy run [OPTIONS]
 | `--port` | `-p` | `18080` | ホスト側のポート番号 |
 | `--network` | | `dock-net-proxy` | 接続先 Docker ネットワーク（存在しない場合は自動作成） |
 | `--admin-secret` | | | `/admin/*` エンドポイントの認証シークレット |
+
+> 生成される compose 内容は、`examples/proxy-standalone/docker-compose.yml` と同等の構成です。
 
 ### 認証情報の自動バインド
 

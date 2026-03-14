@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
@@ -108,18 +109,24 @@ At least one credential source must be configured before running.`,
 		storedKeyPath := filepath.Join(home, ".config", "codex-dock", "apikey")
 		oauthJSONPath := filepath.Join(home, ".codex", "auth.json")
 
-		dockerArgs := buildProxyRunArgs(
-			proxyRunName, proxyRunPort, proxyRunNetwork, image, listenAddr, proxyAdminSecret,
-			os.Getenv("OPENAI_API_KEY"), storedKeyPath, oauthJSONPath,
-		)
-
 		portMapping := fmt.Sprintf("%d:%d", proxyRunPort, proxyRunPort)
-		fmt.Printf("Starting proxy container %q (image: %s, network: %s, port: %s)...\n", proxyRunName, image, proxyRunNetwork, portMapping)
-		c := exec.CommandContext(cmd.Context(), "docker", dockerArgs...)
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		if err := c.Run(); err != nil {
-			return fmt.Errorf("docker run failed: %w", err)
+		fmt.Printf("Starting proxy container %q via docker compose (image: %s, network: %s, port: %s)...\n", proxyRunName, image, proxyRunNetwork, portMapping)
+
+		composeYAML := buildProxyComposeYAML(proxyComposeConfig{
+			ServiceName:   "auth-proxy",
+			ContainerName: proxyRunName,
+			NetworkName:   proxyRunNetwork,
+			Image:         image,
+			ListenAddr:    listenAddr,
+			AdminSecret:   proxyAdminSecret,
+			OpenAIAPIKey:  os.Getenv("OPENAI_API_KEY"),
+			StoredKeyPath: storedKeyPath,
+			OAuthJSONPath: oauthJSONPath,
+			PortMapping:   portMapping,
+		})
+
+		if err := executeProxyComposeUp(cmd.Context(), proxyRunName, composeYAML); err != nil {
+			return fmt.Errorf("docker compose up failed: %w", err)
 		}
 		fmt.Printf("Proxy container %q started.\n", proxyRunName)
 		return nil
@@ -237,6 +244,93 @@ func buildProxyRunArgs(name string, port int, networkName, image, listenAddr, ad
 	}
 
 	return args
+}
+
+type proxyComposeConfig struct {
+	ServiceName   string
+	ContainerName string
+	NetworkName   string
+	Image         string
+	ListenAddr    string
+	AdminSecret   string
+	OpenAIAPIKey  string
+	StoredKeyPath string
+	OAuthJSONPath string
+	PortMapping   string
+}
+
+func buildProxyComposeYAML(cfg proxyComposeConfig) string {
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString("  " + cfg.ServiceName + ":\n")
+	b.WriteString("    image: " + yamlQuote(cfg.Image) + "\n")
+	b.WriteString("    container_name: " + yamlQuote(cfg.ContainerName) + "\n")
+	b.WriteString("    command:\n")
+	b.WriteString("      - proxy\n")
+	b.WriteString("      - serve\n")
+	b.WriteString("      - --listen\n")
+	b.WriteString("      - " + yamlQuote(cfg.ListenAddr) + "\n")
+	if cfg.AdminSecret != "" {
+		b.WriteString("      - --admin-secret\n")
+		b.WriteString("      - " + yamlQuote(cfg.AdminSecret) + "\n")
+	}
+	b.WriteString("    ports:\n")
+	b.WriteString("      - \"" + cfg.PortMapping + "\"\n")
+	b.WriteString("    networks:\n")
+	b.WriteString("      - proxy_net\n")
+
+	if cfg.OpenAIAPIKey != "" {
+		b.WriteString("    environment:\n")
+		b.WriteString("      OPENAI_API_KEY: " + yamlQuote(cfg.OpenAIAPIKey) + "\n")
+	}
+
+	volumes := make([]string, 0, 2)
+	if _, err := os.Stat(cfg.StoredKeyPath); err == nil {
+		volumes = append(volumes, cfg.StoredKeyPath+":/root/.config/codex-dock/apikey:ro")
+	}
+	if _, err := os.Stat(cfg.OAuthJSONPath); err == nil {
+		volumes = append(volumes, cfg.OAuthJSONPath+":/root/.codex/auth.json:ro")
+	}
+	if len(volumes) > 0 {
+		b.WriteString("    volumes:\n")
+		for _, v := range volumes {
+			b.WriteString("      - " + yamlQuote(v) + "\n")
+		}
+	}
+
+	b.WriteString("networks:\n")
+	b.WriteString("  proxy_net:\n")
+	b.WriteString("    external: true\n")
+	b.WriteString("    name: " + yamlQuote(cfg.NetworkName) + "\n")
+
+	return b.String()
+}
+
+func yamlQuote(s string) string {
+	q := strings.ReplaceAll(s, "\\", "\\\\")
+	q = strings.ReplaceAll(q, "\"", "\\\"")
+	return "\"" + q + "\""
+}
+
+func executeProxyComposeUp(ctx context.Context, projectName, composeYAML string) error {
+	tmp, err := os.CreateTemp("", "codex-dock-proxy-*.compose.yml")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.WriteString(composeYAML); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	c := exec.CommandContext(ctx, "docker", "compose", "-p", projectName, "-f", tmpPath, "up", "-d")
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
 }
 
 func ensureBridgeNetwork(ctx context.Context, networkName, bridgeName string) error {

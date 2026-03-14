@@ -1,0 +1,30 @@
+services:
+  auth-proxy:
+    image: codex-dock-proxy:latest
+    container_name: codex-auth-proxy
+    command:
+      - proxy
+      - serve
+      - --listen
+      - 0.0.0.0:18080
+      # - --admin-secret
+      # - ${PROXY_ADMIN_SECRET}
+    ports:
+      - "18080:18080"
+    # API key mode (choose one source):
+    # environment:
+    #   OPENAI_API_KEY: ${OPENAI_API_KEY}
+    # volumes:
+    #   - ${HOME}/.config/codex-dock/apikey:/root/.config/codex-dock/apikey:ro
+
+    # OAuth mode:
+    # volumes:
+    #   - ${HOME}/.codex/auth.json:/root/.codex/auth.json:ro
+
+    networks:
+      - dock-net-proxy
+    restart: unless-stopped
+
+networks:
+  dock-net-proxy:
+    external: true

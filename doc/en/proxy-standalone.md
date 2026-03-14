@@ -43,18 +43,27 @@ There are two common standalone Auth Proxy patterns.
 
 ## Step 1: Start the Auth Proxy
 
+Standalone auth-proxy examples are separated under `examples/proxy-standalone/`.
+
+| File | Purpose |
+|---|---|
+| `examples/proxy-standalone/docker-compose.yml` | Compose for standalone Auth Proxy |
+| `examples/proxy-standalone/iptables-minimal.sh` | Minimal iptables setup script |
+
 ### Option A: Run as a Docker Container (Recommended)
 
 ```bash
 # Build the Auth Proxy image (first time only)
 codex-dock proxy build
 
-# Start proxy on dedicated network (recommended)
-codex-dock proxy run \
-  --name codex-auth-proxy \
-  --network dock-net-proxy \
-  --admin-secret YOUR_SECRET \
-  --port 18080
+# Create proxy network (first time only)
+docker network create dock-net-proxy 2>/dev/null || true
+
+# Start with the sample compose file
+docker compose -f examples/proxy-standalone/docker-compose.yml up -d
+
+# (Equivalent) start via codex-dock CLI (compose-backed)
+codex-dock proxy run --network dock-net-proxy --port 18080
 ```
 
 The management API is accessible from the host at `http://localhost:18080`.
@@ -67,11 +76,17 @@ codex-dock network create
 
 # Allow worker -> proxy communication
 sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
+
+# (Alternative) apply only minimal iptables rules from script
+sudo ./examples/proxy-standalone/iptables-minimal.sh
 ```
 
 When running `firewall create`, if `dock-net` / `dock-net-proxy` are missing,
 `codex-dock` shows a warning and prompts whether to create them (`Create <network> now? [y/N]:`).
 Choosing `y` creates the required network and then continues firewall setup.
+
+`iptables-minimal.sh` also skips network-specific rules when `dock-net0` /
+`dock-net-proxy0` are not present and prints the minimum next-step guidance.
 
 Validation command (order matters):
 

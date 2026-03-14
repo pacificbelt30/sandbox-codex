@@ -5,6 +5,7 @@
 > [← Command Reference](../commands.md)
 
 Build, start, stop, and remove the Auth Proxy container.
+`proxy run` starts the container through `docker compose up -d` under the hood.
 
 ---
 
@@ -47,6 +48,8 @@ codex-dock proxy run [OPTIONS]
 | `--port` | `-p` | `18080` | Host port |
 | `--network` | | `dock-net-proxy` | Docker network to attach to (auto-created if missing) |
 | `--admin-secret` | | | Secret for `/admin/*` endpoints |
+
+> The generated compose definition is equivalent to `examples/proxy-standalone/docker-compose.yml`.
 
 Automatically binds all detected auth sources to the container:
 

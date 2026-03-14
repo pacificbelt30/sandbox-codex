@@ -264,6 +264,71 @@ func TestBuildProxyRunArgs_MissingFiles(t *testing.T) {
 	}
 }
 
+// ---- buildProxyComposeYAML -------------------------------------------------
+
+func TestBuildProxyComposeYAML_Basic(t *testing.T) {
+	yaml := buildProxyComposeYAML(proxyComposeConfig{
+		ServiceName:   "auth-proxy",
+		ContainerName: "codex-auth-proxy",
+		NetworkName:   "dock-net-proxy",
+		Image:         "codex-dock-proxy:latest",
+		ListenAddr:    "0.0.0.0:18080",
+		PortMapping:   "18080:18080",
+	})
+
+	for _, want := range []string{
+		"services:",
+		"auth-proxy:",
+		"image: \"codex-dock-proxy:latest\"",
+		"container_name: \"codex-auth-proxy\"",
+		"- --listen",
+		"- \"0.0.0.0:18080\"",
+		"- \"18080:18080\"",
+		"external: true",
+		"name: \"dock-net-proxy\"",
+	} {
+		if !strings.Contains(yaml, want) {
+			t.Errorf("compose yaml missing %q:\n%s", want, yaml)
+		}
+	}
+}
+
+func TestBuildProxyComposeYAML_WithCredentials(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "apikey")
+	if err := os.WriteFile(keyFile, []byte(`{"key":"stored"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	authFile := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.WriteFile(authFile, []byte(`{"access_token":"tok"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := buildProxyComposeYAML(proxyComposeConfig{
+		ServiceName:   "auth-proxy",
+		ContainerName: "codex-auth-proxy",
+		NetworkName:   "dock-net-proxy",
+		Image:         "codex-dock-proxy:latest",
+		ListenAddr:    "0.0.0.0:18080",
+		PortMapping:   "18080:18080",
+		AdminSecret:   "my-secret",
+		OpenAIAPIKey:  "sk-test",
+		StoredKeyPath: keyFile,
+		OAuthJSONPath: authFile,
+	})
+
+	for _, want := range []string{
+		"- --admin-secret",
+		"- \"my-secret\"",
+		"OPENAI_API_KEY: \"sk-test\"",
+		keyFile + ":/root/.config/codex-dock/apikey:ro",
+		authFile + ":/root/.codex/auth.json:ro",
+	} {
+		if !strings.Contains(yaml, want) {
+			t.Errorf("compose yaml missing %q:\n%s", want, yaml)
+		}
+	}
+}
+
 // ---- helpers --------------------------------------------------------------
 
 // containsSequence reports whether needle (in order) appears as a contiguous
