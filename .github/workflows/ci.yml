@@ -29,6 +29,13 @@ jobs:
           version: v2.5.0
           args: --timeout=5m
 
+      - name: golangci-lint (authproxy)
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.5.0
+          args: --timeout=5m
+          working-directory: authproxy
+
   # ── Build ───────────────────────────────────────────────────────────────
   build:
     name: Build
@@ -78,19 +85,37 @@ jobs:
             -covermode=atomic \
             ./cmd/... \
             ./internal/sandbox/... \
-            ./internal/authproxy/... \
             ./internal/network/... \
             ./internal/worktree/... \
             ./internal/config/...
 
+      - name: Run tests (authproxy)
+        working-directory: authproxy
+        run: |
+          go test \
+            -race \
+            -coverprofile=../coverage-authproxy.out \
+            -covermode=atomic \
+            ./...
+
       - name: Show coverage summary
         run: go tool cover -func=coverage.out
+
+      - name: Show coverage summary (authproxy)
+        run: go tool cover -func=coverage-authproxy.out
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage.out
+          retention-days: 7
+
+      - name: Upload coverage report (authproxy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-authproxy
+          path: coverage-authproxy.out
           retention-days: 7
 
   # ── Vet ─────────────────────────────────────────────────────────────────
@@ -109,10 +134,20 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: go vet (authproxy)
+        working-directory: authproxy
+        run: go vet ./...
+
       - name: Check go.mod is tidy
         run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
+
+      - name: Check go.mod is tidy (authproxy)
+        working-directory: authproxy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod
 
   # ── Docker build ─────────────────────────────────────────────────────────
   docker:

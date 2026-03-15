@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
-	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

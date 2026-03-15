@@ -69,10 +69,14 @@ test:
 		-covermode=atomic \
 		./cmd/... \
 		./internal/sandbox/... \
-		./internal/authproxy/... \
 		./internal/network/... \
 		./internal/worktree/... \
 		./internal/config/...
+	cd authproxy && go test \
+		-race \
+		-coverprofile=../coverage-authproxy.out \
+		-covermode=atomic \
+		./...
 
 ## lint: run golangci-lint
 lint:

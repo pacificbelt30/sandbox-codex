@@ -17,7 +17,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"golang.org/x/term"
 )

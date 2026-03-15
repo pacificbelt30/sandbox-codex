@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/authproxy"
 	"github.com/spf13/cobra"
 )
 

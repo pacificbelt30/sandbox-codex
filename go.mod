@@ -6,6 +6,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/gdamore/tcell/v2 v2.13.8
+	github.com/pacificbelt30/authproxy v0.0.0
 	github.com/rivo/tview v0.42.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -55,3 +56,5 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
+
+replace github.com/pacificbelt30/authproxy => ./authproxy

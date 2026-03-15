@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/worktree"
