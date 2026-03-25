@@ -318,9 +318,11 @@ func executeProxyComposeUp(ctx context.Context, projectName, composeYAML string)
 		return err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
 	if _, err := tmp.WriteString(composeYAML); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {

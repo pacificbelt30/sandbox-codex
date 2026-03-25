@@ -95,6 +95,9 @@ codex-dock proxy run
 
 # （代替）standalone 用 compose サンプルを直接使う
 # docker compose -f examples/proxy-standalone/docker-compose.yml up -d
+
+# 4) 推奨: firewall を設定（Linux + root）
+sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
 ```
 
 `codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
