@@ -1,11 +1,12 @@
 # codex-dock
 
-**AI Sandbox Container Manager** — Runs [Codex CLI](https://github.com/openai/codex) inside isolated Docker containers with auth proxy, network separation, and parallel worker support.
+**AI Sandbox Container Manager** — Runs AI coding agents ([Codex CLI](https://github.com/openai/codex) and [Claude Code](https://github.com/anthropics/claude-code)) inside isolated Docker containers with auth proxy, network separation, and parallel worker support.
 
 ## Features
 
-- **Security isolation**: Codex runs in a Docker container, not on your host
-- **Auth Proxy**: API keys never touch the container; short-lived tokens are injected instead
+- **Multiple agents**: choose per worker with `--agent codex|claude`; omit `--agent` for an auth-configured shell where both CLIs are available
+- **Security isolation**: agents run in a Docker container, not on your host
+- **Auth Proxy**: OpenAI and Anthropic API keys / OAuth tokens never touch the container; short-lived tokens are injected instead
 - **dock-net**: Dedicated Docker bridge network with ICC disabled and host access blocked
 - **git worktree**: Parallel development branches, each in their own container
 - **dock-ui**: Terminal UI for managing all workers at a glance
@@ -113,27 +114,31 @@ sudo mv codex-dock /usr/local/bin/
 # 0. Auth Proxy を起動（必須）
 codex-dock network create
 
-docker build -t codex-dock-auth-proxy:latest -f docker/auth-proxy.Dockerfile .
+docker build -t codex-dock-proxy:latest -f docker/proxy/Dockerfile .
 docker run -d --name codex-auth-proxy --network dock-net \
   -p 127.0.0.1:18080:18080 \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  codex-dock-auth-proxy:latest
+  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  codex-dock-proxy:latest
 
 # （代替）ローカルプロセスで起動
 # codex-dock proxy serve --listen 0.0.0.0:18080
 
-# 1. サンドボックスイメージをビルド
+# 1. サンドボックスイメージをビルド（Codex CLI + Claude Code を同梱）
 codex-dock build
 
-# 2. 認証を設定（API キーまたは ChatGPT OAuth）
-export OPENAI_API_KEY=sk-...
+# 2. 認証を設定（API キーまたは OAuth サブスクリプション）
+export OPENAI_API_KEY=sk-...        # Codex 用
+export ANTHROPIC_API_KEY=sk-ant-... # Claude 用
 codex-dock auth set
 
-# 3. カレントディレクトリをマウントして起動
-codex-dock run --approval-mode full-auto
+# 3. カレントディレクトリをマウントして起動（--agent でエージェント選択）
+codex-dock run --agent codex --approval-mode full-auto
+codex-dock run --agent claude --approval-mode full-auto
+codex-dock run   # --agent 省略時は認証済みシェルが起動（codex / claude 両方利用可）
 
 # タスクを指定して全自動・バックグラウンド実行
-codex-dock run --approval-mode full-auto --task "Write unit tests for auth module" --detach
+codex-dock run --agent claude --approval-mode full-auto --task "Write unit tests for auth module" --detach
 
 # git worktree を使ってブランチを切り離して作業
 codex-dock run --approval-mode full-auto --worktree --branch feature-auth --new-branch

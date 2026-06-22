@@ -22,6 +22,9 @@ var userMode string
 // approvalModeFlag holds the raw value of --approval-mode before validation.
 var approvalModeFlag string
 
+// agentFlag holds the raw value of --agent before validation.
+var agentFlag string
+
 // fullAutoFlag is a deprecated alias for --approval-mode full-auto.
 var fullAutoFlag bool
 
@@ -52,7 +55,11 @@ func init() {
 	f.StringVarP(&runOpts.Branch, "branch", "b", "", "Branch to checkout (requires --worktree)")
 	f.BoolVarP(&runOpts.NewBranch, "new-branch", "B", false, "Create new branch (requires --worktree and --branch)")
 	f.StringVarP(&runOpts.Name, "name", "n", "", "Container name (auto-generated if omitted)")
-	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for Codex")
+	f.StringVar(&agentFlag, "agent", "", `AI agent to launch inside the sandbox.
+  ""       interactive shell with auth configured (default; codex and claude both available)
+  codex    launch OpenAI Codex CLI
+  claude   launch Anthropic Claude Code`)
+	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for the agent")
 	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Approval mode for Codex CLI.
   suggest   ask for approval on every action (default, safest)
   auto-edit auto-apply file edits; ask before running shell commands
@@ -74,7 +81,7 @@ func init() {
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
-	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start an interactive bash shell instead of Codex")
+	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw bash shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
 	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
 	  "current" current command user (uid:gid, default)
 	  "codex"   codex user in image (uid:1001)
@@ -111,6 +118,16 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	runOpts.ApprovalMode = mode
 
+	// Resolve agent. --shell forces the plain-shell agent (no auto-launch).
+	agent := sandbox.Agent(agentFlag)
+	if runOpts.ShellMode {
+		agent = sandbox.AgentNone
+	}
+	if !sandbox.ValidAgent(agent) {
+		return fmt.Errorf("invalid --agent %q; valid values: codex, claude, or empty (shell)", agentFlag)
+	}
+	runOpts.Agent = agent
+
 	// Ensure dock-net exists
 	netMgr, err := network.NewManager()
 	if err != nil {
@@ -139,6 +156,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, runProxyAdminSecret)
 	if err != nil {
 		return fmt.Errorf("connecting external auth proxy: %w", err)
+	}
+
+	if runOpts.Agent == sandbox.AgentClaude && !proxy.IsAnthropicMode() {
+		return fmt.Errorf("--agent claude requires Anthropic credentials on the auth proxy; " +
+			"set ANTHROPIC_API_KEY or run `claude` OAuth login (~/.claude/.credentials.json) before starting the proxy")
 	}
 
 	// Load packages.dock if present and no --pkg-file given

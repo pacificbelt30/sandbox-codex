@@ -103,7 +103,7 @@ HostConfig{
 }
 ```
 
-Non-root user is enforced in `docker/Dockerfile` via `USER codex` (uid:1000).
+Non-root user is enforced in `docker/sandbox/Dockerfile` via `USER codex` (uid:1001).
 
 ---
 

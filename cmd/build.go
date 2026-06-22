@@ -40,7 +40,9 @@ func resolveDockerfile(flagValue string) (string, string, error) {
 	}
 
 	// Check well-known locations relative to the current directory.
-	for _, p := range []string{"Dockerfile", "docker/Dockerfile"} {
+	// docker/sandbox/Dockerfile is the current layout; docker/Dockerfile is
+	// kept for backward compatibility with older checkouts.
+	for _, p := range []string{"Dockerfile", "docker/sandbox/Dockerfile", "docker/Dockerfile"} {
 		if _, err := os.Stat(p); err == nil {
 			return p, filepath.Dir(p), nil
 		}

@@ -107,11 +107,23 @@ At least one credential source must be configured before running.`,
 		}
 		storedKeyPath := filepath.Join(home, ".config", "codex-dock", "apikey")
 		oauthJSONPath := filepath.Join(home, ".codex", "auth.json")
+		anthropicKeyPath := filepath.Join(home, ".config", "codex-dock", "anthropic-apikey")
+		claudeCredsPath := filepath.Join(home, ".claude", ".credentials.json")
 
-		dockerArgs := buildProxyRunArgs(
-			proxyRunName, proxyRunPort, proxyRunNetwork, image, listenAddr, proxyAdminSecret,
-			os.Getenv("OPENAI_API_KEY"), storedKeyPath, oauthJSONPath,
-		)
+		dockerArgs := buildProxyRunArgs(proxyRunArgs{
+			name:             proxyRunName,
+			port:             proxyRunPort,
+			networkName:      proxyRunNetwork,
+			image:            image,
+			listenAddr:       listenAddr,
+			adminSecret:      proxyAdminSecret,
+			apiKeyEnv:        os.Getenv("OPENAI_API_KEY"),
+			storedKeyPath:    storedKeyPath,
+			oauthJSONPath:    oauthJSONPath,
+			anthropicKeyEnv:  os.Getenv("ANTHROPIC_API_KEY"),
+			anthropicKeyPath: anthropicKeyPath,
+			claudeCredsPath:  claudeCredsPath,
+		})
 
 		portMapping := fmt.Sprintf("%d:%d", proxyRunPort, proxyRunPort)
 		fmt.Printf("Starting proxy container %q (image: %s, network: %s, port: %s)...\n", proxyRunName, image, proxyRunNetwork, portMapping)
@@ -200,40 +212,67 @@ func init() {
 	proxyRmCmd.Flags().BoolVarP(&proxyRmForce, "force", "f", false, "Force remove a running container")
 }
 
-// buildProxyRunArgs constructs the argument list for "docker run" to start
-// the auth proxy container. Credentials are bound into the container as follows:
-//   - apiKeyEnv (OPENAI_API_KEY): injected as -e OPENAI_API_KEY=<value>
-//   - storedKeyPath (~/.config/codex-dock/apikey): bind-mounted read-only
-//   - oauthJSONPath (~/.codex/auth.json): bind-mounted read-only
-//
-// All present credential sources are bound so the container mirrors the host's
-// auth state. The proxy itself selects the active source in priority order:
-// OPENAI_API_KEY env > stored key file > OAuth/auth.json.
-func buildProxyRunArgs(name string, port int, networkName, image, listenAddr, adminSecret,
-	apiKeyEnv, storedKeyPath, oauthJSONPath string) []string {
+// proxyRunArgs collects the inputs needed to build the "docker run" command for
+// the auth proxy container.
+type proxyRunArgs struct {
+	name        string
+	port        int
+	networkName string
+	image       string
+	listenAddr  string
+	adminSecret string
 
-	portMapping := fmt.Sprintf("%d:%d", port, port)
-	args := []string{"run", "-d", "--name", name, "--network", networkName, "-p", portMapping}
+	// OpenAI / Codex credential sources.
+	apiKeyEnv     string // OPENAI_API_KEY env value
+	storedKeyPath string // ~/.config/codex-dock/apikey
+	oauthJSONPath string // ~/.codex/auth.json
+
+	// Anthropic / Claude Code credential sources.
+	anthropicKeyEnv  string // ANTHROPIC_API_KEY env value
+	anthropicKeyPath string // ~/.config/codex-dock/anthropic-apikey
+	claudeCredsPath  string // ~/.claude/.credentials.json
+}
+
+// buildProxyRunArgs constructs the argument list for "docker run" to start the
+// auth proxy container. Every present credential source is bound so the
+// container mirrors the host's auth state for both agents:
+//
+//	OpenAI/Codex : OPENAI_API_KEY env, apikey file, ~/.codex/auth.json
+//	Anthropic    : ANTHROPIC_API_KEY env, anthropic-apikey file, ~/.claude/.credentials.json
+//
+// The proxy selects the active source per provider in priority order
+// (env > stored key file > OAuth credentials).
+func buildProxyRunArgs(a proxyRunArgs) []string {
+	portMapping := fmt.Sprintf("%d:%d", a.port, a.port)
+	args := []string{"run", "-d", "--name", a.name, "--network", a.networkName, "-p", portMapping}
 
 	// Inject OPENAI_API_KEY if set on the host.
-	if apiKeyEnv != "" {
-		args = append(args, "-e", "OPENAI_API_KEY="+apiKeyEnv)
+	if a.apiKeyEnv != "" {
+		args = append(args, "-e", "OPENAI_API_KEY="+a.apiKeyEnv)
+	}
+	// Inject ANTHROPIC_API_KEY if set on the host.
+	if a.anthropicKeyEnv != "" {
+		args = append(args, "-e", "ANTHROPIC_API_KEY="+a.anthropicKeyEnv)
 	}
 
-	// Bind-mount stored API key file if it exists.
-	if _, err := os.Stat(storedKeyPath); err == nil {
-		args = append(args, "-v", storedKeyPath+":/root/.config/codex-dock/apikey:ro")
+	// Bind-mount stored credential files when they exist (read-only).
+	if _, err := os.Stat(a.storedKeyPath); err == nil {
+		args = append(args, "-v", a.storedKeyPath+":/root/.config/codex-dock/apikey:ro")
 	}
-
-	// Bind-mount OAuth credentials file if it exists.
-	if _, err := os.Stat(oauthJSONPath); err == nil {
-		args = append(args, "-v", oauthJSONPath+":/root/.codex/auth.json:ro")
+	if _, err := os.Stat(a.anthropicKeyPath); err == nil {
+		args = append(args, "-v", a.anthropicKeyPath+":/root/.config/codex-dock/anthropic-apikey:ro")
+	}
+	if _, err := os.Stat(a.oauthJSONPath); err == nil {
+		args = append(args, "-v", a.oauthJSONPath+":/root/.codex/auth.json:ro")
+	}
+	if _, err := os.Stat(a.claudeCredsPath); err == nil {
+		args = append(args, "-v", a.claudeCredsPath+":/root/.claude/.credentials.json:ro")
 	}
 
 	// Image and command — CMD overrides the Dockerfile default listen address.
-	args = append(args, image, "proxy", "serve", "--listen", listenAddr)
-	if adminSecret != "" {
-		args = append(args, "--admin-secret", adminSecret)
+	args = append(args, a.image, "proxy", "serve", "--listen", a.listenAddr)
+	if a.adminSecret != "" {
+		args = append(args, "--admin-secret", a.adminSecret)
 	}
 
 	return args
@@ -272,7 +311,9 @@ func resolveProxyDockerfile(flagValue string) (string, string, error) {
 	}
 
 	// Check well-known locations relative to the current directory.
-	for _, p := range []string{"auth-proxy.Dockerfile", "docker/auth-proxy.Dockerfile"} {
+	// docker/proxy/Dockerfile is the current layout; the older flat names are
+	// kept for backward compatibility with existing checkouts.
+	for _, p := range []string{"docker/proxy/Dockerfile", "auth-proxy.Dockerfile", "docker/auth-proxy.Dockerfile"} {
 		if _, err := os.Stat(p); err == nil {
 			return p, ".", nil
 		}

@@ -8,9 +8,13 @@
 ## Project Overview
 
 **codex-dock** is an AI Sandbox Container Manager written in Go.
-It runs [Codex CLI](https://github.com/openai/codex) inside isolated Docker containers with:
+It runs AI coding agents — [Codex CLI](https://github.com/openai/codex) and
+[Claude Code](https://github.com/anthropics/claude-code) — inside isolated Docker
+containers. The agent is selected per worker with `--agent codex|claude`; omitting
+`--agent` drops into an auth-configured interactive shell where both CLIs are
+available. Key capabilities:
 
-- **Auth Proxy** — API keys / OAuth tokens never touch containers; short-lived tokens are injected instead.
+- **Auth Proxy** — OpenAI **and** Anthropic API keys / OAuth tokens never touch containers; short-lived tokens are injected instead.
 - **dock-net** — Dedicated Docker bridge network with ICC disabled and host access blocked.
 - **git worktree** — Parallel development branches, each in their own container.
 - **dock-ui** — Terminal UI (TUI) for managing all workers.
@@ -41,12 +45,14 @@ codex-dock/
 │   └── network.go            `codex-dock network` — dock-net management
 │
 ├── internal/
-│   ├── authproxy/            Auth Proxy (HTTP server + token lifecycle)
-│   │   ├── proxy.go          HTTP server, token issuance & revocation
-│   │   └── auth.go           API key / OAuth credential loading
-│   ├── sandbox/              Docker container lifecycle
-│   │   ├── manager.go        Create / start / stop / rm containers
-│   │   ├── types.go          RunOptions and related types
+│   ├── authproxy/            Auth Proxy (HTTP server + token lifecycle) — PROXY side
+│   │   ├── proxy.go          HTTP server, token issuance, OpenAI + Anthropic reverse proxy
+│   │   ├── auth.go           OpenAI + Anthropic API key / OAuth credential loading
+│   │   ├── remote.go         RemoteProxy client (talks to a proxy container)
+│   │   └── service.go        Service interface (in-process Proxy or RemoteProxy)
+│   ├── sandbox/              Docker container lifecycle — SANDBOX side
+│   │   ├── manager.go        Create / start / stop / rm containers, buildEnv (agent-aware)
+│   │   ├── types.go          RunOptions, Agent (codex/claude/shell), ApprovalMode
 │   │   └── packages.go       packages.dock file parsing
 │   ├── network/              dock-net Docker bridge management
 │   │   └── manager.go        Create / delete / inspect network
@@ -55,9 +61,13 @@ codex-dock/
 │   └── ui/                   Terminal UI (tcell / tview)
 │       └── ui.go             TUI dashboard (Bubble Tea-style keybinds)
 │
-├── docker/
-│   ├── Dockerfile            Sandbox image (Node.js 22 + Codex CLI, non-root uid:1000)
-│   └── entrypoint.sh         Container startup: fetches auth from proxy, launches Codex
+├── docker/                   Container assets, split by side
+│   ├── defaults.go           //go:embed of the Dockerfiles + entrypoint
+│   ├── sandbox/              SANDBOX image
+│   │   ├── Dockerfile        Node.js 22 + Codex CLI + Claude Code, non-root uid:1001
+│   │   └── entrypoint.sh     Startup: fetch auth from proxy, launch codex/claude/shell
+│   └── proxy/               PROXY image
+│       └── Dockerfile        Distroless Go build of the auth proxy (`proxy serve`)
 │
 ├── configs/
 │   └── config.toml.example   Example config for ~/.config/codex-dock/config.toml
@@ -142,8 +152,11 @@ git diff --exit-code go.mod go.sum   # ensure go.mod stays tidy
 # Build using the codex-dock CLI (wraps docker build)
 codex-dock build
 
-# Or build directly
-docker build -t codex-dock:latest -f docker/Dockerfile docker/
+# Or build directly (sandbox image: Codex CLI + Claude Code)
+docker build -t codex-dock:latest -f docker/sandbox/Dockerfile docker/sandbox/
+
+# Auth proxy image (build context is the repo root — it compiles the Go binary)
+docker build -t codex-dock-proxy:latest -f docker/proxy/Dockerfile .
 ```
 
 ---
@@ -183,9 +196,10 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 ```
 
 - Containers receive only a **placeholder token** (`cdx-xxxx`) — never the real API key or OAuth access_token.
-- The proxy overwrites `Authorization` (and `ChatGPT-Account-Id` in OAuth mode) on every proxied request with the real host credentials.
+- The proxy overwrites `Authorization` (and `ChatGPT-Account-Id` in OpenAI OAuth mode) on every proxied request with the real host credentials.
 - OAuth refresh responses also have `access_token` replaced with the placeholder before returning to containers.
-- Containers run as non-root (`uid:1000`, `USER codex`).
+- **Anthropic / Claude Code** follows the same model: containers set `ANTHROPIC_BASE_URL=http://<proxy>/anthropic` and a placeholder `ANTHROPIC_API_KEY`. The proxy injects the real credential on `/anthropic/*` requests — `x-api-key` (API-key mode) or `Authorization: Bearer …` + the `anthropic-beta` OAuth header (Claude subscription mode). In OAuth mode the proxy refreshes the access token itself; the refresh token stays on the host (`injectAnthropicCredentials` / `refreshAnthropicOAuthIfNeeded`).
+- Containers run as non-root (`uid:1001`, `USER codex`).
 - `--cap-drop ALL` + `--security-opt no-new-privileges` + `--pids-limit 512`.
 - `dock-net` bridge network with ICC (inter-container communication) disabled.
 - Container `auth.json` contains a placeholder `access_token`; `refresh_token` is empty.
@@ -223,9 +237,9 @@ Source: `.github/workflows/ci.yml`
 |---|---|
 | `lint` | `golangci-lint run --timeout=5m` |
 | `build` | `go build`, cross-compile darwin/arm64, darwin/amd64, linux/arm64 |
-| `test` | `go test -race -coverprofile` on `internal/sandbox`, `authproxy`, `worktree`, `config` |
+| `test` | `go test -race -coverprofile` on `cmd`, `internal/sandbox`, `authproxy`, `network`, `worktree`, `config` |
 | `vet` | `go vet ./...` + `go mod tidy` idempotency check |
-| `docker` | `docker buildx build` of `docker/Dockerfile` (no push) |
+| `docker` | `docker buildx build` of `docker/sandbox/Dockerfile` and `docker/proxy/Dockerfile` (no push) |
 
 Triggers: all pushes and pull requests on all branches.
 
@@ -247,10 +261,30 @@ Environment variable overrides follow the pattern `CODEX_DOCK_<SETTING_NAME>` (e
 
 Auth files:
 
-| File | Path | Description |
-|---|---|---|
-| API key | `~/.config/codex-dock/apikey` | Written by `codex-dock auth set` (perm 0600) |
-| OAuth creds | `~/.codex/auth.json` | Written by Codex CLI `codex login` |
+| File | Path | Provider | Description |
+|---|---|---|---|
+| OpenAI API key | `~/.config/codex-dock/apikey` | Codex | Written by `codex-dock auth set` (perm 0600) |
+| OpenAI OAuth | `~/.codex/auth.json` | Codex | Written by Codex CLI `codex login` |
+| Anthropic API key | `~/.config/codex-dock/anthropic-apikey` | Claude | Or the `ANTHROPIC_API_KEY` env var |
+| Anthropic OAuth | `~/.claude/.credentials.json` | Claude | Written by `claude` subscription login (`claudeAiOauth`) |
+
+The proxy loads each provider independently, so one proxy can serve both agents.
+
+---
+
+## Agents & Container Environment
+
+`--agent` selects the agent the sandbox launches (`DOCK_AGENT` inside the container):
+
+| `--agent` | `DOCK_AGENT` | Behaviour | Proxy env injected by `manager.buildEnv` |
+|---|---|---|---|
+| _(omitted)_ | `""` | Auth-configured interactive shell (both CLIs on PATH) | Codex **and** Anthropic vars (when available) |
+| `codex` | `codex` | Launch Codex CLI | `CODEX_AUTH_PROXY_URL`, `CODEX_TOKEN`, `OPENAI_BASE_URL`, fallbacks, OAuth refresh override |
+| `claude` | `claude` | Launch Claude Code | `ANTHROPIC_BASE_URL` (`…/anthropic`), `ANTHROPIC_API_KEY` (placeholder), `ANTHROPIC_PROXY_FALLBACK_URLS` |
+
+`--shell` still bypasses `entrypoint.sh` entirely for a raw, **un-authenticated** debug shell.
+`run --agent claude` fails fast if the proxy reports no Anthropic credentials
+(`RemoteProxy.IsAnthropicMode()` via `/admin/mode`).
 
 ---
 
@@ -261,8 +295,9 @@ Auth files:
 3. **Test coverage targets**: `internal/sandbox`, `internal/authproxy`, `internal/worktree`, `internal/config`.
 4. **No new global state** — config flows through Viper/Cobra flag bindings.
 5. **`internal/` is the right place** for new business logic; `cmd/` is for CLI wiring only.
-6. **Do not pass credentials to containers** — containers receive only placeholder `cdx-xxxx` tokens. The proxy injects real credentials via `injectCredentials()` on every outbound request.
-7. **Credential injection is in `reverseProxy` and `handleWebSocketProxy`** — any new proxy endpoints must also call `injectCredentials()` or inject credentials manually.
+6. **Do not pass credentials to containers** — containers receive only placeholder `cdx-xxxx` tokens. The proxy injects real credentials on every outbound request (`injectCredentials` for OpenAI, `injectAnthropicCredentials` for Anthropic).
+7. **`reverseProxy` takes an injector** — `reverseProxy(w, r, prefix, base, inject)`. OpenAI routes pass `p.injectCredentials`; the `/anthropic` route passes `p.injectAnthropicCredentials`. Any new proxy endpoint must pass an appropriate injector. The WebSocket path (`handleWebSocketProxy`) is OpenAI-only; Anthropic uses HTTP/SSE.
+8. **Proxy vs Sandbox separation** — proxy logic lives in `internal/authproxy` + `docker/proxy`; sandbox logic in `internal/sandbox` + `docker/sandbox`. They communicate only over the proxy's HTTP API (`Service` interface). Keep credential handling on the proxy side.
 8. **F-NET-04 is resolved**: Auth Proxy binds to `0.0.0.0`; worker containers have `--add-host=host.docker.internal:host-gateway` (Docker resolves this to the bridge gateway IP); `CODEX_AUTH_PROXY_URL` uses `proxy.ContainerEndpoint()` → `http://host.docker.internal:PORT`. Requires Docker Engine >= 20.10.
 9. **Documentation is in Japanese** (`doc/`). New docs may be written in English or Japanese consistently with existing files.
 10. **`go mod tidy` must leave `go.mod`/`go.sum` clean** — CI checks this with `git diff --exit-code`.

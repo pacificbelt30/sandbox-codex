@@ -28,6 +28,29 @@ const (
 	ApprovalModeDanger ApprovalMode = "danger"
 )
 
+// Agent identifies which AI CLI the sandbox launches.
+type Agent string
+
+const (
+	// AgentNone drops into an interactive shell with auth configured but no
+	// agent auto-launched. This is the default when --agent is omitted.
+	AgentNone Agent = ""
+	// AgentCodex launches OpenAI Codex CLI.
+	AgentCodex Agent = "codex"
+	// AgentClaude launches Anthropic Claude Code.
+	AgentClaude Agent = "claude"
+)
+
+// ValidAgent returns true if a is one of the recognised agent values.
+func ValidAgent(a Agent) bool {
+	switch a {
+	case AgentNone, AgentCodex, AgentClaude:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidApprovalMode returns true if mode is one of the recognised values.
 func ValidApprovalMode(mode ApprovalMode) bool {
 	switch mode {
@@ -49,6 +72,7 @@ type RunOptions struct {
 	Branch        string
 	NewBranch     bool
 	Name          string
+	Agent         Agent
 	Task          string
 	ApprovalMode  ApprovalMode
 	Model         string

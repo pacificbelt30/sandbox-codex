@@ -44,12 +44,12 @@ install-all: install install-config
 
 ## docker: build the sandbox Docker image
 docker:
-	docker build -t $(IMAGE) -f docker/Dockerfile docker/
+	docker build -t $(IMAGE) -f docker/sandbox/Dockerfile docker/sandbox/
 	@echo "Docker image built: $(IMAGE)"
 
 ## proxy-docker: build the auth proxy Docker image
 proxy-docker:
-	docker build -t $(PROXY_IMAGE) -f docker/auth-proxy.Dockerfile .
+	docker build -t $(PROXY_IMAGE) -f docker/proxy/Dockerfile .
 	@echo "Proxy image built: $(PROXY_IMAGE)"
 
 ## uninstall: remove the installed binary

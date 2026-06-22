@@ -149,32 +149,47 @@ func TestEnsureProxyDockerfile_Content(t *testing.T) {
 // ---- buildProxyRunArgs ----------------------------------------------------
 
 func TestBuildProxyRunArgs_Basic(t *testing.T) {
-	args := buildProxyRunArgs("my-proxy", 18080, "dock-net-proxy", "codex-dock-proxy:latest",
-		"0.0.0.0:18080", "", "", "", "")
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "my-proxy", port: 18080, networkName: "dock-net-proxy",
+		image: "codex-dock-proxy:latest", listenAddr: "0.0.0.0:18080",
+	})
 
 	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "18080:18080")
 	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080")
 
 	// No credential flags when nothing is set.
 	for _, a := range args {
-		if strings.HasPrefix(a, "OPENAI_API_KEY") {
-			t.Errorf("unexpected OPENAI_API_KEY in args: %v", args)
+		if strings.HasPrefix(a, "OPENAI_API_KEY") || strings.HasPrefix(a, "ANTHROPIC_API_KEY") {
+			t.Errorf("unexpected API key env in args: %v", args)
 		}
 		if strings.Contains(a, "apikey") {
 			t.Errorf("unexpected apikey mount in args: %v", args)
 		}
-		if strings.Contains(a, "auth.json") {
-			t.Errorf("unexpected auth.json mount in args: %v", args)
+		if strings.Contains(a, "auth.json") || strings.Contains(a, ".credentials.json") {
+			t.Errorf("unexpected credential mount in args: %v", args)
 		}
 	}
 }
 
 func TestBuildProxyRunArgs_APIKeyEnv(t *testing.T) {
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
-		"sk-test-key", "", "")
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080", apiKeyEnv: "sk-test-key",
+	})
 
 	if !containsSequence(args, "-e", "OPENAI_API_KEY=sk-test-key") {
 		t.Errorf("expected -e OPENAI_API_KEY=sk-test-key in args: %v", args)
+	}
+}
+
+func TestBuildProxyRunArgs_AnthropicKeyEnv(t *testing.T) {
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080", anthropicKeyEnv: "sk-ant-test",
+	})
+
+	if !containsSequence(args, "-e", "ANTHROPIC_API_KEY=sk-ant-test") {
+		t.Errorf("expected -e ANTHROPIC_API_KEY=sk-ant-test in args: %v", args)
 	}
 }
 
@@ -184,8 +199,10 @@ func TestBuildProxyRunArgs_StoredKeyMount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
-		"", keyFile, "")
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080", storedKeyPath: keyFile,
+	})
 
 	wantMount := keyFile + ":/root/.config/codex-dock/apikey:ro"
 	if !containsSequence(args, "-v", wantMount) {
@@ -199,10 +216,29 @@ func TestBuildProxyRunArgs_OAuthMount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
-		"", "", authFile)
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080", oauthJSONPath: authFile,
+	})
 
 	wantMount := authFile + ":/root/.codex/auth.json:ro"
+	if !containsSequence(args, "-v", wantMount) {
+		t.Errorf("expected -v %s in args: %v", wantMount, args)
+	}
+}
+
+func TestBuildProxyRunArgs_ClaudeCredsMount(t *testing.T) {
+	credsFile := filepath.Join(t.TempDir(), ".credentials.json")
+	if err := os.WriteFile(credsFile, []byte(`{"claudeAiOauth":{"accessToken":"x"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080", claudeCredsPath: credsFile,
+	})
+
+	wantMount := credsFile + ":/root/.claude/.credentials.json:ro"
 	if !containsSequence(args, "-v", wantMount) {
 		t.Errorf("expected -v %s in args: %v", wantMount, args)
 	}
@@ -217,24 +253,51 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 	if err := os.WriteFile(authFile, []byte(`{"access_token":"tok"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
+	anthropicKeyFile := filepath.Join(t.TempDir(), "anthropic-apikey")
+	if err := os.WriteFile(anthropicKeyFile, []byte(`{"key":"sk-ant"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	credsFile := filepath.Join(t.TempDir(), ".credentials.json")
+	if err := os.WriteFile(credsFile, []byte(`{"claudeAiOauth":{"accessToken":"x"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
-		"sk-env-key", keyFile, authFile)
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr:       "0.0.0.0:18080",
+		apiKeyEnv:        "sk-env-key",
+		storedKeyPath:    keyFile,
+		oauthJSONPath:    authFile,
+		anthropicKeyEnv:  "sk-ant-env",
+		anthropicKeyPath: anthropicKeyFile,
+		claudeCredsPath:  credsFile,
+	})
 
 	if !containsSequence(args, "-e", "OPENAI_API_KEY=sk-env-key") {
-		t.Errorf("missing env key in args: %v", args)
+		t.Errorf("missing OpenAI env key in args: %v", args)
+	}
+	if !containsSequence(args, "-e", "ANTHROPIC_API_KEY=sk-ant-env") {
+		t.Errorf("missing Anthropic env key in args: %v", args)
 	}
 	if !containsSequence(args, "-v", keyFile+":/root/.config/codex-dock/apikey:ro") {
 		t.Errorf("missing stored key mount in args: %v", args)
 	}
+	if !containsSequence(args, "-v", anthropicKeyFile+":/root/.config/codex-dock/anthropic-apikey:ro") {
+		t.Errorf("missing anthropic key mount in args: %v", args)
+	}
 	if !containsSequence(args, "-v", authFile+":/root/.codex/auth.json:ro") {
 		t.Errorf("missing auth.json mount in args: %v", args)
+	}
+	if !containsSequence(args, "-v", credsFile+":/root/.claude/.credentials.json:ro") {
+		t.Errorf("missing claude creds mount in args: %v", args)
 	}
 }
 
 func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080",
-		"s3cr3t", "", "", "")
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080", adminSecret: "s3cr3t",
+	})
 
 	if !containsSequence(args, "--admin-secret", "s3cr3t") {
 		t.Errorf("expected --admin-secret s3cr3t in args: %v", args)
@@ -242,8 +305,10 @@ func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
 }
 
 func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080",
-		"", "", "", "")
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr: "0.0.0.0:18080",
+	})
 
 	for _, a := range args {
 		if a == "--admin-secret" {
@@ -254,8 +319,14 @@ func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
 
 func TestBuildProxyRunArgs_MissingFiles(t *testing.T) {
 	// Non-existent paths must not produce volume mounts.
-	args := buildProxyRunArgs("proxy", 18080, "dock-net-proxy", "img:latest", "0.0.0.0:18080", "",
-		"", "/nonexistent/apikey", "/nonexistent/auth.json")
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		listenAddr:       "0.0.0.0:18080",
+		storedKeyPath:    "/nonexistent/apikey",
+		oauthJSONPath:    "/nonexistent/auth.json",
+		anthropicKeyPath: "/nonexistent/anthropic-apikey",
+		claudeCredsPath:  "/nonexistent/.credentials.json",
+	})
 
 	for _, a := range args {
 		if strings.Contains(a, "nonexistent") {

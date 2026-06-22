@@ -26,8 +26,10 @@ codex-dock build [OPTIONS]
 `-f` を省略した場合、以下の順序で Dockerfile を自動検出します：
 
 1. カレントディレクトリの `Dockerfile`
-2. カレントディレクトリの `docker/Dockerfile`
+2. カレントディレクトリの `docker/sandbox/Dockerfile`（旧 `docker/Dockerfile` も後方互換で検出）
 3. `~/.config/codex-dock/Dockerfile`（存在しない場合は組み込みデフォルトを自動書き出し）
+
+> サンドボックスイメージには Codex CLI と Claude Code の両方が同梱されます。
 
 > **補足**: `~/.config/codex-dock/` へのフォールバック時は `entrypoint.sh` も同ディレクトリに書き出されます。
 > ユーザーが同ファイルを編集済みの場合は上書きされません。

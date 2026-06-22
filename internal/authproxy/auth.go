@@ -9,6 +9,7 @@ import (
 
 const configDir = ".config/codex-dock"
 const apiKeyFile = "apikey"
+const anthropicAPIKeyFile = "anthropic-apikey"
 
 // AuthInfo describes the current auth configuration (no secrets).
 type AuthInfo struct {
@@ -90,6 +91,126 @@ func LoadOAuthCredentials() (*OAuthCredentials, error) {
 		ExpiresAt:    f.ExpiresAt,
 		TokenType:    f.TokenType,
 	}, nil
+}
+
+// AnthropicOAuthCredentials holds Claude Code subscription (OAuth) credentials
+// loaded from ~/.claude/.credentials.json. The proxy keeps these on the host and
+// injects the access token on outbound Anthropic API requests; the refresh token
+// never reaches containers.
+type AnthropicOAuthCredentials struct {
+	AccessToken      string
+	RefreshToken     string
+	ExpiresAt        int64 // Unix milliseconds; 0 means unknown
+	SubscriptionType string
+	Scopes           []string
+}
+
+// claudeCredentialsFile represents the on-disk structure of
+// ~/.claude/.credentials.json written by Claude Code's OAuth login.
+type claudeCredentialsFile struct {
+	ClaudeAiOauth *struct {
+		AccessToken      string   `json:"accessToken"`
+		RefreshToken     string   `json:"refreshToken"`
+		ExpiresAt        int64    `json:"expiresAt"`
+		Scopes           []string `json:"scopes"`
+		SubscriptionType string   `json:"subscriptionType"`
+	} `json:"claudeAiOauth"`
+}
+
+// claudeCredentialsPath returns the absolute path to ~/.claude/.credentials.json.
+func claudeCredentialsPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".claude", ".credentials.json"), nil
+}
+
+// LoadAnthropicOAuthCredentials reads Claude Code OAuth credentials from
+// ~/.claude/.credentials.json. Returns an error if the file is missing,
+// unparseable, or contains no access token.
+func LoadAnthropicOAuthCredentials() (*AnthropicOAuthCredentials, error) {
+	path, err := claudeCredentialsPath()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading .credentials.json: %w", err)
+	}
+	var f claudeCredentialsFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("parsing .credentials.json: %w", err)
+	}
+	if f.ClaudeAiOauth == nil || f.ClaudeAiOauth.AccessToken == "" {
+		return nil, fmt.Errorf(".credentials.json contains no claudeAiOauth.accessToken")
+	}
+	return &AnthropicOAuthCredentials{
+		AccessToken:      f.ClaudeAiOauth.AccessToken,
+		RefreshToken:     f.ClaudeAiOauth.RefreshToken,
+		ExpiresAt:        f.ClaudeAiOauth.ExpiresAt,
+		SubscriptionType: f.ClaudeAiOauth.SubscriptionType,
+		Scopes:           f.ClaudeAiOauth.Scopes,
+	}, nil
+}
+
+// IsAnthropicOAuth returns true when ~/.claude/.credentials.json contains a
+// Claude subscription (OAuth) refresh token.
+func IsAnthropicOAuth() bool {
+	path, err := claudeCredentialsPath()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var f claudeCredentialsFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return false
+	}
+	return f.ClaudeAiOauth != nil && f.ClaudeAiOauth.AccessToken != ""
+}
+
+// loadAnthropicAPIKey returns the best available Anthropic API key, or "".
+// Priority: ANTHROPIC_API_KEY env > ~/.config/codex-dock/anthropic-apikey.
+func loadAnthropicAPIKey() string {
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		return key
+	}
+	if key, err := readStoredAnthropicKey(); err == nil && key != "" {
+		return key
+	}
+	return ""
+}
+
+func readStoredAnthropicKey() (string, error) {
+	dir, err := configDirPath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Join(dir, anthropicAPIKeyFile))
+	if err != nil {
+		return "", err
+	}
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return "", err
+	}
+	return m["key"], nil
+}
+
+// SaveAnthropicAPIKey persists an Anthropic API key to the codex-dock config dir.
+func SaveAnthropicAPIKey(key string) error {
+	dir, err := configDirPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	data, _ := json.Marshal(map[string]string{"key": key})
+	return os.WriteFile(filepath.Join(dir, anthropicAPIKeyFile), data, 0600)
 }
 
 // GetAuthInfo returns metadata about the current auth configuration.

@@ -6,5 +6,8 @@ type Service interface {
 	IssueToken(containerName string, ttlSec int) (string, error)
 	RevokeToken(containerName string)
 	IsOAuthMode() bool
+	// IsAnthropicMode reports whether the proxy can serve Anthropic (Claude Code)
+	// requests, in either API-key or OAuth mode.
+	IsAnthropicMode() bool
 	ContainerEndpoint() string
 }
