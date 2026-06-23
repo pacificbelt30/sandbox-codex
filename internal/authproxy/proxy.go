@@ -988,10 +988,35 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	copyAndFlush(w, resp.Body)
 
 	if p.cfg.Verbose {
 		fmt.Printf("Proxied %s %s -> %s (%d)\n", r.Method, r.URL.Path, target, resp.StatusCode)
+	}
+}
+
+// copyAndFlush streams src to w, flushing after every chunk when w supports
+// http.Flusher. This preserves real-time delivery of Server-Sent Events
+// (text/event-stream), which both the Anthropic Messages API and the OpenAI
+// Responses API use for streaming responses. A plain io.Copy would let the
+// net/http response buffer hold events until it fills or the handler returns,
+// stalling interactive agents.
+func copyAndFlush(w http.ResponseWriter, src io.Reader) {
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 32*1024)
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if rerr != nil {
+			return
+		}
 	}
 }
 
