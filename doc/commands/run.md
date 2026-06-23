@@ -30,10 +30,11 @@ codex-dock run [OPTIONS]
 | `--branch` | `-b` | | チェックアウトするブランチ名（`--worktree` が必要） |
 | `--new-branch` | `-B` | `false` | 新規ブランチを作成する（`--worktree` と `--branch` が必要） |
 | `--name` | `-n` | 自動生成 | コンテナ名（省略すると `codex-<形容詞>-<名詞>` 形式で自動生成） |
-| `--task` | `-t` | | Codex に渡す初期タスクプロンプト |
-| `--approval-mode` | | `suggest` | Codex CLI の承認モード（[詳細](#--approval-mode--codex-承認モードの指定)） |
+| `--agent` | | `""`（シェル） | 起動するエージェント（[詳細](#--agent--エージェントの選択)） |
+| `--task` | `-t` | | エージェントに渡す初期タスクプロンプト |
+| `--approval-mode` | | `suggest` | 承認モード（[詳細](#--approval-mode--承認モードの指定)） |
 | `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
-| `--model` | `-m` | | Codex に渡すモデル名 |
+| `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
 | `--no-internet` | | `false` | コンテナ内のインターネットアクセスを無効化 |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
@@ -44,17 +45,42 @@ codex-dock run [OPTIONS]
 
 ---
 
-## `--approval-mode` — Codex 承認モードの指定
+## `--agent` — エージェントの選択
 
-`--approval-mode` フラグで Codex CLI がアクションを実行する際の承認動作を制御します。
-Docker コンテナによるサンドボックス隔離を前提に設計されています。
+`--agent` フラグでサンドボックス内に起動する AI エージェントを選びます。
+コンテナ内では `DOCK_AGENT` 環境変数として渡され、`entrypoint.sh` が分岐します。
 
-| 値 | Codex CLI フラグ | 動作 |
+| 値 | 動作 | 注入される認証情報 |
 |---|---|---|
-| `suggest`（デフォルト） | なし | すべてのアクションで承認を求める（最も安全） |
-| `auto-edit` | `--ask-for-approval unless-allow-listed` | ファイル編集は自動適用、コマンド実行は承認を求める |
-| `full-auto` | `--ask-for-approval never` | 承認を一切求めない |
-| `danger` | `--dangerously-bypass-approvals-and-sandbox` | すべての承認・サンドボックス制限をバイパスする |
+| _（省略）_ | 認証設定済みの対話シェルを起動（`codex` / `claude` 両方が PATH 上にある） | Codex と Anthropic の両方（利用可能なもの） |
+| `codex` | OpenAI Codex CLI を起動 | `CODEX_AUTH_PROXY_URL`, `CODEX_TOKEN`, `OPENAI_BASE_URL` ほか |
+| `claude` | Anthropic Claude Code を起動 | `ANTHROPIC_BASE_URL`(`…/anthropic`), `ANTHROPIC_API_KEY`（プレースホルダ） |
+
+- `--agent claude` は Auth Proxy が Anthropic 認証情報を持たない場合、起動前にエラーで停止します
+  （Proxy の `/admin/mode` を参照）。
+- `--shell` は `entrypoint.sh` を完全にバイパスして**認証なし**の素のシェルを起動します（デバッグ用）。
+  認証済みシェルが欲しい場合は `--agent` を省略してください。
+
+```bash
+codex-dock run --agent codex  --approval-mode full-auto
+codex-dock run --agent claude --approval-mode full-auto --task "Refactor the auth module"
+codex-dock run                # 認証済みシェル（codex / claude 両方利用可）
+```
+
+---
+
+## `--approval-mode` — 承認モードの指定
+
+`--approval-mode` フラグでエージェントがアクションを実行する際の承認動作を制御します。
+Docker コンテナによるサンドボックス隔離を前提に設計されています。値は両エージェントに対応する
+フラグへマッピングされます。
+
+| 値 | Codex CLI フラグ | Claude Code フラグ | 動作 |
+|---|---|---|---|
+| `suggest`（デフォルト） | なし | なし | すべてのアクションで承認を求める（最も安全） |
+| `auto-edit` | `--ask-for-approval unless-allow-listed` | `--permission-mode acceptEdits` | ファイル編集は自動適用、コマンド実行は承認を求める |
+| `full-auto` | `--ask-for-approval never` | `--dangerously-skip-permissions` | 承認を一切求めない |
+| `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | すべての承認・サンドボックス制限をバイパスする |
 
 > **`danger` モードについて**: Codex CLI 組み込みのサンドボックスを無効化しますが、
 > Docker コンテナ自体が隔離境界を提供します（`--cap-drop ALL`、専用ネットワーク、

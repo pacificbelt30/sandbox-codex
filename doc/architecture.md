@@ -19,12 +19,14 @@ codex-dock
 │   └── network.go           dock-net の管理
 │
 ├── internal/
-│   ├── authproxy/           Auth Proxy（認証プロキシ）
-│   │   ├── proxy.go         HTTPサーバ・トークン管理
-│   │   └── auth.go          APIキー/OAuthクレデンシャル読み込み
-│   ├── sandbox/             Docker コンテナ管理
-│   │   ├── manager.go       コンテナのライフサイクル
-│   │   ├── types.go         RunOptions 等の型定義
+│   ├── authproxy/           Auth Proxy（認証プロキシ）★プロキシ側
+│   │   ├── proxy.go         HTTPサーバ・トークン管理・OpenAI/Anthropic リバースプロキシ
+│   │   ├── auth.go          OpenAI/Anthropic の APIキー/OAuth クレデンシャル読み込み
+│   │   ├── remote.go        RemoteProxy（プロキシコンテナへのクライアント）
+│   │   └── service.go       Service インターフェース
+│   ├── sandbox/             Docker コンテナ管理 ★サンドボックス側
+│   │   ├── manager.go       コンテナのライフサイクル・buildEnv（エージェント別）
+│   │   ├── types.go         RunOptions / Agent(codex/claude/shell) 等の型定義
 │   │   └── packages.go      パッケージ定義解析
 │   ├── network/             dock-net 管理
 │   │   └── manager.go       ブリッジネットワークの作成/削除
@@ -33,10 +35,18 @@ codex-dock
 │   └── ui/                  ターミナル UI (Bubble Tea)
 │       └── ui.go
 │
-└── docker/
-    ├── Dockerfile           サンドボックスイメージ定義
-    └── entrypoint.sh        コンテナ起動スクリプト（認証取得含む）
+└── docker/                  コンテナ資産（用途別に分離）
+    ├── sandbox/             ★サンドボックスイメージ
+    │   ├── Dockerfile       Node.js 22 + Codex CLI + Claude Code
+    │   └── entrypoint.sh    起動スクリプト（認証取得・codex/claude/shell 分岐）
+    └── proxy/               ★プロキシイメージ
+        └── Dockerfile       Auth Proxy（Go バイナリ）
 ```
+
+> **プロキシ／サンドボックスの分離**: 認証情報を扱うロジックは `internal/authproxy` + `docker/proxy`
+> に、コンテナ実行ロジックは `internal/sandbox` + `docker/sandbox` に閉じています。両者は
+> プロキシの HTTP API（`Service` インターフェース）経由でのみ通信し、コンテナ単位でも
+> イメージ単位でも独立してビルド・デプロイできます。
 
 ---
 
@@ -81,16 +91,24 @@ codex-dock
 
 ---
 
-## 認証モードの違い
+## エージェントと認証モードの違い
 
-codex-dock は **API キーモード** と **OAuth モード** の 2 つの認証方式をサポートします。
+`--agent` でサンドボックスが起動するエージェントを選びます（省略時は両 CLI が使える認証済みシェル）。
 
+| `--agent` | エージェント | プロキシ転送先 |
+|---|---|---|
+| `codex` | OpenAI Codex CLI | `/v1/*` → OpenAI / ChatGPT |
+| `claude` | Anthropic Claude Code | `/anthropic/*` → `api.anthropic.com` |
+
+各プロバイダは **API キーモード** と **OAuth モード** をサポートします。
 詳細なフロー図は [Auth Proxy 技術仕様](auth-proxy.md) を参照してください。
 
-| モード | 条件 | 転送先 |
+| プロバイダ / モード | 条件 | 転送先 |
 |---|---|---|
-| API キーモード | `OPENAI_API_KEY` または `~/.config/codex-dock/apikey` がある場合 | `api.openai.com/v1` |
-| OAuth モード | `~/.codex/auth.json` に `refresh_token` または `auth_mode: "chatgpt"` がある場合 | `chatgpt.com/backend-api/codex` |
+| OpenAI API キー | `OPENAI_API_KEY` または `~/.config/codex-dock/apikey` | `api.openai.com/v1` |
+| OpenAI OAuth | `~/.codex/auth.json` に `refresh_token` / `auth_mode: "chatgpt"` | `chatgpt.com/backend-api/codex` |
+| Anthropic API キー | `ANTHROPIC_API_KEY` または `~/.config/codex-dock/anthropic-apikey` | `api.anthropic.com`（`x-api-key`） |
+| Anthropic OAuth | `~/.claude/.credentials.json`（`claudeAiOauth`） | `api.anthropic.com`（`Authorization: Bearer` + `anthropic-beta`） |
 
 ---
 

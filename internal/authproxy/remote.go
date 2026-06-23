@@ -18,6 +18,7 @@ type RemoteProxy struct {
 	containerURL      string
 	adminSecret       string
 	oauthMode         bool
+	anthropicMode     bool
 	httpClient        *http.Client
 	adminSecretHeader string
 }
@@ -30,16 +31,18 @@ func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, e
 		httpClient:        http.DefaultClient,
 		adminSecretHeader: "X-Proxy-Admin-Secret",
 	}
-	mode, err := r.fetchOAuthMode()
+	mode, err := r.fetchMode()
 	if err != nil {
 		return nil, err
 	}
-	r.oauthMode = mode
+	r.oauthMode = mode["oauth_mode"]
+	r.anthropicMode = mode["anthropic_available"]
 	return r, nil
 }
 
 func (r *RemoteProxy) ContainerEndpoint() string { return r.containerURL }
 func (r *RemoteProxy) IsOAuthMode() bool         { return r.oauthMode }
+func (r *RemoteProxy) IsAnthropicMode() bool     { return r.anthropicMode }
 
 func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, error) {
 	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec})
@@ -84,27 +87,27 @@ func (r *RemoteProxy) RevokeToken(containerName string) {
 	}
 }
 
-func (r *RemoteProxy) fetchOAuthMode() (bool, error) {
+func (r *RemoteProxy) fetchMode() (map[string]bool, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.adminURL+"/admin/mode", nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if r.adminSecret != "" {
 		req.Header.Set(r.adminSecretHeader, r.adminSecret)
 	}
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("connecting remote auth proxy (%s): %w%s", r.adminURL, err, connectionHint(err))
+		return nil, fmt.Errorf("connecting remote auth proxy (%s): %w%s", r.adminURL, err, connectionHint(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("checking remote auth proxy mode failed: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("checking remote auth proxy mode failed: status %d", resp.StatusCode)
 	}
 	var out map[string]bool
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return false, err
+		return nil, err
 	}
-	return out["oauth_mode"], nil
+	return out, nil
 }
 
 func connectionHint(err error) string {

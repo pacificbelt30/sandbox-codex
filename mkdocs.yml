@@ -44,6 +44,7 @@ nav:
   - firewall: firewall.md
   - コマンド: commands.md
   - 設定: configuration.md
+  - テストと動作確認: testing.md
 
 markdown_extensions:
   - admonition

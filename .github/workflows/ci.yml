@@ -127,9 +127,19 @@ jobs:
       - name: Build sandbox image
         uses: docker/build-push-action@v6
         with:
-          context: docker
-          file: docker/Dockerfile
+          context: docker/sandbox
+          file: docker/sandbox/Dockerfile
           push: false
           tags: codex-dock:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build auth proxy image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/proxy/Dockerfile
+          push: false
+          tags: codex-dock-proxy:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

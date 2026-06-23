@@ -47,24 +47,44 @@ type Proxy struct {
 	tokens     map[string]*tokenRecord // containerName -> record
 	addr       string
 
+	// Anthropic (Claude Code) credentials. Populated independently of the
+	// OpenAI credentials above so a single proxy can serve both agents.
+	anthropicAPIKey string                     // non-empty in Anthropic API-key mode
+	anthropicOAuth  *AnthropicOAuthCredentials // non-nil in Claude subscription (OAuth) mode
+
 	// Upstream endpoints; overridable for testing.
 	httpClient     *http.Client
 	oauthTokenURL  string // default: "https://auth.openai.com/oauth/token"
 	apiUpstreamURL string // default: "https://api.openai.com/v1" (API key mode)
 	chatgptURL     string // default: "https://chatgpt.com/backend-api" (OAuth mode + /chatgpt/)
+
+	// Anthropic upstream + OAuth refresh endpoint; overridable for testing.
+	anthropicUpstreamURL   string // default: "https://api.anthropic.com"
+	anthropicOAuthTokenURL string // default: "https://console.anthropic.com/v1/oauth/token"
+	anthropicOAuthClientID string // Claude Code public OAuth client id
 }
+
+// anthropicOAuthBetaHeader is required by the Anthropic API when authenticating
+// with a Claude subscription OAuth bearer token instead of an API key.
+const anthropicOAuthBetaHeader = "oauth-2025-04-20"
+
+// defaultAnthropicVersion is sent when the container omits anthropic-version.
+const defaultAnthropicVersion = "2023-06-01"
 
 // NewProxy creates a new Auth Proxy.
 // In OAuth mode (detected via IsOAuthAuth), credentials are loaded from
 // ~/.codex/auth.json. In API key mode, the API key is loaded as usual.
 func NewProxy(cfg Config) (*Proxy, error) {
 	p := &Proxy{
-		cfg:            cfg,
-		tokens:         make(map[string]*tokenRecord),
-		httpClient:     http.DefaultClient,
-		oauthTokenURL:  "https://auth.openai.com/oauth/token",
-		apiUpstreamURL: "https://api.openai.com/v1",
-		chatgptURL:     "https://chatgpt.com/backend-api",
+		cfg:                    cfg,
+		tokens:                 make(map[string]*tokenRecord),
+		httpClient:             http.DefaultClient,
+		oauthTokenURL:          "https://auth.openai.com/oauth/token",
+		apiUpstreamURL:         "https://api.openai.com/v1",
+		chatgptURL:             "https://chatgpt.com/backend-api",
+		anthropicUpstreamURL:   "https://api.anthropic.com",
+		anthropicOAuthTokenURL: "https://console.anthropic.com/v1/oauth/token",
+		anthropicOAuthClientID: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 	}
 
 	if IsOAuthAuth() {
@@ -74,17 +94,47 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		}
 		p.oauthCreds = creds
 		if cfg.Verbose {
-			fmt.Fprintln(os.Stderr, "Auth Proxy: OAuth mode (placeholder tokens issued to containers; proxy injects real credentials on outbound requests)")
+			fmt.Fprintln(os.Stderr, "Auth Proxy: OpenAI OAuth mode (placeholder tokens issued to containers; proxy injects real credentials on outbound requests)")
 		}
 	} else {
 		apiKey := loadAPIKey()
 		if apiKey == "" && cfg.Verbose {
-			fmt.Fprintln(os.Stderr, "warning: no API key found; containers will not receive auth tokens")
+			fmt.Fprintln(os.Stderr, "warning: no OpenAI API key found; Codex containers will not receive auth tokens")
 		}
 		p.apiKey = apiKey
 	}
 
+	// Anthropic (Claude Code) credentials are loaded independently so the proxy
+	// can serve both agents from a single endpoint.
+	if IsAnthropicOAuth() {
+		creds, err := LoadAnthropicOAuthCredentials()
+		if err != nil {
+			return nil, fmt.Errorf("loading Anthropic OAuth credentials: %w", err)
+		}
+		p.anthropicOAuth = creds
+		if cfg.Verbose {
+			fmt.Fprintln(os.Stderr, "Auth Proxy: Anthropic OAuth mode (Claude subscription; proxy injects real bearer token on outbound requests)")
+		}
+	} else if key := loadAnthropicAPIKey(); key != "" {
+		p.anthropicAPIKey = key
+		if cfg.Verbose {
+			fmt.Fprintln(os.Stderr, "Auth Proxy: Anthropic API-key mode (proxy injects real x-api-key on outbound requests)")
+		}
+	}
+
 	return p, nil
+}
+
+// IsAnthropicMode returns true when the proxy can serve Anthropic (Claude Code)
+// requests, in either API-key or OAuth mode.
+func (p *Proxy) IsAnthropicMode() bool {
+	return p.anthropicOAuth != nil || p.anthropicAPIKey != ""
+}
+
+// IsAnthropicOAuthMode returns true when the proxy serves Anthropic requests
+// using a Claude subscription OAuth token rather than an API key.
+func (p *Proxy) IsAnthropicOAuthMode() bool {
+	return p.anthropicOAuth != nil
 }
 
 // IsOAuthMode returns true when the proxy is operating in OAuth mode.
@@ -123,6 +173,9 @@ func (p *Proxy) Start() error {
 	mux.HandleFunc("/v1/", p.handleAPIProxy)
 	// ChatGPT backend-api reverse proxy: containers use chatgpt_base_url=http://proxy/chatgpt/.
 	mux.HandleFunc("/chatgpt/", p.handleChatGPTProxy)
+	// Anthropic (Claude Code) reverse proxy: containers set ANTHROPIC_BASE_URL=http://proxy/anthropic.
+	// Forwards to api.anthropic.com, injecting the host's real API key or OAuth bearer token.
+	mux.HandleFunc("/anthropic/", p.handleAnthropicProxy)
 
 	p.server = &http.Server{Handler: mux}
 	go func() {
@@ -209,7 +262,11 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]bool{"oauth_mode": p.IsOAuthMode()})
+	_ = json.NewEncoder(w).Encode(map[string]bool{
+		"oauth_mode":           p.IsOAuthMode(),
+		"anthropic_available":  p.IsAnthropicMode(),
+		"anthropic_oauth_mode": p.IsAnthropicOAuthMode(),
+	})
 }
 
 // Stop shuts down the proxy and revokes all tokens.
@@ -545,7 +602,16 @@ func (p *Proxy) handleAPIProxy(w http.ResponseWriter, r *http.Request) {
 	} else {
 		base = p.apiUpstreamURL
 	}
-	p.reverseProxy(w, r, "/v1", base)
+	p.reverseProxy(w, r, "/v1", base, p.injectCredentials)
+}
+
+// handleAnthropicProxy proxies /anthropic/* to https://api.anthropic.com/*.
+// Containers set ANTHROPIC_BASE_URL=http://<proxy>/anthropic so Claude Code
+// routes all Messages API traffic through the proxy. The proxy injects the
+// host's real Anthropic credential (API key or OAuth bearer) on every request,
+// replacing whatever placeholder the container sent.
+func (p *Proxy) handleAnthropicProxy(w http.ResponseWriter, r *http.Request) {
+	p.reverseProxy(w, r, "/anthropic", p.anthropicUpstreamURL, p.injectAnthropicCredentials)
 }
 
 // handleChatGPTProxy proxies /chatgpt/* to https://chatgpt.com/backend-api/*.
@@ -553,7 +619,7 @@ func (p *Proxy) handleAPIProxy(w http.ResponseWriter, r *http.Request) {
 // in their Codex CLI config so backend-api calls (rate limits, account info, etc.)
 // flow through the proxy.
 func (p *Proxy) handleChatGPTProxy(w http.ResponseWriter, r *http.Request) {
-	p.reverseProxy(w, r, "/chatgpt", p.chatgptURL)
+	p.reverseProxy(w, r, "/chatgpt", p.chatgptURL, p.injectCredentials)
 }
 
 // isWebSocketRequest returns true when the incoming request is a WebSocket upgrade.
@@ -738,9 +804,131 @@ func (p *Proxy) injectCredentials(h http.Header) {
 	}
 }
 
+// injectAnthropicCredentials overwrites the Anthropic auth headers in h with the
+// host's real credentials, replacing any placeholder the container sent.
+//   - API-key mode: sets x-api-key, removes Authorization.
+//   - OAuth mode:  sets Authorization: Bearer <access_token>, removes x-api-key,
+//     and adds the required anthropic-beta OAuth header.
+//
+// In OAuth mode the access token is refreshed first if it has expired.
+// Safe to call concurrently.
+func (p *Proxy) injectAnthropicCredentials(h http.Header) {
+	// Anthropic requires anthropic-version; supply a default if the client omits it.
+	if h.Get("anthropic-version") == "" {
+		h.Set("anthropic-version", defaultAnthropicVersion)
+	}
+
+	if p.anthropicOAuth != nil {
+		p.refreshAnthropicOAuthIfNeeded(context.Background())
+		p.mu.RLock()
+		accessToken := p.anthropicOAuth.AccessToken
+		p.mu.RUnlock()
+		h.Del("x-api-key")
+		h.Set("Authorization", "Bearer "+accessToken)
+		mergeBetaHeader(h, anthropicOAuthBetaHeader)
+		return
+	}
+	if p.anthropicAPIKey != "" {
+		h.Del("Authorization")
+		h.Set("x-api-key", p.anthropicAPIKey)
+	}
+}
+
+// mergeBetaHeader ensures value is present in the anthropic-beta header without
+// dropping any beta flags the client already requested.
+func mergeBetaHeader(h http.Header, value string) {
+	existing := h.Get("anthropic-beta")
+	if existing == "" {
+		h.Set("anthropic-beta", value)
+		return
+	}
+	for _, part := range strings.Split(existing, ",") {
+		if strings.EqualFold(strings.TrimSpace(part), value) {
+			return
+		}
+	}
+	h.Set("anthropic-beta", existing+","+value)
+}
+
+// refreshAnthropicOAuthIfNeeded refreshes the host's Anthropic OAuth access token
+// when it is missing an expiry or within 60s of expiring. The refresh token stays
+// on the host; only the resulting access token is ever injected into requests.
+func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
+	p.mu.RLock()
+	if p.anthropicOAuth == nil {
+		p.mu.RUnlock()
+		return
+	}
+	expiresAt := p.anthropicOAuth.ExpiresAt
+	refreshToken := p.anthropicOAuth.RefreshToken
+	p.mu.RUnlock()
+
+	// expiresAt == 0 means unknown; in that case do not attempt a refresh
+	// (the current token is assumed valid).
+	if expiresAt == 0 || refreshToken == "" {
+		return
+	}
+	if time.Now().UnixMilli() < expiresAt-60_000 {
+		return
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": refreshToken,
+		"client_id":     p.anthropicOAuthClientID,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.anthropicOAuthTokenURL, bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		if p.cfg.Verbose {
+			fmt.Printf("Anthropic OAuth refresh failed: %v\n", err)
+		}
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if p.cfg.Verbose {
+			fmt.Printf("Anthropic OAuth refresh returned status %d\n", resp.StatusCode)
+		}
+		return
+	}
+
+	var tr struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+	}
+	if err := json.Unmarshal(respBody, &tr); err != nil || tr.AccessToken == "" {
+		return
+	}
+
+	p.mu.Lock()
+	if p.anthropicOAuth != nil {
+		p.anthropicOAuth.AccessToken = tr.AccessToken
+		if tr.RefreshToken != "" {
+			p.anthropicOAuth.RefreshToken = tr.RefreshToken
+		}
+		if tr.ExpiresIn > 0 {
+			p.anthropicOAuth.ExpiresAt = time.Now().UnixMilli() + tr.ExpiresIn*1000
+		}
+	}
+	p.mu.Unlock()
+	if p.cfg.Verbose {
+		fmt.Println("Anthropic OAuth access token refreshed")
+	}
+}
+
 // reverseProxy strips stripPrefix from r.URL.Path, appends it to targetBase,
 // and forwards the request upstream, copying status, headers, and body back.
-func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix, targetBase string) {
+// inject overwrites auth headers with the host's real credentials before the
+// request leaves the proxy.
+func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix, targetBase string, inject func(http.Header)) {
 	path := strings.TrimPrefix(r.URL.Path, stripPrefix)
 	target := targetBase + path
 	if r.URL.RawQuery != "" {
@@ -785,7 +973,7 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		}
 	}
 	// Inject real host credentials, overriding any placeholder the container sent.
-	p.injectCredentials(req.Header)
+	inject(req.Header)
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -800,10 +988,35 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	copyAndFlush(w, resp.Body)
 
 	if p.cfg.Verbose {
 		fmt.Printf("Proxied %s %s -> %s (%d)\n", r.Method, r.URL.Path, target, resp.StatusCode)
+	}
+}
+
+// copyAndFlush streams src to w, flushing after every chunk when w supports
+// http.Flusher. This preserves real-time delivery of Server-Sent Events
+// (text/event-stream), which both the Anthropic Messages API and the OpenAI
+// Responses API use for streaming responses. A plain io.Copy would let the
+// net/http response buffer hold events until it fills or the handler returns,
+// stalling interactive agents.
+func copyAndFlush(w http.ResponseWriter, src io.Reader) {
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 32*1024)
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if rerr != nil {
+			return
+		}
 	}
 }
 

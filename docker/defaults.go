@@ -4,15 +4,15 @@ import _ "embed"
 
 // Dockerfile is the default sandbox image definition.
 //
-//go:embed Dockerfile
+//go:embed sandbox/Dockerfile
 var Dockerfile []byte
 
 // Entrypoint is the default container entrypoint script.
 //
-//go:embed entrypoint.sh
+//go:embed sandbox/entrypoint.sh
 var Entrypoint []byte
 
 // ProxyDockerfile is the Dockerfile for the auth proxy container image.
 //
-//go:embed auth-proxy.Dockerfile
+//go:embed proxy/Dockerfile
 var ProxyDockerfile []byte

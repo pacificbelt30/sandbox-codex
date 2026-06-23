@@ -96,88 +96,10 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	}
 	installScript := BuildInstallScript(allPkgs)
 
-	// Build environment variables
-	env := []string{
-		"CODEX_SANDBOX=1",
-	}
-
-	if m.proxy != nil {
-		token, err := m.proxy.IssueToken(name, opts.TokenTTL)
-		if err != nil {
-			return "", fmt.Errorf("issuing auth token: %w", err)
-		}
-		// ContainerEndpoint() returns the auth proxy URL reachable from workers.
-		containerProxyURL := m.proxy.ContainerEndpoint()
-		env = append(env,
-			"CODEX_AUTH_PROXY_URL="+containerProxyURL,
-			"CODEX_TOKEN="+token,
-			// Route all Responses API traffic through the proxy so the proxy can
-			// substitute credentials. OPENAI_BASE_URL overrides the Codex CLI default
-			// (https://chatgpt.com/backend-api/codex) in all auth modes.
-			"OPENAI_BASE_URL="+containerProxyURL+"/v1",
-		)
-		if fallbackURL := buildProxyFallbackURL(containerProxyURL); fallbackURL != "" {
-			fallbacks := make([]string, 0, 2)
-			if m.network != nil {
-				if gateway, err := m.network.GatewayAddr(); err == nil {
-					if u := buildProxyFallbackURLWithHost(containerProxyURL, gateway); u != "" {
-						fallbacks = append(fallbacks, u)
-					}
-				}
-			}
-			fallbacks = append(fallbacks, fallbackURL)
-
-			seen := map[string]struct{}{}
-			unique := make([]string, 0, len(fallbacks))
-			for _, u := range fallbacks {
-				if u == "" {
-					continue
-				}
-				if _, ok := seen[u]; ok {
-					continue
-				}
-				seen[u] = struct{}{}
-				unique = append(unique, u)
-			}
-			if len(unique) > 0 {
-				env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URLS="+strings.Join(unique, ","))
-			}
-		}
-		// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
-		// The proxy substitutes the host's real refresh_token so it never reaches
-		// the container. The short-lived token is embedded as ?cdx= for authentication
-		// because Codex CLI does not add custom headers to refresh requests.
-		if m.proxy.IsOAuthMode() {
-			env = append(env,
-				"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+containerProxyURL+"/oauth/token?cdx="+token,
-			)
-		}
-		if m.debug {
-			fmt.Fprintf(os.Stderr, "debug: issued token for %s (TTL=%ds)\n", name, opts.TokenTTL)
-		}
-	}
-
-	if opts.Task != "" {
-		env = append(env, "CODEX_TASK="+opts.Task)
-	}
-	if opts.Model != "" {
-		env = append(env, "CODEX_MODEL="+opts.Model)
-	}
-	if opts.ApprovalMode != "" && opts.ApprovalMode != ApprovalModeSuggest {
-		env = append(env, "CODEX_APPROVAL_MODE="+string(opts.ApprovalMode))
-	}
-	if opts.AgentsMD != "" {
-		env = append(env, "CODEX_AGENTS_MD="+opts.AgentsMD)
-	}
-	if installScript != "" {
-		env = append(env, "CODEX_INSTALL_SCRIPT="+installScript)
-	}
-
-	// When a custom container user is specified, the uid may not exist in the
-	// image's /etc/passwd, causing Docker to set HOME="/".
-	// Use a writable non-workspace home to avoid permission errors and avoid creating extra directories under /workspace.
-	if opts.ContainerUser != "" {
-		env = append(env, "HOME=/var/tmp/codex-home")
+	// Build environment variables (issues the auth token as a side effect).
+	env, err := m.buildEnv(name, opts, installScript)
+	if err != nil {
+		return "", err
 	}
 
 	mounts := []mount.Mount{
@@ -483,6 +405,134 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 	// codex is suspended and the bash prompt appears inside the container.
 	go func() { _, _ = io.Copy(resp.Conn, os.Stdin) }()
 	_, _ = io.Copy(os.Stdout, resp.Reader)
+}
+
+// buildEnv assembles the container environment, issuing a short-lived auth token
+// from the proxy when one is configured. The agent (codex/claude/shell) controls
+// which provider's proxy variables are injected:
+//   - codex / shell : OpenAI/Codex variables (CODEX_*, OPENAI_BASE_URL)
+//   - claude / shell: Anthropic variables (ANTHROPIC_*) when the proxy can serve them
+//
+// Containers always receive only a placeholder token; the proxy injects the real
+// credential on every outbound request.
+func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) ([]string, error) {
+	env := []string{
+		"CODEX_SANDBOX=1",
+		"DOCK_AGENT=" + string(opts.Agent),
+	}
+
+	if m.proxy != nil {
+		token, err := m.proxy.IssueToken(name, opts.TokenTTL)
+		if err != nil {
+			return nil, fmt.Errorf("issuing auth token: %w", err)
+		}
+		// ContainerEndpoint() returns the auth proxy URL reachable from workers.
+		containerProxyURL := m.proxy.ContainerEndpoint()
+		fallbacks := m.computeProxyFallbacks(containerProxyURL)
+
+		wantCodex := opts.Agent == AgentCodex || opts.Agent == AgentNone
+		wantClaude := opts.Agent == AgentClaude || opts.Agent == AgentNone
+
+		if wantCodex {
+			env = append(env,
+				"CODEX_AUTH_PROXY_URL="+containerProxyURL,
+				"CODEX_TOKEN="+token,
+				// Route all Responses API traffic through the proxy so the proxy can
+				// substitute credentials. OPENAI_BASE_URL overrides the Codex CLI default
+				// (https://chatgpt.com/backend-api/codex) in all auth modes.
+				"OPENAI_BASE_URL="+containerProxyURL+"/v1",
+			)
+			if len(fallbacks) > 0 {
+				env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URLS="+strings.Join(fallbacks, ","))
+			}
+			// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
+			// The proxy substitutes the host's real refresh_token so it never reaches
+			// the container. The short-lived token is embedded as ?cdx= for authentication
+			// because Codex CLI does not add custom headers to refresh requests.
+			if m.proxy.IsOAuthMode() {
+				env = append(env,
+					"CODEX_REFRESH_TOKEN_URL_OVERRIDE="+containerProxyURL+"/oauth/token?cdx="+token,
+				)
+			}
+		}
+
+		// Claude Code is fully env-driven: ANTHROPIC_BASE_URL points at the proxy's
+		// /anthropic route and ANTHROPIC_API_KEY carries the placeholder token. The
+		// proxy injects the host's real API key or OAuth bearer on outbound requests.
+		if wantClaude && m.proxy.IsAnthropicMode() {
+			env = append(env,
+				"ANTHROPIC_BASE_URL="+containerProxyURL+"/anthropic",
+				"ANTHROPIC_API_KEY="+token,
+			)
+			if len(fallbacks) > 0 {
+				// Fallback proxy roots; the entrypoint appends /anthropic to the
+				// reachable one. Reuses the same connectivity fallbacks as Codex.
+				env = append(env, "ANTHROPIC_PROXY_FALLBACK_URLS="+strings.Join(fallbacks, ","))
+			}
+		}
+
+		if m.debug {
+			fmt.Fprintf(os.Stderr, "debug: issued token for %s (TTL=%ds, agent=%q)\n", name, opts.TokenTTL, opts.Agent)
+		}
+	}
+
+	if opts.Task != "" {
+		env = append(env, "CODEX_TASK="+opts.Task)
+	}
+	if opts.Model != "" {
+		env = append(env, "CODEX_MODEL="+opts.Model)
+	}
+	if opts.ApprovalMode != "" && opts.ApprovalMode != ApprovalModeSuggest {
+		env = append(env, "CODEX_APPROVAL_MODE="+string(opts.ApprovalMode))
+	}
+	if opts.AgentsMD != "" {
+		env = append(env, "CODEX_AGENTS_MD="+opts.AgentsMD)
+	}
+	if installScript != "" {
+		env = append(env, "CODEX_INSTALL_SCRIPT="+installScript)
+	}
+
+	// When a custom container user is specified, the uid may not exist in the
+	// image's /etc/passwd, causing Docker to set HOME="/".
+	// Use a writable non-workspace home to avoid permission errors and avoid creating extra directories under /workspace.
+	if opts.ContainerUser != "" {
+		env = append(env, "HOME=/var/tmp/codex-home")
+	}
+
+	return env, nil
+}
+
+// computeProxyFallbacks returns the de-duplicated list of fallback proxy root
+// URLs a worker should try when the primary (DNS-based) endpoint is unreachable.
+// Only applies when the primary host is the codex-auth-proxy container alias.
+func (m *Manager) computeProxyFallbacks(primary string) []string {
+	fallbackURL := buildProxyFallbackURL(primary)
+	if fallbackURL == "" {
+		return nil
+	}
+	fallbacks := make([]string, 0, 2)
+	if m.network != nil {
+		if gateway, err := m.network.GatewayAddr(); err == nil {
+			if u := buildProxyFallbackURLWithHost(primary, gateway); u != "" {
+				fallbacks = append(fallbacks, u)
+			}
+		}
+	}
+	fallbacks = append(fallbacks, fallbackURL)
+
+	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(fallbacks))
+	for _, u := range fallbacks {
+		if u == "" {
+			continue
+		}
+		if _, ok := seen[u]; ok {
+			continue
+		}
+		seen[u] = struct{}{}
+		unique = append(unique, u)
+	}
+	return unique
 }
 
 func buildCodexArgs(opts RunOptions) []string {

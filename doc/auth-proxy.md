@@ -10,7 +10,7 @@
 
 Auth Proxy は codex-dock のセキュリティの核となるコンポーネントです。
 コンテナに実際の API キーや OAuth クレデンシャルを渡さず、短命トークンを介して安全に認証情報を提供します。
-Codex CLI が呼ぶすべての OpenAI API トラフィックをプロキシし、**コンテナが保持するのはプレースホルダートークンのみ**とすることで、本物のクレデンシャルがコンテナに届かない構造を実現します。
+**OpenAI（Codex）と Anthropic（Claude Code）の両方**に対応し、エージェントが呼ぶすべての API トラフィックをプロキシして、**コンテナが保持するのはプレースホルダートークンのみ**とすることで、本物のクレデンシャルがコンテナに届かない構造を実現します。1 つのプロキシで両プロバイダの認証情報を独立に読み込み、両エージェントに同時にサービスできます。
 
 ---
 
@@ -49,8 +49,9 @@ codex-dock proxy serve --listen 0.0.0.0:18080 --admin-secret <シークレット
 │  │                                                                  │ │
 │  │  GET  /token        トークン検証 → クレデンシャル返却            │ │
 │  │  POST /oauth/token  OAuthトークンリフレッシュ中継                │ │
-│  │  ANY  /v1/*         Responses API リバースプロキシ               │ │
+│  │  ANY  /v1/*         OpenAI Responses API リバースプロキシ        │ │
 │  │  ANY  /chatgpt/*    ChatGPT backend-api プロキシ                 │ │
+│  │  ANY  /anthropic/*  Anthropic Messages API リバースプロキシ      │ │
 │  │  GET  /health       ヘルスチェック                               │ │
 │  │  POST /revoke       トークン失効                                 │ │
 │  │  POST /admin/issue  トークン発行（管理用）                       │ │
@@ -126,6 +127,35 @@ codex-dock proxy serve --listen 0.0.0.0:18080 --admin-secret <シークレット
 
 > **セキュリティ**: `refresh_token` および本物の `access_token` はコンテナに渡されません。
 > コンテナが保持するのは CODEX_TOKEN と同一のプレースホルダーのみで、プロキシがすべての送信リクエストの Authorization ヘッダーを本物の access_token で差し替えます。
+
+### Anthropic モード（Claude Code）
+
+Claude Code は完全に環境変数駆動です。`codex-dock run --agent claude` でコンテナに以下を注入します。
+
+- `ANTHROPIC_BASE_URL=http://<proxy>/anthropic`
+- `ANTHROPIC_API_KEY=cdx-<hex64>`（プレースホルダー、CODEX_TOKEN と同一）
+
+プロキシは `/anthropic/*` への全リクエストでホストの本物のクレデンシャルを注入します。
+認証情報は OpenAI とは独立に読み込まれます（優先順位: 環境変数 > 保存ファイル > OAuth）。
+
+| ホストの認証種別 | 認証情報ソース | プロキシが注入するヘッダー |
+|---|---|---|
+| API キー | `ANTHROPIC_API_KEY` 環境変数 / `~/.config/codex-dock/anthropic-apikey` | `x-api-key: sk-ant-…`（`Authorization` は削除） |
+| OAuth サブスクリプション | `~/.claude/.credentials.json`（`claudeAiOauth`） | `Authorization: Bearer …` + `anthropic-beta: oauth-2025-04-20`（`x-api-key` は削除） |
+
+```
+コンテナ (claude)                          ホスト (Auth Proxy)
+  │  POST /anthropic/v1/messages                  │
+  │  x-api-key: cdx-<hex64>  ← プレースホルダー    │
+  │ ────────────────────────────────────────────▶ │
+  │                          x-api-key を本物に差し替え（API キーモード）
+  │                          または Authorization: Bearer + anthropic-beta（OAuth モード）
+  │                          転送先: https://api.anthropic.com/v1/messages
+```
+
+> **OAuth トークンのリフレッシュ**: アクセストークンの有効期限が近い場合、プロキシが
+> `refresh_token` を使って自前でリフレッシュします（`refreshAnthropicOAuthIfNeeded`）。
+> `refresh_token` はホストに留まり、コンテナには一切渡りません。Codex の OAuth フローと同じ原則です。
 
 ---
 

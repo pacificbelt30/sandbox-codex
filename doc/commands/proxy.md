@@ -35,8 +35,8 @@ codex-dock proxy build [OPTIONS]
 
 `-f` を省略した場合、以下の順序で自動検出します：
 
-1. カレントディレクトリの `auth-proxy.Dockerfile`
-2. カレントディレクトリの `docker/auth-proxy.Dockerfile`
+1. カレントディレクトリの `docker/proxy/Dockerfile`
+2. カレントディレクトリの `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`（旧レイアウトの後方互換）
 3. `~/.config/codex-dock/auth-proxy.Dockerfile`（存在しない場合は組み込みデフォルトを自動書き出し）
 
 > ビルドコンテキストは常にカレントディレクトリ（`.`）です。Auth Proxy イメージは Go ソースから
