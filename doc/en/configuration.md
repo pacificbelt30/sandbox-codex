@@ -189,15 +189,33 @@ approval_mode = "suggest"
 
 ---
 
-### `firewall.proxy_container_url`
+### `[firewall]` section — dock-net firewall defaults
 
-Default value for the `--proxy-container-url` flag of `codex-dock run` and
-`codex-dock firewall create`.
+Keys under `[firewall]` apply to **both `codex-dock run` and
+`codex-dock firewall create`**. Set a value here once instead of passing the
+flag on every command.
 
 ```toml
 [firewall]
+# Auth Proxy URL (always allowed destination)
 proxy_container_url = "http://codex-auth-proxy:18080"
+# Extra always-allowed destinations (internal registry, internal API, ...)
+allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
 ```
+
+**Replacing repeated flags with config:**
+
+```bash
+# Before — flags on every run
+codex-dock run --agent claude \
+  --proxy-container-url http://codex-auth-proxy:18080 \
+  --allow-host 203.0.113.10:5000
+
+# After — config makes them implicit
+codex-dock run --agent claude
+```
+
+#### `firewall.proxy_container_url`
 
 | Item | Value |
 |---|---|
@@ -205,26 +223,26 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 | Default | `"http://codex-auth-proxy:18080"` |
 | Corresponding flags | `run --proxy-container-url`, `firewall create --proxy-container-url` |
 
----
+The Auth Proxy URL reachable from worker containers. This destination is always
+allowed through the firewall.
 
-### `firewall.allow_hosts`
-
-A list of extra `IP:PORT` destinations to always allow through the dock-net
-firewall. Equivalent to passing `--allow-host` repeatedly.
-
-```toml
-[firewall]
-allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
-```
+#### `firewall.allow_hosts`
 
 | Item | Value |
 |---|---|
 | Type | array of strings |
 | Default | unset (empty) |
-| Corresponding flags | `run --allow-host`, `firewall create --allow-host` |
+| Corresponding flags | `run --allow-host`, `firewall create --allow-host` (repeatable) |
 
-> IP literals only (IPv6 as `[::1]:PORT`); hostnames are not accepted.
-> A CLI `--allow-host` overrides this list.
+A list of extra destinations to always allow out of the sandbox.
+
+> - Format is `"IP:PORT"`. **IP literals only** — hostnames are not resolved.
+> - IPv6 must be bracketed (e.g. `"[2001:db8::1]:443"`).
+> - Passing `--allow-host` on the command line **overrides** this list (it does
+>   not append).
+
+> **Note**: to skip firewall application entirely for a `codex-dock run`, use the
+> `--no-firewall` flag (it is not a config key).
 
 ---
 

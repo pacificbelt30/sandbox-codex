@@ -79,7 +79,7 @@ func TestApplyFirewallConfigDefaults_FlagPriority(t *testing.T) {
 	}
 }
 
-func TestPrintFirewallRules(t *testing.T) {
+func TestFormatFirewallRules(t *testing.T) {
 	info := &network.FirewallInfo{
 		ChainExists: true,
 		Rules: []network.FirewallRule{
@@ -89,9 +89,7 @@ func TestPrintFirewallRules(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	printFirewallRules(&buf, info)
-	out := buf.String()
+	out := formatFirewallRules(info)
 
 	for _, want := range []string{
 		"ALLOW  172.17.0.1/32",
@@ -102,16 +100,15 @@ func TestPrintFirewallRules(t *testing.T) {
 		"default: hand back to Docker rules",
 	} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("printFirewallRules() missing %q\n%s", want, out)
+			t.Fatalf("formatFirewallRules() missing %q\n%s", want, out)
 		}
 	}
 }
 
-func TestPrintFirewallRulesChainMissing(t *testing.T) {
-	var buf bytes.Buffer
-	printFirewallRules(&buf, &network.FirewallInfo{ChainExists: false})
-	if !strings.Contains(buf.String(), "chain not installed") {
-		t.Fatalf("printFirewallRules() chain-missing hint absent\n%s", buf.String())
+func TestFormatFirewallRulesChainMissing(t *testing.T) {
+	out := formatFirewallRules(&network.FirewallInfo{ChainExists: false})
+	if !strings.Contains(out, "chain not installed") {
+		t.Fatalf("formatFirewallRules() chain-missing hint absent\n%s", out)
 	}
 }
 

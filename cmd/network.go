@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
@@ -216,23 +215,23 @@ var firewallStatusCmd = &cobra.Command{
 			fmt.Println("CODEX-DOCK final jump: (unknown)")
 		}
 
-		printFirewallRules(cmd.OutOrStdout(), info)
+		fmt.Print(formatFirewallRules(info))
 		return nil
 	},
 }
 
-// printFirewallRules renders the parsed CODEX-DOCK chain as an ordered
+// formatFirewallRules renders the parsed CODEX-DOCK chain as an ordered
 // allow/block list so operators can see exactly what is permitted and denied.
-func printFirewallRules(w io.Writer, info *network.FirewallInfo) {
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Rules (CODEX-DOCK chain, evaluated top to bottom):")
+func formatFirewallRules(info *network.FirewallInfo) string {
+	var b strings.Builder
+	b.WriteString("\nRules (CODEX-DOCK chain, evaluated top to bottom):\n")
 	if !info.ChainExists {
-		fmt.Fprintln(w, "  (chain not installed — run: codex-dock firewall create)")
-		return
+		b.WriteString("  (chain not installed — run: codex-dock firewall create)\n")
+		return b.String()
 	}
 	if len(info.Rules) == 0 {
-		fmt.Fprintln(w, "  (no rules)")
-		return
+		b.WriteString("  (no rules)\n")
+		return b.String()
 	}
 	for _, r := range info.Rules {
 		marker := "ALLOW"
@@ -251,8 +250,9 @@ func printFirewallRules(w io.Writer, info *network.FirewallInfo) {
 			}
 			proto = fmt.Sprintf("%s/%d", scheme, r.Port)
 		}
-		fmt.Fprintf(w, "  %-5s  %-18s  %-9s  %s\n", marker, dest, proto, firewallRuleLabel(r))
+		b.WriteString(fmt.Sprintf("  %-5s  %-18s  %-9s  %s\n", marker, dest, proto, firewallRuleLabel(r)))
 	}
+	return b.String()
 }
 
 // firewallRuleLabel maps a rule's iptables comment to a human-readable note.

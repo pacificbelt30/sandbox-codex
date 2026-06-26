@@ -190,15 +190,32 @@ approval_mode = "suggest"
 
 ---
 
-### `firewall.proxy_container_url`
+### `[firewall]` セクション — dock-net ファイアウォールの既定値
 
-`codex-dock run` / `codex-dock firewall create` の `--proxy-container-url`
-デフォルト値を指定します。
+`[firewall]` の各キーは **`codex-dock run` と `codex-dock firewall create` の両方**に効きます。
+毎回フラグで渡していた値をここに 1 度だけ書いておけます。
 
 ```toml
 [firewall]
+# Auth Proxy の URL（常に許可される宛先）
 proxy_container_url = "http://codex-auth-proxy:18080"
+# 追加で常に許可する宛先（社内レジストリや社内 API など）
+allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
 ```
+
+**毎回フラグを書く代わりに config で固定する例：**
+
+```bash
+# Before — 毎回フラグ指定が必要
+codex-dock run --agent claude \
+  --proxy-container-url http://codex-auth-proxy:18080 \
+  --allow-host 203.0.113.10:5000
+
+# After — config に書いておけば不要
+codex-dock run --agent claude
+```
+
+#### `firewall.proxy_container_url`
 
 | 項目 | 内容 |
 |---|---|
@@ -206,26 +223,24 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 | デフォルト | `"http://codex-auth-proxy:18080"` |
 | 対応フラグ | `run --proxy-container-url`, `firewall create --proxy-container-url` |
 
----
+ワーカーコンテナから到達する Auth Proxy の URL。この宛先は常に許可されます。
 
-### `firewall.allow_hosts`
-
-dock-net ファイアウォールで常に許可する追加の宛先 `IP:PORT` のリスト。
-`--allow-host` を繰り返し指定するのと同等です。
-
-```toml
-[firewall]
-allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
-```
+#### `firewall.allow_hosts`
 
 | 項目 | 内容 |
 |---|---|
 | 型 | 文字列の配列 |
 | デフォルト | 未設定（空） |
-| 対応フラグ | `run --allow-host`, `firewall create --allow-host` |
+| 対応フラグ | `run --allow-host`, `firewall create --allow-host`（繰り返し指定可） |
 
-> IP リテラルのみ指定可能（IPv6 は `[::1]:PORT`）。ホスト名は不可。
-> コマンドラインで `--allow-host` を指定した場合は、このリストは上書きされます。
+サンドボックスから常に許可したい追加宛先のリスト。
+
+> - 形式は `"IP:PORT"`。**IP リテラルのみ**で、ホスト名は名前解決されません（不可）。
+> - IPv6 は角括弧で囲みます（例: `"[2001:db8::1]:443"`）。
+> - コマンドラインで `--allow-host` を渡すと、このリストは**上書き**されます（追記ではありません）。
+
+> **メモ**: `codex-dock run` でファイアウォール適用自体を止めたい場合は
+> `--no-firewall` フラグを使います（config キーではありません）。
 
 ---
 

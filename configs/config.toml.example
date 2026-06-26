@@ -1,48 +1,87 @@
+# =============================================================================
 # codex-dock configuration file
-# Place at ~/.config/codex-dock/config.toml
+#
+#   Location : ~/.config/codex-dock/config.toml
+#   Format   : TOML
+#   Purpose  : change the default value of command-line flags so you don't have
+#              to repeat them on every command.
+#
+# Precedence (highest first):
+#   1. command-line flag        (e.g. --image, --allow-host)
+#   2. environment variable     (CODEX_DOCK_*)
+#   3. this config file
+#   4. built-in default
+#
+# Every key below is OPTIONAL. Delete a line to fall back to the built-in
+# default. Lines starting with `#` are comments / disabled examples.
+# =============================================================================
 
-# Default Docker image for sandbox containers
+
+# -----------------------------------------------------------------------------
+# Global defaults
+# -----------------------------------------------------------------------------
+
+# Docker image used for sandbox (worker) containers.   flag: --image / -i
 default_image = "codex-dock:latest"
 
-# Default Docker image for the auth proxy container
+# Docker image used for the auth proxy container.      (proxy build / run)
 proxy_image = "codex-dock-proxy:latest"
 
-# Default token TTL in seconds
+# Auth-proxy token lifetime, in seconds.               flag: --token-ttl
+# Shorter = safer if a token leaks. 1800 = 30 min, 3600 = 1 h.
 default_token_ttl = 3600
 
-# Docker network name
+# Name of the Docker network workers attach to.        env: CODEX_DOCK_NETWORK_NAME
 network_name = "dock-net"
 
-# Enable verbose output by default
+# Print extra operational logs by default.             flag: --verbose / -v
 verbose = false
 
-# Enable debug output by default
+# Print debug logs by default.                         flag: --debug
 debug = false
 
+
+# -----------------------------------------------------------------------------
+# [run] — defaults specific to `codex-dock run`
+# -----------------------------------------------------------------------------
 [run]
-# Default image for `codex-dock run --image`
-# If unset, `default_image` is used.
+
+# Image for `run` only. If unset, the global `default_image` is used.
 image = "codex-dock:latest"
 
-# Default token TTL for `codex-dock run --token-ttl`
-# If unset, `default_token_ttl` is used.
+# Token TTL for `run` only. If unset, the global `default_token_ttl` is used.
 token_ttl = 3600
 
-# Default user mode for `codex-dock run --user`
-# current | codex | dir | "" | <uid>[:<gid>]
+# Which user the agent runs as inside the container.   flag: --user
+#   current        host user's uid:gid (default)
+#   codex          the image's codex user (1001:1001)
+#   dir            owner of the project directory
+#   ""             image default user
+#   <uid>[:<gid>]  explicit, e.g. "1000:1000"
 user = "current"
 
-# Default approval mode for `codex-dock run --approval-mode`
-# suggest | auto-edit | full-auto | danger
+# Codex CLI approval mode.                             flag: --approval-mode
+#   suggest | auto-edit | full-auto | danger
 approval_mode = "suggest"
 
+
+# -----------------------------------------------------------------------------
+# [firewall] — defaults for the dock-net egress firewall
+#
+# These apply to BOTH `codex-dock run` and `codex-dock firewall create`.
+# Set them here once instead of passing the flags every time.
+# -----------------------------------------------------------------------------
 [firewall]
-# Default Auth Proxy URL reachable from worker containers.
-# Used by `codex-dock run` and `codex-dock firewall create` when
-# --proxy-container-url is not given.
+
+# Auth Proxy URL reachable from worker containers.     flag: --proxy-container-url
+# This destination is always allowed through the firewall.
 proxy_container_url = "http://codex-auth-proxy:18080"
 
-# Extra IP:PORT destinations to always allow through the dock-net firewall.
-# Equivalent to passing --allow-host repeatedly. IP literals only
-# (IPv6 as "[::1]:PORT"). A CLI --allow-host overrides this list.
+# Extra destinations to ALWAYS allow out of the sandbox.
+#                                                      flag: --allow-host (repeatable)
+# Format : "IP:PORT" (IP literals only — hostnames are NOT resolved).
+#          IPv6 must be bracketed, e.g. "[2001:db8::1]:443".
+# Note   : passing --allow-host on the command line OVERRIDES this list.
+#
+# Example: always permit an internal container registry and an internal API.
 # allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
