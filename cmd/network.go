@@ -8,6 +8,7 @@ import (
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -87,6 +88,8 @@ var firewallCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create dock-net firewall rules",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		applyFirewallConfigDefaults(cmd)
+
 		mgr, err := network.NewManager()
 		if err != nil {
 			return err
@@ -285,6 +288,23 @@ func init() {
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
 	firewallCreateCmd.Flags().StringArrayVar(&firewallAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the firewall (repeatable)")
+}
+
+// applyFirewallConfigDefaults fills firewall flags from the [firewall] section
+// of config.toml when they were not explicitly set on the command line.
+// Precedence: CLI flag > config file > built-in default.
+func applyFirewallConfigDefaults(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	if !flags.Changed("proxy-container-url") {
+		if v := viper.GetString("firewall.proxy_container_url"); v != "" {
+			networkProxyContainerURL = v
+		}
+	}
+
+	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
+		firewallAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
+	}
 }
 
 // firewallVerdict reduces the low-level firewall status into a single headline

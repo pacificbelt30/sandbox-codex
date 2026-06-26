@@ -7,7 +7,77 @@ import (
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
+
+func newFirewallCreateFlagSet() *cobra.Command {
+	cmd := &cobra.Command{Use: "create"}
+	cmd.Flags().String("proxy-container-url", "http://codex-auth-proxy:18080", "")
+	cmd.Flags().StringArray("allow-host", nil, "")
+	return cmd
+}
+
+func TestApplyFirewallConfigDefaults(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevURL := networkProxyContainerURL
+	prevHosts := firewallAllowHosts
+	t.Cleanup(func() {
+		networkProxyContainerURL = prevURL
+		firewallAllowHosts = prevHosts
+	})
+
+	networkProxyContainerURL = "http://codex-auth-proxy:18080"
+	firewallAllowHosts = nil
+
+	viper.Set("firewall.proxy_container_url", "http://proxy.internal:9000")
+	viper.Set("firewall.allow_hosts", []string{"203.0.113.10:5000", "198.51.100.7:443"})
+
+	applyFirewallConfigDefaults(newFirewallCreateFlagSet())
+
+	if networkProxyContainerURL != "http://proxy.internal:9000" {
+		t.Errorf("networkProxyContainerURL = %q; want config value", networkProxyContainerURL)
+	}
+	if len(firewallAllowHosts) != 2 || firewallAllowHosts[0] != "203.0.113.10:5000" {
+		t.Errorf("firewallAllowHosts = %v; want config list", firewallAllowHosts)
+	}
+}
+
+func TestApplyFirewallConfigDefaults_FlagPriority(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevURL := networkProxyContainerURL
+	prevHosts := firewallAllowHosts
+	t.Cleanup(func() {
+		networkProxyContainerURL = prevURL
+		firewallAllowHosts = prevHosts
+	})
+
+	networkProxyContainerURL = "http://flag.example:1234"
+	firewallAllowHosts = []string{"192.0.2.1:8080"}
+
+	viper.Set("firewall.proxy_container_url", "http://proxy.internal:9000")
+	viper.Set("firewall.allow_hosts", []string{"203.0.113.10:5000"})
+
+	cmd := newFirewallCreateFlagSet()
+	if err := cmd.Flags().Set("proxy-container-url", "http://flag.example:1234"); err != nil {
+		t.Fatalf("set proxy-container-url: %v", err)
+	}
+	if err := cmd.Flags().Set("allow-host", "192.0.2.1:8080"); err != nil {
+		t.Fatalf("set allow-host: %v", err)
+	}
+
+	applyFirewallConfigDefaults(cmd)
+
+	if networkProxyContainerURL != "http://flag.example:1234" {
+		t.Errorf("networkProxyContainerURL = %q; want flag value", networkProxyContainerURL)
+	}
+	if len(firewallAllowHosts) != 1 || firewallAllowHosts[0] != "192.0.2.1:8080" {
+		t.Errorf("firewallAllowHosts = %v; want flag value", firewallAllowHosts)
+	}
+}
 
 func TestPrintFirewallRules(t *testing.T) {
 	info := &network.FirewallInfo{

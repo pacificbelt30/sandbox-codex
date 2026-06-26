@@ -189,6 +189,45 @@ approval_mode = "suggest"
 
 ---
 
+### `firewall.proxy_container_url`
+
+Default value for the `--proxy-container-url` flag of `codex-dock run` and
+`codex-dock firewall create`.
+
+```toml
+[firewall]
+proxy_container_url = "http://codex-auth-proxy:18080"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"http://codex-auth-proxy:18080"` |
+| Corresponding flags | `run --proxy-container-url`, `firewall create --proxy-container-url` |
+
+---
+
+### `firewall.allow_hosts`
+
+A list of extra `IP:PORT` destinations to always allow through the dock-net
+firewall. Equivalent to passing `--allow-host` repeatedly.
+
+```toml
+[firewall]
+allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
+```
+
+| Item | Value |
+|---|---|
+| Type | array of strings |
+| Default | unset (empty) |
+| Corresponding flags | `run --allow-host`, `firewall create --allow-host` |
+
+> IP literals only (IPv6 as `[::1]:PORT`); hostnames are not accepted.
+> A CLI `--allow-host` overrides this list.
+
+---
+
 ### `network_name`
 
 Docker network name to use.
@@ -283,6 +322,13 @@ user = "current"
 
 # run subcommand default approval mode
 approval_mode = "suggest"
+
+[firewall]
+# Default Auth Proxy URL (--proxy-container-url)
+proxy_container_url = "http://codex-auth-proxy:18080"
+
+# Extra destinations always allowed (equivalent to --allow-host)
+allow_hosts = ["203.0.113.10:5000"]
 ```
 
 ---

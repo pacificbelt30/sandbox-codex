@@ -190,6 +190,45 @@ approval_mode = "suggest"
 
 ---
 
+### `firewall.proxy_container_url`
+
+`codex-dock run` / `codex-dock firewall create` の `--proxy-container-url`
+デフォルト値を指定します。
+
+```toml
+[firewall]
+proxy_container_url = "http://codex-auth-proxy:18080"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"http://codex-auth-proxy:18080"` |
+| 対応フラグ | `run --proxy-container-url`, `firewall create --proxy-container-url` |
+
+---
+
+### `firewall.allow_hosts`
+
+dock-net ファイアウォールで常に許可する追加の宛先 `IP:PORT` のリスト。
+`--allow-host` を繰り返し指定するのと同等です。
+
+```toml
+[firewall]
+allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列の配列 |
+| デフォルト | 未設定（空） |
+| 対応フラグ | `run --allow-host`, `firewall create --allow-host` |
+
+> IP リテラルのみ指定可能（IPv6 は `[::1]:PORT`）。ホスト名は不可。
+> コマンドラインで `--allow-host` を指定した場合は、このリストは上書きされます。
+
+---
+
 ### `network_name`
 
 使用する Docker ネットワーク名。
@@ -284,6 +323,13 @@ user = "current"
 
 # run サブコマンドの承認モード
 approval_mode = "suggest"
+
+[firewall]
+# Auth Proxy URL のデフォルト（--proxy-container-url）
+proxy_container_url = "http://codex-auth-proxy:18080"
+
+# 追加で常に許可する宛先（--allow-host 相当）
+allow_hosts = ["203.0.113.10:5000"]
 ```
 
 ---

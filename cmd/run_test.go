@@ -185,6 +185,41 @@ func TestApplyRunConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestApplyRunConfigDefaults_Firewall(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevURL := proxyContainerURL
+	prevHosts := runAllowHosts
+	t.Cleanup(func() {
+		proxyContainerURL = prevURL
+		runAllowHosts = prevHosts
+	})
+
+	proxyContainerURL = "http://codex-auth-proxy:18080"
+	runAllowHosts = nil
+
+	viper.Set("firewall.proxy_container_url", "http://proxy.internal:9000")
+	viper.Set("firewall.allow_hosts", []string{"203.0.113.10:5000"})
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "http://codex-auth-proxy:18080", "")
+	cmd.Flags().StringArray("allow-host", nil, "")
+
+	applyRunConfigDefaults(cmd)
+
+	if proxyContainerURL != "http://proxy.internal:9000" {
+		t.Errorf("proxyContainerURL = %q; want config value", proxyContainerURL)
+	}
+	if len(runAllowHosts) != 1 || runAllowHosts[0] != "203.0.113.10:5000" {
+		t.Errorf("runAllowHosts = %v; want config list", runAllowHosts)
+	}
+}
+
 func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)

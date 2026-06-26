@@ -35,3 +35,14 @@ user = "current"
 # Default approval mode for `codex-dock run --approval-mode`
 # suggest | auto-edit | full-auto | danger
 approval_mode = "suggest"
+
+[firewall]
+# Default Auth Proxy URL reachable from worker containers.
+# Used by `codex-dock run` and `codex-dock firewall create` when
+# --proxy-container-url is not given.
+proxy_container_url = "http://codex-auth-proxy:18080"
+
+# Extra IP:PORT destinations to always allow through the dock-net firewall.
+# Equivalent to passing --allow-host repeatedly. IP literals only
+# (IPv6 as "[::1]:PORT"). A CLI --allow-host overrides this list.
+# allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]

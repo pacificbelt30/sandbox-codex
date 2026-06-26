@@ -239,6 +239,16 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	if !flags.Changed("user") && viper.IsSet("run.user") {
 		userMode = viper.GetString("run.user")
 	}
+
+	if !flags.Changed("proxy-container-url") {
+		if v := viper.GetString("firewall.proxy_container_url"); v != "" {
+			proxyContainerURL = v
+		}
+	}
+
+	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
+		runAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
+	}
 }
 
 func allowedHostPort(rawURL string) (int, bool) {
