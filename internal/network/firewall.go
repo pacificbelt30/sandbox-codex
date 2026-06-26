@@ -50,6 +50,24 @@ type FirewallStatus struct {
 	JumpRuleExists           bool
 	DockerUserDefaultPolicy  string
 	ManagedChainFinalVerdict string
+	Rules                    []FirewallRule
+}
+
+// FirewallRule is a single parsed rule from the managed CODEX-DOCK chain,
+// in evaluation order.
+type FirewallRule struct {
+	// Action is "allow" (RETURN/ACCEPT) or "block" (DROP).
+	Action string
+	// Verdict is the raw iptables target: RETURN, ACCEPT, or DROP.
+	Verdict string
+	// Destination is the -d CIDR/IP (empty means "any").
+	Destination string
+	// Protocol is the -p value (e.g. "tcp"), empty means any protocol.
+	Protocol string
+	// Port is the --dport value, 0 when the rule is not port-scoped.
+	Port int
+	// Comment is the rule's --comment tag, used to derive a friendly label.
+	Comment string
 }
 
 type firewallConfig struct {
@@ -292,6 +310,7 @@ func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (Fire
 		status.ChainExists = true
 		if out, err := f.runOutput(ctx, "-S", managedChain); err == nil {
 			status.ManagedChainFinalVerdict = managedChainFinalVerdict(out)
+			status.Rules = parseManagedChainRules(out)
 		}
 	} else if !errors.Is(err, ErrFirewallChainNotFound) {
 		return status, err
@@ -434,6 +453,60 @@ func managedChainFinalVerdict(out []byte) string {
 		return ""
 	}
 	return strings.TrimSpace(lastJump[idx+4:])
+}
+
+// parseManagedChainRules parses `iptables -S CODEX-DOCK` output into ordered
+// rules. Only `-A CODEX-DOCK ...` lines are considered; the `-N` chain
+// declaration is skipped.
+func parseManagedChainRules(out []byte) []FirewallRule {
+	prefix := "-A " + managedChain
+	var rules []FirewallRule
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		fields := strings.Fields(line)
+		rule := FirewallRule{}
+		for i := 0; i < len(fields); i++ {
+			switch fields[i] {
+			case "-d":
+				if i+1 < len(fields) {
+					rule.Destination = fields[i+1]
+					i++
+				}
+			case "-p":
+				if i+1 < len(fields) {
+					rule.Protocol = fields[i+1]
+					i++
+				}
+			case "--dport":
+				if i+1 < len(fields) {
+					if port, err := strconv.Atoi(fields[i+1]); err == nil {
+						rule.Port = port
+					}
+					i++
+				}
+			case "--comment":
+				if i+1 < len(fields) {
+					rule.Comment = strings.Trim(fields[i+1], `"`)
+					i++
+				}
+			case "-j":
+				if i+1 < len(fields) {
+					rule.Verdict = fields[i+1]
+					i++
+				}
+			}
+		}
+		if rule.Verdict == "DROP" {
+			rule.Action = "block"
+		} else {
+			rule.Action = "allow"
+		}
+		rules = append(rules, rule)
+	}
+	return rules
 }
 
 func IsFirewallWarning(err error) bool {

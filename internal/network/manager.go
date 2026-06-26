@@ -42,6 +42,7 @@ type FirewallInfo struct {
 	JumpRuleExists           bool
 	DockerUserDefaultPolicy  string
 	ManagedChainFinalVerdict string
+	Rules                    []FirewallRule
 }
 
 // Manager handles the lifecycle of the dock-net Docker network.
@@ -236,6 +237,7 @@ func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
 		JumpRuleExists:           st.JumpRuleExists,
 		DockerUserDefaultPolicy:  st.DockerUserDefaultPolicy,
 		ManagedChainFinalVerdict: st.ManagedChainFinalVerdict,
+		Rules:                    st.Rules,
 	}, nil
 }
 

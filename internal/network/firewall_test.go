@@ -7,6 +7,32 @@ import (
 	"testing"
 )
 
+func TestParseManagedChainRules(t *testing.T) {
+	out := []byte(strings.Join([]string{
+		"-N CODEX-DOCK",
+		`-A CODEX-DOCK -d 172.17.0.1/32 -p tcp -m tcp --dport 18080 -m comment --comment "codex-dock-allow-host" -j RETURN`,
+		`-A CODEX-DOCK -d 10.200.0.0/24 -p tcp -m tcp --dport 18080 -m comment --comment "codex-dock-allow-bridge-subnet" -j RETURN`,
+		`-A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment "codex-dock-drop-private" -j DROP`,
+		"-A CODEX-DOCK -j RETURN",
+		"",
+	}, "\n"))
+
+	rules := parseManagedChainRules(out)
+	if len(rules) != 4 {
+		t.Fatalf("parseManagedChainRules() len = %d, want 4\n%+v", len(rules), rules)
+	}
+
+	if r := rules[0]; r.Action != "allow" || r.Destination != "172.17.0.1/32" || r.Protocol != "tcp" || r.Port != 18080 || r.Comment != "codex-dock-allow-host" || r.Verdict != "RETURN" {
+		t.Fatalf("rules[0] = %+v", r)
+	}
+	if r := rules[2]; r.Action != "block" || r.Destination != "10.0.0.0/8" || r.Port != 0 || r.Verdict != "DROP" || r.Comment != "codex-dock-drop-private" {
+		t.Fatalf("rules[2] = %+v", r)
+	}
+	if r := rules[3]; r.Action != "allow" || r.Destination != "" || r.Verdict != "RETURN" || r.Comment != "" {
+		t.Fatalf("rules[3] = %+v", r)
+	}
+}
+
 func TestIsFirewallWarning(t *testing.T) {
 	tests := []struct {
 		name string

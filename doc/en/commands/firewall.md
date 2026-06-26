@@ -68,6 +68,23 @@ when the firewall is not active it suggests the next command to run
 - `DOCKER-USER` default policy
 - Final jump verdict in `CODEX-DOCK`
 
+Finally it lists the **allow/block rules** of the `CODEX-DOCK` chain in evaluation
+order, so you can see at a glance which destinations are `ALLOW`ed or `BLOCK`ed —
+including any extra destinations added with `--allow-host`.
+
+```text
+Rules (CODEX-DOCK chain, evaluated top to bottom):
+  ALLOW  172.17.0.1/32       tcp/18080  auth proxy / allowed host
+  ALLOW  203.0.113.10/32     tcp/5000   auth proxy / allowed host
+  ALLOW  10.200.0.0/24       tcp/18080  dock-net subnet -> proxy
+  BLOCK  10.0.0.0/8          all        private/link-local
+  BLOCK  172.16.0.0/12       all        private/link-local
+  BLOCK  192.168.0.0/16      all        private/link-local
+  BLOCK  169.254.0.0/16      all        private/link-local
+  BLOCK  127.0.0.0/8         all        private/link-local
+  ALLOW  any                 all        default: hand back to Docker rules
+```
+
 ---
 
 ## `firewall rm`

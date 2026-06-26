@@ -2,11 +2,48 @@ package cmd
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
 )
+
+func TestPrintFirewallRules(t *testing.T) {
+	info := &network.FirewallInfo{
+		ChainExists: true,
+		Rules: []network.FirewallRule{
+			{Action: "allow", Verdict: "RETURN", Destination: "172.17.0.1/32", Protocol: "tcp", Port: 18080, Comment: "codex-dock-allow-host"},
+			{Action: "block", Verdict: "DROP", Destination: "10.0.0.0/8", Comment: "codex-dock-drop-private"},
+			{Action: "allow", Verdict: "RETURN"},
+		},
+	}
+
+	var buf bytes.Buffer
+	printFirewallRules(&buf, info)
+	out := buf.String()
+
+	for _, want := range []string{
+		"ALLOW  172.17.0.1/32",
+		"tcp/18080",
+		"auth proxy / allowed host",
+		"BLOCK  10.0.0.0/8",
+		"private/link-local",
+		"default: hand back to Docker rules",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("printFirewallRules() missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestPrintFirewallRulesChainMissing(t *testing.T) {
+	var buf bytes.Buffer
+	printFirewallRules(&buf, &network.FirewallInfo{ChainExists: false})
+	if !strings.Contains(buf.String(), "chain not installed") {
+		t.Fatalf("printFirewallRules() chain-missing hint absent\n%s", buf.String())
+	}
+}
 
 func TestFirewallVerdict(t *testing.T) {
 	tests := []struct {

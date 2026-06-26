@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
@@ -211,8 +212,63 @@ var firewallStatusCmd = &cobra.Command{
 		} else {
 			fmt.Println("CODEX-DOCK final jump: (unknown)")
 		}
+
+		printFirewallRules(cmd.OutOrStdout(), info)
 		return nil
 	},
+}
+
+// printFirewallRules renders the parsed CODEX-DOCK chain as an ordered
+// allow/block list so operators can see exactly what is permitted and denied.
+func printFirewallRules(w io.Writer, info *network.FirewallInfo) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Rules (CODEX-DOCK chain, evaluated top to bottom):")
+	if !info.ChainExists {
+		fmt.Fprintln(w, "  (chain not installed — run: codex-dock firewall create)")
+		return
+	}
+	if len(info.Rules) == 0 {
+		fmt.Fprintln(w, "  (no rules)")
+		return
+	}
+	for _, r := range info.Rules {
+		marker := "ALLOW"
+		if r.Action == "block" {
+			marker = "BLOCK"
+		}
+		dest := r.Destination
+		if dest == "" {
+			dest = "any"
+		}
+		proto := "all"
+		if r.Port > 0 {
+			scheme := r.Protocol
+			if scheme == "" {
+				scheme = "tcp"
+			}
+			proto = fmt.Sprintf("%s/%d", scheme, r.Port)
+		}
+		fmt.Fprintf(w, "  %-5s  %-18s  %-9s  %s\n", marker, dest, proto, firewallRuleLabel(r))
+	}
+}
+
+// firewallRuleLabel maps a rule's iptables comment to a human-readable note.
+func firewallRuleLabel(r network.FirewallRule) string {
+	switch r.Comment {
+	case "codex-dock-allow-host":
+		return "auth proxy / allowed host"
+	case "codex-dock-allow-bridge-subnet":
+		return "dock-net subnet -> proxy"
+	case "codex-dock-drop-private":
+		return "private/link-local"
+	case "":
+		if r.Destination == "" && r.Verdict == "RETURN" {
+			return "default: hand back to Docker rules"
+		}
+		return ""
+	default:
+		return r.Comment
+	}
 }
 
 func init() {

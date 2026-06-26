@@ -68,6 +68,23 @@ codex-dock firewall status
 - `DOCKER-USER` 既定ポリシー
 - `CODEX-DOCK` の最終 jump verdict
 
+最後に `CODEX-DOCK` チェーンの**許可/遮断ルール一覧**を評価順に表示します。
+どの宛先が `ALLOW`（通過）／`BLOCK`（遮断）されるか、`--allow-host` で追加した
+許可先も含めて一目で確認できます。
+
+```text
+Rules (CODEX-DOCK chain, evaluated top to bottom):
+  ALLOW  172.17.0.1/32       tcp/18080  auth proxy / allowed host
+  ALLOW  203.0.113.10/32     tcp/5000   auth proxy / allowed host
+  ALLOW  10.200.0.0/24       tcp/18080  dock-net subnet -> proxy
+  BLOCK  10.0.0.0/8          all        private/link-local
+  BLOCK  172.16.0.0/12       all        private/link-local
+  BLOCK  192.168.0.0/16      all        private/link-local
+  BLOCK  169.254.0.0/16      all        private/link-local
+  BLOCK  127.0.0.0/8         all        private/link-local
+  ALLOW  any                 all        default: hand back to Docker rules
+```
+
 ---
 
 ## `firewall rm` — ルール削除
