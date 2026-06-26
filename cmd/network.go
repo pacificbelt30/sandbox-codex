@@ -12,6 +12,7 @@ import (
 var (
 	networkCreateNoInternet  bool
 	networkProxyContainerURL string
+	firewallAllowHosts       []string
 )
 
 var networkCmd = &cobra.Command{
@@ -137,6 +138,11 @@ var firewallCreateCmd = &cobra.Command{
 		if endpoint, ok := network.AllowHostEndpoint(networkProxyContainerURL); ok {
 			ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
 		}
+		extraDestinations, err := network.ParseHostEndpoints(firewallAllowHosts)
+		if err != nil {
+			return fmt.Errorf("invalid --allow-host: %w", err)
+		}
+		ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
 		err = mgr.ApplyFirewall(ensureOpts)
 		if err != nil {
 			if network.IsFirewallWarning(err) {
@@ -184,6 +190,12 @@ var firewallStatusCmd = &cobra.Command{
 			return fmt.Errorf("getting dock-net firewall status: %w", err)
 		}
 
+		verdict, hint := firewallVerdict(info)
+		fmt.Printf("Firewall: %s\n", verdict)
+		if hint != "" {
+			fmt.Printf("  -> %s\n", hint)
+		}
+		fmt.Println()
 		fmt.Printf("Supported (Linux): %v\n", info.Supported)
 		fmt.Printf("Running as root:   %v\n", info.Root)
 		fmt.Printf("iptables found:    %v\n", info.IptablesFound)
@@ -216,6 +228,25 @@ func init() {
 	firewallCmd.AddCommand(firewallStatusCmd)
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
+	firewallCreateCmd.Flags().StringArrayVar(&firewallAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the firewall (repeatable)")
+}
+
+// firewallVerdict reduces the low-level firewall status into a single headline
+// plus, when the firewall is not active, an actionable next step.
+func firewallVerdict(info *network.FirewallInfo) (verdict, hint string) {
+	switch {
+	case !info.Supported:
+		return "Unavailable (non-Linux host)", "iptables egress filtering only runs on a Linux host."
+	case !info.IptablesFound:
+		return "Unavailable (iptables not found)", "Install iptables to enable egress filtering."
+	case info.ChainExists && info.JumpRuleExists:
+		return "Active", ""
+	default:
+		if !info.Root {
+			return "Not active", "Run: sudo codex-dock firewall create"
+		}
+		return "Not active", "Run: codex-dock firewall create"
+	}
 }
 
 func confirmCreateProxyNetwork(cmd *cobra.Command) (bool, error) {

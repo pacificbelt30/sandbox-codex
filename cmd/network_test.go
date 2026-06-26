@@ -4,8 +4,61 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
 )
+
+func TestFirewallVerdict(t *testing.T) {
+	tests := []struct {
+		name        string
+		info        *network.FirewallInfo
+		wantVerdict string
+		wantHint    bool
+	}{
+		{
+			name:        "non-linux",
+			info:        &network.FirewallInfo{Supported: false},
+			wantVerdict: "Unavailable (non-Linux host)",
+			wantHint:    true,
+		},
+		{
+			name:        "no iptables",
+			info:        &network.FirewallInfo{Supported: true, IptablesFound: false},
+			wantVerdict: "Unavailable (iptables not found)",
+			wantHint:    true,
+		},
+		{
+			name:        "active",
+			info:        &network.FirewallInfo{Supported: true, IptablesFound: true, ChainExists: true, JumpRuleExists: true},
+			wantVerdict: "Active",
+			wantHint:    false,
+		},
+		{
+			name:        "not active non-root",
+			info:        &network.FirewallInfo{Supported: true, IptablesFound: true, Root: false},
+			wantVerdict: "Not active",
+			wantHint:    true,
+		},
+		{
+			name:        "not active root",
+			info:        &network.FirewallInfo{Supported: true, IptablesFound: true, Root: true},
+			wantVerdict: "Not active",
+			wantHint:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			verdict, hint := firewallVerdict(tt.info)
+			if verdict != tt.wantVerdict {
+				t.Fatalf("firewallVerdict() verdict = %q, want %q", verdict, tt.wantVerdict)
+			}
+			if (hint != "") != tt.wantHint {
+				t.Fatalf("firewallVerdict() hint = %q, wantHint = %v", hint, tt.wantHint)
+			}
+		})
+	}
+}
 
 func TestConfirmCreateProxyNetworkYes(t *testing.T) {
 	command := &cobra.Command{}

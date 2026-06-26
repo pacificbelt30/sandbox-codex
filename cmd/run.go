@@ -33,6 +33,7 @@ var (
 	proxyAdminURL       string
 	proxyContainerURL   string
 	runProxyAdminSecret string
+	runAllowHosts       []string
 )
 
 var runCmd = &cobra.Command{
@@ -74,6 +75,7 @@ func init() {
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
+	f.StringArrayVar(&runAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the dock-net firewall (repeatable)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
 	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18080", "External auth proxy admin URL")
@@ -142,6 +144,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if endpoint, ok := network.AllowHostEndpoint(proxyContainerURL); ok {
 		ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
 	}
+	extraDestinations, err := network.ParseHostEndpoints(runAllowHosts)
+	if err != nil {
+		return fmt.Errorf("invalid --allow-host: %w", err)
+	}
+	ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
 	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}

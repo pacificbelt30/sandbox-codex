@@ -22,13 +22,22 @@ If checks fail, codex-dock shows warnings and continues.
 ## `firewall create`
 
 ```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...]
 ```
 
 | Option | Default | Description |
 |---|---|---|
 | `--no-internet` | `false` | Disable IP Masquerade when creating `dock-net` |
 | `--proxy-container-url` | `http://codex-auth-proxy:18080` | Auth Proxy URL to allow |
+| `--allow-host` | (none) | Extra `IP:PORT` destination to allow. Repeatable. Must be an IP literal, not a hostname (IPv6 as `[::1]:PORT`) |
+
+```bash
+# Example: allow an internal registry (203.0.113.10:5000) while creating the firewall
+sudo codex-dock firewall create --allow-host 203.0.113.10:5000
+
+# Can also be supplied directly on run
+codex-dock run --agent claude --allow-host 203.0.113.10:5000
+```
 
 ### Behavior Summary
 
@@ -47,7 +56,9 @@ If `dock-net` / `dock-net-proxy` are missing, the command prompts whether to cre
 codex-dock firewall status
 ```
 
-Reports:
+Starts with a one-line `Firewall: Active / Not active / Unavailable` verdict, and
+when the firewall is not active it suggests the next command to run
+(e.g. `sudo codex-dock firewall create`). It then reports:
 
 - Linux support
 - Root execution status

@@ -22,13 +22,22 @@
 ## `firewall create` — ルール作成
 
 ```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...]
 ```
 
 | オプション | 既定値 | 説明 |
 |---|---|---|
 | `--no-internet` | `false` | `dock-net` 作成時の IP Masquerade を無効化する（ネット遮断） |
 | `--proxy-container-url` | `http://codex-auth-proxy:18080` | 許可対象の Auth Proxy URL |
+| `--allow-host` | （なし） | 追加で許可する宛先 `IP:PORT`。繰り返し指定可。ホスト名ではなく IP リテラルを指定する（IPv6 は `[::1]:PORT`） |
+
+```bash
+# 例: 社内レジストリ (203.0.113.10:5000) を許可しつつ firewall を作成
+sudo codex-dock firewall create --allow-host 203.0.113.10:5000
+
+# run 時に直接指定することも可能
+codex-dock run --agent claude --allow-host 203.0.113.10:5000
+```
 
 ### 動作概要
 
@@ -47,7 +56,9 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 codex-dock firewall status
 ```
 
-次の項目を確認できます。
+先頭に `Firewall: Active / Not active / Unavailable` の1行判定を表示し、
+有効化されていない場合は次に実行すべきコマンド（例: `sudo codex-dock firewall create`）を案内します。
+続けて次の詳細項目を確認できます。
 
 - Linux 対応可否
 - root 実行可否
