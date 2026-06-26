@@ -34,6 +34,7 @@ var (
 	proxyContainerURL   string
 	runProxyAdminSecret string
 	runAllowHosts       []string
+	runNoFirewall       bool
 )
 
 var runCmd = &cobra.Command{
@@ -76,6 +77,7 @@ func init() {
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
 	f.StringArrayVar(&runAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the dock-net firewall (repeatable)")
+	f.BoolVar(&runNoFirewall, "no-firewall", false, "Skip applying codex-dock's dock-net iptables firewall rules (leave host firewall as-is)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
 	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18080", "External auth proxy admin URL")
@@ -152,7 +154,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
-	if err := netMgr.ApplyFirewall(ensureOpts); err != nil {
+	if runNoFirewall {
+		if verbose {
+			fmt.Println("Skipping dock-net firewall rule application (--no-firewall)")
+		}
+	} else if err := netMgr.ApplyFirewall(ensureOpts); err != nil {
 		if network.IsFirewallWarning(err) {
 			fmt.Printf("Warning: dock-net firewall rules were not applied: %v\n", err)
 		} else {

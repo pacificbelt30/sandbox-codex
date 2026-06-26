@@ -185,6 +185,16 @@ func TestApplyRunConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestRunNoFirewallFlag(t *testing.T) {
+	f := runCmd.Flags().Lookup("no-firewall")
+	if f == nil {
+		t.Fatal("run: --no-firewall flag not registered")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--no-firewall default = %q; want false", f.DefValue)
+	}
+}
+
 func TestApplyRunConfigDefaults_Firewall(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
