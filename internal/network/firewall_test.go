@@ -198,6 +198,23 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 			t.Fatalf("Apply() missing command %q\ncalls:\n%s", want, got)
 		}
 	}
+
+	// Verify the CODEX-DOCK chain evaluation order:
+	//   allow (RETURN) -> private DROP -> custom block DROP -> final RETURN.
+	// This ordering is what makes --allow-host win over --block-host and lets a
+	// public IP still be blocked before the catch-all RETURN.
+	allowHost := strings.Index(got, "-A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -m comment --comment codex-dock-allow-host -j RETURN")
+	privateDrop := strings.Index(got, "-A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment codex-dock-drop-private -j DROP")
+	customBlock := strings.Index(got, "-A CODEX-DOCK -d 203.0.113.0/24 -m comment --comment codex-dock-block-host -j DROP")
+	finalReturn := strings.LastIndex(got, "-A CODEX-DOCK -j RETURN")
+	if allowHost < 0 || privateDrop < 0 || customBlock < 0 || finalReturn < 0 {
+		t.Fatalf("Apply() missing an ordering anchor\ncalls:\n%s", got)
+	}
+	ordered := allowHost < privateDrop && privateDrop < customBlock && customBlock < finalReturn
+	if !ordered {
+		t.Fatalf("Apply() wrong CODEX-DOCK order: allow=%d private=%d block=%d return=%d\ncalls:\n%s",
+			allowHost, privateDrop, customBlock, finalReturn, got)
+	}
 }
 
 type stubIptablesRunner struct {

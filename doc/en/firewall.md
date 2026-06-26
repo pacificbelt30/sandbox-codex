@@ -28,21 +28,55 @@ If prerequisites are missing, codex-dock prints warnings and continues.
 
 ## Rule Application Model
 
-`codex-dock firewall create` applies rules with this model:
+`codex-dock firewall create` builds the `CODEX-DOCK` chain to be evaluated
+**top to bottom** with this model:
 
 1. Add jump path from `DOCKER-USER` to `CODEX-DOCK`
-2. Explicitly allow Auth Proxy traffic first
-3. Drop private/link-local destinations
+2. **Allow (RETURN)**: Auth Proxy + any `--allow-host` destinations
+3. **Drop (DROP)**: private/link-local + any `--block-host` destinations
 4. End with `RETURN` to hand control back to other Docker rules
+
+Because allow rules are evaluated first, **`--allow-host` takes precedence over
+`--block-host`**. The chain ends with `RETURN` (so public internet outside the
+private ranges passes through), which is why blocking a public IP requires an
+explicit `--block-host`.
 
 ### Allowed Traffic
 
 - Auth Proxy `IP:PORT` resolved from `--proxy-container-url`
 - Traffic from `dock-net` subnet (`10.200.0.0/24`) to the same proxy port
+- Destinations added via `--allow-host IP:PORT` (or config `firewall.allow_hosts`)
 
 ### Dropped Traffic
 
 - private/link-local ranges: `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`
+- Destinations added via `--block-host CIDR|IP|IP:PORT` (or config `firewall.block_hosts`), IPv4
+
+### Customizing allow / block
+
+```bash
+# Allow an internal registry (203.0.113.10:5000), block a whole external range
+sudo codex-dock firewall create \
+  --allow-host 203.0.113.10:5000 \
+  --block-host 203.0.113.0/24
+
+# The same flags work on `run`
+codex-dock run --agent claude --allow-host 203.0.113.10:5000 --block-host 198.51.100.9:443
+```
+
+To avoid repeating flags, persist them in `~/.config/codex-dock/config.toml`:
+
+```toml
+[firewall]
+proxy_container_url = "http://codex-auth-proxy:18080"
+allow_hosts = ["203.0.113.10:5000"]   # always allowed
+block_hosts = ["203.0.113.0/24"]      # always blocked
+```
+
+> `--block-host` accepts IPv4 `CIDR` / `IP` / `IP:PORT`. A bare `IP` becomes
+> `/32`; `IP:PORT` drops only that TCP port. Check the applied rules with
+> `codex-dock firewall status` (the `ALLOW` / `BLOCK` listing; `--block-host`
+> entries are labelled `custom block`).
 
 ---
 
