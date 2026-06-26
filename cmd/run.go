@@ -34,6 +34,7 @@ var (
 	proxyContainerURL   string
 	runProxyAdminSecret string
 	runAllowHosts       []string
+	runBlockHosts       []string
 	runNoFirewall       bool
 )
 
@@ -77,6 +78,7 @@ func init() {
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
 	f.StringArrayVar(&runAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the dock-net firewall (repeatable)")
+	f.StringArrayVar(&runBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the dock-net firewall (repeatable)")
 	f.BoolVar(&runNoFirewall, "no-firewall", false, "Skip applying codex-dock's dock-net iptables firewall rules (leave host firewall as-is)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
@@ -151,6 +153,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid --allow-host: %w", err)
 	}
 	ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
+	blockDestinations, err := network.ParseBlockDestinations(runBlockHosts)
+	if err != nil {
+		return fmt.Errorf("invalid --block-host: %w", err)
+	}
+	ensureOpts.BlockDestinations = blockDestinations
 	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
 		return fmt.Errorf("ensuring dock-net: %w", err)
 	}
@@ -254,6 +261,10 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 
 	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
 		runAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
+	}
+
+	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
+		runBlockHosts = viper.GetStringSlice("firewall.block_hosts")
 	}
 }
 

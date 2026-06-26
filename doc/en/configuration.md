@@ -201,6 +201,8 @@ flag on every command.
 proxy_container_url = "http://codex-auth-proxy:18080"
 # Extra always-allowed destinations (internal registry, internal API, ...)
 allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
+# Extra always-blocked destinations (CIDR / IP / IP:PORT)
+block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
 ```
 
 **Replacing repeated flags with config:**
@@ -240,6 +242,26 @@ A list of extra destinations to always allow out of the sandbox.
 > - IPv6 must be bracketed (e.g. `"[2001:db8::1]:443"`).
 > - Passing `--allow-host` on the command line **overrides** this list (it does
 >   not append).
+
+#### `firewall.block_hosts`
+
+| Item | Value |
+|---|---|
+| Type | array of strings |
+| Default | unset (empty) |
+| Corresponding flags | `run --block-host`, `firewall create --block-host` (repeatable) |
+
+A list of extra destinations to always block (drop) out of the sandbox. In
+addition to the built-in private-range drops, this can block arbitrary
+destinations including public IPs.
+
+> - Format is **IPv4** `"CIDR"` / `"IP"` / `"IP:PORT"`:
+>   - `"203.0.113.0/24"` — drop the whole range (all ports/protocols)
+>   - `"203.0.113.10"` — drop that host (all ports/protocols)
+>   - `"203.0.113.10:443"` — drop only TCP/443 to that host
+> - **`--allow-host` takes precedence** over `--block-host` (allow rules are
+>   evaluated first).
+> - Passing `--block-host` on the command line **overrides** this list.
 
 > **Note**: to skip firewall application entirely for a `codex-dock run`, use the
 > `--no-firewall` flag (it is not a config key).
@@ -347,6 +369,9 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 
 # Extra destinations always allowed (equivalent to --allow-host)
 allow_hosts = ["203.0.113.10:5000"]
+
+# Extra destinations always blocked (equivalent to --block-host)
+block_hosts = ["203.0.113.0/24"]
 ```
 
 ---

@@ -155,6 +155,10 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 		AllowTCPDestinations: []HostEndpoint{
 			{IP: "172.17.0.1", Port: 18080},
 		},
+		BlockDestinations: []BlockDestination{
+			{CIDR: "203.0.113.0/24", Port: 0},
+			{CIDR: "198.51.100.5/32", Port: 443},
+		},
 	})
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -186,6 +190,8 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 		"iptables -A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -m comment --comment codex-dock-allow-host -j RETURN",
 		"iptables -A CODEX-DOCK -d 10.200.0.0/24 -p tcp --dport 18080 -m comment --comment codex-dock-allow-bridge-subnet -j RETURN",
 		"iptables -A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment codex-dock-drop-private -j DROP",
+		"iptables -A CODEX-DOCK -d 198.51.100.5/32 -p tcp --dport 443 -m comment --comment codex-dock-block-host -j DROP",
+		"iptables -A CODEX-DOCK -d 203.0.113.0/24 -m comment --comment codex-dock-block-host -j DROP",
 		"iptables -A CODEX-DOCK -j RETURN",
 	} {
 		if !strings.Contains(got, want) {

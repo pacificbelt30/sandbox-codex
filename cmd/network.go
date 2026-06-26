@@ -14,6 +14,7 @@ var (
 	networkCreateNoInternet  bool
 	networkProxyContainerURL string
 	firewallAllowHosts       []string
+	firewallBlockHosts       []string
 )
 
 var networkCmd = &cobra.Command{
@@ -146,6 +147,11 @@ var firewallCreateCmd = &cobra.Command{
 			return fmt.Errorf("invalid --allow-host: %w", err)
 		}
 		ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
+		blockDestinations, err := network.ParseBlockDestinations(firewallBlockHosts)
+		if err != nil {
+			return fmt.Errorf("invalid --block-host: %w", err)
+		}
+		ensureOpts.BlockDestinations = blockDestinations
 		err = mgr.ApplyFirewall(ensureOpts)
 		if err != nil {
 			if network.IsFirewallWarning(err) {
@@ -264,6 +270,8 @@ func firewallRuleLabel(r network.FirewallRule) string {
 		return "dock-net subnet -> proxy"
 	case "codex-dock-drop-private":
 		return "private/link-local"
+	case "codex-dock-block-host":
+		return "custom block"
 	case "":
 		if r.Destination == "" && r.Verdict == "RETURN" {
 			return "default: hand back to Docker rules"
@@ -288,6 +296,7 @@ func init() {
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
 	firewallCreateCmd.Flags().StringArrayVar(&firewallAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the firewall (repeatable)")
+	firewallCreateCmd.Flags().StringArrayVar(&firewallBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the firewall (repeatable)")
 }
 
 // applyFirewallConfigDefaults fills firewall flags from the [firewall] section
@@ -304,6 +313,10 @@ func applyFirewallConfigDefaults(cmd *cobra.Command) {
 
 	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
 		firewallAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
+	}
+
+	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
+		firewallBlockHosts = viper.GetStringSlice("firewall.block_hosts")
 	}
 }
 

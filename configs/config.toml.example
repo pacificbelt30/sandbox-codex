@@ -85,3 +85,15 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 #
 # Example: always permit an internal container registry and an internal API.
 # allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
+
+# Extra destinations to ALWAYS block (drop) out of the sandbox.
+#                                                      flag: --block-host (repeatable)
+# Format : "CIDR" | "IP" | "IP:PORT"  (IPv4 only)
+#            "203.0.113.0/24"    drop the whole range (all ports/protocols)
+#            "203.0.113.10"      drop that host       (all ports/protocols)
+#            "203.0.113.10:443"  drop only TCP/443 to that host
+# Note   : --allow-host wins over --block-host (allow rules are evaluated first).
+#          Passing --block-host on the command line OVERRIDES this list.
+#
+# Example: block an external analytics endpoint and an internal subnet.
+# block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]

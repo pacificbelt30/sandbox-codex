@@ -56,6 +56,7 @@ type EnsureOptions struct {
 	NoInternet           bool
 	AllowHostTCPPorts    []int
 	AllowTCPDestinations []HostEndpoint
+	BlockDestinations    []BlockDestination
 }
 
 // NewManager creates a new network Manager.
@@ -411,6 +412,7 @@ func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNe
 
 	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
 	cfg.AllowTCPPorts = normalizePorts(opts.AllowHostTCPPorts)
+	cfg.BlockDestinations = normalizeBlockDestinations(opts.BlockDestinations)
 
 	if len(cfg.AllowTCPPorts) == 0 {
 		return cfg, nil

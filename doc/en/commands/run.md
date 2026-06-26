@@ -38,6 +38,7 @@ codex-dock run [OPTIONS]
 | `--no-internet` | | `false` | Disable internet access inside container |
 | `--no-firewall` | | `false` | Skip applying codex-dock's dock-net iptables rules (leave the host firewall as-is) |
 | `--allow-host` | | | Extra `IP:PORT` destination to allow through the dock-net firewall (repeatable) |
+| `--block-host` | | | Extra `CIDR`/`IP`/`IP:PORT` destination to block through the dock-net firewall (IPv4, repeatable) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |

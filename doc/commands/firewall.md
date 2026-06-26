@@ -22,7 +22,7 @@
 ## `firewall create` — ルール作成
 
 ```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...] [--block-host CIDR ...]
 ```
 
 | オプション | 既定値 | 説明 |
@@ -30,13 +30,17 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-
 | `--no-internet` | `false` | `dock-net` 作成時の IP Masquerade を無効化する（ネット遮断） |
 | `--proxy-container-url` | `http://codex-auth-proxy:18080` | 許可対象の Auth Proxy URL |
 | `--allow-host` | （なし） | 追加で許可する宛先 `IP:PORT`。繰り返し指定可。ホスト名ではなく IP リテラルを指定する（IPv6 は `[::1]:PORT`） |
+| `--block-host` | （なし） | 追加で遮断する宛先 `CIDR` / `IP` / `IP:PORT`（IPv4）。繰り返し指定可。`--allow-host` の方が優先される |
 
 ```bash
 # 例: 社内レジストリ (203.0.113.10:5000) を許可しつつ firewall を作成
 sudo codex-dock firewall create --allow-host 203.0.113.10:5000
 
+# 例: 特定レンジ/ホストを追加で遮断
+sudo codex-dock firewall create --block-host 203.0.113.0/24 --block-host 198.51.100.9:443
+
 # run 時に直接指定することも可能
-codex-dock run --agent claude --allow-host 203.0.113.10:5000
+codex-dock run --agent claude --allow-host 203.0.113.10:5000 --block-host 203.0.113.0/24
 ```
 
 ### 動作概要
