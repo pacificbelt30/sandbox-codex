@@ -15,6 +15,7 @@ var (
 	networkProxyContainerURL string
 	firewallAllowHosts       []string
 	firewallBlockHosts       []string
+	firewallSudo             bool
 )
 
 var networkCmd = &cobra.Command{
@@ -46,7 +47,7 @@ var networkRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := mgr.RemoveNetwork(); err != nil {
+		if err := mgr.RemoveNetwork(network.EnsureOptions{Sudo: firewallSudo}); err != nil {
 			return fmt.Errorf("removing dock-net: %w", err)
 		}
 		fmt.Println("dock-net removed.")
@@ -94,7 +95,7 @@ var firewallCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ensureOpts := network.EnsureOptions{NoInternet: networkCreateNoInternet}
+		ensureOpts := network.EnsureOptions{NoInternet: networkCreateNoInternet, Sudo: firewallSudo}
 
 		networkInfo, err := mgr.Status()
 		if err != nil {
@@ -169,11 +170,13 @@ var firewallRmCmd = &cobra.Command{
 	Use:   "rm",
 	Short: "Remove dock-net firewall rules",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		applyFirewallConfigDefaults(cmd)
+
 		mgr, err := network.NewManager()
 		if err != nil {
 			return err
 		}
-		err = mgr.RemoveFirewall()
+		err = mgr.RemoveFirewall(network.EnsureOptions{Sudo: firewallSudo})
 		if err != nil {
 			if network.IsFirewallWarning(err) {
 				fmt.Printf("Warning: dock-net firewall rules were not removed: %v\n", err)
@@ -288,6 +291,7 @@ func init() {
 	networkCmd.AddCommand(networkRmCmd)
 	networkCmd.AddCommand(networkStatusCmd)
 	networkCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
+	networkRmCmd.Flags().BoolVar(&firewallSudo, "sudo", false, sudoFlagUsage)
 
 	rootCmd.AddCommand(firewallCmd)
 	firewallCmd.AddCommand(firewallCreateCmd)
@@ -297,7 +301,13 @@ func init() {
 	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
 	firewallCreateCmd.Flags().StringArrayVar(&firewallAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the firewall (repeatable)")
 	firewallCreateCmd.Flags().StringArrayVar(&firewallBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the firewall (repeatable)")
+	firewallCreateCmd.Flags().BoolVar(&firewallSudo, "sudo", false, sudoFlagUsage)
+	firewallRmCmd.Flags().BoolVar(&firewallSudo, "sudo", false, sudoFlagUsage)
 }
+
+// sudoFlagUsage documents the shared --sudo flag for the firewall commands.
+const sudoFlagUsage = "Run the iptables firewall commands via sudo when not running as root " +
+	"(prompts once on a terminal; uses cached/NOPASSWD sudo when non-interactive)"
 
 // applyFirewallConfigDefaults fills firewall flags from the [firewall] section
 // of config.toml when they were not explicitly set on the command line.
@@ -318,6 +328,10 @@ func applyFirewallConfigDefaults(cmd *cobra.Command) {
 	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
 		firewallBlockHosts = viper.GetStringSlice("firewall.block_hosts")
 	}
+
+	if !flags.Changed("sudo") && viper.IsSet("firewall.sudo") {
+		firewallSudo = viper.GetBool("firewall.sudo")
+	}
 }
 
 // firewallVerdict reduces the low-level firewall status into a single headline
@@ -332,7 +346,7 @@ func firewallVerdict(info *network.FirewallInfo) (verdict, hint string) {
 		return "Active", ""
 	default:
 		if !info.Root {
-			return "Not active", "Run: sudo codex-dock firewall create"
+			return "Not active", "Run: sudo codex-dock firewall create (or: codex-dock firewall create --sudo)"
 		}
 		return "Not active", "Run: codex-dock firewall create"
 	}

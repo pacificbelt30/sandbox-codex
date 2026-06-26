@@ -57,6 +57,9 @@ type EnsureOptions struct {
 	AllowHostTCPPorts    []int
 	AllowTCPDestinations []HostEndpoint
 	BlockDestinations    []BlockDestination
+	// Sudo runs the iptables firewall commands via sudo when codex-dock is not
+	// executed as root.
+	Sudo bool
 }
 
 // NewManager creates a new network Manager.
@@ -182,7 +185,7 @@ func (m *Manager) ApplyFirewall(opts EnsureOptions) error {
 }
 
 // RemoveFirewall removes firewall rules associated with dock-net.
-func (m *Manager) RemoveFirewall() error {
+func (m *Manager) RemoveFirewall(opts EnsureOptions) error {
 	ctx := context.Background()
 	existing, err := m.findNetwork(ctx)
 	if err != nil {
@@ -195,7 +198,7 @@ func (m *Manager) RemoveFirewall() error {
 		return nil
 	}
 
-	cfg, err := m.firewallConfig(ctx, EnsureOptions{}, existing)
+	cfg, err := m.firewallConfig(ctx, opts, existing)
 	if err != nil {
 		return err
 	}
@@ -243,7 +246,7 @@ func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
 }
 
 // RemoveNetwork removes dock-net.
-func (m *Manager) RemoveNetwork() error {
+func (m *Manager) RemoveNetwork(opts EnsureOptions) error {
 	ctx := context.Background()
 	existing, err := m.findNetwork(ctx)
 	if err != nil {
@@ -253,7 +256,7 @@ func (m *Manager) RemoveNetwork() error {
 		return fmt.Errorf("dock-net does not exist")
 	}
 	if m.firewall != nil {
-		cfg, err := m.firewallConfig(ctx, EnsureOptions{}, existing)
+		cfg, err := m.firewallConfig(ctx, opts, existing)
 		if err != nil {
 			return err
 		}
@@ -401,6 +404,7 @@ func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNe
 	cfg := firewallConfig{
 		BridgeName:   BridgeName,
 		BridgeSubnet: gatewaySubnet(dockNet),
+		UseSudo:      opts.Sudo,
 	}
 
 	if proxyNet, err := m.findNetworkByName(ctx, ProxyNetworkName); err == nil && proxyNet != nil {

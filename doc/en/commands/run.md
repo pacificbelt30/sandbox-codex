@@ -39,6 +39,7 @@ codex-dock run [OPTIONS]
 | `--no-firewall` | | `false` | Skip applying codex-dock's dock-net iptables rules (leave the host firewall as-is) |
 | `--allow-host` | | | Extra `IP:PORT` destination to allow through the dock-net firewall (repeatable) |
 | `--block-host` | | | Extra `CIDR`/`IP`/`IP:PORT` destination to block through the dock-net firewall (IPv4, repeatable) |
+| `--sudo` | | `false` | When not root, run only the dock-net iptables apply via `sudo` (prompts once on a terminal; uses NOPASSWD/cached credentials when non-interactive) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |

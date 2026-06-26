@@ -12,17 +12,22 @@ Its role is separate from `codex-dock network` (network provisioning), so treat 
 ## Preflight Checks
 
 - Linux host
-- Root privileges
+- Root privileges (or pass `--sudo`)
 - `iptables` installed
 
 If checks fail, codex-dock shows warnings and continues.
+
+> When not running as root, pass `--sudo` to run only the `iptables` calls via
+> `sudo`. On an interactive terminal it prompts for a password once; in a
+> non-interactive environment (CI / TUI / `--detach`) it relies on cached
+> credentials or a NOPASSWD sudoers entry and never blocks on a prompt.
 
 ---
 
 ## `firewall create`
 
 ```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...] [--block-host CIDR ...]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...] [--block-host CIDR ...] [--sudo]
 ```
 
 | Option | Default | Description |
@@ -31,6 +36,7 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-
 | `--proxy-container-url` | `http://codex-auth-proxy:18080` | Auth Proxy URL to allow |
 | `--allow-host` | (none) | Extra `IP:PORT` destination to allow. Repeatable. Must be an IP literal, not a hostname (IPv6 as `[::1]:PORT`) |
 | `--block-host` | (none) | Extra `CIDR` / `IP` / `IP:PORT` destination to block (IPv4). Repeatable. `--allow-host` takes precedence |
+| `--sudo` | `false` | When not root, run only the `iptables` calls via `sudo`. Prompts once on an interactive terminal; uses NOPASSWD/cached credentials when non-interactive |
 
 ```bash
 # Example: allow an internal registry (203.0.113.10:5000) while creating the firewall
@@ -38,6 +44,9 @@ sudo codex-dock firewall create --allow-host 203.0.113.10:5000
 
 # Example: block a specific range/host
 sudo codex-dock firewall create --block-host 203.0.113.0/24 --block-host 198.51.100.9:443
+
+# Example: apply without root via --sudo (prompts for a password only on the iptables calls)
+codex-dock firewall create --sudo --block-host 203.0.113.0/24
 
 # Can also be supplied directly on run
 codex-dock run --agent claude --allow-host 203.0.113.10:5000 --block-host 203.0.113.0/24
@@ -94,10 +103,11 @@ Rules (CODEX-DOCK chain, evaluated top to bottom):
 ## `firewall rm`
 
 ```bash
-codex-dock firewall rm
+codex-dock firewall rm [--sudo]
 ```
 
 Removes the `DOCKER-USER -> CODEX-DOCK` jump rule and deletes the `CODEX-DOCK` chain.
+Removal also requires root because it touches `iptables`; pass `--sudo` when not running as root.
 
 ---
 

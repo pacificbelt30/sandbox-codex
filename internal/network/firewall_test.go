@@ -98,6 +98,177 @@ func TestIptablesFirewallApplyNonRootNoWarningWhenStatusPermissionDenied(t *test
 	}
 }
 
+// iptablesVerb strips an optional `sudo -n iptables` prefix so a test runner
+// can interpret the underlying iptables verb regardless of sudo wrapping.
+func iptablesVerb(name string, args []string) (string, []string) {
+	if name == "sudo" && len(args) >= 2 && args[1] == "iptables" {
+		args = args[2:]
+	}
+	if len(args) == 0 {
+		return "", nil
+	}
+	return args[0], args[1:]
+}
+
+type recordingRunner struct {
+	calls       []string
+	chainErrors map[string]error
+	sudoMissing bool
+}
+
+func (r *recordingRunner) LookPath(file string) (string, error) {
+	if r.sudoMissing && file == "sudo" {
+		return "", errors.New("not found")
+	}
+	return "/usr/bin/" + file, nil
+}
+
+func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
+	verb, rest := iptablesVerb(name, args)
+	switch verb {
+	case "-S":
+		if len(rest) >= 1 {
+			if err, ok := r.chainErrors[rest[0]]; ok {
+				return nil, err
+			}
+		}
+		return nil, nil
+	case "-C", "-D":
+		// Report rules as absent so check/delete loops terminate.
+		return nil, ErrFirewallRuleNotFound
+	}
+	return nil, nil
+}
+
+func TestRunOutputWrapsSudoWhenEnabled(t *testing.T) {
+	runner := &recordingRunner{}
+	fw := &iptablesFirewall{
+		runner:      runner,
+		isLinux:     func() bool { return true },
+		euid:        func() int { return 1000 },
+		interactive: func() bool { return false },
+		sudo:        true,
+	}
+
+	if _, err := fw.runOutput(context.Background(), "-S", managedChain); err != nil {
+		t.Fatalf("runOutput() error = %v", err)
+	}
+	if len(runner.calls) != 1 || runner.calls[0] != "sudo -n iptables -S CODEX-DOCK" {
+		t.Fatalf("runOutput() calls = %v; want [sudo -n iptables -S CODEX-DOCK]", runner.calls)
+	}
+}
+
+func TestRunOutputNoSudoForRoot(t *testing.T) {
+	runner := &recordingRunner{}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 0 },
+		sudo:    true, // ignored because euid == 0
+	}
+
+	if _, err := fw.runOutput(context.Background(), "-S", managedChain); err != nil {
+		t.Fatalf("runOutput() error = %v", err)
+	}
+	if len(runner.calls) != 1 || runner.calls[0] != "iptables -S CODEX-DOCK" {
+		t.Fatalf("runOutput() calls = %v; want plain iptables call", runner.calls)
+	}
+}
+
+func TestApplyNonRootWithSudoPrimesOnceAndWrapsCalls(t *testing.T) {
+	runner := &recordingRunner{
+		chainErrors: map[string]error{
+			managedChain: ErrFirewallChainNotFound,
+		},
+	}
+	primeCalls := 0
+	fw := &iptablesFirewall{
+		runner:      runner,
+		isLinux:     func() bool { return true },
+		euid:        func() int { return 1000 },
+		interactive: func() bool { return false },
+		primeSudo:   func(context.Context) error { primeCalls++; return nil },
+	}
+
+	err := fw.Apply(context.Background(), firewallConfig{BridgeName: BridgeName, UseSudo: true})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if primeCalls != 1 {
+		t.Fatalf("primeSudo called %d times; want 1", primeCalls)
+	}
+	if len(runner.calls) == 0 {
+		t.Fatal("Apply() recorded no iptables calls")
+	}
+	for _, c := range runner.calls {
+		if !strings.HasPrefix(c, "sudo -n iptables ") {
+			t.Fatalf("Apply() issued a non-sudo call %q", c)
+		}
+	}
+}
+
+func TestApplyNonRootWithSudoMissingSudoBinary(t *testing.T) {
+	runner := &recordingRunner{sudoMissing: true}
+	fw := &iptablesFirewall{
+		runner:      runner,
+		isLinux:     func() bool { return true },
+		euid:        func() int { return 1000 },
+		interactive: func() bool { return false },
+		primeSudo:   func(context.Context) error { return nil },
+	}
+
+	err := fw.Apply(context.Background(), firewallConfig{BridgeName: BridgeName, UseSudo: true})
+	if !errors.Is(err, ErrFirewallSudoNotFound) {
+		t.Fatalf("Apply() err = %v; want ErrFirewallSudoNotFound", err)
+	}
+	if !IsFirewallWarning(err) {
+		t.Fatalf("ErrFirewallSudoNotFound should be a firewall warning")
+	}
+}
+
+func TestRemoveNonRootRequiresSudoFlag(t *testing.T) {
+	runner := &recordingRunner{}
+	fw := &iptablesFirewall{
+		runner:  runner,
+		isLinux: func() bool { return true },
+		euid:    func() int { return 1000 },
+	}
+
+	err := fw.Remove(context.Background(), firewallConfig{BridgeName: BridgeName})
+	if !errors.Is(err, ErrFirewallRootRequired) {
+		t.Fatalf("Remove() err = %v; want ErrFirewallRootRequired", err)
+	}
+}
+
+func TestRemoveNonRootWithSudoWrapsCalls(t *testing.T) {
+	runner := &recordingRunner{}
+	primeCalls := 0
+	fw := &iptablesFirewall{
+		runner:      runner,
+		isLinux:     func() bool { return true },
+		euid:        func() int { return 1000 },
+		interactive: func() bool { return false },
+		primeSudo:   func(context.Context) error { primeCalls++; return nil },
+	}
+
+	err := fw.Remove(context.Background(), firewallConfig{BridgeName: BridgeName, UseSudo: true})
+	if err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if primeCalls != 1 {
+		t.Fatalf("primeSudo called %d times; want 1", primeCalls)
+	}
+	if len(runner.calls) == 0 {
+		t.Fatal("Remove() recorded no iptables calls")
+	}
+	for _, c := range runner.calls {
+		if !strings.HasPrefix(c, "sudo -n iptables ") {
+			t.Fatalf("Remove() issued a non-sudo call %q", c)
+		}
+	}
+}
+
 func TestNormalizePorts(t *testing.T) {
 	got := normalizePorts([]int{18080, 18080, 0, 65536, 443})
 	want := []int{443, 18080}
