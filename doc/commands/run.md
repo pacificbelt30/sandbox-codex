@@ -37,6 +37,9 @@ codex-dock run [OPTIONS]
 | `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
 | `--no-internet` | | `false` | コンテナ内のインターネットアクセスを無効化 |
+| `--no-firewall` | | `false` | codex-dock の dock-net iptables ルール適用をスキップ（ホスト側ファイアウォールに委ねる） |
+| `--allow-host` | | | dock-net ファイアウォールで追加許可する宛先 `IP:PORT`（繰り返し指定可） |
+| `--block-host` | | | dock-net ファイアウォールで追加遮断する宛先 `CIDR`/`IP`/`IP:PORT`（IPv4・繰り返し指定可） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |

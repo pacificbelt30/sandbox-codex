@@ -190,6 +190,80 @@ approval_mode = "suggest"
 
 ---
 
+### `[firewall]` セクション — dock-net ファイアウォールの既定値
+
+`[firewall]` の各キーは **`codex-dock run` と `codex-dock firewall create` の両方**に効きます。
+毎回フラグで渡していた値をここに 1 度だけ書いておけます。
+
+```toml
+[firewall]
+# Auth Proxy の URL（常に許可される宛先）
+proxy_container_url = "http://codex-auth-proxy:18080"
+# 追加で常に許可する宛先（社内レジストリや社内 API など）
+allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
+# 追加で常に遮断する宛先（CIDR / IP / IP:PORT）
+block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
+```
+
+**毎回フラグを書く代わりに config で固定する例：**
+
+```bash
+# Before — 毎回フラグ指定が必要
+codex-dock run --agent claude \
+  --proxy-container-url http://codex-auth-proxy:18080 \
+  --allow-host 203.0.113.10:5000
+
+# After — config に書いておけば不要
+codex-dock run --agent claude
+```
+
+#### `firewall.proxy_container_url`
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"http://codex-auth-proxy:18080"` |
+| 対応フラグ | `run --proxy-container-url`, `firewall create --proxy-container-url` |
+
+ワーカーコンテナから到達する Auth Proxy の URL。この宛先は常に許可されます。
+
+#### `firewall.allow_hosts`
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列の配列 |
+| デフォルト | 未設定（空） |
+| 対応フラグ | `run --allow-host`, `firewall create --allow-host`（繰り返し指定可） |
+
+サンドボックスから常に許可したい追加宛先のリスト。
+
+> - 形式は `"IP:PORT"`。**IP リテラルのみ**で、ホスト名は名前解決されません（不可）。
+> - IPv6 は角括弧で囲みます（例: `"[2001:db8::1]:443"`）。
+> - コマンドラインで `--allow-host` を渡すと、このリストは**上書き**されます（追記ではありません）。
+
+#### `firewall.block_hosts`
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列の配列 |
+| デフォルト | 未設定（空） |
+| 対応フラグ | `run --block-host`, `firewall create --block-host`（繰り返し指定可） |
+
+サンドボックスから常に遮断（DROP）したい追加宛先のリスト。private レンジの既定遮断に加えて、
+任意の宛先（公開 IP を含む）を遮断できます。
+
+> - 形式は **IPv4 の** `"CIDR"` / `"IP"` / `"IP:PORT"`：
+>   - `"203.0.113.0/24"` … レンジ全体を遮断（全ポート・全プロトコル）
+>   - `"203.0.113.10"` … そのホストを遮断（全ポート・全プロトコル）
+>   - `"203.0.113.10:443"` … そのホストの TCP/443 のみ遮断
+> - **`--allow-host` の方が優先**されます（許可ルールが先に評価されるため）。
+> - コマンドラインで `--block-host` を渡すと、このリストは**上書き**されます。
+
+> **メモ**: `codex-dock run` でファイアウォール適用自体を止めたい場合は
+> `--no-firewall` フラグを使います（config キーではありません）。
+
+---
+
 ### `network_name`
 
 使用する Docker ネットワーク名。
@@ -284,6 +358,16 @@ user = "current"
 
 # run サブコマンドの承認モード
 approval_mode = "suggest"
+
+[firewall]
+# Auth Proxy URL のデフォルト（--proxy-container-url）
+proxy_container_url = "http://codex-auth-proxy:18080"
+
+# 追加で常に許可する宛先（--allow-host 相当）
+allow_hosts = ["203.0.113.10:5000"]
+
+# 追加で常に遮断する宛先（--block-host 相当）
+block_hosts = ["203.0.113.0/24"]
 ```
 
 ---

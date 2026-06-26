@@ -7,11 +7,14 @@ import (
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
 	networkCreateNoInternet  bool
 	networkProxyContainerURL string
+	firewallAllowHosts       []string
+	firewallBlockHosts       []string
 )
 
 var networkCmd = &cobra.Command{
@@ -85,6 +88,8 @@ var firewallCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create dock-net firewall rules",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		applyFirewallConfigDefaults(cmd)
+
 		mgr, err := network.NewManager()
 		if err != nil {
 			return err
@@ -137,6 +142,16 @@ var firewallCreateCmd = &cobra.Command{
 		if endpoint, ok := network.AllowHostEndpoint(networkProxyContainerURL); ok {
 			ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
 		}
+		extraDestinations, err := network.ParseHostEndpoints(firewallAllowHosts)
+		if err != nil {
+			return fmt.Errorf("invalid --allow-host: %w", err)
+		}
+		ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
+		blockDestinations, err := network.ParseBlockDestinations(firewallBlockHosts)
+		if err != nil {
+			return fmt.Errorf("invalid --block-host: %w", err)
+		}
+		ensureOpts.BlockDestinations = blockDestinations
 		err = mgr.ApplyFirewall(ensureOpts)
 		if err != nil {
 			if network.IsFirewallWarning(err) {
@@ -184,6 +199,12 @@ var firewallStatusCmd = &cobra.Command{
 			return fmt.Errorf("getting dock-net firewall status: %w", err)
 		}
 
+		verdict, hint := firewallVerdict(info)
+		fmt.Printf("Firewall: %s\n", verdict)
+		if hint != "" {
+			fmt.Printf("  -> %s\n", hint)
+		}
+		fmt.Println()
 		fmt.Printf("Supported (Linux): %v\n", info.Supported)
 		fmt.Printf("Running as root:   %v\n", info.Root)
 		fmt.Printf("iptables found:    %v\n", info.IptablesFound)
@@ -199,8 +220,66 @@ var firewallStatusCmd = &cobra.Command{
 		} else {
 			fmt.Println("CODEX-DOCK final jump: (unknown)")
 		}
+
+		fmt.Print(formatFirewallRules(info))
 		return nil
 	},
+}
+
+// formatFirewallRules renders the parsed CODEX-DOCK chain as an ordered
+// allow/block list so operators can see exactly what is permitted and denied.
+func formatFirewallRules(info *network.FirewallInfo) string {
+	var b strings.Builder
+	b.WriteString("\nRules (CODEX-DOCK chain, evaluated top to bottom):\n")
+	if !info.ChainExists {
+		b.WriteString("  (chain not installed — run: codex-dock firewall create)\n")
+		return b.String()
+	}
+	if len(info.Rules) == 0 {
+		b.WriteString("  (no rules)\n")
+		return b.String()
+	}
+	for _, r := range info.Rules {
+		marker := "ALLOW"
+		if r.Action == "block" {
+			marker = "BLOCK"
+		}
+		dest := r.Destination
+		if dest == "" {
+			dest = "any"
+		}
+		proto := "all"
+		if r.Port > 0 {
+			scheme := r.Protocol
+			if scheme == "" {
+				scheme = "tcp"
+			}
+			proto = fmt.Sprintf("%s/%d", scheme, r.Port)
+		}
+		b.WriteString(fmt.Sprintf("  %-5s  %-18s  %-9s  %s\n", marker, dest, proto, firewallRuleLabel(r)))
+	}
+	return b.String()
+}
+
+// firewallRuleLabel maps a rule's iptables comment to a human-readable note.
+func firewallRuleLabel(r network.FirewallRule) string {
+	switch r.Comment {
+	case "codex-dock-allow-host":
+		return "auth proxy / allowed host"
+	case "codex-dock-allow-bridge-subnet":
+		return "dock-net subnet -> proxy"
+	case "codex-dock-drop-private":
+		return "private/link-local"
+	case "codex-dock-block-host":
+		return "custom block"
+	case "":
+		if r.Destination == "" && r.Verdict == "RETURN" {
+			return "default: hand back to Docker rules"
+		}
+		return ""
+	default:
+		return r.Comment
+	}
 }
 
 func init() {
@@ -216,6 +295,47 @@ func init() {
 	firewallCmd.AddCommand(firewallStatusCmd)
 	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
 	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
+	firewallCreateCmd.Flags().StringArrayVar(&firewallAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the firewall (repeatable)")
+	firewallCreateCmd.Flags().StringArrayVar(&firewallBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the firewall (repeatable)")
+}
+
+// applyFirewallConfigDefaults fills firewall flags from the [firewall] section
+// of config.toml when they were not explicitly set on the command line.
+// Precedence: CLI flag > config file > built-in default.
+func applyFirewallConfigDefaults(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	if !flags.Changed("proxy-container-url") {
+		if v := viper.GetString("firewall.proxy_container_url"); v != "" {
+			networkProxyContainerURL = v
+		}
+	}
+
+	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
+		firewallAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
+	}
+
+	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
+		firewallBlockHosts = viper.GetStringSlice("firewall.block_hosts")
+	}
+}
+
+// firewallVerdict reduces the low-level firewall status into a single headline
+// plus, when the firewall is not active, an actionable next step.
+func firewallVerdict(info *network.FirewallInfo) (verdict, hint string) {
+	switch {
+	case !info.Supported:
+		return "Unavailable (non-Linux host)", "iptables egress filtering only runs on a Linux host."
+	case !info.IptablesFound:
+		return "Unavailable (iptables not found)", "Install iptables to enable egress filtering."
+	case info.ChainExists && info.JumpRuleExists:
+		return "Active", ""
+	default:
+		if !info.Root {
+			return "Not active", "Run: sudo codex-dock firewall create"
+		}
+		return "Not active", "Run: codex-dock firewall create"
+	}
 }
 
 func confirmCreateProxyNetwork(cmd *cobra.Command) (bool, error) {

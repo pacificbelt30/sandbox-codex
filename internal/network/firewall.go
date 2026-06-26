@@ -50,6 +50,24 @@ type FirewallStatus struct {
 	JumpRuleExists           bool
 	DockerUserDefaultPolicy  string
 	ManagedChainFinalVerdict string
+	Rules                    []FirewallRule
+}
+
+// FirewallRule is a single parsed rule from the managed CODEX-DOCK chain,
+// in evaluation order.
+type FirewallRule struct {
+	// Action is "allow" (RETURN/ACCEPT) or "block" (DROP).
+	Action string
+	// Verdict is the raw iptables target: RETURN, ACCEPT, or DROP.
+	Verdict string
+	// Destination is the -d CIDR/IP (empty means "any").
+	Destination string
+	// Protocol is the -p value (e.g. "tcp"), empty means any protocol.
+	Protocol string
+	// Port is the --dport value, 0 when the rule is not port-scoped.
+	Port int
+	// Comment is the rule's --comment tag, used to derive a friendly label.
+	Comment string
 }
 
 type firewallConfig struct {
@@ -58,11 +76,20 @@ type firewallConfig struct {
 	BridgeSubnet         string
 	AllowTCPPorts        []int
 	AllowTCPDestinations []HostEndpoint
+	BlockDestinations    []BlockDestination
 }
 
 // HostEndpoint is a single TCP destination that should remain reachable from workers.
 type HostEndpoint struct {
 	IP   string
+	Port int
+}
+
+// BlockDestination is an extra destination that should be dropped for workers.
+// CIDR is a canonical IPv4 network (e.g. "203.0.113.0/24" or "203.0.113.10/32").
+// Port is 0 to drop all protocols/ports, or a TCP port to drop only that port.
+type BlockDestination struct {
+	CIDR string
 	Port int
 }
 
@@ -201,6 +228,17 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		}
 	}
 
+	for _, block := range normalizeBlockDestinations(cfg.BlockDestinations) {
+		rule := []string{"-A", managedChain, "-d", block.CIDR}
+		if block.Port > 0 {
+			rule = append(rule, "-p", "tcp", "--dport", strconv.Itoa(block.Port))
+		}
+		rule = append(rule, "-m", "comment", "--comment", "codex-dock-block-host", "-j", "DROP")
+		if err := f.run(ctx, rule...); err != nil {
+			return err
+		}
+	}
+
 	return f.run(ctx, "-A", managedChain, "-j", "RETURN")
 }
 
@@ -292,6 +330,7 @@ func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (Fire
 		status.ChainExists = true
 		if out, err := f.runOutput(ctx, "-S", managedChain); err == nil {
 			status.ManagedChainFinalVerdict = managedChainFinalVerdict(out)
+			status.Rules = parseManagedChainRules(out)
 		}
 	} else if !errors.Is(err, ErrFirewallChainNotFound) {
 		return status, err
@@ -436,6 +475,60 @@ func managedChainFinalVerdict(out []byte) string {
 	return strings.TrimSpace(lastJump[idx+4:])
 }
 
+// parseManagedChainRules parses `iptables -S CODEX-DOCK` output into ordered
+// rules. Only `-A CODEX-DOCK ...` lines are considered; the `-N` chain
+// declaration is skipped.
+func parseManagedChainRules(out []byte) []FirewallRule {
+	prefix := "-A " + managedChain
+	var rules []FirewallRule
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		fields := strings.Fields(line)
+		rule := FirewallRule{}
+		for i := 0; i < len(fields); i++ {
+			switch fields[i] {
+			case "-d":
+				if i+1 < len(fields) {
+					rule.Destination = fields[i+1]
+					i++
+				}
+			case "-p":
+				if i+1 < len(fields) {
+					rule.Protocol = fields[i+1]
+					i++
+				}
+			case "--dport":
+				if i+1 < len(fields) {
+					if port, err := strconv.Atoi(fields[i+1]); err == nil {
+						rule.Port = port
+					}
+					i++
+				}
+			case "--comment":
+				if i+1 < len(fields) {
+					rule.Comment = strings.Trim(fields[i+1], `"`)
+					i++
+				}
+			case "-j":
+				if i+1 < len(fields) {
+					rule.Verdict = fields[i+1]
+					i++
+				}
+			}
+		}
+		if rule.Verdict == "DROP" {
+			rule.Action = "block"
+		} else {
+			rule.Action = "allow"
+		}
+		rules = append(rules, rule)
+	}
+	return rules
+}
+
 func IsFirewallWarning(err error) bool {
 	return errors.Is(err, ErrFirewallRootRequired) || errors.Is(err, ErrFirewallIptablesNotFound)
 }
@@ -477,6 +570,32 @@ func normalizeHostEndpoints(endpoints []HostEndpoint) []HostEndpoint {
 	slices.SortFunc(normalized, func(a, b HostEndpoint) int {
 		if a.IP != b.IP {
 			return strings.Compare(a.IP, b.IP)
+		}
+		return a.Port - b.Port
+	})
+	return normalized
+}
+
+func normalizeBlockDestinations(blocks []BlockDestination) []BlockDestination {
+	seen := map[string]struct{}{}
+	normalized := make([]BlockDestination, 0, len(blocks))
+
+	for _, block := range blocks {
+		cidr := strings.TrimSpace(block.CIDR)
+		if cidr == "" || block.Port < 0 || block.Port > 65535 {
+			continue
+		}
+		key := cidr + "|" + strconv.Itoa(block.Port)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, BlockDestination{CIDR: cidr, Port: block.Port})
+	}
+
+	slices.SortFunc(normalized, func(a, b BlockDestination) int {
+		if a.CIDR != b.CIDR {
+			return strings.Compare(a.CIDR, b.CIDR)
 		}
 		return a.Port - b.Port
 	})

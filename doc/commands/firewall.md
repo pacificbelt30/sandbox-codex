@@ -22,13 +22,26 @@
 ## `firewall create` — ルール作成
 
 ```bash
-codex-dock firewall create [--no-internet] [--proxy-container-url URL]
+codex-dock firewall create [--no-internet] [--proxy-container-url URL] [--allow-host IP:PORT ...] [--block-host CIDR ...]
 ```
 
 | オプション | 既定値 | 説明 |
 |---|---|---|
 | `--no-internet` | `false` | `dock-net` 作成時の IP Masquerade を無効化する（ネット遮断） |
 | `--proxy-container-url` | `http://codex-auth-proxy:18080` | 許可対象の Auth Proxy URL |
+| `--allow-host` | （なし） | 追加で許可する宛先 `IP:PORT`。繰り返し指定可。ホスト名ではなく IP リテラルを指定する（IPv6 は `[::1]:PORT`） |
+| `--block-host` | （なし） | 追加で遮断する宛先 `CIDR` / `IP` / `IP:PORT`（IPv4）。繰り返し指定可。`--allow-host` の方が優先される |
+
+```bash
+# 例: 社内レジストリ (203.0.113.10:5000) を許可しつつ firewall を作成
+sudo codex-dock firewall create --allow-host 203.0.113.10:5000
+
+# 例: 特定レンジ/ホストを追加で遮断
+sudo codex-dock firewall create --block-host 203.0.113.0/24 --block-host 198.51.100.9:443
+
+# run 時に直接指定することも可能
+codex-dock run --agent claude --allow-host 203.0.113.10:5000 --block-host 203.0.113.0/24
+```
 
 ### 動作概要
 
@@ -47,7 +60,9 @@ codex-dock firewall create [--no-internet] [--proxy-container-url URL]
 codex-dock firewall status
 ```
 
-次の項目を確認できます。
+先頭に `Firewall: Active / Not active / Unavailable` の1行判定を表示し、
+有効化されていない場合は次に実行すべきコマンド（例: `sudo codex-dock firewall create`）を案内します。
+続けて次の詳細項目を確認できます。
 
 - Linux 対応可否
 - root 実行可否
@@ -56,6 +71,23 @@ codex-dock firewall status
 - `DOCKER-USER -> CODEX-DOCK` jump rule の有無
 - `DOCKER-USER` 既定ポリシー
 - `CODEX-DOCK` の最終 jump verdict
+
+最後に `CODEX-DOCK` チェーンの**許可/遮断ルール一覧**を評価順に表示します。
+どの宛先が `ALLOW`（通過）／`BLOCK`（遮断）されるか、`--allow-host` で追加した
+許可先も含めて一目で確認できます。
+
+```text
+Rules (CODEX-DOCK chain, evaluated top to bottom):
+  ALLOW  172.17.0.1/32       tcp/18080  auth proxy / allowed host
+  ALLOW  203.0.113.10/32     tcp/5000   auth proxy / allowed host
+  ALLOW  10.200.0.0/24       tcp/18080  dock-net subnet -> proxy
+  BLOCK  10.0.0.0/8          all        private/link-local
+  BLOCK  172.16.0.0/12       all        private/link-local
+  BLOCK  192.168.0.0/16      all        private/link-local
+  BLOCK  169.254.0.0/16      all        private/link-local
+  BLOCK  127.0.0.0/8         all        private/link-local
+  ALLOW  any                 all        default: hand back to Docker rules
+```
 
 ---
 

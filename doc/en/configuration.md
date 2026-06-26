@@ -189,6 +189,85 @@ approval_mode = "suggest"
 
 ---
 
+### `[firewall]` section — dock-net firewall defaults
+
+Keys under `[firewall]` apply to **both `codex-dock run` and
+`codex-dock firewall create`**. Set a value here once instead of passing the
+flag on every command.
+
+```toml
+[firewall]
+# Auth Proxy URL (always allowed destination)
+proxy_container_url = "http://codex-auth-proxy:18080"
+# Extra always-allowed destinations (internal registry, internal API, ...)
+allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
+# Extra always-blocked destinations (CIDR / IP / IP:PORT)
+block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
+```
+
+**Replacing repeated flags with config:**
+
+```bash
+# Before — flags on every run
+codex-dock run --agent claude \
+  --proxy-container-url http://codex-auth-proxy:18080 \
+  --allow-host 203.0.113.10:5000
+
+# After — config makes them implicit
+codex-dock run --agent claude
+```
+
+#### `firewall.proxy_container_url`
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"http://codex-auth-proxy:18080"` |
+| Corresponding flags | `run --proxy-container-url`, `firewall create --proxy-container-url` |
+
+The Auth Proxy URL reachable from worker containers. This destination is always
+allowed through the firewall.
+
+#### `firewall.allow_hosts`
+
+| Item | Value |
+|---|---|
+| Type | array of strings |
+| Default | unset (empty) |
+| Corresponding flags | `run --allow-host`, `firewall create --allow-host` (repeatable) |
+
+A list of extra destinations to always allow out of the sandbox.
+
+> - Format is `"IP:PORT"`. **IP literals only** — hostnames are not resolved.
+> - IPv6 must be bracketed (e.g. `"[2001:db8::1]:443"`).
+> - Passing `--allow-host` on the command line **overrides** this list (it does
+>   not append).
+
+#### `firewall.block_hosts`
+
+| Item | Value |
+|---|---|
+| Type | array of strings |
+| Default | unset (empty) |
+| Corresponding flags | `run --block-host`, `firewall create --block-host` (repeatable) |
+
+A list of extra destinations to always block (drop) out of the sandbox. In
+addition to the built-in private-range drops, this can block arbitrary
+destinations including public IPs.
+
+> - Format is **IPv4** `"CIDR"` / `"IP"` / `"IP:PORT"`:
+>   - `"203.0.113.0/24"` — drop the whole range (all ports/protocols)
+>   - `"203.0.113.10"` — drop that host (all ports/protocols)
+>   - `"203.0.113.10:443"` — drop only TCP/443 to that host
+> - **`--allow-host` takes precedence** over `--block-host` (allow rules are
+>   evaluated first).
+> - Passing `--block-host` on the command line **overrides** this list.
+
+> **Note**: to skip firewall application entirely for a `codex-dock run`, use the
+> `--no-firewall` flag (it is not a config key).
+
+---
+
 ### `network_name`
 
 Docker network name to use.
@@ -283,6 +362,16 @@ user = "current"
 
 # run subcommand default approval mode
 approval_mode = "suggest"
+
+[firewall]
+# Default Auth Proxy URL (--proxy-container-url)
+proxy_container_url = "http://codex-auth-proxy:18080"
+
+# Extra destinations always allowed (equivalent to --allow-host)
+allow_hosts = ["203.0.113.10:5000"]
+
+# Extra destinations always blocked (equivalent to --block-host)
+block_hosts = ["203.0.113.0/24"]
 ```
 
 ---

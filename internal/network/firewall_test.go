@@ -7,6 +7,32 @@ import (
 	"testing"
 )
 
+func TestParseManagedChainRules(t *testing.T) {
+	out := []byte(strings.Join([]string{
+		"-N CODEX-DOCK",
+		`-A CODEX-DOCK -d 172.17.0.1/32 -p tcp -m tcp --dport 18080 -m comment --comment "codex-dock-allow-host" -j RETURN`,
+		`-A CODEX-DOCK -d 10.200.0.0/24 -p tcp -m tcp --dport 18080 -m comment --comment "codex-dock-allow-bridge-subnet" -j RETURN`,
+		`-A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment "codex-dock-drop-private" -j DROP`,
+		"-A CODEX-DOCK -j RETURN",
+		"",
+	}, "\n"))
+
+	rules := parseManagedChainRules(out)
+	if len(rules) != 4 {
+		t.Fatalf("parseManagedChainRules() len = %d, want 4\n%+v", len(rules), rules)
+	}
+
+	if r := rules[0]; r.Action != "allow" || r.Destination != "172.17.0.1/32" || r.Protocol != "tcp" || r.Port != 18080 || r.Comment != "codex-dock-allow-host" || r.Verdict != "RETURN" {
+		t.Fatalf("rules[0] = %+v", r)
+	}
+	if r := rules[2]; r.Action != "block" || r.Destination != "10.0.0.0/8" || r.Port != 0 || r.Verdict != "DROP" || r.Comment != "codex-dock-drop-private" {
+		t.Fatalf("rules[2] = %+v", r)
+	}
+	if r := rules[3]; r.Action != "allow" || r.Destination != "" || r.Verdict != "RETURN" || r.Comment != "" {
+		t.Fatalf("rules[3] = %+v", r)
+	}
+}
+
 func TestIsFirewallWarning(t *testing.T) {
 	tests := []struct {
 		name string
@@ -129,6 +155,10 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 		AllowTCPDestinations: []HostEndpoint{
 			{IP: "172.17.0.1", Port: 18080},
 		},
+		BlockDestinations: []BlockDestination{
+			{CIDR: "203.0.113.0/24", Port: 0},
+			{CIDR: "198.51.100.5/32", Port: 443},
+		},
 	})
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -160,11 +190,30 @@ func TestIptablesFirewallApplyBuildsRules(t *testing.T) {
 		"iptables -A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -m comment --comment codex-dock-allow-host -j RETURN",
 		"iptables -A CODEX-DOCK -d 10.200.0.0/24 -p tcp --dport 18080 -m comment --comment codex-dock-allow-bridge-subnet -j RETURN",
 		"iptables -A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment codex-dock-drop-private -j DROP",
+		"iptables -A CODEX-DOCK -d 198.51.100.5/32 -p tcp --dport 443 -m comment --comment codex-dock-block-host -j DROP",
+		"iptables -A CODEX-DOCK -d 203.0.113.0/24 -m comment --comment codex-dock-block-host -j DROP",
 		"iptables -A CODEX-DOCK -j RETURN",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("Apply() missing command %q\ncalls:\n%s", want, got)
 		}
+	}
+
+	// Verify the CODEX-DOCK chain evaluation order:
+	//   allow (RETURN) -> private DROP -> custom block DROP -> final RETURN.
+	// This ordering is what makes --allow-host win over --block-host and lets a
+	// public IP still be blocked before the catch-all RETURN.
+	allowHost := strings.Index(got, "-A CODEX-DOCK -d 172.17.0.1/32 -p tcp --dport 18080 -m comment --comment codex-dock-allow-host -j RETURN")
+	privateDrop := strings.Index(got, "-A CODEX-DOCK -d 10.0.0.0/8 -m comment --comment codex-dock-drop-private -j DROP")
+	customBlock := strings.Index(got, "-A CODEX-DOCK -d 203.0.113.0/24 -m comment --comment codex-dock-block-host -j DROP")
+	finalReturn := strings.LastIndex(got, "-A CODEX-DOCK -j RETURN")
+	if allowHost < 0 || privateDrop < 0 || customBlock < 0 || finalReturn < 0 {
+		t.Fatalf("Apply() missing an ordering anchor\ncalls:\n%s", got)
+	}
+	ordered := allowHost < privateDrop && privateDrop < customBlock && customBlock < finalReturn
+	if !ordered {
+		t.Fatalf("Apply() wrong CODEX-DOCK order: allow=%d private=%d block=%d return=%d\ncalls:\n%s",
+			allowHost, privateDrop, customBlock, finalReturn, got)
 	}
 }
 

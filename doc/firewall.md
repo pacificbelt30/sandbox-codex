@@ -29,21 +29,54 @@
 
 ## ルール適用の考え方
 
-`codex-dock firewall create` は次の方針でルールを適用します。
+`codex-dock firewall create` は次の方針で `CODEX-DOCK` チェーンを
+**上から順に**評価するよう適用します。
 
 1. `DOCKER-USER` から `CODEX-DOCK` へジャンプする導線を作る
-2. Auth Proxy 向け通信のみ先に明示許可する
-3. private/link-local 宛を拒否する
+2. **許可 (RETURN)**: Auth Proxy ＋ `--allow-host` で追加した宛先
+3. **遮断 (DROP)**: private/link-local ＋ `--block-host` で追加した宛先
 4. 最後に `RETURN` で他の Docker ルールへ戻す
+
+許可ルールが先に評価されるため、**`--allow-host` は `--block-host` より優先**されます。
+末尾が `RETURN`（= private 以外の公開インターネットは素通り）なので、
+公開 IP を遮断したい場合は `--block-host` を使います。
 
 ### 許可される通信
 
 - `--proxy-container-url` で指定した Auth Proxy の `IP:PORT`
 - `dock-net` サブネット (`10.200.0.0/24`) から同ポートへの通信
+- `--allow-host IP:PORT`（または config `firewall.allow_hosts`）で追加した宛先
 
 ### 拒否される通信
 
 - private/link-local 宛: `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`
+- `--block-host CIDR|IP|IP:PORT`（または config `firewall.block_hosts`）で追加した宛先（IPv4）
+
+### 許可/遮断を追加するカスタマイズ
+
+```bash
+# 社内レジストリ (203.0.113.10:5000) は許可、ある外部レンジ全体は遮断
+sudo codex-dock firewall create \
+  --allow-host 203.0.113.10:5000 \
+  --block-host 203.0.113.0/24
+
+# run でも同じフラグが使える
+codex-dock run --agent claude --allow-host 203.0.113.10:5000 --block-host 198.51.100.9:443
+```
+
+毎回フラグを書く代わりに `~/.config/codex-dock/config.toml` に固定できます。
+
+```toml
+[firewall]
+proxy_container_url = "http://codex-auth-proxy:18080"
+allow_hosts = ["203.0.113.10:5000"]   # 常に許可
+block_hosts = ["203.0.113.0/24"]      # 常に遮断
+```
+
+> `--block-host` は IPv4 の `CIDR` / `IP` / `IP:PORT` を受け付けます。
+> `IP` 単体は `/32`、`IP:PORT` は TCP の該当ポートのみ遮断します。
+> 適用状況は `codex-dock firewall status` の `ALLOW` / `BLOCK` 一覧で確認できます
+> （`--block-host` 由来は `custom block` と表示）。
 
 ---
 
