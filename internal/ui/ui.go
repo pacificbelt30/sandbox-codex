@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/rivo/tview"
 )
@@ -16,7 +17,13 @@ const pollInterval = 2 * time.Second
 func Run() error {
 	app := tview.NewApplication()
 
-	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{})
+	// Include a network manager so deleting a worker also removes its per-worker
+	// Internal network (otherwise the networks accumulate).
+	netMgr, err := network.NewManager()
+	if err != nil {
+		return fmt.Errorf("connecting to Docker: %w", err)
+	}
+	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Network: netMgr})
 	if err != nil {
 		return fmt.Errorf("connecting to Docker: %w", err)
 	}

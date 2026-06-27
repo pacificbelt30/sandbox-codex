@@ -137,8 +137,11 @@ func (m *Manager) DisconnectProxy(workerNet, proxyContainer string) error {
 	return nil
 }
 
-// RemoveWorkerNetwork removes a worker's internal network. A missing network is
-// not treated as an error.
+// RemoveWorkerNetwork removes a worker's internal network. It first force-
+// disconnects every endpoint still attached (the multi-homed proxy, plus any
+// leftover worker container), since Docker refuses to remove a network with
+// active endpoints. A missing network is not treated as an error. This lets
+// callers tear the network down without needing a live proxy reference.
 func (m *Manager) RemoveWorkerNetwork(name string) error {
 	ctx := context.Background()
 	netName := WorkerNetworkName(name)
@@ -149,6 +152,16 @@ func (m *Manager) RemoveWorkerNetwork(name string) error {
 	if existing == nil {
 		return nil
 	}
+
+	// Inspect to enumerate attached containers (the list endpoint omits them).
+	if detail, err := m.cli.NetworkInspect(ctx, existing.ID, dockernetwork.InspectOptions{}); err == nil {
+		for containerID := range detail.Containers {
+			if derr := m.cli.NetworkDisconnect(ctx, existing.ID, containerID, true); derr != nil && !isNotConnected(derr) {
+				return fmt.Errorf("disconnecting %s from %s: %w", containerID, netName, derr)
+			}
+		}
+	}
+
 	if err := m.cli.NetworkRemove(ctx, existing.ID); err != nil {
 		return fmt.Errorf("removing worker network %s: %w", netName, err)
 	}

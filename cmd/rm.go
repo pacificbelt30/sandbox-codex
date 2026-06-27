@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/spf13/cobra"
 )
@@ -13,7 +14,13 @@ var rmCmd = &cobra.Command{
 	Use:   "rm [NAME|ID...]",
 	Short: "Remove stopped worker containers",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Verbose: verbose})
+		// A network manager is required so Remove also tears down each worker's
+		// per-worker Internal network (otherwise the networks accumulate).
+		netMgr, err := network.NewManager()
+		if err != nil {
+			return fmt.Errorf("creating network manager: %w", err)
+		}
+		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Network: netMgr, Verbose: verbose})
 		if err != nil {
 			return err
 		}

@@ -266,6 +266,22 @@ func TestPickUniqueName(t *testing.T) {
 			t.Errorf("suffix missing in %q", got)
 		}
 	})
+
+	// Base name taken, but the suffixed fallback is free → returns a suffixed
+	// name (and the fallback is verified free, not blindly returned).
+	t.Run("suffix re-checked", func(t *testing.T) {
+		taken := func(n string) bool { return n == "codex-x-y" } // only the bare base is taken
+		got := pickUniqueName(func() string { return "codex-x-y" }, taken, 3)
+		if got == "codex-x-y" {
+			t.Fatalf("returned the taken base name")
+		}
+		if !strings.HasPrefix(got, "codex-x-y-") {
+			t.Errorf("got %q; want a free suffixed name", got)
+		}
+		if taken(got) {
+			t.Errorf("returned a name reported taken: %q", got)
+		}
+	})
 }
 
 func TestRandomSuffix_Unique(t *testing.T) {

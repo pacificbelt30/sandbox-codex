@@ -49,8 +49,10 @@ Removes the egress network. Per-worker networks are disconnected and removed aut
 
 ### Per-worker network lifecycle
 - **Foreground `codex-dock run`** (no `--detach`): the container and its dedicated network are removed automatically on exit, so networks don't accumulate. Pass `--keep` to retain them.
-- **`--detach` (background)**: the container persists; its network is disconnected and removed when you `codex-dock rm <name>`.
-- Auto-generated worker names are chosen to avoid colliding with existing containers/networks, preventing two workers from ever sharing one Internal network.
+- **`codex-dock stop`**: only stops the container; the network is **kept on purpose** (needed to restart it). Removal happens on `rm`.
+- **`codex-dock rm <name>` / TUI delete (D)**: removes the container, then force-disconnects every remaining endpoint on the dedicated network (including the proxy) and removes the network — reliably, even if the proxy isn't running.
+- **`--detach` (background)**: the container persists; its network is removed when you `codex-dock rm`.
+- Auto-generated worker names avoid colliding with existing containers/networks (the random-suffix fallback is re-checked too), so two workers never share one Internal network. With `--name`, Docker's container-name uniqueness rejects duplicates.
 
 ---
 

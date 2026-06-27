@@ -576,8 +576,8 @@ func (m *Manager) nameTaken(name string) bool {
 }
 
 // pickUniqueName returns the first name produced by gen that is not reported
-// taken. After maxAttempts collisions it appends a short random suffix to
-// guarantee uniqueness.
+// taken. After maxAttempts collisions it appends a short random suffix, which is
+// itself re-checked so the fallback name is verified free too.
 func pickUniqueName(gen func() string, taken func(string) bool, maxAttempts int) string {
 	for i := 0; i < maxAttempts; i++ {
 		n := gen()
@@ -585,7 +585,15 @@ func pickUniqueName(gen func() string, taken func(string) bool, maxAttempts int)
 			return n
 		}
 	}
-	return gen() + "-" + randomSuffix()
+	base := gen()
+	for i := 0; i < maxAttempts; i++ {
+		n := base + "-" + randomSuffix()
+		if !taken(n) {
+			return n
+		}
+	}
+	// Extremely unlikely; return a suffixed name regardless.
+	return base + "-" + randomSuffix()
 }
 
 // randomSuffix returns a short random hex string for disambiguating names.
@@ -598,20 +606,16 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
-// cleanupWorkerNetwork disconnects the proxy from a worker's Internal network and
-// removes the network. Best-effort: called after the worker container is removed,
-// since a network with active container endpoints cannot be deleted.
+// cleanupWorkerNetwork removes a worker's Internal network after its container is
+// gone. RemoveWorkerNetwork force-disconnects any remaining endpoints (notably the
+// multi-homed proxy), so this works even when the Manager has no proxy reference
+// (e.g. the `rm` command / TUI). Failures are reported but not fatal.
 func (m *Manager) cleanupWorkerNetwork(name string) {
 	if m.network == nil || name == "" {
 		return
 	}
-	if proxyName := m.proxyContainerName(); proxyName != "" {
-		if err := m.network.DisconnectProxy(name, proxyName); err != nil && m.verbose {
-			fmt.Fprintf(os.Stderr, "warning: disconnecting proxy from worker network %s: %v\n", name, err)
-		}
-	}
-	if err := m.network.RemoveWorkerNetwork(name); err != nil && m.verbose {
-		fmt.Fprintf(os.Stderr, "warning: removing worker network %s: %v\n", name, err)
+	if err := m.network.RemoveWorkerNetwork(name); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: removing worker network for %s: %v\n", name, err)
 	}
 }
 
