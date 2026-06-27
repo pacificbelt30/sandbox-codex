@@ -73,3 +73,13 @@ codex-dock proxy run \
 
 - Because no iptables are involved, **macOS / Windows (Docker Desktop) get the same isolation as Linux** (Docker Desktop manages the `Internal` network blocking rules).
 - The old `codex-dock firewall` command and the `--allow-host`/`--block-host`/`--no-firewall`/`--sudo` flags have been removed.
+
+## Verification
+
+A Docker-free smoke test exercises the core proxy/router behaviour (requires `go` / `python3` / `curl`):
+
+```bash
+bash scripts/smoke-proxy.sh
+```
+
+It checks: data-plane `/health`, `/admin/*` on the admin listener, `/admin/*` NOT served on the data-plane port (split), the forward proxy (HTTP and CONNECT), and a 403 from the domain allowlist. Container-level isolation (worker↔worker, Internal-network egress blocking) needs a Docker daemon — see the manual end-to-end steps.

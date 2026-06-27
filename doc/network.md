@@ -73,3 +73,13 @@ codex-dock proxy run \
 
 - iptables を使わないため、**macOS / Windows (Docker Desktop) でも Linux と同等** の隔離が得られます（`Internal` ネットワークの遮断ルールは Docker Desktop が管理）。
 - 旧 `codex-dock firewall` コマンドと `--allow-host`/`--block-host`/`--no-firewall`/`--sudo` フラグは廃止されました。
+
+## 動作確認
+
+Docker 不要でプロキシ／ルータの主要動作を確認できるスモークテストを同梱しています（要 `go` / `python3` / `curl`）。
+
+```bash
+bash scripts/smoke-proxy.sh
+```
+
+確認内容: データプレーン `/health`、admin リスナーの `/admin/*`、データプレーンポートに `/admin/*` が出ないこと（分離）、フォワードプロキシ（HTTP / CONNECT）、ドメイン allowlist による 403。コンテナ間隔離や `Internal` ネットワークの egress 遮断は Docker デーモンが必要なため、`doc/network.md` の手動 E2E 手順で確認してください。
