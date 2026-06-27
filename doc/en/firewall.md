@@ -19,10 +19,29 @@
 `firewall` is effective when all of the following are true:
 
 - Linux host
-- Run as root
+- Run as root (or pass `--sudo`)
 - `iptables` command is available
 
 If prerequisites are missing, codex-dock prints warnings and continues.
+
+### `--sudo` when not root
+
+When you cannot run as root, add `--sudo` to `run` / `firewall create` /
+`firewall rm` / `network rm` to run **only the `iptables` calls** via `sudo`
+(codex-dock itself keeps running as the unprivileged user, so config and
+credential path resolution are unaffected).
+
+- On an interactive terminal it prompts for a password once (internally `sudo -v`).
+- In a non-interactive environment (CI / TUI / `--detach`) it never blocks on a
+  prompt: it relies on cached credentials or a `NOPASSWD` sudoers entry, and
+  fails explicitly on the first `iptables` call if neither is available.
+- The config key `firewall.sudo = true` makes this the default (CLI `--sudo` wins).
+
+```bash
+# Apply without root via --sudo (prompts for a password only on the iptables calls)
+codex-dock firewall create --sudo
+codex-dock run --agent claude --sudo
+```
 
 ---
 

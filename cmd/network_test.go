@@ -15,6 +15,7 @@ func newFirewallCreateFlagSet() *cobra.Command {
 	cmd.Flags().String("proxy-container-url", "http://codex-auth-proxy:18080", "")
 	cmd.Flags().StringArray("allow-host", nil, "")
 	cmd.Flags().StringArray("block-host", nil, "")
+	cmd.Flags().Bool("sudo", false, "")
 	return cmd
 }
 
@@ -25,19 +26,23 @@ func TestApplyFirewallConfigDefaults(t *testing.T) {
 	prevURL := networkProxyContainerURL
 	prevHosts := firewallAllowHosts
 	prevBlocks := firewallBlockHosts
+	prevSudo := firewallSudo
 	t.Cleanup(func() {
 		networkProxyContainerURL = prevURL
 		firewallAllowHosts = prevHosts
 		firewallBlockHosts = prevBlocks
+		firewallSudo = prevSudo
 	})
 
 	networkProxyContainerURL = "http://codex-auth-proxy:18080"
 	firewallAllowHosts = nil
 	firewallBlockHosts = nil
+	firewallSudo = false
 
 	viper.Set("firewall.proxy_container_url", "http://proxy.internal:9000")
 	viper.Set("firewall.allow_hosts", []string{"203.0.113.10:5000", "198.51.100.7:443"})
 	viper.Set("firewall.block_hosts", []string{"203.0.113.0/24"})
+	viper.Set("firewall.sudo", true)
 
 	applyFirewallConfigDefaults(newFirewallCreateFlagSet())
 
@@ -50,6 +55,9 @@ func TestApplyFirewallConfigDefaults(t *testing.T) {
 	if len(firewallBlockHosts) != 1 || firewallBlockHosts[0] != "203.0.113.0/24" {
 		t.Errorf("firewallBlockHosts = %v; want config list", firewallBlockHosts)
 	}
+	if !firewallSudo {
+		t.Errorf("firewallSudo = %v; want config value true", firewallSudo)
+	}
 }
 
 func TestApplyFirewallConfigDefaults_FlagPriority(t *testing.T) {
@@ -59,19 +67,23 @@ func TestApplyFirewallConfigDefaults_FlagPriority(t *testing.T) {
 	prevURL := networkProxyContainerURL
 	prevHosts := firewallAllowHosts
 	prevBlocks := firewallBlockHosts
+	prevSudo := firewallSudo
 	t.Cleanup(func() {
 		networkProxyContainerURL = prevURL
 		firewallAllowHosts = prevHosts
 		firewallBlockHosts = prevBlocks
+		firewallSudo = prevSudo
 	})
 
 	networkProxyContainerURL = "http://flag.example:1234"
 	firewallAllowHosts = []string{"192.0.2.1:8080"}
 	firewallBlockHosts = []string{"192.0.2.0/24"}
+	firewallSudo = false
 
 	viper.Set("firewall.proxy_container_url", "http://proxy.internal:9000")
 	viper.Set("firewall.allow_hosts", []string{"203.0.113.10:5000"})
 	viper.Set("firewall.block_hosts", []string{"203.0.113.0/24"})
+	viper.Set("firewall.sudo", true)
 
 	cmd := newFirewallCreateFlagSet()
 	if err := cmd.Flags().Set("proxy-container-url", "http://flag.example:1234"); err != nil {
@@ -83,6 +95,7 @@ func TestApplyFirewallConfigDefaults_FlagPriority(t *testing.T) {
 	if err := cmd.Flags().Set("block-host", "192.0.2.0/24"); err != nil {
 		t.Fatalf("set block-host: %v", err)
 	}
+	// --sudo not set on the command line, so the config value should win.
 
 	applyFirewallConfigDefaults(cmd)
 
@@ -94,6 +107,9 @@ func TestApplyFirewallConfigDefaults_FlagPriority(t *testing.T) {
 	}
 	if len(firewallBlockHosts) != 1 || firewallBlockHosts[0] != "192.0.2.0/24" {
 		t.Errorf("firewallBlockHosts = %v; want flag value", firewallBlockHosts)
+	}
+	if !firewallSudo {
+		t.Errorf("firewallSudo = %v; want config value true (flag unset)", firewallSudo)
 	}
 }
 

@@ -203,6 +203,8 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
 # 追加で常に遮断する宛先（CIDR / IP / IP:PORT）
 block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
+# root でないとき iptables 適用を sudo 経由で行う
+sudo = false
 ```
 
 **毎回フラグを書く代わりに config で固定する例：**
@@ -258,6 +260,22 @@ codex-dock run --agent claude
 >   - `"203.0.113.10:443"` … そのホストの TCP/443 のみ遮断
 > - **`--allow-host` の方が優先**されます（許可ルールが先に評価されるため）。
 > - コマンドラインで `--block-host` を渡すと、このリストは**上書き**されます。
+
+#### `firewall.sudo`
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 真偽値 |
+| デフォルト | `false` |
+| 対応フラグ | `run --sudo`, `firewall create --sudo`, `firewall rm --sudo`, `network rm --sudo` |
+
+root でないときに `iptables` 適用を `sudo` 経由で行うかどうか。`iptables` の実行のみを
+昇格させ、codex-dock 本体は一般ユーザーのまま動かします。
+
+> - 対話端末ではパスワードを一度だけ要求します（`sudo -v`）。
+> - 非対話環境（CI / TUI / `--detach`）ではプロンプトで停止せず、キャッシュ済み資格情報または
+>   NOPASSWD 設定を利用します。利用できない場合は最初の `iptables` 呼び出しで明示的に失敗します。
+> - コマンドラインで `--sudo` を渡すと、この値は**上書き**されます。
 
 > **メモ**: `codex-dock run` でファイアウォール適用自体を止めたい場合は
 > `--no-firewall` フラグを使います（config キーではありません）。

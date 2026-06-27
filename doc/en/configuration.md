@@ -203,6 +203,8 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
 # Extra always-blocked destinations (CIDR / IP / IP:PORT)
 block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
+# Apply iptables via sudo when not running as root
+sudo = false
 ```
 
 **Replacing repeated flags with config:**
@@ -262,6 +264,24 @@ destinations including public IPs.
 > - **`--allow-host` takes precedence** over `--block-host` (allow rules are
 >   evaluated first).
 > - Passing `--block-host` on the command line **overrides** this list.
+
+#### `firewall.sudo`
+
+| Item | Value |
+|---|---|
+| Type | boolean |
+| Default | `false` |
+| Corresponding flags | `run --sudo`, `firewall create --sudo`, `firewall rm --sudo`, `network rm --sudo` |
+
+Whether to run the `iptables` apply via `sudo` when codex-dock is not running as
+root. Only the `iptables` invocations are elevated; codex-dock itself keeps
+running as the unprivileged user.
+
+> - On an interactive terminal it prompts for a password once (`sudo -v`).
+> - In a non-interactive environment (CI / TUI / `--detach`) it never blocks on a
+>   prompt: it relies on cached credentials or a NOPASSWD sudoers entry, and fails
+>   explicitly on the first `iptables` call if neither is available.
+> - Passing `--sudo` on the command line **overrides** this value.
 
 > **Note**: to skip firewall application entirely for a `codex-dock run`, use the
 > `--no-firewall` flag (it is not a config key).

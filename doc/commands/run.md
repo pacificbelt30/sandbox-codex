@@ -40,6 +40,7 @@ codex-dock run [OPTIONS]
 | `--no-firewall` | | `false` | codex-dock の dock-net iptables ルール適用をスキップ（ホスト側ファイアウォールに委ねる） |
 | `--allow-host` | | | dock-net ファイアウォールで追加許可する宛先 `IP:PORT`（繰り返し指定可） |
 | `--block-host` | | | dock-net ファイアウォールで追加遮断する宛先 `CIDR`/`IP`/`IP:PORT`（IPv4・繰り返し指定可） |
+| `--sudo` | | `false` | root でないとき dock-net の iptables 適用のみ `sudo` 経由で実行（対話端末では一度だけパスワード要求、非対話環境では NOPASSWD/キャッシュ資格情報を利用） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |

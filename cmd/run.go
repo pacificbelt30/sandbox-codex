@@ -36,6 +36,7 @@ var (
 	runAllowHosts       []string
 	runBlockHosts       []string
 	runNoFirewall       bool
+	runSudo             bool
 )
 
 var runCmd = &cobra.Command{
@@ -80,6 +81,7 @@ func init() {
 	f.StringArrayVar(&runAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the dock-net firewall (repeatable)")
 	f.StringArrayVar(&runBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the dock-net firewall (repeatable)")
 	f.BoolVar(&runNoFirewall, "no-firewall", false, "Skip applying codex-dock's dock-net iptables firewall rules (leave host firewall as-is)")
+	f.BoolVar(&runSudo, "sudo", false, "Run the dock-net iptables firewall commands via sudo when not running as root (prompts once on a terminal; uses cached/NOPASSWD sudo when non-interactive)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
 	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18080", "External auth proxy admin URL")
@@ -141,6 +143,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	ensureOpts := network.EnsureOptions{
 		NoInternet: runOpts.NoInternet,
+		Sudo:       runSudo,
 	}
 	if port, ok := allowedHostPort(proxyContainerURL); ok {
 		ensureOpts.AllowHostTCPPorts = []int{port}
@@ -265,6 +268,10 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 
 	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
 		runBlockHosts = viper.GetStringSlice("firewall.block_hosts")
+	}
+
+	if !flags.Changed("sudo") && viper.IsSet("firewall.sudo") {
+		runSudo = viper.GetBool("firewall.sudo")
 	}
 }
 

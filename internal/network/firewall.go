@@ -33,6 +33,8 @@ var (
 	ErrFirewallRuleNotFound     = errors.New("iptables rule not found")
 	ErrFirewallChainNotFound    = errors.New("iptables chain not found")
 	ErrFirewallPermissionDenied = errors.New("iptables permission denied")
+	ErrFirewallSudoNotFound     = errors.New("sudo not found (required by --sudo)")
+	ErrFirewallSudoFailed       = errors.New("sudo authentication failed")
 )
 
 type firewallController interface {
@@ -77,6 +79,8 @@ type firewallConfig struct {
 	AllowTCPPorts        []int
 	AllowTCPDestinations []HostEndpoint
 	BlockDestinations    []BlockDestination
+	// UseSudo runs iptables via sudo when the current process is not root.
+	UseSudo bool
 }
 
 // HostEndpoint is a single TCP destination that should remain reachable from workers.
@@ -113,6 +117,14 @@ type iptablesFirewall struct {
 	runner  iptablesRunner
 	isLinux func() bool
 	euid    func() int
+	// interactive reports whether stdin is a terminal, so sudo may prompt.
+	interactive func() bool
+	// primeSudo refreshes sudo credentials once before iptables calls run.
+	primeSudo func(ctx context.Context) error
+
+	// sudo and primed are per-invocation state populated from firewallConfig.
+	sudo   bool
+	primed bool
 }
 
 func newSystemFirewall() firewallController {
@@ -123,17 +135,98 @@ func newSystemFirewall() firewallController {
 	}
 }
 
-func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error {
+// defaultInteractive reports whether stdin is attached to a terminal, which is
+// the signal we use to decide whether sudo may interactively prompt for a
+// password.
+func defaultInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// initFuncs fills in default implementations for the injectable hooks so tests
+// that construct an iptablesFirewall with only runner/isLinux/euid keep working.
+func (f *iptablesFirewall) initFuncs() {
 	if f.isLinux == nil {
 		f.isLinux = func() bool { return runtime.GOOS == "linux" }
 	}
 	if f.euid == nil {
 		f.euid = os.Geteuid
 	}
+	if f.interactive == nil {
+		f.interactive = defaultInteractive
+	}
+	if f.primeSudo == nil {
+		f.primeSudo = f.defaultPrimeSudo
+	}
+}
+
+// defaultPrimeSudo establishes a sudo session before the firewall issues its
+// `sudo -n iptables` calls. In an interactive terminal it runs `sudo -v`, which
+// prompts for a password once and caches the credentials so the subsequent
+// non-interactive calls succeed. In a non-interactive environment it never
+// prompts: it relies on cached credentials or a NOPASSWD sudoers entry, and any
+// failure surfaces on the first real iptables call instead of hanging.
+func (f *iptablesFirewall) defaultPrimeSudo(ctx context.Context) error {
+	if !f.interactive() {
+		return nil
+	}
+	cmd := exec.CommandContext(ctx, "sudo", "-v")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%w: %v", ErrFirewallSudoFailed, err)
+	}
+	return nil
+}
+
+// useSudo reports whether iptables invocations should be wrapped in sudo. It is
+// only meaningful for a non-root process that opted in via --sudo.
+func (f *iptablesFirewall) useSudo() bool {
+	return f.sudo && f.euid() != 0
+}
+
+// ensureSudoPrimed primes the sudo session at most once per invocation.
+func (f *iptablesFirewall) ensureSudoPrimed(ctx context.Context) error {
+	if !f.useSudo() || f.primed {
+		return nil
+	}
+	if err := f.primeSudo(ctx); err != nil {
+		return err
+	}
+	f.primed = true
+	return nil
+}
+
+// ensureToolPath verifies the binary the firewall is about to invoke exists.
+// When running via sudo we only require sudo on PATH; iptables frequently lives
+// in a directory (e.g. /usr/sbin) that is not on an unprivileged user's PATH,
+// so its presence is validated by the first `sudo iptables` call instead.
+func (f *iptablesFirewall) ensureToolPath() error {
+	if f.useSudo() {
+		if _, err := f.runner.LookPath("sudo"); err != nil {
+			return fmt.Errorf("%w: %v", ErrFirewallSudoNotFound, err)
+		}
+		return nil
+	}
+	if _, err := f.runner.LookPath("iptables"); err != nil {
+		return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
+	}
+	return nil
+}
+
+func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error {
+	f.initFuncs()
 	if !f.isLinux() {
 		return nil
 	}
-	if f.euid() != 0 {
+	f.sudo = cfg.UseSudo
+
+	if f.euid() != 0 && !f.sudo {
+		// Non-root without --sudo: keep the existing best-effort behavior.
 		if _, err := f.runner.LookPath("iptables"); err != nil {
 			return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
 		}
@@ -149,8 +242,13 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 		}
 		return fmt.Errorf("%w", ErrFirewallRootRequired)
 	}
-	if _, err := f.runner.LookPath("iptables"); err != nil {
-		return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
+
+	// Root, or a non-root process that opted into sudo.
+	if err := f.ensureToolPath(); err != nil {
+		return err
+	}
+	if err := f.ensureSudoPrimed(ctx); err != nil {
+		return err
 	}
 
 	if err := f.ensureChain(ctx, dockerUserChain); err != nil {
@@ -243,20 +341,19 @@ func (f *iptablesFirewall) Apply(ctx context.Context, cfg firewallConfig) error 
 }
 
 func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error {
-	if f.isLinux == nil {
-		f.isLinux = func() bool { return runtime.GOOS == "linux" }
-	}
-	if f.euid == nil {
-		f.euid = os.Geteuid
-	}
+	f.initFuncs()
 	if !f.isLinux() {
 		return nil
 	}
-	if f.euid() != 0 {
+	f.sudo = cfg.UseSudo
+	if f.euid() != 0 && !f.sudo {
 		return fmt.Errorf("%w", ErrFirewallRootRequired)
 	}
-	if _, err := f.runner.LookPath("iptables"); err != nil {
-		return fmt.Errorf("%w: %v", ErrFirewallIptablesNotFound, err)
+	if err := f.ensureToolPath(); err != nil {
+		return err
+	}
+	if err := f.ensureSudoPrimed(ctx); err != nil {
+		return err
 	}
 
 	rule := []string{"-i", cfg.BridgeName, "-j", managedChain}
@@ -307,12 +404,8 @@ func (f *iptablesFirewall) Remove(ctx context.Context, cfg firewallConfig) error
 }
 
 func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (FirewallStatus, error) {
-	if f.isLinux == nil {
-		f.isLinux = func() bool { return runtime.GOOS == "linux" }
-	}
-	if f.euid == nil {
-		f.euid = os.Geteuid
-	}
+	f.initFuncs()
+	f.sudo = cfg.UseSudo
 
 	status := FirewallStatus{
 		Supported: f.isLinux(),
@@ -321,10 +414,17 @@ func (f *iptablesFirewall) Status(ctx context.Context, cfg firewallConfig) (Fire
 	if !status.Supported {
 		return status, nil
 	}
-	if _, err := f.runner.LookPath("iptables"); err != nil {
+	if f.useSudo() {
+		if _, err := f.runner.LookPath("sudo"); err != nil {
+			return status, nil
+		}
+	} else if _, err := f.runner.LookPath("iptables"); err != nil {
 		return status, nil
 	}
 	status.IptablesFound = true
+	if err := f.ensureSudoPrimed(ctx); err != nil {
+		return status, err
+	}
 
 	if err := f.runMaybeMissing(ctx, "-S", managedChain); err == nil {
 		status.ChainExists = true
@@ -417,7 +517,15 @@ func (f *iptablesFirewall) runMaybeMissingOutput(ctx context.Context, args ...st
 }
 
 func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byte, error) {
-	out, err := f.runner.Run(ctx, "iptables", args...)
+	name := "iptables"
+	if f.useSudo() {
+		// `-n` keeps the call non-interactive so a missing/expired sudo
+		// credential fails fast (classified below) instead of blocking on a
+		// password prompt whose output we cannot surface.
+		name = "sudo"
+		args = append([]string{"-n", "iptables"}, args...)
+	}
+	out, err := f.runner.Run(ctx, name, args...)
 	if err == nil {
 		return out, nil
 	}
@@ -437,10 +545,12 @@ func (f *iptablesFirewall) runOutput(ctx context.Context, args ...string) ([]byt
 		return out, ErrFirewallChainNotFound
 	case strings.Contains(msg, "no such file or directory"):
 		return out, ErrFirewallChainNotFound
+	case strings.Contains(msg, "a password is required") || strings.Contains(msg, "a terminal is required") || strings.Contains(msg, "sudo: a password"):
+		return out, fmt.Errorf("%w: %s", ErrFirewallSudoFailed, strings.TrimSpace(string(out)))
 	case strings.Contains(msg, "permission denied"):
-		return out, fmt.Errorf("%w: iptables command failed: permission denied (run codex-dock as root): %w", ErrFirewallPermissionDenied, err)
+		return out, fmt.Errorf("%w: iptables command failed: permission denied (run codex-dock as root or pass --sudo): %w", ErrFirewallPermissionDenied, err)
 	default:
-		return out, fmt.Errorf("iptables %s failed: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return out, fmt.Errorf("%s %s failed: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 }
 
@@ -530,7 +640,10 @@ func parseManagedChainRules(out []byte) []FirewallRule {
 }
 
 func IsFirewallWarning(err error) bool {
-	return errors.Is(err, ErrFirewallRootRequired) || errors.Is(err, ErrFirewallIptablesNotFound)
+	return errors.Is(err, ErrFirewallRootRequired) ||
+		errors.Is(err, ErrFirewallIptablesNotFound) ||
+		errors.Is(err, ErrFirewallSudoNotFound) ||
+		errors.Is(err, ErrFirewallSudoFailed)
 }
 
 func normalizePorts(ports []int) []int {

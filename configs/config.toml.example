@@ -97,3 +97,11 @@ proxy_container_url = "http://codex-auth-proxy:18080"
 #
 # Example: block an external analytics endpoint and an internal subnet.
 # block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
+
+# Apply the iptables firewall rules via sudo when codex-dock is NOT run as root.
+#                                                      flag: --sudo
+# On an interactive terminal sudo prompts for a password once; in a
+# non-interactive environment (CI, TUI, --detach) it relies on cached
+# credentials or a NOPASSWD sudoers entry and never blocks on a prompt.
+# Note   : passing --sudo on the command line OVERRIDES this value.
+# sudo = false
