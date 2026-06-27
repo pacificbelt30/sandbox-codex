@@ -45,7 +45,12 @@ Creates the egress network (`dock-net-proxy`). `proxy run` also auto-creates it 
 Shows the egress network state plus the list of per-worker networks currently present.
 
 ### `codex-dock network rm`
-Removes the egress network. Per-worker networks are disconnected and removed automatically when a worker is removed (`codex-dock rm`).
+Removes the egress network. Per-worker networks are disconnected and removed automatically when a worker is removed.
+
+### Per-worker network lifecycle
+- **Foreground `codex-dock run`** (no `--detach`): the container and its dedicated network are removed automatically on exit, so networks don't accumulate. Pass `--keep` to retain them.
+- **`--detach` (background)**: the container persists; its network is disconnected and removed when you `codex-dock rm <name>`.
+- Auto-generated worker names are chosen to avoid colliding with existing containers/networks, preventing two workers from ever sharing one Internal network.
 
 ---
 

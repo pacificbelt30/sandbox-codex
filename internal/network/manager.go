@@ -155,6 +155,17 @@ func (m *Manager) RemoveWorkerNetwork(name string) error {
 	return nil
 }
 
+// WorkerNetworkExists reports whether the per-worker Internal network for the
+// given worker name already exists.
+func (m *Manager) WorkerNetworkExists(name string) (bool, error) {
+	ctx := context.Background()
+	net, err := m.findNetworkByName(ctx, WorkerNetworkName(name))
+	if err != nil {
+		return false, err
+	}
+	return net != nil, nil
+}
+
 // RemoveEgressNetwork removes the egress (proxy) network.
 func (m *Manager) RemoveEgressNetwork() error {
 	ctx := context.Background()

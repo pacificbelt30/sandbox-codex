@@ -185,6 +185,18 @@ func TestApplyRunConfigDefaults(t *testing.T) {
 	}
 }
 
+// TestRunKeepFlag asserts the --keep opt-out for foreground cleanup exists and
+// defaults to removing the container/network (keep = false).
+func TestRunKeepFlag(t *testing.T) {
+	f := runCmd.Flags().Lookup("keep")
+	if f == nil {
+		t.Fatal("run: --keep flag not registered")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--keep default = %q; want false (clean up by default)", f.DefValue)
+	}
+}
+
 // TestRunNoFirewallFlagRemoved asserts the iptables-era flags are gone now that
 // isolation is enforced entirely by Docker networks.
 func TestRunNoFirewallFlagRemoved(t *testing.T) {

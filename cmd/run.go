@@ -31,6 +31,7 @@ var (
 	proxyAdminURL       string
 	proxyContainerURL   string
 	runProxyAdminSecret string
+	runKeep             bool
 )
 
 var runCmd = &cobra.Command{
@@ -78,6 +79,7 @@ func init() {
 	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
+	f.BoolVar(&runKeep, "keep", false, "Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate)")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw bash shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
 	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
@@ -257,15 +259,25 @@ func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 
 	// Wait for signal or container exit
 	exitCh := mgr.Wait(containerID)
+	var runErr error
 	select {
 	case <-sigCh:
 		fmt.Println("\nStopping container...")
-		return mgr.Stop(containerID, 10) // Stop() revokes token (F-AUTH-04)
+		runErr = mgr.Stop(containerID, 10) // Stop() revokes token (F-AUTH-04)
 	case err := <-exitCh:
 		// Container exited on its own — revoke its token (F-AUTH-04)
 		mgr.RevokeToken(containerID)
-		return err
+		runErr = err
 	}
+
+	// Foreground cleanup: remove the container and its per-worker Internal network
+	// so they don't accumulate across runs (use --keep to retain them).
+	if !runKeep {
+		if err := mgr.Remove(containerID, true); err != nil && verbose {
+			fmt.Fprintf(os.Stderr, "warning: cleaning up container/network: %v\n", err)
+		}
+	}
+	return runErr
 }
 
 func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
@@ -324,6 +336,12 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	for _, id := range containerIDs {
 		if err := mgr.Stop(id, 10); err != nil && verbose {
 			fmt.Fprintf(os.Stderr, "warning: stopping %s: %v\n", id[:12], err)
+		}
+		// Remove the container and its per-worker network so they don't accumulate.
+		if !runKeep {
+			if err := mgr.Remove(id, true); err != nil && verbose {
+				fmt.Fprintf(os.Stderr, "warning: cleaning up %s: %v\n", id[:12], err)
+			}
 		}
 	}
 	for _, p := range worktreePaths {

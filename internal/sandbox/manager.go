@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/url"
@@ -67,7 +69,10 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 
 	name := opts.Name
 	if name == "" {
-		name = generateName()
+		// Pick a name whose container and per-worker network are both free, so two
+		// workers never end up sharing one Internal network (which would break
+		// isolation) when generated names collide.
+		name = pickUniqueName(generateName, m.nameTaken, 12)
 	}
 
 	// Determine workspace path
@@ -553,6 +558,44 @@ func proxyEndpointHost(endpoint string) string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+// nameTaken reports whether a worker name is already in use by an existing
+// container or by an existing per-worker network. Errors are treated as
+// "available" so transient lookup failures don't block name selection.
+func (m *Manager) nameTaken(name string) bool {
+	if _, err := m.resolveID(name); err == nil {
+		return true
+	}
+	if m.network != nil {
+		if exists, err := m.network.WorkerNetworkExists(name); err == nil && exists {
+			return true
+		}
+	}
+	return false
+}
+
+// pickUniqueName returns the first name produced by gen that is not reported
+// taken. After maxAttempts collisions it appends a short random suffix to
+// guarantee uniqueness.
+func pickUniqueName(gen func() string, taken func(string) bool, maxAttempts int) string {
+	for i := 0; i < maxAttempts; i++ {
+		n := gen()
+		if !taken(n) {
+			return n
+		}
+	}
+	return gen() + "-" + randomSuffix()
+}
+
+// randomSuffix returns a short random hex string for disambiguating names.
+func randomSuffix() string {
+	b := make([]byte, 4)
+	if _, err := crand.Read(b); err != nil {
+		// crypto/rand should not fail; fall back to a timestamp-based value.
+		return fmt.Sprintf("%08x", time.Now().UnixNano()&0xffffffff)
+	}
+	return hex.EncodeToString(b)
 }
 
 // cleanupWorkerNetwork disconnects the proxy from a worker's Internal network and

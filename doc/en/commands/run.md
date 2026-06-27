@@ -34,6 +34,7 @@ codex-dock run [OPTIONS]
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
 | `--no-internet` | | `false` | Disable general egress (omit `HTTP(S)_PROXY`; only the proxy's API reverse routes remain reachable) |
+| `--keep` | | `false` | Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |

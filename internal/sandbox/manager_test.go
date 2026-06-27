@@ -232,6 +232,52 @@ func TestBuildHostConfig_NoExtraHosts(t *testing.T) {
 	}
 }
 
+func TestPickUniqueName(t *testing.T) {
+	// First generated name is free → used as-is.
+	t.Run("first free", func(t *testing.T) {
+		names := []string{"codex-brave-otter", "codex-calm-finch"}
+		i := 0
+		gen := func() string { n := names[i%len(names)]; i++; return n }
+		got := pickUniqueName(gen, func(string) bool { return false }, 12)
+		if got != "codex-brave-otter" {
+			t.Errorf("got %q; want first generated name", got)
+		}
+	})
+
+	// Skips taken names and returns the first free one.
+	t.Run("skips taken", func(t *testing.T) {
+		seq := []string{"taken-1", "taken-2", "free-3"}
+		i := 0
+		gen := func() string { n := seq[i]; i++; return n }
+		taken := func(n string) bool { return strings.HasPrefix(n, "taken") }
+		got := pickUniqueName(gen, taken, 12)
+		if got != "free-3" {
+			t.Errorf("got %q; want free-3", got)
+		}
+	})
+
+	// Everything taken → appends a random suffix to the last generated name.
+	t.Run("suffix fallback", func(t *testing.T) {
+		got := pickUniqueName(func() string { return "codex-x-y" }, func(string) bool { return true }, 3)
+		if !strings.HasPrefix(got, "codex-x-y-") {
+			t.Errorf("got %q; want a suffixed codex-x-y-<hex>", got)
+		}
+		if got == "codex-x-y-" || len(got) <= len("codex-x-y-") {
+			t.Errorf("suffix missing in %q", got)
+		}
+	})
+}
+
+func TestRandomSuffix_Unique(t *testing.T) {
+	a, b := randomSuffix(), randomSuffix()
+	if a == "" || b == "" {
+		t.Fatal("randomSuffix returned empty")
+	}
+	if a == b {
+		t.Errorf("randomSuffix produced duplicates: %q", a)
+	}
+}
+
 func TestProxyEndpointHost(t *testing.T) {
 	tests := []struct {
 		endpoint string
