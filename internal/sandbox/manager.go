@@ -23,11 +23,10 @@ import (
 )
 
 const (
-	labelPrefix    = "codex-dock."
-	labelManaged   = labelPrefix + "managed"
-	labelBranch    = labelPrefix + "branch"
-	labelTask      = labelPrefix + "task"
-	sandboxNetName = "dock-net"
+	labelPrefix  = "codex-dock."
+	labelManaged = labelPrefix + "managed"
+	labelBranch  = labelPrefix + "branch"
+	labelTask    = labelPrefix + "task"
 )
 
 // ManagerConfig holds configuration for the sandbox manager.
@@ -127,8 +126,23 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		mounts[0].ReadOnly = true
 	}
 
-	// Security: drop all capabilities, non-root user
-	hostConfig := buildHostConfig(mounts)
+	// Per-worker Internal network: create it and attach the proxy so the worker
+	// can reach the proxy/router but nothing else (no other worker, host, or
+	// direct internet). Enforced entirely by Docker — no iptables/sudo.
+	netName := network.WorkerNetworkName(name)
+	if m.network != nil {
+		if err := m.network.EnsureWorkerNetwork(name); err != nil {
+			return "", fmt.Errorf("creating worker network: %w", err)
+		}
+		if proxyName := m.proxyContainerName(); proxyName != "" {
+			if err := m.network.ConnectProxy(name, proxyName); err != nil {
+				return "", fmt.Errorf("connecting proxy to worker network: %w", err)
+			}
+		}
+	}
+
+	// Security: drop all capabilities, non-root user, isolated Internal network.
+	hostConfig := buildHostConfig(mounts, netName)
 
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
@@ -249,18 +263,28 @@ func (m *Manager) ImageExists(tag string) (bool, error) {
 	return true, nil
 }
 
-// Remove removes a container by ID.
+// Remove removes a container by ID and tears down its per-worker network.
 func (m *Manager) Remove(containerID string, force bool) error {
-	return m.cli.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: force})
+	ctx := context.Background()
+	name, _ := m.resolveNameByID(ctx, containerID)
+	if err := m.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: force}); err != nil {
+		return err
+	}
+	m.cleanupWorkerNetwork(name)
+	return nil
 }
 
-// RemoveByName removes a container by name.
+// RemoveByName removes a container by name and tears down its per-worker network.
 func (m *Manager) RemoveByName(name string, force bool) error {
 	id, err := m.resolveID(name)
 	if err != nil {
 		return err
 	}
-	return m.Remove(id, force)
+	if err := m.cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: force}); err != nil {
+		return err
+	}
+	m.cleanupWorkerNetwork(name)
+	return nil
 }
 
 // List returns all codex-dock managed workers.
@@ -426,9 +450,9 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		if err != nil {
 			return nil, fmt.Errorf("issuing auth token: %w", err)
 		}
-		// ContainerEndpoint() returns the auth proxy URL reachable from workers.
+		// ContainerEndpoint() returns the auth proxy URL reachable from workers
+		// over the per-worker Internal network via Docker DNS (codex-auth-proxy).
 		containerProxyURL := m.proxy.ContainerEndpoint()
-		fallbacks := m.computeProxyFallbacks(containerProxyURL)
 
 		wantCodex := opts.Agent == AgentCodex || opts.Agent == AgentNone
 		wantClaude := opts.Agent == AgentClaude || opts.Agent == AgentNone
@@ -442,9 +466,6 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 				// (https://chatgpt.com/backend-api/codex) in all auth modes.
 				"OPENAI_BASE_URL="+containerProxyURL+"/v1",
 			)
-			if len(fallbacks) > 0 {
-				env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URLS="+strings.Join(fallbacks, ","))
-			}
 			// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
 			// The proxy substitutes the host's real refresh_token so it never reaches
 			// the container. The short-lived token is embedded as ?cdx= for authentication
@@ -464,11 +485,23 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 				"ANTHROPIC_BASE_URL="+containerProxyURL+"/anthropic",
 				"ANTHROPIC_API_KEY="+token,
 			)
-			if len(fallbacks) > 0 {
-				// Fallback proxy roots; the entrypoint appends /anthropic to the
-				// reachable one. Reuses the same connectivity fallbacks as Codex.
-				env = append(env, "ANTHROPIC_PROXY_FALLBACK_URLS="+strings.Join(fallbacks, ","))
-			}
+		}
+
+		// Route general egress (git/npm/pip/curl) through the proxy/router via the
+		// standard HTTP(S)_PROXY vars. NO_PROXY excludes the proxy host itself so
+		// token fetches and the API base URLs reach it directly instead of looping
+		// through the CONNECT forward proxy. Skipped when --no-internet is set, which
+		// leaves only the proxy's credential-injecting API routes reachable.
+		if !opts.NoInternet {
+			proxyHost := proxyEndpointHost(containerProxyURL)
+			env = append(env,
+				"HTTP_PROXY="+containerProxyURL,
+				"HTTPS_PROXY="+containerProxyURL,
+				"http_proxy="+containerProxyURL,
+				"https_proxy="+containerProxyURL,
+				"NO_PROXY="+proxyHost+",localhost,127.0.0.1",
+				"no_proxy="+proxyHost+",localhost,127.0.0.1",
+			)
 		}
 
 		if m.debug {
@@ -502,37 +535,41 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 	return env, nil
 }
 
-// computeProxyFallbacks returns the de-duplicated list of fallback proxy root
-// URLs a worker should try when the primary (DNS-based) endpoint is unreachable.
-// Only applies when the primary host is the codex-auth-proxy container alias.
-func (m *Manager) computeProxyFallbacks(primary string) []string {
-	fallbackURL := buildProxyFallbackURL(primary)
-	if fallbackURL == "" {
-		return nil
+// proxyContainerName returns the name of the auth proxy container, derived from
+// the proxy's container endpoint (e.g. http://codex-auth-proxy:18080 →
+// "codex-auth-proxy"). This is the container the per-worker Internal networks are
+// attached to. Returns "" when no proxy or endpoint is configured.
+func (m *Manager) proxyContainerName() string {
+	if m.proxy == nil {
+		return ""
 	}
-	fallbacks := make([]string, 0, 2)
-	if m.network != nil {
-		if gateway, err := m.network.GatewayAddr(); err == nil {
-			if u := buildProxyFallbackURLWithHost(primary, gateway); u != "" {
-				fallbacks = append(fallbacks, u)
-			}
-		}
-	}
-	fallbacks = append(fallbacks, fallbackURL)
+	return proxyEndpointHost(m.proxy.ContainerEndpoint())
+}
 
-	seen := map[string]struct{}{}
-	unique := make([]string, 0, len(fallbacks))
-	for _, u := range fallbacks {
-		if u == "" {
-			continue
-		}
-		if _, ok := seen[u]; ok {
-			continue
-		}
-		seen[u] = struct{}{}
-		unique = append(unique, u)
+// proxyEndpointHost extracts the hostname from a proxy endpoint URL.
+func proxyEndpointHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
 	}
-	return unique
+	return u.Hostname()
+}
+
+// cleanupWorkerNetwork disconnects the proxy from a worker's Internal network and
+// removes the network. Best-effort: called after the worker container is removed,
+// since a network with active container endpoints cannot be deleted.
+func (m *Manager) cleanupWorkerNetwork(name string) {
+	if m.network == nil || name == "" {
+		return
+	}
+	if proxyName := m.proxyContainerName(); proxyName != "" {
+		if err := m.network.DisconnectProxy(name, proxyName); err != nil && m.verbose {
+			fmt.Fprintf(os.Stderr, "warning: disconnecting proxy from worker network %s: %v\n", name, err)
+		}
+	}
+	if err := m.network.RemoveWorkerNetwork(name); err != nil && m.verbose {
+		fmt.Fprintf(os.Stderr, "warning: removing worker network %s: %v\n", name, err)
+	}
 }
 
 func buildCodexArgs(opts RunOptions) []string {
@@ -566,45 +603,19 @@ func absolutePath(path string) (string, error) {
 }
 
 // buildHostConfig constructs the container HostConfig with security defaults.
-func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
+// netName is the per-worker Internal network the container is attached to; the
+// worker reaches the proxy over this network via Docker embedded DNS
+// (codex-auth-proxy), so no host.docker.internal/host-gateway alias is needed.
+func buildHostConfig(mounts []mount.Mount, netName string) *container.HostConfig {
 	return &container.HostConfig{
-		NetworkMode: container.NetworkMode(sandboxNetName),
+		NetworkMode: container.NetworkMode(netName),
 		Mounts:      mounts,
-		// Ensure host.docker.internal resolves on Linux too.
-		// Worker entrypoint can retry auth proxy calls via this host-gateway alias
-		// when codex-auth-proxy (Docker DNS) is not reachable.
-		ExtraHosts:  []string{"host.docker.internal:host-gateway"},
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 		Resources: container.Resources{
 			PidsLimit: int64ptr(512),
 		},
 	}
-}
-
-func buildProxyFallbackURL(primary string) string {
-	return buildProxyFallbackURLWithHost(primary, "host.docker.internal")
-}
-
-func buildProxyFallbackURLWithHost(primary, host string) string {
-	u, err := url.Parse(primary)
-	if err != nil {
-		return ""
-	}
-	if !strings.EqualFold(u.Hostname(), "codex-auth-proxy") {
-		return ""
-	}
-	port := u.Port()
-	if port == "" {
-		switch strings.ToLower(u.Scheme) {
-		case "https":
-			port = "443"
-		default:
-			port = "80"
-		}
-	}
-	u.Host = host + ":" + port
-	return u.String()
 }
 
 func int64ptr(i int64) *int64 { return &i }

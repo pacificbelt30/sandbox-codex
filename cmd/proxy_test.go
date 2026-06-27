@@ -150,12 +150,13 @@ func TestEnsureProxyDockerfile_Content(t *testing.T) {
 
 func TestBuildProxyRunArgs_Basic(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "my-proxy", port: 18080, networkName: "dock-net-proxy",
-		image: "codex-dock-proxy:latest", listenAddr: "0.0.0.0:18080",
+		name: "my-proxy", adminPort: 18081, networkName: "dock-net-proxy",
+		image: "codex-dock-proxy:latest", listenAddr: "0.0.0.0:18080", adminListenAddr: "0.0.0.0:18081",
 	})
 
-	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "18080:18080")
-	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080")
+	// Only the admin port is published (host loopback); the data-plane port is internal.
+	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "127.0.0.1:18081:18081")
+	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080", "--admin-listen", "0.0.0.0:18081")
 
 	// No credential flags when nothing is set.
 	for _, a := range args {
@@ -173,7 +174,7 @@ func TestBuildProxyRunArgs_Basic(t *testing.T) {
 
 func TestBuildProxyRunArgs_APIKeyEnv(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", apiKeyEnv: "sk-test-key",
 	})
 
@@ -184,7 +185,7 @@ func TestBuildProxyRunArgs_APIKeyEnv(t *testing.T) {
 
 func TestBuildProxyRunArgs_AnthropicKeyEnv(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", anthropicKeyEnv: "sk-ant-test",
 	})
 
@@ -200,7 +201,7 @@ func TestBuildProxyRunArgs_StoredKeyMount(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", storedKeyPath: keyFile,
 	})
 
@@ -217,7 +218,7 @@ func TestBuildProxyRunArgs_OAuthMount(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", oauthJSONPath: authFile,
 	})
 
@@ -234,7 +235,7 @@ func TestBuildProxyRunArgs_ClaudeCredsMount(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", claudeCredsPath: credsFile,
 	})
 
@@ -263,7 +264,7 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr:       "0.0.0.0:18080",
 		apiKeyEnv:        "sk-env-key",
 		storedKeyPath:    keyFile,
@@ -295,7 +296,7 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 
 func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", adminSecret: "s3cr3t",
 	})
 
@@ -306,7 +307,7 @@ func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
 
 func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080",
 	})
 
@@ -320,7 +321,7 @@ func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
 func TestBuildProxyRunArgs_MissingFiles(t *testing.T) {
 	// Non-existent paths must not produce volume mounts.
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr:       "0.0.0.0:18080",
 		storedKeyPath:    "/nonexistent/apikey",
 		oauthJSONPath:    "/nonexistent/auth.json",

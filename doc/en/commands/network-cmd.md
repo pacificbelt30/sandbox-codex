@@ -4,19 +4,19 @@
 >
 > [← Command Reference](../commands.md)
 
-Manages the `dock-net` Docker network.
+Manages the egress network (`dock-net-proxy`, used for the proxy's internet reachability). Per-worker `Internal` networks are created and removed automatically with each worker, so no manual management is needed.
 
-> Linux `iptables` firewall management is a separate command: [`codex-dock firewall`](firewall.md)
+> The old `codex-dock firewall` (iptables) command has been removed; isolation is handled by Docker networks.
 
 ---
 
 ## `network create`
 
 ```bash
-codex-dock network create [--no-internet]
+codex-dock network create
 ```
 
-> Automatically created by `codex-dock run` if it doesn't exist.
+> Also auto-created by `codex-dock proxy run` if missing.
 
 ---
 
@@ -26,7 +26,7 @@ codex-dock network create [--no-internet]
 codex-dock network rm
 ```
 
-> Stop running containers before removing the network.
+> Stop/remove the proxy container first if it is still attached.
 
 ---
 
@@ -37,11 +37,14 @@ codex-dock network status
 ```
 
 ```
-dock-net ID:     a1b2c3d4e5f6
-Driver:          bridge
-ICC disabled:    true
-IP Masquerade:   true
-Subnet:          10.200.0.0/24
+Egress network:  dock-net-proxy
+  ID:            a1b2c3d4e5f6
+  Driver:        bridge
+  Internal:      false
+  Subnet:        172.20.0.0/16
+Worker networks: 2 (Internal, one per worker)
+  - dock-net-w-codex-brave-otter
+  - dock-net-w-codex-calm-finch
 ```
 
 ---
@@ -49,5 +52,3 @@ Subnet:          10.200.0.0/24
 ## Related Documentation
 
 - [Network Specification](../network.md)
-- [`codex-dock firewall` Command](firewall.md)
-- [Firewall Specification & Operations Guide](../firewall.md)

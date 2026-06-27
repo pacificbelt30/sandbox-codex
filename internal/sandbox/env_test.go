@@ -64,8 +64,13 @@ func TestBuildEnv_Codex(t *testing.T) {
 	if v, _ := envValue(env, "OPENAI_BASE_URL"); v != "http://codex-auth-proxy:18080/v1" {
 		t.Errorf("OPENAI_BASE_URL = %q", v)
 	}
-	if _, ok := envValue(env, "CODEX_AUTH_PROXY_FALLBACK_URLS"); !ok {
-		t.Error("expected CODEX_AUTH_PROXY_FALLBACK_URLS for codex-auth-proxy endpoint")
+	// General egress is routed through the proxy/router via HTTP(S)_PROXY, with the
+	// proxy host excluded from NO_PROXY so API/token traffic reaches it directly.
+	if v, _ := envValue(env, "HTTPS_PROXY"); v != "http://codex-auth-proxy:18080" {
+		t.Errorf("HTTPS_PROXY = %q; want http://codex-auth-proxy:18080", v)
+	}
+	if v, _ := envValue(env, "NO_PROXY"); !strings.Contains(v, "codex-auth-proxy") {
+		t.Errorf("NO_PROXY = %q; want it to contain codex-auth-proxy", v)
 	}
 	// Codex agent must not receive Anthropic variables.
 	if _, ok := envValue(env, "ANTHROPIC_BASE_URL"); ok {
@@ -101,8 +106,8 @@ func TestBuildEnv_Claude(t *testing.T) {
 	if v, _ := envValue(env, "ANTHROPIC_API_KEY"); v != "cdx-faketoken" {
 		t.Errorf("ANTHROPIC_API_KEY = %q; want placeholder token", v)
 	}
-	if _, ok := envValue(env, "ANTHROPIC_PROXY_FALLBACK_URLS"); !ok {
-		t.Error("expected ANTHROPIC_PROXY_FALLBACK_URLS")
+	if v, _ := envValue(env, "HTTP_PROXY"); v != "http://codex-auth-proxy:18080" {
+		t.Errorf("HTTP_PROXY = %q; want http://codex-auth-proxy:18080", v)
 	}
 	// Claude agent must not receive Codex variables.
 	if _, ok := envValue(env, "CODEX_TOKEN"); ok {
@@ -138,6 +143,25 @@ func TestBuildEnv_ShellSetsBothProviders(t *testing.T) {
 	}
 	if _, ok := envValue(env, "ANTHROPIC_BASE_URL"); !ok {
 		t.Error("shell mode should configure Claude auth when available")
+	}
+}
+
+func TestBuildEnv_NoInternetSkipsProxyVars(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentCodex, TokenTTL: 60, NoInternet: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// API routes still configured...
+	if _, ok := envValue(env, "OPENAI_BASE_URL"); !ok {
+		t.Error("OPENAI_BASE_URL should still be set with --no-internet (API routes remain)")
+	}
+	// ...but general egress through the forward proxy is disabled.
+	if _, ok := envValue(env, "HTTP_PROXY"); ok {
+		t.Error("HTTP_PROXY should not be set when --no-internet is used")
+	}
+	if _, ok := envValue(env, "HTTPS_PROXY"); ok {
+		t.Error("HTTPS_PROXY should not be set when --no-internet is used")
 	}
 }
 

@@ -17,15 +17,18 @@ import (
 const defaultProxyContainerName = "codex-auth-proxy"
 
 var (
-	proxyListenAddr  string
-	proxyAdminSecret string
+	proxyListenAddr      string
+	proxyAdminListenAddr string
+	proxyAdminSecret     string
+	proxyForwardAllow    []string
 
 	proxyBuildTag        string
 	proxyBuildDockerfile string
 
-	proxyRunName    string
-	proxyRunPort    int
-	proxyRunNetwork string
+	proxyRunName      string
+	proxyRunPort      int
+	proxyRunAdminPort int
+	proxyRunNetwork   string
 
 	proxyStopName string
 
@@ -46,10 +49,12 @@ var proxyServeCmd = &cobra.Command{
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := authproxy.NewProxy(authproxy.Config{
-			TokenTTL:    3600,
-			Verbose:     verbose,
-			ListenAddr:  proxyListenAddr,
-			AdminSecret: proxyAdminSecret,
+			TokenTTL:            3600,
+			Verbose:             verbose,
+			ListenAddr:          proxyListenAddr,
+			AdminListenAddr:     proxyAdminListenAddr,
+			AdminSecret:         proxyAdminSecret,
+			ForwardAllowDomains: proxyForwardAllow,
 		})
 		if err != nil {
 			return err
@@ -96,6 +101,11 @@ At least one credential source must be configured before running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		image := viper.GetString("proxy_image")
 		listenAddr := fmt.Sprintf("0.0.0.0:%d", proxyRunPort)
+		adminListenAddr := fmt.Sprintf("0.0.0.0:%d", proxyRunAdminPort)
+
+		if !cmd.Flags().Changed("forward-allow-domain") && viper.IsSet("proxy.forward_allow_domains") {
+			proxyForwardAllow = viper.GetStringSlice("proxy.forward_allow_domains")
+		}
 
 		if err := ensureBridgeNetwork(cmd.Context(), proxyRunNetwork, network.ProxyBridgeName); err != nil {
 			return err
@@ -112,11 +122,13 @@ At least one credential source must be configured before running.`,
 
 		dockerArgs := buildProxyRunArgs(proxyRunArgs{
 			name:             proxyRunName,
-			port:             proxyRunPort,
+			adminPort:        proxyRunAdminPort,
 			networkName:      proxyRunNetwork,
 			image:            image,
 			listenAddr:       listenAddr,
+			adminListenAddr:  adminListenAddr,
 			adminSecret:      proxyAdminSecret,
+			forwardAllow:     proxyForwardAllow,
 			apiKeyEnv:        os.Getenv("OPENAI_API_KEY"),
 			storedKeyPath:    storedKeyPath,
 			oauthJSONPath:    oauthJSONPath,
@@ -125,8 +137,11 @@ At least one credential source must be configured before running.`,
 			claudeCredsPath:  claudeCredsPath,
 		})
 
-		portMapping := fmt.Sprintf("%d:%d", proxyRunPort, proxyRunPort)
-		fmt.Printf("Starting proxy container %q (image: %s, network: %s, port: %s)...\n", proxyRunName, image, proxyRunNetwork, portMapping)
+		// Only the admin port is published to the host (loopback). The data-plane
+		// port stays internal: workers reach it over the per-worker Docker network.
+		adminMapping := fmt.Sprintf("127.0.0.1:%d:%d", proxyRunAdminPort, proxyRunAdminPort)
+		fmt.Printf("Starting proxy container %q (image: %s, network: %s, data-plane: %d internal, admin: %s)...\n",
+			proxyRunName, image, proxyRunNetwork, proxyRunPort, adminMapping)
 		c := exec.CommandContext(cmd.Context(), "docker", dockerArgs...)
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
@@ -191,8 +206,10 @@ func init() {
 	proxyCmd.AddCommand(proxyRmCmd)
 
 	// serve flags
-	proxyServeCmd.Flags().StringVar(&proxyListenAddr, "listen", "0.0.0.0:18080", "listen address")
+	proxyServeCmd.Flags().StringVar(&proxyListenAddr, "listen", "0.0.0.0:18080", "worker-facing listen address (data plane + forward proxy)")
+	proxyServeCmd.Flags().StringVar(&proxyAdminListenAddr, "admin-listen", "", "separate listen address for /admin/* endpoints (keeps admin off the worker-facing port)")
 	proxyServeCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
+	proxyServeCmd.Flags().StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Restrict the CONNECT forward proxy to these domains and subdomains (repeatable; default: allow all)")
 
 	// build flags
 	proxyBuildCmd.Flags().StringVarP(&proxyBuildTag, "tag", "t", "", "Image tag (default: proxy_image from config)")
@@ -200,9 +217,11 @@ func init() {
 
 	// run flags
 	proxyRunCmd.Flags().StringVar(&proxyRunName, "name", defaultProxyContainerName, "Container name")
-	proxyRunCmd.Flags().IntVarP(&proxyRunPort, "port", "p", 18080, "Host port to expose the proxy on")
-	proxyRunCmd.Flags().StringVar(&proxyRunNetwork, "network", network.ProxyNetworkName, "Docker network to attach the proxy container to")
+	proxyRunCmd.Flags().IntVarP(&proxyRunPort, "port", "p", 18080, "Internal data-plane port (not host-published; workers reach it over the Docker network)")
+	proxyRunCmd.Flags().IntVar(&proxyRunAdminPort, "admin-port", 18081, "Host-published admin port (bound to 127.0.0.1) for /admin/* endpoints")
+	proxyRunCmd.Flags().StringVar(&proxyRunNetwork, "network", network.ProxyNetworkName, "Docker egress network to attach the proxy container to")
 	proxyRunCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
+	proxyRunCmd.Flags().StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Restrict the CONNECT forward proxy to these domains and subdomains (repeatable; default: allow all)")
 
 	// stop flags
 	proxyStopCmd.Flags().StringVar(&proxyStopName, "name", defaultProxyContainerName, "Container name")
@@ -215,12 +234,14 @@ func init() {
 // proxyRunArgs collects the inputs needed to build the "docker run" command for
 // the auth proxy container.
 type proxyRunArgs struct {
-	name        string
-	port        int
-	networkName string
-	image       string
-	listenAddr  string
-	adminSecret string
+	name            string
+	adminPort       int
+	networkName     string
+	image           string
+	listenAddr      string
+	adminListenAddr string
+	adminSecret     string
+	forwardAllow    []string
 
 	// OpenAI / Codex credential sources.
 	apiKeyEnv     string // OPENAI_API_KEY env value
@@ -243,8 +264,10 @@ type proxyRunArgs struct {
 // The proxy selects the active source per provider in priority order
 // (env > stored key file > OAuth credentials).
 func buildProxyRunArgs(a proxyRunArgs) []string {
-	portMapping := fmt.Sprintf("%d:%d", a.port, a.port)
-	args := []string{"run", "-d", "--name", a.name, "--network", a.networkName, "-p", portMapping}
+	// Publish only the admin port, bound to host loopback. The data-plane port is
+	// not published; workers reach it over the per-worker Docker network.
+	adminMapping := fmt.Sprintf("127.0.0.1:%d:%d", a.adminPort, a.adminPort)
+	args := []string{"run", "-d", "--name", a.name, "--network", a.networkName, "-p", adminMapping}
 
 	// Inject OPENAI_API_KEY if set on the host.
 	if a.apiKeyEnv != "" {
@@ -271,8 +294,14 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 
 	// Image and command — CMD overrides the Dockerfile default listen address.
 	args = append(args, a.image, "proxy", "serve", "--listen", a.listenAddr)
+	if a.adminListenAddr != "" {
+		args = append(args, "--admin-listen", a.adminListenAddr)
+	}
 	if a.adminSecret != "" {
 		args = append(args, "--admin-secret", a.adminSecret)
+	}
+	for _, d := range a.forwardAllow {
+		args = append(args, "--forward-allow-domain", d)
 	}
 
 	return args

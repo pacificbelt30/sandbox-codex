@@ -48,7 +48,7 @@ codex-dock のセキュリティは **「コンテナに秘密情報を直接渡
 | `--security-opt no-new-privileges` | 新しい権限の取得を禁止 | setuid/setgid バイナリの悪用防止 |
 | `USER codex (uid:1000)` | 非 root ユーザーで実行 | root 権限でのホスト操作を防止 |
 | `--pids-limit 512` | 最大プロセス数を 512 に制限 | fork bomb 等の防止 |
-| ネットワーク: `dock-net` | ICC 無効のブリッジネットワーク | コンテナ間通信のブロック |
+| ネットワーク: per-worker `Internal` ネット | ワーカーごとに専用の隔離ネットワーク | ワーカー間・ホスト・インターネットへの直接通信をブロック（egress はプロキシ経由のみ） |
 
 ---
 
@@ -65,9 +65,10 @@ codex-dock のセキュリティは **「コンテナに秘密情報を直接渡
   コンテナ内の悪意ある動作がホストに影響を与えにくい構造
         │
         ▼
-【レイヤー 3: ネットワーク隔離】
-  dock-net: ICC 無効、IP Masquerade でインターネットのみ許可
-  コンテナ間の横断侵害を防止
+【レイヤー 3: ネットワーク隔離（Docker ネイティブ）】
+  ワーカーごとに専用 Internal ネットワーク（NAT/ホストルート無し）
+  ワーカー間は別 L2 セグメントで遮断、egress はプロキシ（ルータ）経由のみ
+  iptables/sudo 不要・macOS / Windows でも同等
         │
         ▼
 【レイヤー 4: リソース制限】
@@ -87,7 +88,8 @@ codex-dock のセキュリティは **「コンテナに秘密情報を直接渡
 | API トラフィックの中継 | ✅ | `/v1/` と `/chatgpt/` のリバースプロキシで外部 API への直接通信を排除 |
 | クレデンシャルのログ出力禁止 | ✅ | 認証情報を stdout/stderr に出力しない |
 | `auth.json` の bind mount 禁止 | ✅ | コンテナ内の auth.json は access_token がプレースホルダーの安全なコピー |
-| コンテナ間通信ブロック | ✅ | ICC 無効（`enable_icc=false`） |
+| ワーカー間通信ブロック | ✅ | ワーカーごとに専用 `Internal` ネット（別 L2 セグメント）。iptables 不要 |
+| ワーカー→ホスト/インターネット遮断 | ✅ | `Internal: true`（NAT/ホストルート無し）。egress はプロキシ経由のみ。macOS / Windows でも同等 |
 | 権限昇格防止 | ✅ | `--cap-drop ALL` + `--security-opt no-new-privileges` |
 | 非 root 実行 | ✅ | `USER codex (uid:1000)` |
 | リソース制限 | ✅ | `--pids-limit 512` |
@@ -99,7 +101,7 @@ codex-dock のセキュリティは **「コンテナに秘密情報を直接渡
 | ID | 問題 | 影響度 | 詳細 |
 |---|---|---|---|
 | NF-SEC-01 | Auth Proxy が平文 HTTP 通信 | 高 | TLS または UNIX ソケットが未実装。同一ホスト上の Docker 内部通信のみで使用することを想定 |
-| F-NET-02 | コンテナ→ホスト通信の遮断は Linux 依存 | 中 | Linux では `DOCKER-USER` + `iptables` で private/link-local 宛を遮断。`run` は失敗時 Warning で継続し、`firewall create` で明示適用可能。macOS / Windows は未実装 |
+| ~~F-NET-02~~ | （解消）コンテナ→ホスト遮断の Linux 依存 | — | Docker `Internal` ネットワークに移行し、全プラットフォームで Docker が遮断を担保（iptables 不要）。 |
 | F-AUTH-06 | コンテナ ID による照合なし | 中 | トークンはコンテナ名と紐付けられているが、コンテナ ID との照合なし |
 
 ---

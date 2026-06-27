@@ -1,68 +1,69 @@
-# ネットワーク仕様 (dock-net)
+# ネットワーク仕様（プロキシルータ + per-worker ネットワーク）
 
 > **日本語** | [English](en/network.md)
 
-codex-dock は専用の Docker ブリッジネットワーク **dock-net** を使用してコンテナを隔離します。
+codex-dock はネットワーク隔離を **Docker のネイティブ機能のみ** で実現します。`iptables` も `sudo` も使いません。隔離ルールは Docker デーモン（既に root 権限）が管理します。
 
 ---
 
-## dock-net 基本設定
+## トポロジ
 
-| 項目 | 値 |
-|---|---|
-| ネットワーク名 | `dock-net` |
-| ドライバー | `bridge` |
-| ブリッジ名 | `dock-net0` |
-| サブネット | `10.200.0.0/24` |
-| ゲートウェイ | `10.200.0.1` |
-| ICC | `false`（コンテナ間通信を無効化） |
-| IP Masquerade | `true`（既定。`--no-internet` で `false`） |
+```
+                         ┌──────────────── インターネット (NAT/masquerade ON)
+          dock-net-proxy ─┤  ← プロキシの egress 用ブリッジ
+                          │
+                  ┌───────┴────────┐
+                  │ codex-auth-    │  各ワーカー網へマルチホーム接続
+                  │ proxy (router) │  data-plane :18080 / admin :18081
+                  └─┬───────────┬──┘
+   Internal          │           │          Internal
+ dock-net-w-A ───────┘           └───────── dock-net-w-B
+   (NAT 無効 / ホストルート無し)        (別 L2 セグメント)
+       │                                  │
+   worker A                            worker B   ← 相互疎通不可
+```
+
+| ネットワーク | 種別 | 役割 |
+|---|---|---|
+| `dock-net-proxy` | bridge（NAT 有効） | プロキシの egress（インターネット到達）。ワーカーは接続しない |
+| `dock-net-w-<name>` | bridge `Internal`（NAT 無効） | ワーカー専用。プロキシのみが追加接続される |
+
+- **ワーカー間遮断**: 各ワーカーは別々の `Internal` ネットワーク（別 L2 セグメント）にいるため相互に到達できません。
+- **ワーカー→ホスト/インターネット遮断**: `Internal: true` のためホストルートも NAT もありません。唯一の到達先はプロキシです。
+- **ワーカー→プロキシ**: 同一ネットワーク上の Docker 埋め込み DNS（`codex-auth-proxy`）でデータプレーンポートにのみ到達します。`/admin/*` は別リスナー（別ポート）に分離され、ワーカーからは到達できません。
+- **egress はすべてプロキシ経由**: 一般通信（git/npm/pip/curl）は `HTTP(S)_PROXY` 経由でプロキシの HTTP CONNECT フォワードプロキシへ、OpenAI/Anthropic API は認証注入を行うリバースルートへ流れます。
 
 ---
 
 ## ネットワーク管理コマンド
 
 ### `codex-dock network create`
-
-```bash
-codex-dock network create [--no-internet]
-```
-
-- `dock-net` を作成します。
-- `--no-internet` を指定すると、IP Masquerade を無効化してインターネットアクセスを遮断します。
-- `codex-dock run` 実行時には `dock-net` がなければ自動作成されます。
+egress ネットワーク（`dock-net-proxy`）を作成します。`proxy run` も未作成なら自動作成します。
 
 ### `codex-dock network status`
-
-```bash
-codex-dock network status
-```
-
-`dock-net` の現在状態（driver / subnet / ICC / IP Masquerade）を表示します。
+egress ネットワークの状態と、現在存在する per-worker ネットワーク一覧を表示します。
 
 ### `codex-dock network rm`
-
-```bash
-codex-dock network rm
-```
-
-`dock-net` を削除します。利用中コンテナがある場合は先に停止してください。
+egress ネットワークを削除します。per-worker ネットワークはワーカー削除時（`codex-dock rm`）に自動で切断・削除されます。
 
 ---
 
-## firewall との関係
+## egress 制御（フォワードプロキシ allowlist）
 
-- `network create` は Docker ネットワーク作成のみを担当します。
-- Linux `iptables` を使った通信制御（`codex-dock firewall`）は別機能です。
-- 実運用では `network` 作成後に firewall を設定することを推奨します。
+`codex-dock proxy run --forward-allow-domain <domain>`（繰り返し可）でフォワードプロキシの到達先ドメインを制限できます。指定したドメインとそのサブドメインのみ許可され、その他は 403 になります。未指定なら全許可です。
 
-firewall の詳細は専用ページを参照してください。
+```bash
+codex-dock proxy run \
+  --forward-allow-domain github.com \
+  --forward-allow-domain registry.npmjs.org \
+  --forward-allow-domain pypi.org
+```
 
-- [firewall 仕様・運用ガイド](firewall.md)
-- [`codex-dock firewall` コマンドリファレンス](commands/firewall.md)
+`codex-dock run --no-internet` を付けると、そのワーカーには `HTTP(S)_PROXY` を注入しません（API リバースルートのみ到達可能で、一般 egress は無効）。
 
 ---
 
 ## 補足
 
-- macOS / Windows (Docker Desktop) では Linux の `iptables` と同等の自動制御は行いません。
+- iptables を使わないため、**macOS / Windows (Docker Desktop) でも Linux と同等** の隔離が得られます（`Internal` ネットワークの遮断ルールは Docker Desktop が管理）。
+- 旧 `codex-dock firewall` コマンドと `--allow-host`/`--block-host`/`--no-firewall`/`--sudo` フラグは廃止されました。

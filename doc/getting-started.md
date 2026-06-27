@@ -84,21 +84,18 @@ sudo mv codex-dock /usr/local/bin/
 ### Docker で起動（推奨）
 
 ```bash
-# 1) dock-net を作成（初回のみ）
+# 1) egress ネットワークを作成（初回のみ）
 codex-dock network create
 
 # 2) Auth Proxy イメージをビルド
 codex-dock proxy build
 
-# 3) Auth Proxy コンテナを起動（認証情報は自動検出）
+# 3) Auth Proxy（ルータ）コンテナを起動（認証情報は自動検出）
 codex-dock proxy run
-
-# 4) 推奨: firewall を設定（Linux + root）
-sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
 ```
 
 
-> **推奨**: `network create` と `proxy run` の後に firewall を設定してください。`codex-dock run` の通信制御が明確になります。詳細は [firewall 仕様・運用ガイド](firewall.md) を参照してください。
+> ネットワーク隔離は Docker のみで完結します（`iptables`/`sudo` 不要）。各ワーカー起動時に専用 `Internal` ネットワークが作られ、プロキシが接続され、ワーカーはプロキシ経由でのみ外部へ到達します。詳細は [ネットワーク仕様](network.md) を参照してください。
 
 `codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
 

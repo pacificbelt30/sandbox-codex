@@ -24,8 +24,17 @@ import (
 type Config struct {
 	TokenTTL    int
 	Verbose     bool
-	ListenAddr  string // TCP address to listen on, e.g. "192.168.200.1:0". Defaults to "127.0.0.1:0".
+	ListenAddr  string // worker-facing TCP address (data plane + forward proxy). Defaults to "0.0.0.0:0".
 	AdminSecret string
+
+	// AdminListenAddr, when non-empty, serves the /admin/* routes on a separate
+	// listener so they are not reachable on the worker-facing data-plane port.
+	// When empty, /admin/* is served on the main listener (in-process/test use).
+	AdminListenAddr string
+
+	// ForwardAllowDomains optionally restricts the HTTP CONNECT forward proxy to
+	// the listed domains (and their subdomains). Empty means allow all hosts.
+	ForwardAllowDomains []string
 }
 
 // tokenRecord holds a single issued token and its metadata.
@@ -46,6 +55,11 @@ type Proxy struct {
 	mu         sync.RWMutex
 	tokens     map[string]*tokenRecord // containerName -> record
 	addr       string
+
+	// Admin listener (only used when Config.AdminListenAddr is set).
+	adminListener net.Listener
+	adminServer   *http.Server
+	adminAddr     string
 
 	// Anthropic (Claude Code) credentials. Populated independently of the
 	// OpenAI credentials above so a single proxy can serve both agents.
@@ -158,13 +172,12 @@ func (p *Proxy) Start() error {
 	p.listener = ln
 	p.addr = ln.Addr().String()
 
+	// Data-plane mux: routes the worker is allowed to use. The /admin/* routes are
+	// registered here only when no separate admin listener is configured.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/health", p.handleHealth)
 	mux.HandleFunc("/revoke", p.handleRevoke)
-	mux.HandleFunc("/admin/issue", p.handleAdminIssue)
-	mux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
-	mux.HandleFunc("/admin/mode", p.handleAdminMode)
 	// OAuth token refresh: Codex CLI calls this via CODEX_REFRESH_TOKEN_URL_OVERRIDE.
 	// The proxy substitutes the host's real refresh_token so it never reaches containers.
 	mux.HandleFunc("/oauth/token", p.handleOAuthTokenRefresh)
@@ -177,7 +190,37 @@ func (p *Proxy) Start() error {
 	// Forwards to api.anthropic.com, injecting the host's real API key or OAuth bearer token.
 	mux.HandleFunc("/anthropic/", p.handleAnthropicProxy)
 
-	p.server = &http.Server{Handler: mux}
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("/admin/issue", p.handleAdminIssue)
+	adminMux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
+	adminMux.HandleFunc("/admin/mode", p.handleAdminMode)
+
+	if p.cfg.AdminListenAddr != "" {
+		// Serve /admin/* on a dedicated listener so workers (which only reach the
+		// data-plane port over the Internal network) cannot use them.
+		aln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", p.cfg.AdminListenAddr)
+		if err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("starting auth proxy admin listener: %w", err)
+		}
+		p.adminListener = aln
+		p.adminAddr = aln.Addr().String()
+		p.adminServer = &http.Server{Handler: adminMux}
+		go func() {
+			if err := p.adminServer.Serve(aln); err != nil && err != http.ErrServerClosed {
+				log.Printf("auth proxy admin error: %v", err)
+			}
+		}()
+	} else {
+		// Single-listener mode (in-process/tests): admin routes share the main mux.
+		mux.HandleFunc("/admin/issue", p.handleAdminIssue)
+		mux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
+		mux.HandleFunc("/admin/mode", p.handleAdminMode)
+	}
+
+	// Worker-facing handler: CONNECT/absolute-form requests are handled by the
+	// forward proxy (router); everything else falls through to the data-plane mux.
+	p.server = &http.Server{Handler: p.workerFacingHandler(mux)}
 	go func() {
 		if err := p.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("auth proxy error: %v", err)
@@ -189,6 +232,9 @@ func (p *Proxy) Start() error {
 
 	if p.cfg.Verbose {
 		fmt.Printf("Auth Proxy listening on %s\n", p.addr)
+		if p.adminAddr != "" {
+			fmt.Printf("Auth Proxy admin listening on %s\n", p.adminAddr)
+		}
 	}
 	return nil
 }
@@ -275,6 +321,9 @@ func (p *Proxy) Stop() {
 	defer cancel()
 	if p.server != nil {
 		_ = p.server.Shutdown(ctx)
+	}
+	if p.adminServer != nil {
+		_ = p.adminServer.Shutdown(ctx)
 	}
 	p.mu.Lock()
 	p.tokens = make(map[string]*tokenRecord)

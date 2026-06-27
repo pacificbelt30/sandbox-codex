@@ -30,8 +30,8 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 
 | Document | Description |
 |---|---|
-| [Network Specification](network.md) | dock-net layout and network management basics |
-| [Firewall Specification & Operations Guide](firewall.md) | Linux `iptables` control, allow/deny rules, and operations |
+| [Network Specification](network.md) | Proxy router + per-worker Internal networks and egress control |
+| [Firewall (Removed)](firewall.md) | The old iptables firewall is gone; see Network Specification |
 
 ### Command Reference
 
@@ -42,8 +42,8 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 | [`codex-dock proxy`](commands/proxy.md) | Auth Proxy build / run / serve / stop / rm |
 | [Worker Management (ps / stop / rm / logs)](commands/worker.md) | List, stop, remove, view logs |
 | [`codex-dock auth`](commands/auth.md) | Auth show / set / rotate |
-| [`codex-dock network`](commands/network-cmd.md) | dock-net create / rm / status |
-| [`codex-dock firewall`](commands/firewall.md) | firewall create / status / rm |
+| [`codex-dock network`](commands/network-cmd.md) | egress network create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | (Removed) replaced by the router model |
 | [`codex-dock build`](commands/build.md) | Build sandbox image |
 | [`codex-dock ui`](commands/ui.md) | TUI dashboard key bindings |
 

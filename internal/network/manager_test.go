@@ -1,124 +1,67 @@
 package network
 
 import (
+	"errors"
+	"strings"
 	"testing"
-
-	dockernetwork "github.com/docker/docker/api/types/network"
 )
 
-func TestDeriveGateway(t *testing.T) {
+func TestWorkerNetworkName(t *testing.T) {
 	tests := []struct {
-		cidr    string
-		want    string
-		wantErr bool
+		worker string
+		want   string
 	}{
-		{"192.168.200.0/24", "192.168.200.1", false},
-		{"10.0.0.0/8", "10.0.0.1", false},
-		{"172.16.0.0/12", "172.16.0.1", false},
-		{"192.168.1.0/24", "192.168.1.1", false},
-		{"invalid", "", true},
-		{"256.0.0.0/24", "", true}, // octet out of range
-		{"192.168.1/24", "", true}, // too few octets
+		{"alpha", "dock-net-w-alpha"},
+		{"worker-1", "dock-net-w-worker-1"},
 	}
-
 	for _, tt := range tests {
-		t.Run(tt.cidr, func(t *testing.T) {
-			got, err := deriveGateway(tt.cidr)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("deriveGateway(%q) expected error, got %q", tt.cidr, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("deriveGateway(%q) unexpected error: %v", tt.cidr, err)
-			}
-			if got != tt.want {
-				t.Errorf("deriveGateway(%q) = %q; want %q", tt.cidr, got, tt.want)
-			}
-		})
+		if got := WorkerNetworkName(tt.worker); got != tt.want {
+			t.Errorf("WorkerNetworkName(%q) = %q; want %q", tt.worker, got, tt.want)
+		}
+	}
+	if !strings.HasPrefix(WorkerNetworkName("x"), WorkerNetPrefix) {
+		t.Errorf("WorkerNetworkName should start with %q", WorkerNetPrefix)
 	}
 }
 
-func TestParseIPv4Network(t *testing.T) {
-	tests := []struct {
-		cidr    string
-		want    [4]byte
-		wantErr bool
-	}{
-		{"192.168.200.0/24", [4]byte{192, 168, 200, 0}, false},
-		{"10.0.0.0/8", [4]byte{10, 0, 0, 0}, false},
-		{"no-slash", [4]byte{}, true},
-		{"256.0.0.0/24", [4]byte{}, true},
+func TestProxyNetworkAliases(t *testing.T) {
+	if ProxyNetworkName != EgressNetworkName {
+		t.Errorf("ProxyNetworkName=%q should alias EgressNetworkName=%q", ProxyNetworkName, EgressNetworkName)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.cidr, func(t *testing.T) {
-			got, err := parseIPv4Network(tt.cidr)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("parseIPv4Network(%q) expected error", tt.cidr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseIPv4Network(%q) unexpected error: %v", tt.cidr, err)
-			}
-			if got != tt.want {
-				t.Errorf("parseIPv4Network(%q) = %v; want %v", tt.cidr, got, tt.want)
-			}
-		})
+	if ProxyBridgeName != EgressBridgeName {
+		t.Errorf("ProxyBridgeName=%q should alias EgressBridgeName=%q", ProxyBridgeName, EgressBridgeName)
 	}
 }
 
-func TestAllowHostEndpoint(t *testing.T) {
+func TestIsAlreadyConnected(t *testing.T) {
 	tests := []struct {
-		name string
-		raw  string
-		want HostEndpoint
-		ok   bool
+		err  error
+		want bool
 	}{
-		{
-			name: "literal ip",
-			raw:  "http://192.168.1.9:18080",
-			want: HostEndpoint{IP: "192.168.1.9", Port: 18080},
-			ok:   true,
-		},
-		{
-			name: "hostname ignored",
-			raw:  "http://host.docker.internal:18080",
-			ok:   false,
-		},
-		{
-			name: "invalid url",
-			raw:  "://bad",
-			ok:   false,
-		},
+		{errors.New("endpoint with name codex-auth-proxy already exists in network dock-net-w-a"), true},
+		{errors.New("container is already connected to network"), true},
+		{errors.New("some other error"), false},
 	}
-
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := AllowHostEndpoint(tt.raw)
-			if ok != tt.ok {
-				t.Fatalf("AllowHostEndpoint(%q) ok=%v want=%v", tt.raw, ok, tt.ok)
-			}
-			if got != tt.want {
-				t.Fatalf("AllowHostEndpoint(%q)=%+v want=%+v", tt.raw, got, tt.want)
-			}
-		})
+		if got := isAlreadyConnected(tt.err); got != tt.want {
+			t.Errorf("isAlreadyConnected(%q) = %v; want %v", tt.err, got, tt.want)
+		}
 	}
 }
 
-func TestGatewayFromSummary(t *testing.T) {
-	net := &dockernetwork.Summary{
-		IPAM: dockernetwork.IPAM{
-			Config: []dockernetwork.IPAMConfig{
-				{Subnet: "10.200.0.0/24"},
-			},
-		},
+func TestIsNotConnected(t *testing.T) {
+	tests := []struct {
+		err  error
+		want bool
+	}{
+		{errors.New("container codex-auth-proxy is not connected to network dock-net-w-a"), true},
+		{errors.New("No such network: dock-net-w-a"), true},
+		{errors.New("network dock-net-w-a not found"), true},
+		{errors.New("permission denied"), false},
 	}
-
-	if got := gatewayFromSummary(net); got != "10.200.0.1" {
-		t.Fatalf("gatewayFromSummary()=%q want 10.200.0.1", got)
+	for _, tt := range tests {
+		if got := isNotConnected(tt.err); got != tt.want {
+			t.Errorf("isNotConnected(%q) = %v; want %v", tt.err, got, tt.want)
+		}
 	}
 }

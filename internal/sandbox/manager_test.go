@@ -192,7 +192,7 @@ func TestImageExists_NotFound(t *testing.T) {
 }
 
 func TestBuildHostConfig_Security(t *testing.T) {
-	hc := buildHostConfig(nil)
+	hc := buildHostConfig(nil, "dock-net-w-test")
 
 	// Must drop all capabilities.
 	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" {
@@ -216,49 +216,36 @@ func TestBuildHostConfig_Security(t *testing.T) {
 }
 
 func TestBuildHostConfig_NetworkMode(t *testing.T) {
-	hc := buildHostConfig(nil)
-	if string(hc.NetworkMode) != sandboxNetName {
-		t.Errorf("NetworkMode = %q; want %q", hc.NetworkMode, sandboxNetName)
+	want := "dock-net-w-alpha"
+	hc := buildHostConfig(nil, want)
+	if string(hc.NetworkMode) != want {
+		t.Errorf("NetworkMode = %q; want %q", hc.NetworkMode, want)
 	}
 }
 
-func TestBuildHostConfig_HostDockerInternalGatewayMapping(t *testing.T) {
-	hc := buildHostConfig(nil)
-	want := "host.docker.internal:host-gateway"
-	for _, h := range hc.ExtraHosts {
-		if h == want {
-			return
-		}
+func TestBuildHostConfig_NoExtraHosts(t *testing.T) {
+	// The router model reaches the proxy via Docker DNS on the Internal network,
+	// so the host.docker.internal/host-gateway alias must NOT be set.
+	hc := buildHostConfig(nil, "dock-net-w-alpha")
+	if len(hc.ExtraHosts) != 0 {
+		t.Errorf("ExtraHosts = %v; want none (router model uses Docker DNS)", hc.ExtraHosts)
 	}
-	t.Errorf("ExtraHosts = %v; missing %q", hc.ExtraHosts, want)
 }
 
-func TestBuildProxyFallbackURL(t *testing.T) {
+func TestProxyEndpointHost(t *testing.T) {
 	tests := []struct {
-		name    string
-		primary string
-		want    string
+		endpoint string
+		want     string
 	}{
-		{name: "default proxy host", primary: "http://codex-auth-proxy:18080", want: "http://host.docker.internal:18080"},
-		{name: "https no explicit port", primary: "https://codex-auth-proxy", want: "https://host.docker.internal:443"},
-		{name: "custom host no fallback", primary: "http://proxy.internal:18080", want: ""},
-		{name: "invalid URL", primary: "://bad", want: ""},
+		{"http://codex-auth-proxy:18080", "codex-auth-proxy"},
+		{"http://codex-auth-proxy:18080/v1", "codex-auth-proxy"},
+		{"https://proxy.internal", "proxy.internal"},
+		{"://bad", ""},
 	}
-
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := buildProxyFallbackURL(tt.primary); got != tt.want {
-				t.Errorf("buildProxyFallbackURL(%q) = %q; want %q", tt.primary, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestBuildProxyFallbackURLWithHost(t *testing.T) {
-	got := buildProxyFallbackURLWithHost("http://codex-auth-proxy:18080", "10.200.0.1")
-	want := "http://10.200.0.1:18080"
-	if got != want {
-		t.Errorf("buildProxyFallbackURLWithHost() = %q; want %q", got, want)
+		if got := proxyEndpointHost(tt.endpoint); got != tt.want {
+			t.Errorf("proxyEndpointHost(%q) = %q; want %q", tt.endpoint, got, tt.want)
+		}
 	}
 }
 
@@ -268,7 +255,7 @@ func TestBuildHostConfig_ReadOnly(t *testing.T) {
 	}
 	// ReadOnly is set by the caller (Run) before passing mounts in.
 	mounts[0].ReadOnly = true
-	hc := buildHostConfig(mounts)
+	hc := buildHostConfig(mounts, "dock-net-w-test")
 	if !hc.Mounts[0].ReadOnly {
 		t.Error("ReadOnly mount not preserved in buildHostConfig")
 	}

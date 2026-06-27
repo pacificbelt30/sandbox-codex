@@ -1,63 +1,59 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
-	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-)
-
-var (
-	networkCreateNoInternet  bool
-	networkProxyContainerURL string
-	firewallAllowHosts       []string
-	firewallBlockHosts       []string
-	firewallSudo             bool
 )
 
 var networkCmd = &cobra.Command{
 	Use:   "network",
-	Short: "Manage dock-net Docker network",
+	Short: "Manage codex-dock Docker networks",
+	Long: `Manage codex-dock's Docker networks.
+
+Isolation is enforced entirely by Docker network primitives (no iptables/sudo):
+  - the egress network (dock-net-proxy) gives the auth proxy internet access;
+  - each worker gets its own Internal network shared only with the proxy, so
+    workers cannot reach each other, the host, or the internet directly — all
+    egress flows through the proxy/router.`,
 }
 
 var networkCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create dock-net",
+	Short: "Create the egress (proxy) network",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := network.NewManager()
 		if err != nil {
 			return err
 		}
-		if err := mgr.EnsureNetwork(network.EnsureOptions{NoInternet: networkCreateNoInternet}); err != nil {
-			return fmt.Errorf("creating dock-net: %w", err)
+		if err := mgr.EnsureEgressNetwork(); err != nil {
+			return fmt.Errorf("creating %s: %w", network.EgressNetworkName, err)
 		}
-		fmt.Println("dock-net created.")
+		fmt.Printf("%s created.\n", network.EgressNetworkName)
 		return nil
 	},
 }
 
 var networkRmCmd = &cobra.Command{
 	Use:   "rm",
-	Short: "Remove dock-net",
+	Short: "Remove the egress (proxy) network",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := network.NewManager()
 		if err != nil {
 			return err
 		}
-		if err := mgr.RemoveNetwork(network.EnsureOptions{Sudo: firewallSudo}); err != nil {
-			return fmt.Errorf("removing dock-net: %w", err)
+		if err := mgr.RemoveEgressNetwork(); err != nil {
+			return fmt.Errorf("removing %s: %w", network.EgressNetworkName, err)
 		}
-		fmt.Println("dock-net removed.")
+		fmt.Printf("%s removed.\n", network.EgressNetworkName)
 		return nil
 	},
 }
 
 var networkStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show dock-net status",
+	Short: "Show network status",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := network.NewManager()
 		if err != nil {
@@ -68,221 +64,25 @@ var networkStatusCmd = &cobra.Command{
 			return fmt.Errorf("getting network status: %w", err)
 		}
 		if info == nil {
-			fmt.Println("dock-net: not created")
-			return nil
-		}
-		fmt.Printf("dock-net ID:     %s\n", info.ID[:12])
-		fmt.Printf("Driver:          %s\n", info.Driver)
-		fmt.Printf("ICC disabled:    %v\n", info.ICCDisabled)
-		fmt.Printf("IP Masquerade:   %v\n", info.IPMasquerade)
-		fmt.Printf("Subnet:          %s\n", info.Subnet)
-		return nil
-	},
-}
-
-var firewallCmd = &cobra.Command{
-	Use:   "firewall",
-	Short: "Manage dock-net firewall rules",
-}
-
-var firewallCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create dock-net firewall rules",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		applyFirewallConfigDefaults(cmd)
-
-		mgr, err := network.NewManager()
-		if err != nil {
-			return err
-		}
-		ensureOpts := network.EnsureOptions{NoInternet: networkCreateNoInternet, Sudo: firewallSudo}
-
-		networkInfo, err := mgr.Status()
-		if err != nil {
-			return fmt.Errorf("checking %s: %w", network.NetworkName, err)
-		}
-		if networkInfo == nil {
-			fmt.Printf("Warning: %s network is not present. Firewall setup requires it.\n", network.NetworkName)
-			createNetwork, err := confirmCreateNetwork(cmd, network.NetworkName)
-			if err != nil {
-				return err
-			}
-			if createNetwork {
-				if err := mgr.EnsureNetwork(ensureOpts); err != nil {
-					return fmt.Errorf("creating %s: %w", network.NetworkName, err)
-				}
-				fmt.Printf("%s network created.\n", network.NetworkName)
-			} else {
-				return fmt.Errorf("%s network is required for firewall setup", network.NetworkName)
-			}
-		}
-
-		proxyNetworkExists, err := mgr.ProxyNetworkExists()
-		if err != nil {
-			return fmt.Errorf("checking %s: %w", network.ProxyNetworkName, err)
-		}
-		if !proxyNetworkExists {
-			fmt.Printf("Warning: %s network is not present. Proxy NIC-level firewall allow rules will not be installed.\n", network.ProxyNetworkName)
-			createNetwork, err := confirmCreateNetwork(cmd, network.ProxyNetworkName)
-			if err != nil {
-				return err
-			}
-			if createNetwork {
-				if err := mgr.EnsureProxyNetwork(); err != nil {
-					return fmt.Errorf("creating %s: %w", network.ProxyNetworkName, err)
-				}
-				fmt.Printf("%s network created.\n", network.ProxyNetworkName)
-			} else {
-				fmt.Printf("Skipping %s creation; only CODEX-DOCK rules will be applied.\n", network.ProxyNetworkName)
-			}
-		}
-
-		if port, ok := allowedHostPort(networkProxyContainerURL); ok {
-			ensureOpts.AllowHostTCPPorts = []int{port}
-		}
-		if endpoint, ok := network.AllowHostEndpoint(networkProxyContainerURL); ok {
-			ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
-		}
-		extraDestinations, err := network.ParseHostEndpoints(firewallAllowHosts)
-		if err != nil {
-			return fmt.Errorf("invalid --allow-host: %w", err)
-		}
-		ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
-		blockDestinations, err := network.ParseBlockDestinations(firewallBlockHosts)
-		if err != nil {
-			return fmt.Errorf("invalid --block-host: %w", err)
-		}
-		ensureOpts.BlockDestinations = blockDestinations
-		err = mgr.ApplyFirewall(ensureOpts)
-		if err != nil {
-			if network.IsFirewallWarning(err) {
-				fmt.Printf("Warning: dock-net firewall rules were not applied: %v\n", err)
-				return nil
-			}
-			return fmt.Errorf("creating dock-net firewall rules: %w", err)
-		}
-		fmt.Println("dock-net firewall rules created.")
-		return nil
-	},
-}
-
-var firewallRmCmd = &cobra.Command{
-	Use:   "rm",
-	Short: "Remove dock-net firewall rules",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		applyFirewallConfigDefaults(cmd)
-
-		mgr, err := network.NewManager()
-		if err != nil {
-			return err
-		}
-		err = mgr.RemoveFirewall(network.EnsureOptions{Sudo: firewallSudo})
-		if err != nil {
-			if network.IsFirewallWarning(err) {
-				fmt.Printf("Warning: dock-net firewall rules were not removed: %v\n", err)
-				return nil
-			}
-			return fmt.Errorf("removing dock-net firewall rules: %w", err)
-		}
-		fmt.Println("dock-net firewall rules removed.")
-		return nil
-	},
-}
-
-var firewallStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show dock-net firewall status",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		mgr, err := network.NewManager()
-		if err != nil {
-			return err
-		}
-		info, err := mgr.FirewallStatus()
-		if err != nil {
-			return fmt.Errorf("getting dock-net firewall status: %w", err)
-		}
-
-		verdict, hint := firewallVerdict(info)
-		fmt.Printf("Firewall: %s\n", verdict)
-		if hint != "" {
-			fmt.Printf("  -> %s\n", hint)
-		}
-		fmt.Println()
-		fmt.Printf("Supported (Linux): %v\n", info.Supported)
-		fmt.Printf("Running as root:   %v\n", info.Root)
-		fmt.Printf("iptables found:    %v\n", info.IptablesFound)
-		fmt.Printf("Chain exists:      %v\n", info.ChainExists)
-		fmt.Printf("Jump rule exists:  %v\n", info.JumpRuleExists)
-		if info.DockerUserDefaultPolicy != "" {
-			fmt.Printf("DOCKER-USER policy: %s\n", info.DockerUserDefaultPolicy)
+			fmt.Printf("%s: not created\n", network.EgressNetworkName)
 		} else {
-			fmt.Println("DOCKER-USER policy: (unknown)")
-		}
-		if info.ManagedChainFinalVerdict != "" {
-			fmt.Printf("CODEX-DOCK final jump: %s\n", info.ManagedChainFinalVerdict)
-		} else {
-			fmt.Println("CODEX-DOCK final jump: (unknown)")
+			fmt.Printf("Egress network:  %s\n", network.EgressNetworkName)
+			fmt.Printf("  ID:            %s\n", info.ID[:12])
+			fmt.Printf("  Driver:        %s\n", info.Driver)
+			fmt.Printf("  Internal:      %v\n", info.Internal)
+			fmt.Printf("  Subnet:        %s\n", info.Subnet)
 		}
 
-		fmt.Print(formatFirewallRules(info))
+		workerNets, err := mgr.ListWorkerNetworks()
+		if err != nil {
+			return fmt.Errorf("listing worker networks: %w", err)
+		}
+		fmt.Printf("Worker networks: %d (Internal, one per worker)\n", len(workerNets))
+		for _, n := range workerNets {
+			fmt.Printf("  - %s\n", n)
+		}
 		return nil
 	},
-}
-
-// formatFirewallRules renders the parsed CODEX-DOCK chain as an ordered
-// allow/block list so operators can see exactly what is permitted and denied.
-func formatFirewallRules(info *network.FirewallInfo) string {
-	var b strings.Builder
-	b.WriteString("\nRules (CODEX-DOCK chain, evaluated top to bottom):\n")
-	if !info.ChainExists {
-		b.WriteString("  (chain not installed — run: codex-dock firewall create)\n")
-		return b.String()
-	}
-	if len(info.Rules) == 0 {
-		b.WriteString("  (no rules)\n")
-		return b.String()
-	}
-	for _, r := range info.Rules {
-		marker := "ALLOW"
-		if r.Action == "block" {
-			marker = "BLOCK"
-		}
-		dest := r.Destination
-		if dest == "" {
-			dest = "any"
-		}
-		proto := "all"
-		if r.Port > 0 {
-			scheme := r.Protocol
-			if scheme == "" {
-				scheme = "tcp"
-			}
-			proto = fmt.Sprintf("%s/%d", scheme, r.Port)
-		}
-		b.WriteString(fmt.Sprintf("  %-5s  %-18s  %-9s  %s\n", marker, dest, proto, firewallRuleLabel(r)))
-	}
-	return b.String()
-}
-
-// firewallRuleLabel maps a rule's iptables comment to a human-readable note.
-func firewallRuleLabel(r network.FirewallRule) string {
-	switch r.Comment {
-	case "codex-dock-allow-host":
-		return "auth proxy / allowed host"
-	case "codex-dock-allow-bridge-subnet":
-		return "dock-net subnet -> proxy"
-	case "codex-dock-drop-private":
-		return "private/link-local"
-	case "codex-dock-block-host":
-		return "custom block"
-	case "":
-		if r.Destination == "" && r.Verdict == "RETURN" {
-			return "default: hand back to Docker rules"
-		}
-		return ""
-	default:
-		return r.Comment
-	}
 }
 
 func init() {
@@ -290,88 +90,4 @@ func init() {
 	networkCmd.AddCommand(networkCreateCmd)
 	networkCmd.AddCommand(networkRmCmd)
 	networkCmd.AddCommand(networkStatusCmd)
-	networkCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
-	networkRmCmd.Flags().BoolVar(&firewallSudo, "sudo", false, sudoFlagUsage)
-
-	rootCmd.AddCommand(firewallCmd)
-	firewallCmd.AddCommand(firewallCreateCmd)
-	firewallCmd.AddCommand(firewallRmCmd)
-	firewallCmd.AddCommand(firewallStatusCmd)
-	firewallCreateCmd.Flags().BoolVar(&networkCreateNoInternet, "no-internet", false, "Disable internet access inside dock-net")
-	firewallCreateCmd.Flags().StringVar(&networkProxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
-	firewallCreateCmd.Flags().StringArrayVar(&firewallAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the firewall (repeatable)")
-	firewallCreateCmd.Flags().StringArrayVar(&firewallBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the firewall (repeatable)")
-	firewallCreateCmd.Flags().BoolVar(&firewallSudo, "sudo", false, sudoFlagUsage)
-	firewallRmCmd.Flags().BoolVar(&firewallSudo, "sudo", false, sudoFlagUsage)
-}
-
-// sudoFlagUsage documents the shared --sudo flag for the firewall commands.
-const sudoFlagUsage = "Run the iptables firewall commands via sudo when not running as root " +
-	"(prompts once on a terminal; uses cached/NOPASSWD sudo when non-interactive)"
-
-// applyFirewallConfigDefaults fills firewall flags from the [firewall] section
-// of config.toml when they were not explicitly set on the command line.
-// Precedence: CLI flag > config file > built-in default.
-func applyFirewallConfigDefaults(cmd *cobra.Command) {
-	flags := cmd.Flags()
-
-	if !flags.Changed("proxy-container-url") {
-		if v := viper.GetString("firewall.proxy_container_url"); v != "" {
-			networkProxyContainerURL = v
-		}
-	}
-
-	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
-		firewallAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
-	}
-
-	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
-		firewallBlockHosts = viper.GetStringSlice("firewall.block_hosts")
-	}
-
-	if !flags.Changed("sudo") && viper.IsSet("firewall.sudo") {
-		firewallSudo = viper.GetBool("firewall.sudo")
-	}
-}
-
-// firewallVerdict reduces the low-level firewall status into a single headline
-// plus, when the firewall is not active, an actionable next step.
-func firewallVerdict(info *network.FirewallInfo) (verdict, hint string) {
-	switch {
-	case !info.Supported:
-		return "Unavailable (non-Linux host)", "iptables egress filtering only runs on a Linux host."
-	case !info.IptablesFound:
-		return "Unavailable (iptables not found)", "Install iptables to enable egress filtering."
-	case info.ChainExists && info.JumpRuleExists:
-		return "Active", ""
-	default:
-		if !info.Root {
-			return "Not active", "Run: sudo codex-dock firewall create (or: codex-dock firewall create --sudo)"
-		}
-		return "Not active", "Run: codex-dock firewall create"
-	}
-}
-
-func confirmCreateProxyNetwork(cmd *cobra.Command) (bool, error) {
-	return confirmCreateNetwork(cmd, network.ProxyNetworkName)
-}
-
-func confirmCreateNetwork(cmd *cobra.Command, networkName string) (bool, error) {
-	prompt := fmt.Sprintf("Create %s now? [y/N]: ", networkName)
-	if _, err := fmt.Fprint(cmd.OutOrStdout(), prompt); err != nil {
-		return false, fmt.Errorf("prompting for %s creation: %w", networkName, err)
-	}
-
-	reader := bufio.NewReader(cmd.InOrStdin())
-	line, err := reader.ReadString('\n')
-	if err != nil && strings.TrimSpace(line) == "" {
-		return false, fmt.Errorf("reading confirmation input: %w", err)
-	}
-
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true, nil
-	default:
-		return false, nil
-	}
 }

@@ -189,117 +189,60 @@ approval_mode = "suggest"
 
 ---
 
-### `[firewall]` section — dock-net firewall defaults
+### `[proxy]` section — Auth Proxy / router defaults
 
-Keys under `[firewall]` apply to **both `codex-dock run` and
-`codex-dock firewall create`**. Set a value here once instead of passing the
-flag on every command.
+> The old `[firewall]` section (`allow_hosts` / `block_hosts` / `sudo`) has been
+> removed. Network isolation is fully handled by Docker; there are no allow/block
+> rules to configure.
 
 ```toml
-[firewall]
-# Auth Proxy URL (always allowed destination)
-proxy_container_url = "http://codex-auth-proxy:18080"
-# Extra always-allowed destinations (internal registry, internal API, ...)
-allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
-# Extra always-blocked destinations (CIDR / IP / IP:PORT)
-block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
-# Apply iptables via sudo when not running as root
-sudo = false
+[proxy]
+# Auth Proxy URL reachable from workers (Docker DNS name + data-plane port)
+container_url = "http://codex-auth-proxy:18080"
+# Forward-proxy domain allowlist (subdomains included; omit to allow all)
+forward_allow_domains = ["github.com", "registry.npmjs.org", "pypi.org"]
 ```
 
-**Replacing repeated flags with config:**
-
-```bash
-# Before — flags on every run
-codex-dock run --agent claude \
-  --proxy-container-url http://codex-auth-proxy:18080 \
-  --allow-host 203.0.113.10:5000
-
-# After — config makes them implicit
-codex-dock run --agent claude
-```
-
-#### `firewall.proxy_container_url`
+#### `proxy.container_url`
 
 | Item | Value |
 |---|---|
 | Type | string |
 | Default | `"http://codex-auth-proxy:18080"` |
-| Corresponding flags | `run --proxy-container-url`, `firewall create --proxy-container-url` |
+| Corresponding flags | `run --proxy-container-url` |
 
-The Auth Proxy URL reachable from worker containers. This destination is always
-allowed through the firewall.
+The Auth Proxy data-plane URL workers reach over Docker DNS. The legacy key
+`firewall.proxy_container_url` is still honored for now.
 
-#### `firewall.allow_hosts`
-
-| Item | Value |
-|---|---|
-| Type | array of strings |
-| Default | unset (empty) |
-| Corresponding flags | `run --allow-host`, `firewall create --allow-host` (repeatable) |
-
-A list of extra destinations to always allow out of the sandbox.
-
-> - Format is `"IP:PORT"`. **IP literals only** — hostnames are not resolved.
-> - IPv6 must be bracketed (e.g. `"[2001:db8::1]:443"`).
-> - Passing `--allow-host` on the command line **overrides** this list (it does
->   not append).
-
-#### `firewall.block_hosts`
+#### `proxy.forward_allow_domains`
 
 | Item | Value |
 |---|---|
 | Type | array of strings |
-| Default | unset (empty) |
-| Corresponding flags | `run --block-host`, `firewall create --block-host` (repeatable) |
+| Default | unset (all domains allowed) |
+| Corresponding flags | `proxy run --forward-allow-domain` (repeatable) |
 
-A list of extra destinations to always block (drop) out of the sandbox. In
-addition to the built-in private-range drops, this can block arbitrary
-destinations including public IPs.
+Restricts the HTTP CONNECT forward proxy to the listed domains (and their
+subdomains); everything else returns 403.
 
-> - Format is **IPv4** `"CIDR"` / `"IP"` / `"IP:PORT"`:
->   - `"203.0.113.0/24"` — drop the whole range (all ports/protocols)
->   - `"203.0.113.10"` — drop that host (all ports/protocols)
->   - `"203.0.113.10:443"` — drop only TCP/443 to that host
-> - **`--allow-host` takes precedence** over `--block-host` (allow rules are
->   evaluated first).
-> - Passing `--block-host` on the command line **overrides** this list.
-
-#### `firewall.sudo`
-
-| Item | Value |
-|---|---|
-| Type | boolean |
-| Default | `false` |
-| Corresponding flags | `run --sudo`, `firewall create --sudo`, `firewall rm --sudo`, `network rm --sudo` |
-
-Whether to run the `iptables` apply via `sudo` when codex-dock is not running as
-root. Only the `iptables` invocations are elevated; codex-dock itself keeps
-running as the unprivileged user.
-
-> - On an interactive terminal it prompts for a password once (`sudo -v`).
-> - In a non-interactive environment (CI / TUI / `--detach`) it never blocks on a
->   prompt: it relies on cached credentials or a NOPASSWD sudoers entry, and fails
->   explicitly on the first `iptables` call if neither is available.
-> - Passing `--sudo` on the command line **overrides** this value.
-
-> **Note**: to skip firewall application entirely for a `codex-dock run`, use the
-> `--no-firewall` flag (it is not a config key).
+> **Note**: to disable general egress for a specific worker, use
+> `codex-dock run --no-internet` (it omits `HTTP(S)_PROXY`, leaving only the
+> proxy's API reverse routes reachable).
 
 ---
 
 ### `network_name`
 
-Docker network name to use.
+The egress (proxy) network name.
 
 ```toml
-network_name = "dock-net"
+network_name = "dock-net-proxy"
 ```
 
 | Item | Value |
 |---|---|
 | Type | string |
-| Default | `"dock-net"` |
+| Default | `"dock-net-proxy"` |
 | Environment variable | `CODEX_DOCK_NETWORK_NAME` |
 
 > Normally no change needed. Use this to separate multiple codex-dock environments.
@@ -361,8 +304,8 @@ default_image = "codex-dock:latest"
 # Token TTL (seconds): 1 hour
 default_token_ttl = 3600
 
-# Docker network name
-network_name = "dock-net"
+# Egress (proxy) network name
+network_name = "dock-net-proxy"
 
 # Verbose logging (normally false)
 verbose = false
@@ -383,15 +326,12 @@ user = "current"
 # run subcommand default approval mode
 approval_mode = "suggest"
 
-[firewall]
-# Default Auth Proxy URL (--proxy-container-url)
-proxy_container_url = "http://codex-auth-proxy:18080"
+[proxy]
+# Auth Proxy URL reachable from workers (--proxy-container-url)
+container_url = "http://codex-auth-proxy:18080"
 
-# Extra destinations always allowed (equivalent to --allow-host)
-allow_hosts = ["203.0.113.10:5000"]
-
-# Extra destinations always blocked (equivalent to --block-host)
-block_hosts = ["203.0.113.0/24"]
+# Forward-proxy domain allowlist (--forward-allow-domain)
+forward_allow_domains = ["github.com", "registry.npmjs.org", "pypi.org"]
 ```
 
 ---

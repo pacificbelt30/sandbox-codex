@@ -4,33 +4,29 @@
 >
 > [← コマンドリファレンス一覧](../commands.md)
 
-`dock-net` Docker ネットワークを管理します。
+egress ネットワーク（`dock-net-proxy`、プロキシのインターネット到達用）を管理します。ワーカー用の `Internal` ネットワークはワーカーのライフサイクルに合わせて自動で作成・削除されるため、手動管理は不要です。
 
-> Linux `iptables` firewall 管理は別コマンドです：[`codex-dock firewall`](firewall.md)
+> 旧 `codex-dock firewall`（iptables）は廃止されました。隔離は Docker ネットワークで実現します。
 
 ---
 
-## `network create` — ネットワーク作成
+## `network create` — egress ネットワーク作成
 
 ```bash
-codex-dock network create [--no-internet]
+codex-dock network create
 ```
 
-| オプション | 説明 |
-|---|---|
-| `--no-internet` | IP Masquerade を無効化してインターネットを遮断 |
-
-> `codex-dock run` 実行時に自動的に作成されます。
+> `codex-dock proxy run` 実行時にも未作成なら自動的に作成されます。
 
 ---
 
-## `network rm` — ネットワーク削除
+## `network rm` — egress ネットワーク削除
 
 ```bash
 codex-dock network rm
 ```
 
-> 実行中のコンテナがある場合は先に停止してください。
+> プロキシコンテナが接続中の場合は先に停止・削除してください。
 
 ---
 
@@ -43,11 +39,14 @@ codex-dock network status
 **出力例：**
 
 ```
-dock-net ID:     a1b2c3d4e5f6
-Driver:          bridge
-ICC disabled:    true
-IP Masquerade:   true
-Subnet:          10.200.0.0/24
+Egress network:  dock-net-proxy
+  ID:            a1b2c3d4e5f6
+  Driver:        bridge
+  Internal:      false
+  Subnet:        172.20.0.0/16
+Worker networks: 2 (Internal, one per worker)
+  - dock-net-w-codex-brave-otter
+  - dock-net-w-codex-calm-finch
 ```
 
 ---
@@ -55,5 +54,3 @@ Subnet:          10.200.0.0/24
 ## 関連ドキュメント
 
 - [ネットワーク仕様](../network.md)
-- [`codex-dock firewall` コマンド](firewall.md)
-- [firewall 仕様・運用ガイド](../firewall.md)
