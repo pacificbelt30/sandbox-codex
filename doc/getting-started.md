@@ -79,7 +79,7 @@ sudo mv codex-dock /usr/local/bin/
 
 ## Step 0: Auth Proxy を起動する（必須）
 
-`codex-dock run` は外部 Auth Proxy（既定: `http://127.0.0.1:18080`）へ接続します。先に Auth Proxy を起動してください。
+`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ Docker DNS 経由で到達します。先に Auth Proxy を起動してください。
 
 ### Docker で起動（推奨）
 
@@ -200,20 +200,21 @@ codex-dock run --user current --approval-mode full-auto
 **実行時に行われること：**
 
 ```
-1. dock-net の作成確認（なければ作成）
+1. ワーカー専用 Internal ネットワーク（dock-net-w-<name>）を作成し
+   プロキシを接続
        │
        ▼
-2. 外部 Auth Proxy へ接続確認
-   (既定: http://127.0.0.1:18080)
+2. 外部 Auth Proxy の admin へ接続確認
+   (既定: http://127.0.0.1:18081)
        │
        ▼
 3. 短命トークンを発行
        │
        ▼
 4. コンテナを作成・起動
-   - Network: dock-net
+   - Network: dock-net-w-<name>（Internal）
    - Mount:   ./  →  /workspace
-   - env:     CODEX_TOKEN=cdx-xxxx
+   - env:     CODEX_TOKEN=cdx-xxxx, HTTP(S)_PROXY=proxy
        │
        ▼
 5. コンテナ内で entrypoint.sh が実行
@@ -297,7 +298,7 @@ codex-dock run
 ## ネットワークの確認
 
 ```bash
-# dock-net の状態を確認
+# egress ネットワークと per-worker ネットワークの状態を確認
 codex-dock network status
 
 # 実行中のワーカーを確認
@@ -312,10 +313,10 @@ codex-dock ps
 # 全コンテナを停止
 codex-dock stop --all
 
-# 停止済みコンテナを削除
+# 停止済みコンテナを削除（ワーカー専用ネットワークも自動で切断・削除されます）
 codex-dock rm <コンテナ名>
 
-# dock-net を削除（必要な場合）
+# egress ネットワークを削除（必要な場合）
 codex-dock network rm
 ```
 
@@ -349,7 +350,7 @@ codex-dock auth set
 ### ネットワークエラー
 
 ```bash
-# dock-net を作り直す
+# egress ネットワークを作り直す
 codex-dock network rm
 codex-dock network create
 ```

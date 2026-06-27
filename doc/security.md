@@ -123,5 +123,5 @@ codex-dock のセキュリティは **「コンテナに秘密情報を直接渡
 
 - [Auth Proxy 技術仕様](auth-proxy.md) — クレデンシャル保護の実装詳細
 - [Auth Proxy トークン仕様](auth-proxy/tokens.md) — セキュリティ考慮事項
-- [ネットワーク仕様](network.md) — dock-net のセキュリティポリシー
+- [ネットワーク仕様](network.md) — プロキシルータ + per-worker Internal ネットワークのセキュリティポリシー
 - [アーキテクチャ概要](architecture.md) — 全体構成

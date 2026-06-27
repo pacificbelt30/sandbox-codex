@@ -216,5 +216,5 @@ codex-dock run --user 1000:1000
 - [クイックスタート](../getting-started.md) — 初回実行の手順
 - [アーキテクチャ概要](../architecture.md) — 起動シーケンスの詳細
 - [Auth Proxy 技術仕様](../auth-proxy.md) — 認証の仕組み
-- [ネットワーク仕様](../network.md) — dock-net の構成
+- [ネットワーク仕様](../network.md) — プロキシルータ + per-worker Internal ネットワークの構成
 - [設定リファレンス](../configuration.md) — config.toml の設定項目

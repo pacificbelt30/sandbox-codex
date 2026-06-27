@@ -122,5 +122,5 @@ Each sandbox container has the following security settings applied:
 
 - [Auth Proxy Specification](auth-proxy.md) — Credential protection implementation details
 - [Token Lifecycle & Security](auth-proxy/tokens.md) — Security considerations
-- [Network Specification](network.md) — dock-net security policy
+- [Network Specification](network.md) — proxy router + per-worker Internal network security policy
 - [Architecture Overview](architecture.md) — Overall system design

@@ -62,22 +62,24 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 │  Host Environment                                            │
 │                                                              │
 │  ┌──────────────┐    ┌────────────────────────────────────┐ │
-│  │  codex-dock  │    │  Auth Proxy (0.0.0.0:PORT)         │ │
-│  │  (CLI)       │───▶│  - Issues short-lived tokens       │ │
-│  └──────────────┘    │  - Protects API keys / OAuth creds │ │
+│  │  codex-dock  │    │  Auth Proxy / router               │ │
+│  │  (CLI)       │───▶│  data-plane :18080 / admin :18081  │ │
+│  └──────────────┘    │  - Issues short-lived tokens       │ │
+│         │            │  - Protects API keys / OAuth creds │ │
+│         │            │  - Forward proxy (CONNECT)         │ │
 │         │            └──────────┬─────────────────────────┘ │
-│         │                       │ host.docker.internal:PORT  │
+│         │                       │ Docker DNS: codex-auth-proxy│
 │         ▼                       │                            │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  dock-net (10.200.0.0/24)  Docker bridge network     │   │
+│  │  per-worker Internal nets (dock-net-w-<name>)        │   │
 │  │                                                       │   │
 │  │  ┌──────────────┐  ┌──────────────┐                  │   │
-│  │  │ Container A  │  │ Container B  │  (ICC disabled)  │   │
-│  │  │ codex-dock   │  │ codex-dock   │◀─ inter-container│   │
-│  │  │ worker-1     │  │ worker-2     │   comm blocked   │   │
+│  │  │ Container A  │  │ Container B  │ ✕ separate L2    │   │
+│  │  │ codex-dock   │  │ codex-dock   │◀─ worker↔worker  │   │
+│  │  │ worker-1     │  │ worker-2     │   blocked        │   │
 │  │  └──────────────┘  └──────────────┘                  │   │
 │  └──────────────────────────────────────────────────────┘   │
-│                              │ IP Masquerade                 │
+│                 only via proxy │ egress (NAT on the proxy)   │
 │                              ▼                               │
 │                        Internet                              │
 │                        (OpenAI API, etc.)                    │

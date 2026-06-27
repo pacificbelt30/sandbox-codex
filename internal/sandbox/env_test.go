@@ -37,6 +37,55 @@ func newTestManager(p *fakeProxy) *Manager {
 	return &Manager{proxy: p}
 }
 
+func TestProxyContainerName(t *testing.T) {
+	tests := []struct {
+		name     string
+		proxy    *fakeProxy
+		want     string
+		nilProxy bool
+	}{
+		{name: "default endpoint", proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080"}, want: "codex-auth-proxy"},
+		{name: "endpoint with path", proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080/v1"}, want: "codex-auth-proxy"},
+		{name: "custom host", proxy: &fakeProxy{endpoint: "http://proxy.internal:9000"}, want: "proxy.internal"},
+		{name: "no proxy", nilProxy: true, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{}
+			if !tt.nilProxy {
+				m.proxy = tt.proxy
+			}
+			if got := m.proxyContainerName(); got != tt.want {
+				t.Errorf("proxyContainerName() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildEnv_NoProxyExcludesProxyHostAndLoopback(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both upper- and lower-case variants must be set for tools that read either.
+	for _, key := range []string{"NO_PROXY", "no_proxy"} {
+		v, ok := envValue(env, key)
+		if !ok {
+			t.Fatalf("%s not set", key)
+		}
+		for _, want := range []string{"codex-auth-proxy", "localhost", "127.0.0.1"} {
+			if !strings.Contains(v, want) {
+				t.Errorf("%s = %q; want it to contain %q", key, v, want)
+			}
+		}
+	}
+	// The lower-case proxy variants must also be present.
+	if v, _ := envValue(env, "https_proxy"); v != "http://codex-auth-proxy:18080" {
+		t.Errorf("https_proxy = %q; want http://codex-auth-proxy:18080", v)
+	}
+}
+
 func TestBuildEnv_AlwaysSetsAgentAndSandbox(t *testing.T) {
 	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
 	env, err := m.buildEnv("w1", RunOptions{Agent: AgentCodex, TokenTTL: 60}, "")
