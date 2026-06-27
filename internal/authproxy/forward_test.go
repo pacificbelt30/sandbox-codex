@@ -2,12 +2,40 @@ package authproxy
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestResolveAdminListenAddr(t *testing.T) {
+	// Non-sentinel hosts are returned unchanged.
+	for _, addr := range []string{"127.0.0.1:18081", "0.0.0.0:18081", "10.0.0.5:9000", "not-a-host-port"} {
+		if got := resolveAdminListenAddr(addr); got != addr {
+			t.Errorf("resolveAdminListenAddr(%q) = %q; want unchanged", addr, got)
+		}
+	}
+
+	// The sentinel resolves to a concrete bind address: the egress IP when
+	// detectable, otherwise the 0.0.0.0 fallback. Either way the host is no
+	// longer the sentinel and the port is preserved.
+	got := resolveAdminListenAddr(AdminBindEgress + ":18081")
+	host, port, err := net.SplitHostPort(got)
+	if err != nil {
+		t.Fatalf("resolveAdminListenAddr sentinel produced invalid addr %q: %v", got, err)
+	}
+	if host == AdminBindEgress {
+		t.Errorf("sentinel host %q was not resolved: %q", AdminBindEgress, got)
+	}
+	if port != "18081" {
+		t.Errorf("port not preserved: got %q", port)
+	}
+	if ip := net.ParseIP(host); ip == nil {
+		t.Errorf("resolved host %q is not an IP", host)
+	}
+}
 
 func TestForwardAllowed(t *testing.T) {
 	tests := []struct {

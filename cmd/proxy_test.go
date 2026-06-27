@@ -1,11 +1,57 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/spf13/viper"
 )
+
+// TestInitConfigDefaults ensures the proxy image (and other settings read via
+// viper) have a built-in default even with no config file or env override, so
+// `proxy run`/`proxy build` don't fail with an empty image name.
+func TestInitConfigDefaults(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	initConfig()
+
+	if got := viper.GetString("proxy_image"); got != "codex-dock-proxy:latest" {
+		t.Errorf("proxy_image default = %q; want codex-dock-proxy:latest", got)
+	}
+	if got := viper.GetString("default_image"); got != "codex-dock:latest" {
+		t.Errorf("default_image default = %q; want codex-dock:latest", got)
+	}
+	if got := viper.GetInt("default_token_ttl"); got != 3600 {
+		t.Errorf("default_token_ttl default = %d; want 3600", got)
+	}
+}
+
+// TestBuildProxyRunArgs_AdminBindEgress checks that `proxy run` binds the admin
+// listener to the egress sentinel (so workers cannot reach it) while publishing
+// only the admin port to host loopback.
+func TestBuildProxyRunArgs_AdminBindEgress(t *testing.T) {
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "p", adminPort: 18081, networkName: "dock-net-proxy", image: "img",
+		listenAddr: "0.0.0.0:18080", adminListenAddr: fmt.Sprintf("%s:18081", authproxy.AdminBindEgress),
+	})
+	if !containsSequence(args, "--admin-listen", "egress:18081") {
+		t.Errorf("expected --admin-listen egress:18081 in args: %v", args)
+	}
+	if !containsSequence(args, "-p", "127.0.0.1:18081:18081") {
+		t.Errorf("expected admin port published to loopback only: %v", args)
+	}
+	// The data-plane port must NOT be published to the host.
+	for _, a := range args {
+		if a == "18080:18080" || a == "0.0.0.0:18080:18080" || a == "127.0.0.1:18080:18080" {
+			t.Errorf("data-plane port should not be published: %v", args)
+		}
+	}
+}
 
 // ---- resolveProxyDockerfile -----------------------------------------------
 

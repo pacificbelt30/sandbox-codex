@@ -78,6 +78,13 @@ type Proxy struct {
 	anthropicOAuthClientID string // Claude Code public OAuth client id
 }
 
+// AdminBindEgress is a sentinel host for AdminListenAddr meaning "bind the admin
+// listener to the container's egress (primary) IPv4 address". This keeps /admin/*
+// reachable from the host (via the published port, which DNATs to that IP) while
+// making it unreachable from worker containers, which only know the proxy's IP on
+// their own Internal network. Falls back to all interfaces if detection fails.
+const AdminBindEgress = "egress"
+
 // anthropicOAuthBetaHeader is required by the Anthropic API when authenticating
 // with a Claude subscription OAuth bearer token instead of an API key.
 const anthropicOAuthBetaHeader = "oauth-2025-04-20"
@@ -196,9 +203,11 @@ func (p *Proxy) Start() error {
 	adminMux.HandleFunc("/admin/mode", p.handleAdminMode)
 
 	if p.cfg.AdminListenAddr != "" {
-		// Serve /admin/* on a dedicated listener so workers (which only reach the
-		// data-plane port over the Internal network) cannot use them.
-		aln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", p.cfg.AdminListenAddr)
+		// Serve /admin/* on a dedicated listener so workers cannot reach token
+		// issuance. With AdminBindEgress this binds to the egress IP only, so the
+		// admin port is unreachable from the per-worker Internal networks.
+		adminListen := resolveAdminListenAddr(p.cfg.AdminListenAddr)
+		aln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", adminListen)
 		if err != nil {
 			_ = ln.Close()
 			return fmt.Errorf("starting auth proxy admin listener: %w", err)
@@ -211,6 +220,9 @@ func (p *Proxy) Start() error {
 				log.Printf("auth proxy admin error: %v", err)
 			}
 		}()
+		if p.cfg.AdminSecret == "" {
+			log.Printf("warning: auth proxy admin listener has no --admin-secret; /admin/* is unauthenticated")
+		}
 	} else {
 		// Single-listener mode (in-process/tests): admin routes share the main mux.
 		mux.HandleFunc("/admin/issue", p.handleAdminIssue)
@@ -237,6 +249,54 @@ func (p *Proxy) Start() error {
 		}
 	}
 	return nil
+}
+
+// resolveAdminListenAddr maps the AdminBindEgress sentinel host to the container's
+// egress (primary) IPv4 so the admin port is unreachable from worker Internal
+// networks. Any other host is returned unchanged.
+func resolveAdminListenAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || host != AdminBindEgress {
+		return addr
+	}
+	if ip := primaryNonLoopbackIPv4(); ip != "" {
+		return net.JoinHostPort(ip, port)
+	}
+	// Detection failed: fall back to all interfaces so the proxy still starts.
+	log.Printf("warning: could not determine egress IP for admin listener; binding all interfaces")
+	return net.JoinHostPort("0.0.0.0", port)
+}
+
+// primaryNonLoopbackIPv4 returns the first global-unicast IPv4 address on a
+// non-loopback interface. At proxy startup the container is attached only to the
+// egress network, so this is the egress IP; the per-worker networks are connected
+// later by the sandbox manager.
+func primaryNonLoopbackIPv4() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP.To4()
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			return ip.String()
+		}
+	}
+	return ""
 }
 
 func (p *Proxy) requireAdmin(w http.ResponseWriter, r *http.Request) bool {

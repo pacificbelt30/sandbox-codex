@@ -30,8 +30,9 @@ codex-dock enforces network isolation using **Docker-native primitives only** �
 
 - **Worker↔worker blocked**: each worker is on its own `Internal` network (separate L2 segment), so they cannot reach one another.
 - **Worker→host/internet blocked**: `Internal: true` means no host route and no NAT. The only reachable peer is the proxy.
-- **Worker→proxy**: via Docker embedded DNS (`codex-auth-proxy`) on the shared network, reaching only the data-plane port. `/admin/*` lives on a separate listener (separate port) unreachable from workers.
+- **Worker→proxy**: via Docker embedded DNS (`codex-auth-proxy`) on the shared network, reaching only the data-plane port (18080). `/admin/*` (token issuance, etc.) lives on a separate listener that is **bound to the proxy's egress-network IP**, so it is unreachable from worker networks (different subnet → connection refused). The host reaches it only via the published port `127.0.0.1:18081`.
 - **All egress via the proxy**: general traffic (git/npm/pip/curl) flows through the proxy's HTTP CONNECT forward proxy via `HTTP(S)_PROXY`; OpenAI/Anthropic API calls use the credential-injecting reverse routes.
+- **Direct (non-proxy) outbound traffic times out — this is by design.** The worker network is `Internal` (no host route, no NAT), so anything that ignores `HTTP(S)_PROXY`, or any worker started with `--no-internet`, cannot reach the internet. `codex-dock run` injects `HTTP(S)_PROXY` automatically.
 
 ---
 

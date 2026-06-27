@@ -101,7 +101,10 @@ At least one credential source must be configured before running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		image := viper.GetString("proxy_image")
 		listenAddr := fmt.Sprintf("0.0.0.0:%d", proxyRunPort)
-		adminListenAddr := fmt.Sprintf("0.0.0.0:%d", proxyRunAdminPort)
+		// Bind admin to the container's egress IP (not 0.0.0.0) so the admin port
+		// is reachable from the host (via the published port) but NOT from worker
+		// Internal networks.
+		adminListenAddr := fmt.Sprintf("%s:%d", authproxy.AdminBindEgress, proxyRunAdminPort)
 
 		if !cmd.Flags().Changed("forward-allow-domain") && viper.IsSet("proxy.forward_allow_domains") {
 			proxyForwardAllow = viper.GetStringSlice("proxy.forward_allow_domains")
@@ -207,7 +210,7 @@ func init() {
 
 	// serve flags
 	proxyServeCmd.Flags().StringVar(&proxyListenAddr, "listen", "0.0.0.0:18080", "worker-facing listen address (data plane + forward proxy)")
-	proxyServeCmd.Flags().StringVar(&proxyAdminListenAddr, "admin-listen", "", "separate listen address for /admin/* endpoints (keeps admin off the worker-facing port)")
+	proxyServeCmd.Flags().StringVar(&proxyAdminListenAddr, "admin-listen", "", "separate listen address for /admin/* endpoints (keeps admin off the worker-facing port). Use host \"egress\" (e.g. egress:18081) to bind the container's egress IP so workers cannot reach it")
 	proxyServeCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
 	proxyServeCmd.Flags().StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Restrict the CONNECT forward proxy to these domains and subdomains (repeatable; default: allow all)")
 
