@@ -79,7 +79,9 @@ sudo mv codex-dock /usr/local/bin/
 
 ## Step 0: Auth Proxy を起動する（必須）
 
-`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ Docker DNS 経由で到達します。先に Auth Proxy を起動してください。
+`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ Docker DNS 経由で到達します。
+
+> **補足**: プロキシ未起動のまま `codex-dock run` を実行すると、対話端末（TTY）かつ既定の proxy URL の場合に「Build/start the auth proxy container now? [y/N]」と確認が出ます。`y` を選ぶと（必要ならイメージをビルドして）プロキシコンテナを起動し、そのまま続行します。非対話環境や proxy URL をカスタムした場合は従来どおりエラーになるので、先に手動で起動してください。
 
 ### Docker で起動（推奨）
 

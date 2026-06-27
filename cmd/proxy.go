@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
@@ -99,61 +100,93 @@ Credentials are automatically bound from the host into the container:
 
 At least one credential source must be configured before running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		image := viper.GetString("proxy_image")
-		listenAddr := fmt.Sprintf("0.0.0.0:%d", proxyRunPort)
-		// Bind admin to the container's egress IP (not 0.0.0.0) so the admin port
-		// is reachable from the host (via the published port) but NOT from worker
-		// Internal networks.
-		adminListenAddr := fmt.Sprintf("%s:%d", authproxy.AdminBindEgress, proxyRunAdminPort)
-
 		if !cmd.Flags().Changed("forward-allow-domain") && viper.IsSet("proxy.forward_allow_domains") {
 			proxyForwardAllow = viper.GetStringSlice("proxy.forward_allow_domains")
 		}
-
-		if err := ensureBridgeNetwork(cmd.Context(), proxyRunNetwork, network.ProxyBridgeName); err != nil {
-			return err
-		}
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			home = ""
-		}
-		storedKeyPath := filepath.Join(home, ".config", "codex-dock", "apikey")
-		oauthJSONPath := filepath.Join(home, ".codex", "auth.json")
-		anthropicKeyPath := filepath.Join(home, ".config", "codex-dock", "anthropic-apikey")
-		claudeCredsPath := filepath.Join(home, ".claude", ".credentials.json")
-
-		dockerArgs := buildProxyRunArgs(proxyRunArgs{
-			name:             proxyRunName,
-			adminPort:        proxyRunAdminPort,
-			networkName:      proxyRunNetwork,
-			image:            image,
-			listenAddr:       listenAddr,
-			adminListenAddr:  adminListenAddr,
-			adminSecret:      proxyAdminSecret,
-			forwardAllow:     proxyForwardAllow,
-			apiKeyEnv:        os.Getenv("OPENAI_API_KEY"),
-			storedKeyPath:    storedKeyPath,
-			oauthJSONPath:    oauthJSONPath,
-			anthropicKeyEnv:  os.Getenv("ANTHROPIC_API_KEY"),
-			anthropicKeyPath: anthropicKeyPath,
-			claudeCredsPath:  claudeCredsPath,
-		})
-
-		// Only the admin port is published to the host (loopback). The data-plane
-		// port stays internal: workers reach it over the per-worker Docker network.
-		adminMapping := fmt.Sprintf("127.0.0.1:%d:%d", proxyRunAdminPort, proxyRunAdminPort)
-		fmt.Printf("Starting proxy container %q (image: %s, network: %s, data-plane: %d internal, admin: %s)...\n",
-			proxyRunName, image, proxyRunNetwork, proxyRunPort, adminMapping)
-		c := exec.CommandContext(cmd.Context(), "docker", dockerArgs...)
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		if err := c.Run(); err != nil {
-			return fmt.Errorf("docker run failed: %w", err)
-		}
-		fmt.Printf("Proxy container %q started.\n", proxyRunName)
-		return nil
+		return startProxyContainer(cmd.Context())
 	},
+}
+
+// proxyContainerState returns the Docker status string of the named container
+// ("running", "exited", "created", ...), or "" when it does not exist.
+func proxyContainerState(ctx context.Context, name string) string {
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Status}}", name).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// startProxyContainer ensures the auth proxy container is running. It restarts an
+// existing (stopped) container, or builds the proxy image (when missing) plus the
+// egress network and launches a fresh one. Shared by `proxy run` and the
+// auto-start prompt in `codex-dock run`, so both bring the proxy up identically:
+// the data-plane port stays internal and only the admin port is published to
+// host loopback (bound to the container's egress IP, unreachable from workers).
+func startProxyContainer(ctx context.Context) error {
+	name := proxyRunName
+	switch proxyContainerState(ctx, name) {
+	case "running":
+		fmt.Printf("Proxy container %q is already running.\n", name)
+		return nil
+	case "":
+		// Not found — create it below.
+	default:
+		fmt.Printf("Starting existing proxy container %q...\n", name)
+		c := exec.CommandContext(ctx, "docker", "start", name)
+		c.Stdout, c.Stderr = os.Stdout, os.Stderr
+		return c.Run()
+	}
+
+	image := viper.GetString("proxy_image")
+	if err := exec.CommandContext(ctx, "docker", "image", "inspect", image).Run(); err != nil {
+		fmt.Printf("Proxy image %s not found locally, building...\n", image)
+		dockerfile, buildCtx, derr := resolveProxyDockerfile("")
+		if derr != nil {
+			return derr
+		}
+		if berr := executeProxyBuild(ctx, image, dockerfile, buildCtx); berr != nil {
+			return berr
+		}
+	}
+
+	if len(proxyForwardAllow) == 0 && viper.IsSet("proxy.forward_allow_domains") {
+		proxyForwardAllow = viper.GetStringSlice("proxy.forward_allow_domains")
+	}
+	if err := ensureBridgeNetwork(ctx, proxyRunNetwork, network.ProxyBridgeName); err != nil {
+		return err
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	dockerArgs := buildProxyRunArgs(proxyRunArgs{
+		name:             name,
+		adminPort:        proxyRunAdminPort,
+		networkName:      proxyRunNetwork,
+		image:            image,
+		listenAddr:       fmt.Sprintf("0.0.0.0:%d", proxyRunPort),
+		adminListenAddr:  fmt.Sprintf("%s:%d", authproxy.AdminBindEgress, proxyRunAdminPort),
+		adminSecret:      proxyAdminSecret,
+		forwardAllow:     proxyForwardAllow,
+		apiKeyEnv:        os.Getenv("OPENAI_API_KEY"),
+		storedKeyPath:    filepath.Join(home, ".config", "codex-dock", "apikey"),
+		oauthJSONPath:    filepath.Join(home, ".codex", "auth.json"),
+		anthropicKeyEnv:  os.Getenv("ANTHROPIC_API_KEY"),
+		anthropicKeyPath: filepath.Join(home, ".config", "codex-dock", "anthropic-apikey"),
+		claudeCredsPath:  filepath.Join(home, ".claude", ".credentials.json"),
+	})
+
+	fmt.Printf("Starting proxy container %q (image: %s, network: %s, data-plane: %d internal, admin: 127.0.0.1:%d)...\n",
+		name, image, proxyRunNetwork, proxyRunPort, proxyRunAdminPort)
+	c := exec.CommandContext(ctx, "docker", dockerArgs...)
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("docker run failed: %w", err)
+	}
+	fmt.Printf("Proxy container %q started.\n", name)
+	return nil
 }
 
 // proxy stop ----------------------------------------------------------------

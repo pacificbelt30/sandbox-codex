@@ -185,6 +185,45 @@ func TestApplyRunConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestIsProxyUnreachable(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{nil, false},
+		{fmt.Errorf("dial tcp 127.0.0.1:18081: connect: connection refused"), true},
+		{fmt.Errorf("lookup codex-auth-proxy: no such host"), true},
+		{fmt.Errorf("dial tcp: i/o timeout"), true},
+		{fmt.Errorf("checking remote auth proxy mode failed: status 401"), false},
+		{fmt.Errorf("invalid json"), false},
+	}
+	for _, c := range cases {
+		if got := isProxyUnreachable(c.err); got != c.want {
+			t.Errorf("isProxyUnreachable(%v) = %v; want %v", c.err, got, c.want)
+		}
+	}
+}
+
+func TestConfirmYesNo(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"y\n", true},
+		{"Y\n", true},
+		{"yes\n", true},
+		{"  yes  \n", true},
+		{"n\n", false},
+		{"\n", false}, // bare Enter defaults to no
+		{"nope\n", false},
+	}
+	for _, c := range cases {
+		if got := confirmYesNo(strings.NewReader(c.in), "? "); got != c.want {
+			t.Errorf("confirmYesNo(%q) = %v; want %v", c.in, got, c.want)
+		}
+	}
+}
+
 // TestRunKeepFlag asserts the --keep opt-out for foreground cleanup exists and
 // defaults to removing the container/network (keep = false).
 func TestRunKeepFlag(t *testing.T) {

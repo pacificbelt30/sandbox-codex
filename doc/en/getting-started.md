@@ -284,6 +284,7 @@ Common causes:
 - Docker is not running → check with `docker ps`
 - Image build failed → check with `codex-dock build --verbose`
 - API key not set → check with `codex-dock auth show`
+- Auth Proxy not running → on a terminal with the default proxy URLs, `codex-dock run` prompts `Build/start the auth proxy container now? [y/N]`; answer `y` to build (if needed) and start it automatically. In non-interactive shells, or with custom proxy URLs, start it yourself with `codex-dock proxy run`.
 
 ### Authentication Error
 

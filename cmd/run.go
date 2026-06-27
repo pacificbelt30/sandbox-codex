@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
@@ -12,6 +16,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/worktree"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 // userMode is the raw value of --user before resolution.
@@ -138,7 +143,12 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, runProxyAdminSecret)
 	if err != nil {
-		return fmt.Errorf("connecting external auth proxy: %w", err)
+		// If the proxy simply isn't running and we're on a terminal with the
+		// default proxy URLs, offer to build/start it now instead of failing.
+		proxy, err = offerToStartProxy(cmd, err)
+		if err != nil {
+			return fmt.Errorf("connecting external auth proxy: %w", err)
+		}
 	}
 
 	if runOpts.Agent == sandbox.AgentClaude && !proxy.IsAnthropicMode() {
@@ -187,6 +197,77 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+// offerToStartProxy is called when connecting to the auth proxy failed. When the
+// failure looks like "proxy not running", the proxy URLs are at their defaults,
+// and stdin is a terminal, it prompts the user to build/start the proxy container
+// and, on yes, starts it and retries the connection. Otherwise it returns the
+// original error unchanged.
+func offerToStartProxy(cmd *cobra.Command, connErr error) (*authproxy.RemoteProxy, error) {
+	urlsDefault := !cmd.Flags().Changed("proxy-admin-url") && !cmd.Flags().Changed("proxy-container-url")
+	if !isProxyUnreachable(connErr) || !urlsDefault || !term.IsTerminal(int(os.Stdin.Fd())) {
+		return nil, connErr
+	}
+
+	fmt.Println("Auth Proxy is not running.")
+	if !confirmYesNo(os.Stdin, "Build/start the auth proxy container now? [y/N]: ") {
+		return nil, connErr
+	}
+
+	if err := startProxyContainer(cmd.Context()); err != nil {
+		return nil, fmt.Errorf("starting auth proxy: %w", err)
+	}
+
+	// The container needs a moment to bind its listeners; retry briefly.
+	proxy, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, runProxyAdminSecret, 30)
+	if err != nil {
+		return nil, fmt.Errorf("auth proxy started but did not become ready: %w", err)
+	}
+	return proxy, nil
+}
+
+// isProxyUnreachable reports whether err indicates the proxy is simply not
+// listening (as opposed to, say, an auth/secret rejection that starting it
+// wouldn't fix).
+func isProxyUnreachable(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "no such host") ||
+		strings.Contains(s, "no route to host") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "connect: ")
+}
+
+// confirmYesNo reads a line from r and returns true only for an affirmative
+// answer. An empty line (just Enter) defaults to no.
+func confirmYesNo(r io.Reader, prompt string) bool {
+	fmt.Print(prompt)
+	line, _ := bufio.NewReader(r).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// connectProxyWithRetry retries NewRemoteProxy a few times so a just-started
+// proxy container has time to bind its listeners.
+func connectProxyWithRetry(adminURL, containerURL, secret string, attempts int) (*authproxy.RemoteProxy, error) {
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		p, err := authproxy.NewRemoteProxy(adminURL, containerURL, secret)
+		if err == nil {
+			return p, nil
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, lastErr
 }
 
 func applyRunConfigDefaults(cmd *cobra.Command) {
