@@ -20,10 +20,27 @@
 `firewall` は次の条件で有効です。
 
 - Linux ホスト
-- root 権限で実行
+- root 権限で実行（または `--sudo` を付与）
 - `iptables` コマンドが利用可能
 
 前提を満たさない場合、`codex-dock` は Warning を表示して継続します。
+
+### root でない場合の `--sudo`
+
+root で実行できない環境では、`run` / `firewall create` / `firewall rm` / `network rm`
+に `--sudo` を付けると、**`iptables` の呼び出しのみ** `sudo` 経由で実行します
+（codex-dock 本体は一般ユーザーのまま動くため、config や認証情報のパス解決は影響を受けません）。
+
+- 対話端末では一度だけパスワードを要求します（内部的に `sudo -v`）。
+- 非対話環境（CI / TUI / `--detach`）ではプロンプトで停止せず、キャッシュ済み資格情報または
+  `NOPASSWD` 設定を利用します。いずれも無い場合は最初の `iptables` 呼び出しで明示的に失敗します。
+- config の `firewall.sudo = true` でも同じ挙動を既定にできます（CLI の `--sudo` が優先）。
+
+```bash
+# root でなく --sudo で適用（iptables 実行時のみパスワードを要求）
+codex-dock firewall create --sudo
+codex-dock run --agent claude --sudo
+```
 
 ---
 
