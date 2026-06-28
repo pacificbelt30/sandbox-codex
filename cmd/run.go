@@ -35,6 +35,7 @@ var runOpts sandbox.RunOptions
 var (
 	proxyAdminURL       string
 	proxyContainerURL   string
+	httpProxyURL        string
 	runProxyAdminSecret string
 	runKeep             bool
 )
@@ -81,7 +82,8 @@ func init() {
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
 	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18081", "External auth proxy admin URL (host-published admin port)")
-	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
+	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers (API reverse routes)")
+	f.StringVar(&httpProxyURL, "http-proxy-url", "http://codex-http-proxy:18082", "General-egress (forward) proxy URL workers use for HTTP(S)_PROXY")
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.BoolVar(&runKeep, "keep", false, "Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate)")
@@ -169,10 +171,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	sbMgr, err := sandbox.NewManager(sandbox.ManagerConfig{
-		Proxy:   proxy,
-		Network: netMgr,
-		Verbose: verbose,
-		Debug:   debug,
+		Proxy:        proxy,
+		Network:      netMgr,
+		HTTPProxyURL: httpProxyURL,
+		Verbose:      verbose,
+		Debug:        debug,
 	})
 	if err != nil {
 		return fmt.Errorf("creating sandbox manager: %w", err)

@@ -35,17 +35,22 @@ const (
 type ManagerConfig struct {
 	Proxy   authproxy.Service
 	Network *network.Manager
-	Verbose bool
-	Debug   bool
+	// HTTPProxyURL is the general-egress (forward) proxy URL workers use for
+	// HTTP(S)_PROXY, e.g. http://codex-http-proxy:18082. Empty falls back to the
+	// auth proxy's endpoint (single-proxy/back-compat).
+	HTTPProxyURL string
+	Verbose      bool
+	Debug        bool
 }
 
 // Manager handles container lifecycle for codex-dock workers.
 type Manager struct {
-	cli     *client.Client
-	proxy   authproxy.Service
-	network *network.Manager
-	verbose bool
-	debug   bool
+	cli          *client.Client
+	proxy        authproxy.Service
+	network      *network.Manager
+	httpProxyURL string
+	verbose      bool
+	debug        bool
 }
 
 // NewManager creates a new Manager connected to the local Docker daemon.
@@ -55,11 +60,12 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("connecting to Docker: %w", err)
 	}
 	return &Manager{
-		cli:     cli,
-		proxy:   cfg.Proxy,
-		network: cfg.Network,
-		verbose: cfg.Verbose,
-		debug:   cfg.Debug,
+		cli:          cli,
+		proxy:        cfg.Proxy,
+		network:      cfg.Network,
+		httpProxyURL: cfg.HTTPProxyURL,
+		verbose:      cfg.Verbose,
+		debug:        cfg.Debug,
 	}, nil
 }
 
@@ -139,9 +145,11 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		if err := m.network.EnsureWorkerNetwork(name); err != nil {
 			return "", fmt.Errorf("creating worker network: %w", err)
 		}
-		if proxyName := m.proxyContainerName(); proxyName != "" {
+		// Attach every proxy the worker needs (the credential-injecting auth proxy
+		// and the general-egress http proxy) to this worker's Internal network.
+		for _, proxyName := range m.proxyContainerNames() {
 			if err := m.network.ConnectProxy(name, proxyName); err != nil {
-				return "", fmt.Errorf("connecting proxy to worker network: %w", err)
+				return "", fmt.Errorf("connecting proxy %q to worker network: %w", proxyName, err)
 			}
 		}
 	}
@@ -492,20 +500,24 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 			)
 		}
 
-		// Route general egress (git/npm/pip/curl) through the proxy/router via the
-		// standard HTTP(S)_PROXY vars. NO_PROXY excludes the proxy host itself so
-		// token fetches and the API base URLs reach it directly instead of looping
-		// through the CONNECT forward proxy. Skipped when --no-internet is set, which
-		// leaves only the proxy's credential-injecting API routes reachable.
+		// Route general egress (git/npm/pip/curl) through the dedicated egress proxy
+		// (codex-http-proxy) via the standard HTTP(S)_PROXY vars. NO_PROXY excludes
+		// the AUTH proxy host so the API base URLs and token fetches reach it
+		// directly (origin-form → reverse routes) instead of being tunneled. Skipped
+		// when --no-internet is set, leaving only the auth proxy's API routes.
 		if !opts.NoInternet {
-			proxyHost := proxyEndpointHost(containerProxyURL)
+			egressProxyURL := m.httpProxyURL
+			if egressProxyURL == "" {
+				egressProxyURL = containerProxyURL // back-compat: single proxy
+			}
+			authHost := proxyEndpointHost(containerProxyURL)
 			env = append(env,
-				"HTTP_PROXY="+containerProxyURL,
-				"HTTPS_PROXY="+containerProxyURL,
-				"http_proxy="+containerProxyURL,
-				"https_proxy="+containerProxyURL,
-				"NO_PROXY="+proxyHost+",localhost,127.0.0.1",
-				"no_proxy="+proxyHost+",localhost,127.0.0.1",
+				"HTTP_PROXY="+egressProxyURL,
+				"HTTPS_PROXY="+egressProxyURL,
+				"http_proxy="+egressProxyURL,
+				"https_proxy="+egressProxyURL,
+				"NO_PROXY="+authHost+",localhost,127.0.0.1",
+				"no_proxy="+authHost+",localhost,127.0.0.1",
 			)
 		}
 
@@ -540,15 +552,29 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 	return env, nil
 }
 
-// proxyContainerName returns the name of the auth proxy container, derived from
-// the proxy's container endpoint (e.g. http://codex-auth-proxy:18080 →
-// "codex-auth-proxy"). This is the container the per-worker Internal networks are
-// attached to. Returns "" when no proxy or endpoint is configured.
-func (m *Manager) proxyContainerName() string {
-	if m.proxy == nil {
-		return ""
+// proxyContainerNames returns the container names of the proxies that must be
+// attached to each worker's Internal network: the credential-injecting auth
+// proxy (from the proxy endpoint, e.g. "codex-auth-proxy") and, when configured,
+// the general-egress http proxy (from HTTPProxyURL, e.g. "codex-http-proxy").
+// De-duplicated; empty entries dropped.
+func (m *Manager) proxyContainerNames() []string {
+	seen := map[string]struct{}{}
+	var names []string
+	add := func(host string) {
+		if host == "" {
+			return
+		}
+		if _, ok := seen[host]; ok {
+			return
+		}
+		seen[host] = struct{}{}
+		names = append(names, host)
 	}
-	return proxyEndpointHost(m.proxy.ContainerEndpoint())
+	if m.proxy != nil {
+		add(proxyEndpointHost(m.proxy.ContainerEndpoint()))
+	}
+	add(proxyEndpointHost(m.httpProxyURL))
+	return names
 }
 
 // proxyEndpointHost extracts the hostname from a proxy endpoint URL.

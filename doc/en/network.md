@@ -6,33 +6,46 @@ codex-dock enforces network isolation using **Docker-native primitives only** �
 
 ---
 
-## Topology
+## Topology (two proxies)
+
+Egress is split into **two containers by role**. The **credential-holding auth proxy never forwards general traffic**; general traffic is handled only by the credentials-free egress proxy (least privilege).
 
 ```
-                         ┌──────────────── internet (NAT/masquerade ON)
-          dock-net-proxy ─┤  ← proxy's egress bridge
-                          │
-                  ┌───────┴────────┐
-                  │ codex-auth-    │  multi-homed onto each worker network
-                  │ proxy (router) │  data-plane :18080 / admin :18081
-                  └─┬───────────┬──┘
-   Internal          │           │          Internal
- dock-net-w-A ───────┘           └───────── dock-net-w-B
-   (no NAT / no host route)             (separate L2 segment)
-       │                                  │
-   worker A                            worker B   ← cannot reach each other
+                       ┌──────────── internet (public only)
+        dock-net-proxy ─┤  ← egress bridge for BOTH proxies
+                        │
+        ┌───────────────┴───────────────┐
+ ┌──────▼───────┐                ┌───────▼───────┐
+ │ codex-auth-  │                │ codex-http-   │
+ │ proxy        │                │ proxy         │
+ │ :18080 reverse(/v1,/anthropic)│ :18082 forward(CONNECT/HTTP)
+ │ :18081 admin                  │  + LAN block + allowlist
+ │ ★fixed 3 upstreams only       │  ★no credentials
+ └──┬─────────┬─┘                └──┬─────────┬──┘
+    │  (both multi-homed onto each worker net)│
+ dock-net-w-A …                   dock-net-w-A …
+        │                               │
+     worker A:  OPENAI_BASE_URL→auth / HTTP_PROXY→http
 ```
 
 | Network | Type | Role |
 |---|---|---|
-| `dock-net-proxy` | bridge (NAT enabled) | Proxy egress (internet reachability). Workers never attach |
-| `dock-net-w-<name>` | bridge `Internal` (no NAT) | Per-worker; only the proxy is additionally connected |
+| `dock-net-proxy` | bridge (NAT enabled) | Egress for **both** proxies. Workers never attach |
+| `dock-net-w-<name>` | bridge `Internal` (no NAT) | Per-worker; **both** proxies are additionally connected |
 
-- **Worker↔worker blocked**: each worker is on its own `Internal` network (separate L2 segment), so they cannot reach one another.
-- **Worker→host/internet blocked**: `Internal: true` means no host route and no NAT. The only reachable peer is the proxy.
-- **Worker→proxy**: via Docker embedded DNS (`codex-auth-proxy`) on the shared network, reaching only the data-plane port (18080). `/admin/*` (token issuance, etc.) lives on a separate listener that is **bound to the proxy's egress-network IP**, so it is unreachable from worker networks (different subnet → connection refused). The host reaches it only via the published port `127.0.0.1:18081`.
-- **All egress via the proxy**: general traffic (git/npm/pip/curl) flows through the proxy's HTTP CONNECT forward proxy via `HTTP(S)_PROXY`; OpenAI/Anthropic API calls use the credential-injecting reverse routes.
-- **Direct (non-proxy) outbound traffic times out — this is by design.** The worker network is `Internal` (no host route, no NAT), so anything that ignores `HTTP(S)_PROXY`, or any worker started with `--no-internet`, cannot reach the internet. `codex-dock run` injects `HTTP(S)_PROXY` automatically.
+Proxy roles:
+
+| Container | Role | Ports | Responsibility |
+|---|---|---|---|
+| `codex-auth-proxy` | `auth` | data 18080 / admin 18081 | Reverse routes (`/v1`, `/anthropic`, `/chatgpt`) that **inject the real credentials**; token issuance; admin. **Does NOT forward general traffic (CONNECT/absolute-URI → 405).** |
+| `codex-http-proxy` | `egress` | 18082 | **Forward proxy only** (git/npm/pip). No credentials. Private/LAN block + domain allowlist. |
+
+- **Worker↔worker blocked**: each worker is on its own `Internal` network (separate L2 segment).
+- **Worker→host/internet blocked**: `Internal: true` means no host route and no NAT; the only reachable peers are the proxies.
+- **Worker→proxy**: via Docker embedded DNS to `codex-auth-proxy:18080` (API) and `codex-http-proxy:18082` (general). The auth `/admin/*` lives on a separate listener **bound to the egress-network IP**, unreachable from worker networks (host-only via `127.0.0.1:18081`).
+- **Egress split**: API (`OPENAI_/ANTHROPIC_BASE_URL`) → auth reverse routes (credential injection); general (`HTTP(S)_PROXY`) → http forward proxy. `NO_PROXY=codex-auth-proxy,…` keeps API/token traffic direct.
+- **LAN block**: `codex-http-proxy` with `--block-private` refuses private/loopback/link-local destinations (RFC1918, 127/8, **169.254/16 = cloud metadata**, ULA, CGNAT) with 403. Enabled by default in `proxy run`; also applied to the auth proxy's upstream dials (defense in depth).
+- **Direct (non-proxy) outbound traffic times out — by design.** `codex-dock run` injects `HTTP(S)_PROXY`; `--no-internet` omits it (only the auth API routes remain).
 
 ---
 
@@ -84,4 +97,4 @@ A Docker-free smoke test exercises the core proxy/router behaviour (requires `go
 bash scripts/smoke-proxy.sh
 ```
 
-It checks: data-plane `/health`, `/admin/*` on the admin listener, `/admin/*` NOT served on the data-plane port (split), the forward proxy (HTTP and CONNECT), and a 403 from the domain allowlist. Container-level isolation (worker↔worker, Internal-network egress blocking) needs a Docker daemon — see the manual end-to-end steps.
+It checks: auth `/health`, `/admin/*` on the admin listener, `/admin/*` NOT on the data-plane port (split), **auth refusing to forward general traffic (405)**, the egress forward proxy (HTTP + CONNECT), and **`--block-private` blocking a LAN/loopback destination (403)**. Container-level isolation (worker↔worker, Internal-network egress blocking) needs a Docker daemon — see the manual end-to-end steps.

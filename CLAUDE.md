@@ -15,7 +15,7 @@ containers. The agent is selected per worker with `--agent codex|claude`; omitti
 available. Key capabilities:
 
 - **Auth Proxy** — OpenAI **and** Anthropic API keys / OAuth tokens never touch containers; short-lived tokens are injected instead.
-- **Proxy router + per-worker networks** — the proxy container is the sole egress path. Each worker runs on its own Docker `Internal` network shared only with the proxy, so worker↔worker, worker→host, and worker→internet are blocked by Docker itself (no iptables, no sudo). The proxy adds an HTTP CONNECT forward proxy for general traffic alongside the credential-injecting API reverse routes.
+- **Two-proxy router + per-worker networks** — egress is split by role into two containers: `codex-auth-proxy` (role `auth`: credential-injecting API reverse routes + token + admin; **does NOT forward general traffic**) and `codex-http-proxy` (role `egress`: forward proxy only for git/npm/pip, **no credentials**, private/LAN-blocked). Both are multi-homed onto each worker's `Internal` network. Workers reach only the proxies; worker↔worker, worker→host, and worker→internet are blocked by Docker itself (no iptables, no sudo).
 - **git worktree** — Parallel development branches, each in their own container.
 - **dock-ui** — Terminal UI (TUI) for managing all workers.
 - **Package management** — `apt`, `pip`, `npm` packages via `--pkg` or `packages.dock`.
@@ -201,7 +201,8 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 - **Anthropic / Claude Code** follows the same model: containers set `ANTHROPIC_BASE_URL=http://<proxy>/anthropic` and a placeholder `ANTHROPIC_API_KEY`. The proxy injects the real credential on `/anthropic/*` requests — `x-api-key` (API-key mode) or `Authorization: Bearer …` + the `anthropic-beta` OAuth header (Claude subscription mode). In OAuth mode the proxy refreshes the access token itself; the refresh token stays on the host (`injectAnthropicCredentials` / `refreshAnthropicOAuthIfNeeded`).
 - Containers run as non-root (`uid:1001`, `USER codex`).
 - `--cap-drop ALL` + `--security-opt no-new-privileges` + `--pids-limit 512`.
-- **Network isolation is 100% Docker-native (no iptables/sudo)**: each worker is on its own `Internal` bridge (`dock-net-w-<name>`) shared only with the proxy. Different L2 segments block worker↔worker; `Internal: true` blocks worker→host/internet. The proxy is multi-homed (egress net `dock-net-proxy` + each worker net) and is the only egress. `/admin/*` is on a separate listener so workers reach only the data-plane port.
+- **Network isolation is 100% Docker-native (no iptables/sudo)**: each worker is on its own `Internal` bridge (`dock-net-w-<name>`). Different L2 segments block worker↔worker; `Internal: true` blocks worker→host/internet. Both proxies (`codex-auth-proxy`, `codex-http-proxy`) are multi-homed (egress net `dock-net-proxy` + each worker net) and are the only egress.
+- **Credential isolation by role**: `codex-auth-proxy` holds the real credentials but only ever sends them to its three hardcoded upstreams (api.openai.com / chatgpt.com / api.anthropic.com) and refuses to forward arbitrary traffic. `codex-http-proxy` does the arbitrary forwarding but holds no credentials and blocks private/LAN destinations (`--block-private`: RFC1918, 127/8, 169.254/16 incl. cloud metadata, ULA, CGNAT). `/admin/*` is on a separate listener bound to the egress IP so workers can't reach token issuance.
 - Container `auth.json` contains a placeholder `access_token`; `refresh_token` is empty.
 - `CODEX_TOKEN` (`cdx-xxxx…`) expires on TTL; revoked on container stop.
 
@@ -283,7 +284,7 @@ The proxy loads each provider independently, so one proxy can serve both agents.
 | `codex` | `codex` | Launch Codex CLI | `CODEX_AUTH_PROXY_URL`, `CODEX_TOKEN`, `OPENAI_BASE_URL`, OAuth refresh override, `HTTP(S)_PROXY` |
 | `claude` | `claude` | Launch Claude Code | `ANTHROPIC_BASE_URL` (`…/anthropic`), `ANTHROPIC_API_KEY` (placeholder), `HTTP(S)_PROXY` |
 
-`HTTP_PROXY`/`HTTPS_PROXY` point at the proxy (`http://codex-auth-proxy:18080`) so general egress (git/npm/pip) routes through the forward proxy; `NO_PROXY=codex-auth-proxy,localhost,127.0.0.1` keeps token/API traffic direct. `--no-internet` omits the `HTTP(S)_PROXY` vars (API reverse routes only).
+`HTTP_PROXY`/`HTTPS_PROXY` point at the **egress** proxy (`http://codex-http-proxy:18082`) so general egress (git/npm/pip) routes through the forward proxy; `OPENAI_/ANTHROPIC_BASE_URL` point at the **auth** proxy (`http://codex-auth-proxy:18080/…`); `NO_PROXY=codex-auth-proxy,localhost,127.0.0.1` keeps token/API traffic direct (origin-form → reverse routes). `--no-internet` omits the `HTTP(S)_PROXY` vars (API reverse routes only).
 
 `--shell` still bypasses `entrypoint.sh` entirely for a raw, **un-authenticated** debug shell.
 `run --agent claude` fails fast if the proxy reports no Anthropic credentials

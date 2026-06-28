@@ -37,28 +37,26 @@ func newTestManager(p *fakeProxy) *Manager {
 	return &Manager{proxy: p}
 }
 
-func TestProxyContainerName(t *testing.T) {
-	tests := []struct {
-		name     string
-		proxy    *fakeProxy
-		want     string
-		nilProxy bool
-	}{
-		{name: "default endpoint", proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080"}, want: "codex-auth-proxy"},
-		{name: "endpoint with path", proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080/v1"}, want: "codex-auth-proxy"},
-		{name: "custom host", proxy: &fakeProxy{endpoint: "http://proxy.internal:9000"}, want: "proxy.internal"},
-		{name: "no proxy", nilProxy: true, want: ""},
+func TestProxyContainerNames(t *testing.T) {
+	// Auth proxy only (no http proxy configured).
+	m := &Manager{proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080"}}
+	if got := m.proxyContainerNames(); len(got) != 1 || got[0] != "codex-auth-proxy" {
+		t.Errorf("auth only: got %v; want [codex-auth-proxy]", got)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := &Manager{}
-			if !tt.nilProxy {
-				m.proxy = tt.proxy
-			}
-			if got := m.proxyContainerName(); got != tt.want {
-				t.Errorf("proxyContainerName() = %q; want %q", got, tt.want)
-			}
-		})
+
+	// Auth + http proxy → both names, in order, de-duplicated.
+	m = &Manager{
+		proxy:        &fakeProxy{endpoint: "http://codex-auth-proxy:18080/v1"},
+		httpProxyURL: "http://codex-http-proxy:18082",
+	}
+	got := m.proxyContainerNames()
+	if len(got) != 2 || got[0] != "codex-auth-proxy" || got[1] != "codex-http-proxy" {
+		t.Errorf("auth+http: got %v; want [codex-auth-proxy codex-http-proxy]", got)
+	}
+
+	// No proxy configured → empty.
+	if got := (&Manager{}).proxyContainerNames(); len(got) != 0 {
+		t.Errorf("none: got %v; want empty", got)
 	}
 }
 
@@ -192,6 +190,30 @@ func TestBuildEnv_ShellSetsBothProviders(t *testing.T) {
 	}
 	if _, ok := envValue(env, "ANTHROPIC_BASE_URL"); !ok {
 		t.Error("shell mode should configure Claude auth when available")
+	}
+}
+
+func TestBuildEnv_SeparateHTTPProxy(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
+	m.httpProxyURL = "http://codex-http-proxy:18082"
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// General egress → the dedicated egress proxy.
+	if v, _ := envValue(env, "HTTP_PROXY"); v != "http://codex-http-proxy:18082" {
+		t.Errorf("HTTP_PROXY = %q; want the egress proxy", v)
+	}
+	if v, _ := envValue(env, "https_proxy"); v != "http://codex-http-proxy:18082" {
+		t.Errorf("https_proxy = %q; want the egress proxy", v)
+	}
+	// API still points at the auth proxy.
+	if v, _ := envValue(env, "OPENAI_BASE_URL"); v != "http://codex-auth-proxy:18080/v1" {
+		t.Errorf("OPENAI_BASE_URL = %q; want the auth proxy", v)
+	}
+	// NO_PROXY must exclude the AUTH host (so API/token go direct), not the egress host.
+	if v, _ := envValue(env, "NO_PROXY"); !strings.Contains(v, "codex-auth-proxy") {
+		t.Errorf("NO_PROXY = %q; want it to contain codex-auth-proxy", v)
 	}
 }
 

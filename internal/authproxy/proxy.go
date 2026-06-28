@@ -20,22 +20,51 @@ import (
 	"time"
 )
 
+// Proxy roles. The credential-injecting reverse proxy and the general-traffic
+// forward proxy run as two separate containers so the one holding real
+// credentials never forwards arbitrary traffic.
+const (
+	// RoleAuth serves the credential-injecting reverse routes (/v1, /chatgpt,
+	// /anthropic), the token endpoints, and admin. It does NOT forward general
+	// traffic. This is the default (also used by the in-process proxy and tests).
+	RoleAuth = "auth"
+	// RoleEgress serves only the HTTP/CONNECT forward proxy for general traffic
+	// (git/npm/pip). It holds no credentials and exposes no admin/token routes.
+	RoleEgress = "egress"
+)
+
 // Config configures the Auth Proxy.
 type Config struct {
 	TokenTTL    int
 	Verbose     bool
-	ListenAddr  string // worker-facing TCP address (data plane + forward proxy). Defaults to "0.0.0.0:0".
+	ListenAddr  string // worker-facing TCP address. Defaults to "0.0.0.0:0".
 	AdminSecret string
+
+	// Role selects what this instance serves: RoleAuth (reverse + token + admin,
+	// no forwarding) or RoleEgress (forward proxy only, no credentials). Empty is
+	// treated as RoleAuth for backward compatibility.
+	Role string
 
 	// AdminListenAddr, when non-empty, serves the /admin/* routes on a separate
 	// listener so they are not reachable on the worker-facing data-plane port.
 	// When empty, /admin/* is served on the main listener (in-process/test use).
+	// Only meaningful for RoleAuth.
 	AdminListenAddr string
 
-	// ForwardAllowDomains optionally restricts the HTTP CONNECT forward proxy to
+	// ForwardAllowDomains optionally restricts the forward proxy (RoleEgress) to
 	// the listed domains (and their subdomains). Empty means allow all hosts.
 	ForwardAllowDomains []string
+
+	// BlockPrivate, when true, makes the forward proxy and all upstream dials
+	// refuse destinations that resolve to private/loopback/link-local ranges
+	// (RFC1918, 127/8, 169.254/16 incl. cloud metadata, ULA, CGNAT). This stops a
+	// worker from pivoting into the host LAN. Off by default so in-process/test
+	// proxies can reach 127.0.0.1 upstreams.
+	BlockPrivate bool
 }
+
+// isEgress reports whether the proxy is the forward-only egress instance.
+func (c Config) isEgress() bool { return c.Role == RoleEgress }
 
 // tokenRecord holds a single issued token and its metadata.
 type tokenRecord struct {
@@ -106,6 +135,27 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		anthropicUpstreamURL:   "https://api.anthropic.com",
 		anthropicOAuthTokenURL: "https://console.anthropic.com/v1/oauth/token",
 		anthropicOAuthClientID: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+	}
+
+	// When configured to block private destinations, route every outbound dial
+	// (forward proxy and reverse upstreams) through a guard that rejects
+	// private/loopback/link-local addresses. Off by default so tests keep using
+	// 127.0.0.1 upstreams via http.DefaultClient.
+	if cfg.BlockPrivate {
+		p.httpClient = &http.Client{Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           p.guardedDialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}}
+	}
+
+	// The egress (forward-only) instance holds no credentials.
+	if cfg.isEgress() {
+		return p, nil
 	}
 
 	if IsOAuthAuth() {
@@ -179,11 +229,28 @@ func (p *Proxy) Start() error {
 	p.listener = ln
 	p.addr = ln.Addr().String()
 
-	// Data-plane mux: routes the worker is allowed to use. The /admin/* routes are
-	// registered here only when no separate admin listener is configured.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/health", p.handleHealth)
+
+	// The egress (forward-only) instance serves no reverse routes, no token
+	// endpoints, and no admin: just /health plus the forward proxy below.
+	if p.cfg.isEgress() {
+		p.server = &http.Server{Handler: p.workerFacingHandler(mux)}
+		go func() {
+			if err := p.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+				log.Printf("egress proxy error: %v", err)
+			}
+		}()
+		go p.expireLoop()
+		if p.cfg.Verbose {
+			fmt.Printf("Egress proxy listening on %s (forward-only, no credentials)\n", p.addr)
+		}
+		return nil
+	}
+
+	// Data-plane mux (RoleAuth): routes the worker is allowed to use. The /admin/*
+	// routes are registered here only when no separate admin listener is configured.
+	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/revoke", p.handleRevoke)
 	// OAuth token refresh: Codex CLI calls this via CODEX_REFRESH_TOKEN_URL_OVERRIDE.
 	// The proxy substitutes the host's real refresh_token so it never reaches containers.

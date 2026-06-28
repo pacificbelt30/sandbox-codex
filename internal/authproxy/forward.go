@@ -1,6 +1,9 @@
 package authproxy
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -10,19 +13,27 @@ import (
 )
 
 // workerFacingHandler returns the HTTP handler installed on the worker-facing
-// listener. It turns the auth proxy into a router: HTTP CONNECT tunnels and
-// absolute-form HTTP requests (sent by clients honoring HTTP(S)_PROXY) are
-// handled by the forward proxy, while origin-form requests (the credential
-// injecting reverse-proxy routes and token endpoints) fall through to mux.
+// listener. Behaviour depends on the role:
+//
+//   - RoleEgress: CONNECT tunnels and absolute-form HTTP requests (sent by clients
+//     honoring HTTP(S)_PROXY) are handled by the forward proxy; everything else
+//     falls through to mux (just /health).
+//   - RoleAuth: this instance does NOT forward general traffic. CONNECT and
+//     absolute-form requests are rejected (405); origin-form requests reach the
+//     reverse-proxy / token mux.
 func (p *Proxy) workerFacingHandler(mux http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodConnect {
-			p.handleForwardConnect(w, r)
-			return
-		}
-		// A forward-proxy HTTP request carries an absolute URI (scheme + host).
-		if r.URL.IsAbs() && r.URL.Host != "" {
-			p.handleForwardHTTP(w, r)
+		isForward := r.Method == http.MethodConnect || (r.URL.IsAbs() && r.URL.Host != "")
+		if isForward {
+			if !p.cfg.isEgress() {
+				http.Error(w, "this proxy does not forward general traffic; use the egress proxy", http.StatusMethodNotAllowed)
+				return
+			}
+			if r.Method == http.MethodConnect {
+				p.handleForwardConnect(w, r)
+			} else {
+				p.handleForwardHTTP(w, r)
+			}
 			return
 		}
 		mux.ServeHTTP(w, r)
@@ -43,10 +54,13 @@ func (p *Proxy) handleForwardConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dialer := &net.Dialer{Timeout: 30 * time.Second}
-	destConn, err := dialer.DialContext(r.Context(), "tcp", host)
+	destConn, err := p.guardedDialContext(r.Context(), "tcp", host)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		if isBlockedDestErr(err) {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+		}
 		return
 	}
 
@@ -97,7 +111,11 @@ func (p *Proxy) handleForwardHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := p.httpClient.Do(outReq)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		if isBlockedDestErr(err) {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+		}
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -109,6 +127,89 @@ func (p *Proxy) handleForwardHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+// blockedDestErr marks a dial refused because the destination resolves to a
+// private/LAN range. Surfaced as 403 rather than 502.
+type blockedDestErr struct{ msg string }
+
+func (e *blockedDestErr) Error() string { return e.msg }
+
+func isBlockedDestErr(err error) bool {
+	var b *blockedDestErr
+	return errors.As(err, &b)
+}
+
+// guardedDialContext resolves addr and, when BlockPrivate is set, refuses any
+// destination that resolves to a private/loopback/link-local address (stopping a
+// worker from pivoting into the host LAN or cloud metadata). It then dials a
+// resolved IP directly (pinning it, so a later DNS rebind cannot redirect the
+// connection). When BlockPrivate is off it dials normally.
+func (p *Proxy) guardedDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	d := &net.Dialer{Timeout: 30 * time.Second}
+	if !p.cfg.BlockPrivate {
+		return d.DialContext(ctx, network, addr)
+	}
+
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := screenDest(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var lastErr error
+	for _, ip := range ips {
+		conn, derr := d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if derr == nil {
+			return conn, nil
+		}
+		lastErr = derr
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no address for %s", host)
+	}
+	return nil, lastErr
+}
+
+// screenDest resolves host and returns its IPs, or a blockedDestErr if any
+// resolved address is private/loopback/link-local (anti-rebinding: reject the
+// whole host if any answer is internal). IP literals resolve without DNS.
+func screenDest(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		if isBlockedIP(a.IP) {
+			return nil, &blockedDestErr{msg: fmt.Sprintf("destination %s (%s) is in a blocked private/LAN range", host, a.IP)}
+		}
+		ips = append(ips, a.IP)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no address for %s", host)
+	}
+	return ips, nil
+}
+
+// isBlockedIP reports whether ip is in a range a worker must not reach via the
+// egress proxy: loopback, private (RFC1918 + ULA), link-local (incl. the cloud
+// metadata 169.254.169.254), CGNAT (100.64/10), and the unspecified address.
+func isBlockedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	// Carrier-grade NAT 100.64.0.0/10 is not covered by IsPrivate.
+	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
+		return true
+	}
+	return false
 }
 
 // forwardAllowed reports whether the destination host is permitted by the

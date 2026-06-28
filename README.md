@@ -7,7 +7,7 @@
 - **Multiple agents**: choose per worker with `--agent codex|claude`; omit `--agent` for an auth-configured shell where both CLIs are available
 - **Security isolation**: agents run in a Docker container, not on your host
 - **Auth Proxy**: OpenAI and Anthropic API keys / OAuth tokens never touch the container; short-lived tokens are injected instead
-- **Proxy router + per-worker networks**: each worker runs on its own Docker `Internal` network shared only with the proxy. Worker↔worker, worker→host, and worker→internet are all blocked by Docker itself — no iptables, no sudo. The proxy is the sole egress path (forward proxy for general traffic; credential-injecting reverse routes for the APIs)
+- **Two-proxy router + per-worker networks**: each worker runs on its own Docker `Internal` network; worker↔worker, worker→host, and worker→internet are all blocked by Docker itself — no iptables, no sudo. Egress is split by role: `codex-auth-proxy` injects real credentials on the API reverse routes (and forwards nothing else), while `codex-http-proxy` forwards general traffic (git/npm/pip) with no credentials and blocks private/LAN destinations
 - **git worktree**: Parallel development branches, each in their own container
 - **dock-ui**: Terminal UI for managing all workers at a glance
 - **Package management**: `apt`, `pip`, `npm` packages via `--pkg` or `packages.dock`
@@ -117,9 +117,10 @@ sudo mv codex-dock /usr/local/bin/
 codex-dock network create   # egress ネットワーク (dock-net-proxy) を作成
 
 codex-dock proxy build
-codex-dock proxy run        # admin ポート(18081)のみ 127.0.0.1 に公開。
-                            # データプレーン(18080)は非公開で、ワーカーは
-                            # Docker DNS (codex-auth-proxy) 経由で到達する。
+codex-dock proxy run        # 2つのプロキシを起動:
+                            #   codex-auth-proxy (API・admin:18081のみ127.0.0.1公開)
+                            #   codex-http-proxy (一般通信用フォワード:18082, LAN遮断)
+                            # データプレーンは非公開で、ワーカーは Docker DNS 経由で到達。
 
 # 認証情報は proxy run が自動でホストからバインドします
 #   OPENAI_API_KEY / ANTHROPIC_API_KEY 環境変数、~/.codex/auth.json、~/.claude/.credentials.json など
