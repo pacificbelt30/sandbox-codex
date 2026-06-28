@@ -97,4 +97,12 @@ A Docker-free smoke test exercises the core proxy/router behaviour (requires `go
 bash scripts/smoke-proxy.sh
 ```
 
-It checks: auth `/health`, `/admin/*` on the admin listener, `/admin/*` NOT on the data-plane port (split), **auth refusing to forward general traffic (405)**, the egress forward proxy (HTTP + CONNECT), and **`--block-private` blocking a LAN/loopback destination (403)**. Container-level isolation (worker↔worker, Internal-network egress blocking) needs a Docker daemon — see the manual end-to-end steps.
+It checks: auth `/health`, `/admin/*` on the admin listener, `/admin/*` NOT on the data-plane port (split), **auth refusing to forward general traffic (405)**, the egress forward proxy (HTTP + CONNECT), and **`--block-private` blocking a LAN/loopback destination (403)**.
+
+Container-level isolation (worker↔worker, Internal-network egress blocking) needs a Docker daemon. A Docker-gated E2E is included (it skips cleanly when Docker is unavailable):
+
+```bash
+bash scripts/e2e-docker.sh
+```
+
+It verifies that `proxy run` brings up both proxies with only the admin port host-published, and that a worker on its per-worker Internal network can reach the auth/http proxies but **not** the admin port, the internet directly, or another worker — and that the http proxy refuses private/LAN destinations (403).
