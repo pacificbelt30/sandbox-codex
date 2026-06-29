@@ -11,6 +11,7 @@ import (
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/template"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var buildTag string
@@ -21,6 +22,8 @@ var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Build the codex-dock base Docker image",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		applyBuildConfigDefaults(cmd)
+
 		if buildTemplate == "list" {
 			return listTemplates()
 		}
@@ -49,6 +52,24 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildTag, "tag", "t", "codex-dock:latest", "Image tag")
 	buildCmd.Flags().StringVarP(&buildDockerfile, "dockerfile", "f", "", "Path to Dockerfile")
 	buildCmd.Flags().StringVarP(&buildTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Use --template list to see available templates.`)
+}
+
+func applyBuildConfigDefaults(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	if !flags.Changed("template") {
+		if v := viper.GetString("build.template"); v != "" {
+			buildTemplate = v
+		} else if v := viper.GetString("default_template"); v != "" {
+			buildTemplate = v
+		}
+	}
+
+	if !flags.Changed("tag") {
+		if v := viper.GetString("build.tag"); v != "" {
+			buildTag = v
+		}
+	}
 }
 
 // resolveDockerfile returns the Dockerfile path and build context directory to use.

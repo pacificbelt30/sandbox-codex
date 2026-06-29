@@ -289,6 +289,21 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 		} else if v := viper.GetString("default_image"); v != "" {
 			runOpts.Image = v
 		}
+
+		// When a default template is configured and --image was not explicitly
+		// set, resolve the template's tag as the image name. This allows
+		// `default_template = "pwn"` to automatically use `codex-dock:pwn`.
+		if !flags.Changed("image") {
+			tmplName := viper.GetString("run.template")
+			if tmplName == "" {
+				tmplName = viper.GetString("default_template")
+			}
+			if tmplName != "" {
+				if tmpl, err := template.Get(tmplName); err == nil {
+					runOpts.Image = tmpl.Tag("")
+				}
+			}
+		}
 	}
 
 	if !flags.Changed("token-ttl") {

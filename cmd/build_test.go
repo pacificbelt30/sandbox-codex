@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // TestResolveDockerfile_ExplicitFlag verifies that an explicit -f value is
@@ -161,5 +164,94 @@ func TestEnsureDefaultDockerfile_DockerfileContent(t *testing.T) {
 		if !strings.Contains(content, marker) {
 			t.Errorf("Dockerfile missing expected content %q", marker)
 		}
+	}
+}
+
+func TestApplyBuildConfigDefaults_GlobalTemplate(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prev := buildTemplate
+	t.Cleanup(func() { buildTemplate = prev })
+
+	buildTemplate = ""
+	viper.Set("default_template", "pwn")
+
+	cmd := &cobra.Command{Use: "build"}
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().String("tag", "codex-dock:latest", "")
+
+	applyBuildConfigDefaults(cmd)
+
+	if buildTemplate != "pwn" {
+		t.Errorf("buildTemplate = %q; want pwn", buildTemplate)
+	}
+}
+
+func TestApplyBuildConfigDefaults_SectionOverridesGlobal(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prev := buildTemplate
+	t.Cleanup(func() { buildTemplate = prev })
+
+	buildTemplate = ""
+	viper.Set("default_template", "plain")
+	viper.Set("build.template", "pwn")
+
+	cmd := &cobra.Command{Use: "build"}
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().String("tag", "codex-dock:latest", "")
+
+	applyBuildConfigDefaults(cmd)
+
+	if buildTemplate != "pwn" {
+		t.Errorf("buildTemplate = %q; want pwn (build.template overrides default_template)", buildTemplate)
+	}
+}
+
+func TestApplyBuildConfigDefaults_FlagOverridesConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prev := buildTemplate
+	t.Cleanup(func() { buildTemplate = prev })
+
+	buildTemplate = "plain"
+	viper.Set("build.template", "pwn")
+
+	cmd := &cobra.Command{Use: "build"}
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().String("tag", "codex-dock:latest", "")
+
+	if err := cmd.Flags().Set("template", "plain"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+
+	applyBuildConfigDefaults(cmd)
+
+	if buildTemplate != "plain" {
+		t.Errorf("buildTemplate = %q; want plain (flag overrides config)", buildTemplate)
+	}
+}
+
+func TestApplyBuildConfigDefaults_Tag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prev := buildTag
+	t.Cleanup(func() { buildTag = prev })
+
+	buildTag = "codex-dock:latest"
+	viper.Set("build.tag", "custom:v1")
+
+	cmd := &cobra.Command{Use: "build"}
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().String("tag", "codex-dock:latest", "")
+
+	applyBuildConfigDefaults(cmd)
+
+	if buildTag != "custom:v1" {
+		t.Errorf("buildTag = %q; want custom:v1", buildTag)
 	}
 }
