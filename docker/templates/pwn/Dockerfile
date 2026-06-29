@@ -32,6 +32,7 @@ RUN git clone --depth 1 https://github.com/radareorg/radare2.git /tmp/radare2 \
     && ./configure --prefix=/usr/local \
     && make -j$(nproc) \
     && make install \
+    && ldconfig \
     && rm -rf /tmp/radare2
 
 # pwndbg (GDB plugin)
