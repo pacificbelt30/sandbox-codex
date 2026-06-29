@@ -43,7 +43,7 @@ make install-config
 
 ## 設定項目一覧
 
-> すべての設定キーは [`configs/config.toml.example`](../configs/config.toml.example) にまとまっています。
+> すべての設定キーは `configs/config.toml.example` にまとまっています。
 
 ### `default_image`
 
@@ -113,6 +113,26 @@ proxy_image = "codex-dock-proxy:latest"
 
 ---
 
+### `default_template`
+
+サンドボックスイメージのデフォルトテンプレート。`build` と `run` の両方に適用されます。
+
+```toml
+default_template = "plain"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | 未設定（テンプレートなし） |
+| 対応フラグ | `build --template`, `run --image`（間接） |
+| 許可値 | `"plain"`, `"pwn"` など（`codex-dock build --template list` で一覧） |
+
+テンプレートを指定すると、対応するタグのイメージが使用されます（例: `"pwn"` → `codex-dock:pwn`）。
+セクション固有の設定（`build.template`、`run.template`）がある場合はそちらが優先されます。
+
+---
+
 ### `run.image`
 
 `codex-dock run --image` のデフォルト値を指定します。
@@ -152,6 +172,26 @@ token_ttl = 3600
 ---
 
 
+### `run.template`
+
+`codex-dock run` で使用するテンプレートのデフォルト値。
+
+```toml
+[run]
+template = "pwn"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | 未設定（`default_template` を参照） |
+| 対応フラグ | `run --image`（間接：テンプレートのタグに解決される） |
+
+> `run.template` を指定すると、`default_template` より優先されます。
+> `--image` フラグを明示的に指定した場合はテンプレート設定より優先されます。
+
+---
+
 ### `run.user`
 
 `codex-dock run --user` のデフォルト値を指定します。
@@ -187,6 +227,43 @@ approval_mode = "suggest"
 | デフォルト | `"suggest"` |
 | 対応フラグ | `run --approval-mode` |
 | 許可値 | `suggest`, `auto-edit`, `full-auto`, `danger` |
+
+---
+
+### `[build]` セクション — `codex-dock build` の既定値
+
+#### `build.template`
+
+`codex-dock build --template` のデフォルト値。
+
+```toml
+[build]
+template = "pwn"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | 未設定（`default_template` を参照） |
+| 対応フラグ | `build --template`, `-T` |
+
+> `build.template` を指定すると、`default_template` より優先されます。
+> `--template` フラグを明示的に指定した場合は設定ファイルより優先されます。
+
+#### `build.tag`
+
+`codex-dock build --tag` のデフォルト値。
+
+```toml
+[build]
+tag = "codex-dock:latest"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"codex-dock:latest"` |
+| 対応フラグ | `build --tag`, `-t` |
 
 ---
 
@@ -306,6 +383,9 @@ default_token_ttl = 3600
 # egress（プロキシ）ネットワーク名
 network_name = "dock-net-proxy"
 
+# デフォルトテンプレート（未指定ならテンプレートなし）
+# default_template = "plain"
+
 # 詳細ログ（通常は false）
 verbose = false
 
@@ -316,6 +396,9 @@ debug = false
 # run サブコマンドのデフォルトイメージ（未指定なら default_image を使用）
 image = "codex-dock:latest"
 
+# run サブコマンドのテンプレート（未指定なら default_template を使用）
+# template = "pwn"
+
 # run サブコマンドのトークン TTL（未指定なら default_token_ttl を使用）
 token_ttl = 3600
 
@@ -324,6 +407,13 @@ user = "current"
 
 # run サブコマンドの承認モード
 approval_mode = "suggest"
+
+[build]
+# build サブコマンドのテンプレート（未指定なら default_template を使用）
+# template = "pwn"
+
+# build サブコマンドのデフォルトタグ
+# tag = "codex-dock:latest"
 
 [proxy]
 # ワーカーから到達する Auth Proxy URL（--proxy-container-url）

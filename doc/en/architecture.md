@@ -28,14 +28,22 @@ codex-dock
 │   │   └── packages.go      Package definition parsing
 │   ├── network/             Docker network management (egress + per-worker Internal nets)
 │   │   └── manager.go       EnsureEgressNetwork / EnsureWorkerNetwork / ConnectProxy, ...
+│   ├── template/            Sandbox image template management
+│   │   ├── template.go      Template registry, resolution, tag generation
+│   │   └── validate.go      Static Dockerfile validation
 │   ├── worktree/            git worktree management
 │   │   └── worktree.go      Worktree create / delete
 │   └── ui/                  Terminal UI (Bubble Tea)
 │       └── ui.go
 │
 └── docker/
-    ├── Dockerfile           Sandbox image definition
-    └── entrypoint.sh        Container startup script (includes auth retrieval)
+    ├── sandbox/             Sandbox image (= plain template)
+    │   ├── Dockerfile       Node.js 22 + Codex CLI + Claude Code
+    │   └── entrypoint.sh    Container startup script (includes auth retrieval)
+    ├── templates/           Template directory (one subdirectory per template)
+    │   └── pwn/Dockerfile   CTF / binary exploitation template (FROM codex-dock:latest)
+    └── proxy/
+        └── Dockerfile       Auth Proxy (Go binary)
 ```
 
 ---

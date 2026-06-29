@@ -1,6 +1,6 @@
 # Auth Proxy — API Endpoint Reference
 
-> [日本語](../../../auth-proxy/endpoints.md) | **English**
+> [日本語](../../auth-proxy/endpoints.md) | **English**
 
 Full HTTP endpoint specifications for the Auth Proxy.
 

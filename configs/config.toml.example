@@ -38,6 +38,12 @@ default_token_ttl = 3600
 # worker→host, and worker→internet are all blocked by Docker (no iptables/sudo).
 network_name = "dock-net-proxy"
 
+# Default sandbox image template.                      flag: --template / -T
+# If set, `codex-dock build` and `codex-dock run` use this template unless
+# overridden by a flag or a section-specific setting.
+# Available templates: "plain" (minimal), "pwn" (CTF/RE tools).
+# default_template = "plain"
+
 # Print extra operational logs by default.             flag: --verbose / -v
 verbose = false
 
@@ -53,6 +59,10 @@ debug = false
 # Image for `run` only. If unset, the global `default_image` is used.
 image = "codex-dock:latest"
 
+# Template for `run` only. If unset, the global `default_template` is used.
+# When set, the template's tag is used as the image (e.g. "pwn" → codex-dock:pwn).
+# template = "plain"
+
 # Token TTL for `run` only. If unset, the global `default_token_ttl` is used.
 token_ttl = 3600
 
@@ -67,6 +77,18 @@ user = "current"
 # Codex CLI approval mode.                             flag: --approval-mode
 #   suggest | auto-edit | full-auto | danger
 approval_mode = "suggest"
+
+
+# -----------------------------------------------------------------------------
+# [build] — defaults specific to `codex-dock build`
+# -----------------------------------------------------------------------------
+[build]
+
+# Default template for `build`. If unset, the global `default_template` is used.
+# template = "plain"
+
+# Default image tag for `build`.                       flag: --tag / -t
+# tag = "codex-dock:latest"
 
 
 # -----------------------------------------------------------------------------

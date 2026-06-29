@@ -30,15 +30,20 @@ codex-dock
 │   │   └── packages.go      パッケージ定義解析
 │   ├── network/             Docker ネットワーク管理（egress 網 + per-worker Internal 網）
 │   │   └── manager.go       EnsureEgressNetwork / EnsureWorkerNetwork / ConnectProxy 等
+│   ├── template/            サンドボックスイメージテンプレート管理
+│   │   ├── template.go      テンプレートレジストリ・解決・タグ生成
+│   │   └── validate.go      Dockerfile の静的バリデーション
 │   ├── worktree/            git worktree 管理
 │   │   └── worktree.go      worktree の作成/削除
 │   └── ui/                  ターミナル UI (Bubble Tea)
 │       └── ui.go
 │
 └── docker/                  コンテナ資産（用途別に分離）
-    ├── sandbox/             ★サンドボックスイメージ
+    ├── sandbox/             ★サンドボックスイメージ（= plain テンプレート）
     │   ├── Dockerfile       Node.js 22 + Codex CLI + Claude Code
     │   └── entrypoint.sh    起動スクリプト（認証取得・codex/claude/shell 分岐）
+    ├── templates/           ★テンプレートディレクトリ（テンプレートごとにサブディレクトリ）
+    │   └── pwn/Dockerfile   CTF/バイナリ解析向けテンプレート（FROM codex-dock:latest）
     └── proxy/               ★プロキシイメージ
         └── Dockerfile       Auth Proxy（Go バイナリ）
 ```

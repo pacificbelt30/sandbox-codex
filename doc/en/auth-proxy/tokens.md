@@ -1,6 +1,6 @@
 # Auth Proxy — Token Lifecycle & Security
 
-> [日本語](../../../auth-proxy/tokens.md) | **English**
+> [日本語](../../auth-proxy/tokens.md) | **English**
 
 - [Overview & Deployment](../auth-proxy.md)
 - [API Endpoint Reference](endpoints.md)

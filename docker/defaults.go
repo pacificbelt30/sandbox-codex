@@ -1,6 +1,6 @@
 package dockerdefaults
 
-import _ "embed"
+import "embed"
 
 // Dockerfile is the default sandbox image definition.
 //
@@ -16,3 +16,8 @@ var Entrypoint []byte
 //
 //go:embed proxy/Dockerfile
 var ProxyDockerfile []byte
+
+// Templates holds the embedded template Dockerfiles under templates/<name>/.
+//
+//go:embed templates
+var Templates embed.FS

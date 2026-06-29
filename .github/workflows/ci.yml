@@ -81,7 +81,8 @@ jobs:
             ./internal/authproxy/... \
             ./internal/network/... \
             ./internal/worktree/... \
-            ./internal/config/...
+            ./internal/config/... \
+            ./internal/template/...
 
       - name: Show coverage summary
         run: go tool cover -func=coverage.out

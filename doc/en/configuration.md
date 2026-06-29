@@ -43,7 +43,7 @@ Configuration values are resolved in the following priority order (higher takes 
 
 ## Configuration Settings
 
-> All available keys are listed in [`configs/config.toml.example`](../../configs/config.toml.example).
+> All available keys are listed in `configs/config.toml.example`.
 
 ### `default_image`
 
@@ -113,6 +113,26 @@ proxy_image = "codex-dock-proxy:latest"
 
 ---
 
+### `default_template`
+
+Default sandbox image template. Applies to both `build` and `run`.
+
+```toml
+default_template = "plain"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | unset (no template) |
+| Corresponding flag | `build --template`, `run --image` (indirect) |
+| Allowed values | `"plain"`, `"pwn"`, etc. (run `codex-dock build --template list` to see all) |
+
+When a template is set, the corresponding tagged image is used (e.g. `"pwn"` → `codex-dock:pwn`).
+Section-specific settings (`build.template`, `run.template`) take precedence over this global default.
+
+---
+
 ### `run.image`
 
 Default value for `codex-dock run --image`.
@@ -151,6 +171,26 @@ token_ttl = 3600
 
 ---
 
+### `run.template`
+
+Default template for `codex-dock run`.
+
+```toml
+[run]
+template = "pwn"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | unset (falls back to `default_template`) |
+| Corresponding flag | `run --image` (indirect: resolved to the template's tag) |
+
+> `run.template` takes precedence over `default_template`.
+> An explicit `--image` flag always takes precedence over template settings.
+
+---
+
 ### `run.user`
 
 Default value for `codex-dock run --user`.
@@ -186,6 +226,43 @@ approval_mode = "suggest"
 | Default | `"suggest"` |
 | Corresponding flag | `run --approval-mode` |
 | Allowed values | `suggest`, `auto-edit`, `full-auto`, `danger` |
+
+---
+
+### `[build]` section — `codex-dock build` defaults
+
+#### `build.template`
+
+Default value for `codex-dock build --template`.
+
+```toml
+[build]
+template = "pwn"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | unset (falls back to `default_template`) |
+| Corresponding flag | `build --template`, `-T` |
+
+> `build.template` takes precedence over `default_template`.
+> An explicit `--template` flag always takes precedence over the config file.
+
+#### `build.tag`
+
+Default value for `codex-dock build --tag`.
+
+```toml
+[build]
+tag = "codex-dock:latest"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"codex-dock:latest"` |
+| Corresponding flag | `build --tag`, `-t` |
 
 ---
 
@@ -307,6 +384,9 @@ default_token_ttl = 3600
 # Egress (proxy) network name
 network_name = "dock-net-proxy"
 
+# Default template (if unset, no template is used)
+# default_template = "plain"
+
 # Verbose logging (normally false)
 verbose = false
 
@@ -317,6 +397,9 @@ debug = false
 # run subcommand default image (if unset, default_image is used)
 image = "codex-dock:latest"
 
+# run subcommand template (if unset, default_template is used)
+# template = "pwn"
+
 # run subcommand token TTL (if unset, default_token_ttl is used)
 token_ttl = 3600
 
@@ -325,6 +408,13 @@ user = "current"
 
 # run subcommand default approval mode
 approval_mode = "suggest"
+
+[build]
+# build subcommand template (if unset, default_template is used)
+# template = "pwn"
+
+# build subcommand default tag
+# tag = "codex-dock:latest"
 
 [proxy]
 # Auth Proxy URL reachable from workers (--proxy-container-url)

@@ -56,16 +56,21 @@ codex-dock/
 │   │   └── packages.go       packages.dock file parsing
 │   ├── network/              Docker network lifecycle (egress + per-worker Internal nets)
 │   │   └── manager.go        EnsureEgressNetwork / EnsureWorkerNetwork / ConnectProxy / DisconnectProxy / RemoveWorkerNetwork
+│   ├── template/             Sandbox image template management
+│   │   ├── template.go       Template registry, resolution (Get/List/MatchTag), tag generation
+│   │   └── validate.go       Static Dockerfile validation (required tools check)
 │   ├── worktree/             git worktree management
 │   │   └── worktree.go       Create / delete worktrees
 │   └── ui/                   Terminal UI (tcell / tview)
 │       └── ui.go             TUI dashboard (Bubble Tea-style keybinds)
 │
 ├── docker/                   Container assets, split by side
-│   ├── defaults.go           //go:embed of the Dockerfiles + entrypoint
-│   ├── sandbox/              SANDBOX image
+│   ├── defaults.go           //go:embed of the Dockerfiles + entrypoint + templates
+│   ├── sandbox/              SANDBOX image (= "plain" template)
 │   │   ├── Dockerfile        Node.js 22 + Codex CLI + Claude Code, non-root uid:1001
 │   │   └── entrypoint.sh     Startup: fetch auth from proxy, launch codex/claude/shell
+│   ├── templates/            Image templates (one subdir per template)
+│   │   └── pwn/Dockerfile    CTF/RE template: pwntools, ptrlib, ropper, pwndbg, radare2, etc.
 │   └── proxy/               PROXY image
 │       └── Dockerfile        Distroless Go build of the auth proxy (`proxy serve`)
 │
@@ -123,7 +128,8 @@ go test \
   ./internal/sandbox/... \
   ./internal/authproxy/... \
   ./internal/worktree/... \
-  ./internal/config/...
+  ./internal/config/... \
+  ./internal/template/...
 
 # View coverage report
 go tool cover -func=coverage.out
@@ -151,6 +157,13 @@ git diff --exit-code go.mod go.sum   # ensure go.mod stays tidy
 ```bash
 # Build using the codex-dock CLI (wraps docker build)
 codex-dock build
+
+# Build using a template (plain = default, pwn = CTF/RE tools)
+codex-dock build --template plain
+codex-dock build --template pwn        # → codex-dock:pwn
+
+# List available templates
+codex-dock build --template list
 
 # Or build directly (sandbox image: Codex CLI + Claude Code)
 docker build -t codex-dock:latest -f docker/sandbox/Dockerfile docker/sandbox/
@@ -239,7 +252,7 @@ Source: `.github/workflows/ci.yml`
 |---|---|
 | `lint` | `golangci-lint run --timeout=5m` |
 | `build` | `go build`, cross-compile darwin/arm64, darwin/amd64, linux/arm64 |
-| `test` | `go test -race -coverprofile` on `cmd`, `internal/sandbox`, `authproxy`, `network`, `worktree`, `config` |
+| `test` | `go test -race -coverprofile` on `cmd`, `internal/sandbox`, `authproxy`, `network`, `worktree`, `config`, `template` |
 | `vet` | `go vet ./...` + `go mod tidy` idempotency check |
 | `docker` | `docker buildx build` of `docker/sandbox/Dockerfile` and `docker/proxy/Dockerfile` (no push) |
 
@@ -296,7 +309,7 @@ The proxy loads each provider independently, so one proxy can serve both agents.
 
 1. **Always run `gofmt`** before committing. The CI `gofmt` check is strict.
 2. **Check all errors** — `errcheck` will fail if you discard errors without assigning to `_` explicitly.
-3. **Test coverage targets**: `internal/sandbox`, `internal/authproxy`, `internal/worktree`, `internal/config`.
+3. **Test coverage targets**: `internal/sandbox`, `internal/authproxy`, `internal/worktree`, `internal/config`, `internal/template`.
 4. **No new global state** — config flows through Viper/Cobra flag bindings.
 5. **`internal/` is the right place** for new business logic; `cmd/` is for CLI wiring only.
 6. **Do not pass credentials to containers** — containers receive only placeholder `cdx-xxxx` tokens. The proxy injects real credentials on every outbound request (`injectCredentials` for OpenAI, `injectAnthropicCredentials` for Anthropic).
@@ -305,3 +318,4 @@ The proxy loads each provider independently, so one proxy can serve both agents.
 8. **Network isolation is Docker-native (router model)**: workers reach the proxy via Docker embedded DNS (`codex-auth-proxy`) on their per-worker `Internal` network — no `host.docker.internal`/`--add-host`, no iptables. `sandbox.Manager.Run` calls `network.EnsureWorkerNetwork` + `ConnectProxy` before creating the container; `Remove`/`RemoveByName` call `cleanupWorkerNetwork`. The proxy is the only egress. When adding network behavior, keep it inside Docker primitives (Internal nets, ICC) rather than reintroducing iptables.
 9. **Documentation is in Japanese** (`doc/`). New docs may be written in English or Japanese consistently with existing files.
 10. **`go mod tidy` must leave `go.mod`/`go.sum` clean** — CI checks this with `git diff --exit-code`.
+11. **Image templates** — `internal/template` manages sandbox image templates. `plain` maps to the existing `docker/sandbox/Dockerfile`; derived templates (e.g. `pwn`) live under `docker/templates/<name>/Dockerfile` and `FROM codex-dock:latest`. Templates are embedded via `embed.FS` in `docker/defaults.go`. Use `template.Get(name)` / `template.List()` to access them. `template.Validate()` checks that base templates include required tools (codex, claude-code, git, curl, non-root user, entrypoint).

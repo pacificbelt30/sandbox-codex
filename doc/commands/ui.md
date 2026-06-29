@@ -1,6 +1,6 @@
 # `codex-dock ui` — TUI ダッシュボード
 
-> **日本語** | [English](../../en/commands/ui.md)
+> **日本語** | [English](../en/commands/ui.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 
