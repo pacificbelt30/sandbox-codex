@@ -13,6 +13,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
+	"github.com/pacificbelt30/codex-dock/internal/template"
 	"github.com/pacificbelt30/codex-dock/internal/worktree"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -186,12 +187,18 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("checking image %s: %w", runOpts.Image, err)
 	} else if !exists {
 		fmt.Printf("Image %s not found locally, building...\n", runOpts.Image)
-		dockerfile, buildCtx, err := resolveDockerfile("")
-		if err != nil {
-			return fmt.Errorf("auto-build: %w", err)
-		}
-		if err := executeBuild(cmd.Context(), runOpts.Image, dockerfile, buildCtx); err != nil {
-			return fmt.Errorf("auto-build: %w", err)
+		if tmplName := template.MatchTag(runOpts.Image); tmplName != "" {
+			if err := buildFromTemplate(cmd.Context(), tmplName, runOpts.Image); err != nil {
+				return fmt.Errorf("auto-build template %q: %w", tmplName, err)
+			}
+		} else {
+			dockerfile, buildCtx, err := resolveDockerfile("")
+			if err != nil {
+				return fmt.Errorf("auto-build: %w", err)
+			}
+			if err := executeBuild(cmd.Context(), runOpts.Image, dockerfile, buildCtx); err != nil {
+				return fmt.Errorf("auto-build: %w", err)
+			}
 		}
 	}
 

@@ -72,7 +72,8 @@ test:
 		./internal/authproxy/... \
 		./internal/network/... \
 		./internal/worktree/... \
-		./internal/config/...
+		./internal/config/... \
+		./internal/template/...
 
 ## lint: run golangci-lint
 lint:
