@@ -28,6 +28,10 @@ if ! docker version >/dev/null 2>&1; then
 fi
 
 WORKER_IMAGE="curlimages/curl:latest"
+# Dedicated listener image for worker2. curlimages/curl is a stripped Alpine
+# without the busybox httpd applet, so it can't host a port — use canonical
+# busybox (httpd applet always present) for the listener.
+LISTENER_IMAGE="busybox:latest"
 EGRESS_NET="dock-net-proxy"
 W1NET="dock-net-w-e2e1"; W2NET="dock-net-w-e2e2"
 W1="e2e-worker-1"; W2="e2e-worker-2"; PROBE="e2e-probe"
@@ -55,6 +59,12 @@ go build -o "$BIN" . || { echo "build failed"; exit 1; }
 if ! docker pull "$WORKER_IMAGE" >/dev/null 2>&1; then
   echo "SKIP: cannot pull $WORKER_IMAGE (no registry access); proxy checks only."
   WORKER_IMAGE=""
+fi
+# Listener image for worker2 (optional). If it can't be pulled we fall back to a
+# non-listening worker2 and drop the positive-control probe.
+if [ -n "$WORKER_IMAGE" ] && ! docker pull "$LISTENER_IMAGE" >/dev/null 2>&1; then
+  echo "NOTE: cannot pull $LISTENER_IMAGE; worker2 will not listen (isolation test runs without positive control)."
+  LISTENER_IMAGE=""
 fi
 
 echo "=== start proxies (codex-dock proxy run) ==="
@@ -88,13 +98,19 @@ docker network create --internal "$W2NET" >/dev/null
 docker network connect "$W1NET" "$AUTH" >/dev/null; docker network connect "$W1NET" "$HTTP" >/dev/null
 docker network connect "$W2NET" "$AUTH" >/dev/null; docker network connect "$W2NET" "$HTTP" >/dev/null
 docker run -d --name "$W1" --network "$W1NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
-# Worker2 actually LISTENS on :80 (busybox httpd over the curl image's busybox)
-# so the worker<->worker isolation test has a real service to (fail to) reach.
-docker run -d --name "$W2" --network "$W2NET" --entrypoint sh "$WORKER_IMAGE" \
-  -c 'mkdir -p /tmp/web && echo ok > /tmp/web/index.html && busybox httpd -f -p 80 -h /tmp/web' >/dev/null
-# Probe on the SAME net as worker2 — positive control proving :80 is reachable
-# when L2 allows it, so a 000 from worker1 means isolation (not a dead port).
-docker run -d --name "$PROBE" --network "$W2NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
+if [ -n "$LISTENER_IMAGE" ]; then
+  # Worker2 actually LISTENS on :80 (busybox httpd) so the worker<->worker
+  # isolation test has a real service to (fail to) reach.
+  docker run -d --name "$W2" --network "$W2NET" "$LISTENER_IMAGE" \
+    sh -c 'mkdir -p /tmp/web && echo ok > /tmp/web/index.html && httpd -f -p 80 -h /tmp/web' >/dev/null
+  # Probe on the SAME net as worker2 — positive control proving :80 is reachable
+  # when L2 allows it, so a 000 from worker1 means isolation (not a dead port).
+  docker run -d --name "$PROBE" --network "$W2NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
+else
+  # No listener image: worker2 just idles; isolation test runs without the
+  # positive control (a 000 then can't distinguish isolation from a dead port).
+  docker run -d --name "$W2" --network "$W2NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
+fi
 
 # Run curl inside a container; echoes the HTTP code (000 on failure).
 wcode(){ docker exec "$1" curl -s -o /dev/null -w '%{http_code}' --max-time 6 "${@:2}" 2>/dev/null; }
@@ -110,10 +126,12 @@ c=$(wcode "$W1" http://$AUTH:18081/admin/mode); [ "$c" != 200 ] && ok "worker ca
 c=$(wcode "$W1" https://1.1.1.1); [ "$c" = 000 ] && ok "worker has no direct internet (blocked)" || no "worker reached internet directly ($c)"
 
 # Isolation: worker1 cannot reach worker2 (separate Internal nets).
-# Positive control first: the probe on W2NET CAN reach worker2's listener, so a
-# 000 from worker1 proves L2 isolation rather than a non-listening port.
 W2IP=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$W2NET\").IPAddress}}" "$W2" 2>/dev/null)
-c=$(wcode "$PROBE" "http://$W2IP:80/"); [ "$c" = 200 ] && ok "positive control: same-net probe reaches worker2 listener (200)" || no "probe could not reach worker2 listener ($c) — isolation test inconclusive"
+if [ -n "$LISTENER_IMAGE" ]; then
+  # Positive control: the probe on W2NET CAN reach worker2's listener, so a 000
+  # from worker1 proves L2 isolation rather than a non-listening port.
+  c=$(wcode "$PROBE" "http://$W2IP:80/"); [ "$c" = 200 ] && ok "positive control: same-net probe reaches worker2 listener (200)" || no "probe could not reach worker2 listener ($c) — isolation test inconclusive"
+fi
 c=$(wcode "$W1" "http://$W2IP:80/"); [ "$c" = 000 ] && ok "worker1 cannot reach worker2 ($W2IP)" || no "worker1 reached worker2 ($c)"
 
 # LAN block: http proxy refuses a private/LAN destination.
