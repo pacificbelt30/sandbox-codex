@@ -26,11 +26,11 @@ RUN pip3 install --break-system-packages --no-cache-dir \
     ptrlib \
     ropper
 
-# radare2 (latest from GitHub releases — apt version is typically very old)
-RUN curl -Ls https://github.com/radareorg/radare2/releases/latest/download/radare2_amd64.deb \
-      -o /tmp/r2.deb \
-    && dpkg -i /tmp/r2.deb || apt-get install -yf --no-install-recommends \
-    && rm -f /tmp/r2.deb
+# radare2 (build from source — apt version is typically very old)
+RUN git clone --depth 1 https://github.com/radareorg/radare2.git /tmp/radare2 \
+    && cd /tmp/radare2 \
+    && sys/install.sh \
+    && rm -rf /tmp/radare2
 
 # pwndbg (GDB plugin)
 RUN git clone --depth 1 https://github.com/pwndbg/pwndbg.git /opt/pwndbg \
@@ -38,6 +38,8 @@ RUN git clone --depth 1 https://github.com/pwndbg/pwndbg.git /opt/pwndbg \
     && ./setup.sh \
     && echo "source /opt/pwndbg/gdbinit.py" >> /home/codex/.gdbinit \
     && chown codex:codex /home/codex/.gdbinit
+
+ENV PWNDBG_NO_AUTOUPDATE=1
 
 USER codex
 WORKDIR /workspace
