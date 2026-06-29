@@ -40,7 +40,7 @@ func newTestManager(p *fakeProxy) *Manager {
 func TestProxyContainerNames(t *testing.T) {
 	// Auth proxy only (no http proxy configured).
 	m := &Manager{proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080"}}
-	if got := m.proxyContainerNames(); len(got) != 1 || got[0] != "codex-auth-proxy" {
+	if got := m.proxyContainerNames(false); len(got) != 1 || got[0] != "codex-auth-proxy" {
 		t.Errorf("auth only: got %v; want [codex-auth-proxy]", got)
 	}
 
@@ -49,13 +49,20 @@ func TestProxyContainerNames(t *testing.T) {
 		proxy:        &fakeProxy{endpoint: "http://codex-auth-proxy:18080/v1"},
 		httpProxyURL: "http://codex-http-proxy:18082",
 	}
-	got := m.proxyContainerNames()
+	got := m.proxyContainerNames(false)
 	if len(got) != 2 || got[0] != "codex-auth-proxy" || got[1] != "codex-http-proxy" {
 		t.Errorf("auth+http: got %v; want [codex-auth-proxy codex-http-proxy]", got)
 	}
 
+	// --no-internet must DROP the egress http proxy so the worker has no network
+	// path to it (defends against a worker overriding HTTP(S)_PROXY manually).
+	got = m.proxyContainerNames(true)
+	if len(got) != 1 || got[0] != "codex-auth-proxy" {
+		t.Errorf("no-internet: got %v; want [codex-auth-proxy] only", got)
+	}
+
 	// No proxy configured → empty.
-	if got := (&Manager{}).proxyContainerNames(); len(got) != 0 {
+	if got := (&Manager{}).proxyContainerNames(false); len(got) != 0 {
 		t.Errorf("none: got %v; want empty", got)
 	}
 }
@@ -211,9 +218,13 @@ func TestBuildEnv_SeparateHTTPProxy(t *testing.T) {
 	if v, _ := envValue(env, "OPENAI_BASE_URL"); v != "http://codex-auth-proxy:18080/v1" {
 		t.Errorf("OPENAI_BASE_URL = %q; want the auth proxy", v)
 	}
-	// NO_PROXY must exclude the AUTH host (so API/token go direct), not the egress host.
-	if v, _ := envValue(env, "NO_PROXY"); !strings.Contains(v, "codex-auth-proxy") {
-		t.Errorf("NO_PROXY = %q; want it to contain codex-auth-proxy", v)
+	// NO_PROXY must exclude BOTH the auth host (so API/token go direct) and the
+	// egress host itself (so a direct /health hit doesn't loop back through it).
+	v, _ := envValue(env, "NO_PROXY")
+	for _, want := range []string{"codex-auth-proxy", "codex-http-proxy", "localhost", "127.0.0.1"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("NO_PROXY = %q; want it to contain %q", v, want)
+		}
 	}
 }
 

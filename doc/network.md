@@ -80,7 +80,7 @@ codex-dock proxy run \
   --forward-allow-domain pypi.org
 ```
 
-`codex-dock run --no-internet` を付けると、そのワーカーには `HTTP(S)_PROXY` を注入しません（API リバースルートのみ到達可能で、一般 egress は無効）。
+`codex-dock run --no-internet` を付けると、そのワーカーには `HTTP(S)_PROXY` を注入しないだけでなく、**egress プロキシ（`codex-http-proxy`）をそのワーカーの Internal ネットワークに接続しません**。環境変数の有無に頼らず、ワーカーから egress プロキシへの経路自体が存在しないため、ワーカー側で `-x codex-http-proxy:18082` のように手動指定しても外部へは到達できません（auth の API リバースルートのみ到達可能）。
 
 ---
 

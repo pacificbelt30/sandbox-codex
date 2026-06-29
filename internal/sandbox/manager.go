@@ -145,9 +145,13 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		if err := m.network.EnsureWorkerNetwork(name); err != nil {
 			return "", fmt.Errorf("creating worker network: %w", err)
 		}
-		// Attach every proxy the worker needs (the credential-injecting auth proxy
-		// and the general-egress http proxy) to this worker's Internal network.
-		for _, proxyName := range m.proxyContainerNames() {
+		// Attach the proxies the worker needs to this worker's Internal network.
+		// The credential-injecting auth proxy is always attached; the
+		// general-egress http proxy is attached only when general egress is
+		// allowed. With --no-internet we deliberately leave the egress proxy
+		// OFF the worker net so the worker has no path to it at all — not just a
+		// missing HTTP(S)_PROXY env (which a worker could otherwise override).
+		for _, proxyName := range m.proxyContainerNames(opts.NoInternet) {
 			if err := m.network.ConnectProxy(name, proxyName); err != nil {
 				return "", fmt.Errorf("connecting proxy %q to worker network: %w", proxyName, err)
 			}
@@ -511,13 +515,19 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 				egressProxyURL = containerProxyURL // back-compat: single proxy
 			}
 			authHost := proxyEndpointHost(containerProxyURL)
+			// NO_PROXY excludes the auth proxy (API/token traffic must reach it
+			// directly as origin-form → reverse routes) and the http proxy's own
+			// host (so a direct hit on its /health doesn't loop back through
+			// itself and get refused). De-duplicated; empty hosts dropped.
+			noProxyHosts := dedupeNonEmpty(authHost, proxyEndpointHost(egressProxyURL), "localhost", "127.0.0.1")
+			noProxy := strings.Join(noProxyHosts, ",")
 			env = append(env,
 				"HTTP_PROXY="+egressProxyURL,
 				"HTTPS_PROXY="+egressProxyURL,
 				"http_proxy="+egressProxyURL,
 				"https_proxy="+egressProxyURL,
-				"NO_PROXY="+authHost+",localhost,127.0.0.1",
-				"no_proxy="+authHost+",localhost,127.0.0.1",
+				"NO_PROXY="+noProxy,
+				"no_proxy="+noProxy,
 			)
 		}
 
@@ -554,10 +564,11 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 
 // proxyContainerNames returns the container names of the proxies that must be
 // attached to each worker's Internal network: the credential-injecting auth
-// proxy (from the proxy endpoint, e.g. "codex-auth-proxy") and, when configured,
-// the general-egress http proxy (from HTTPProxyURL, e.g. "codex-http-proxy").
-// De-duplicated; empty entries dropped.
-func (m *Manager) proxyContainerNames() []string {
+// proxy (from the proxy endpoint, e.g. "codex-auth-proxy") and, when general
+// egress is allowed, the general-egress http proxy (from HTTPProxyURL, e.g.
+// "codex-http-proxy"). When noInternet is true the http proxy is omitted so the
+// worker has no network path to it. De-duplicated; empty entries dropped.
+func (m *Manager) proxyContainerNames(noInternet bool) []string {
 	seen := map[string]struct{}{}
 	var names []string
 	add := func(host string) {
@@ -573,8 +584,28 @@ func (m *Manager) proxyContainerNames() []string {
 	if m.proxy != nil {
 		add(proxyEndpointHost(m.proxy.ContainerEndpoint()))
 	}
-	add(proxyEndpointHost(m.httpProxyURL))
+	if !noInternet {
+		add(proxyEndpointHost(m.httpProxyURL))
+	}
 	return names
+}
+
+// dedupeNonEmpty returns the inputs with empty strings and duplicates removed,
+// preserving first-seen order.
+func dedupeNonEmpty(items ...string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, it := range items {
+		if it == "" {
+			continue
+		}
+		if _, ok := seen[it]; ok {
+			continue
+		}
+		seen[it] = struct{}{}
+		out = append(out, it)
+	}
+	return out
 }
 
 // proxyEndpointHost extracts the hostname from a proxy endpoint URL.

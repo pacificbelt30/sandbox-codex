@@ -30,7 +30,7 @@ fi
 WORKER_IMAGE="curlimages/curl:latest"
 EGRESS_NET="dock-net-proxy"
 W1NET="dock-net-w-e2e1"; W2NET="dock-net-w-e2e2"
-W1="e2e-worker-1"; W2="e2e-worker-2"
+W1="e2e-worker-1"; W2="e2e-worker-2"; PROBE="e2e-probe"
 AUTH="codex-auth-proxy"; HTTP="codex-http-proxy"
 PASS=0; FAIL=0
 ok(){ echo "PASS: $1"; PASS=$((PASS+1)); }
@@ -38,9 +38,12 @@ no(){ echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
 BIN="$(mktemp -d)/codex-dock"
 cleanup(){
-  docker rm -f "$W1" "$W2" >/dev/null 2>&1 || true
-  docker network rm "$W1NET" "$W2NET" >/dev/null 2>&1 || true
+  # Remove every container attached to the per-worker nets BEFORE removing the
+  # nets. The proxies are multi-homed onto W1NET/W2NET, so the nets can't be
+  # removed while the proxies are still up — drop workers + proxies first.
+  docker rm -f "$W1" "$W2" "$PROBE" >/dev/null 2>&1 || true
   "$BIN" proxy rm -f >/dev/null 2>&1 || true
+  docker network rm "$W1NET" "$W2NET" >/dev/null 2>&1 || true
   rm -rf "$(dirname "$BIN")"
 }
 trap cleanup EXIT
@@ -85,9 +88,15 @@ docker network create --internal "$W2NET" >/dev/null
 docker network connect "$W1NET" "$AUTH" >/dev/null; docker network connect "$W1NET" "$HTTP" >/dev/null
 docker network connect "$W2NET" "$AUTH" >/dev/null; docker network connect "$W2NET" "$HTTP" >/dev/null
 docker run -d --name "$W1" --network "$W1NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
-docker run -d --name "$W2" --network "$W2NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
+# Worker2 actually LISTENS on :80 (busybox httpd over the curl image's busybox)
+# so the worker<->worker isolation test has a real service to (fail to) reach.
+docker run -d --name "$W2" --network "$W2NET" --entrypoint sh "$WORKER_IMAGE" \
+  -c 'mkdir -p /tmp/web && echo ok > /tmp/web/index.html && busybox httpd -f -p 80 -h /tmp/web' >/dev/null
+# Probe on the SAME net as worker2 — positive control proving :80 is reachable
+# when L2 allows it, so a 000 from worker1 means isolation (not a dead port).
+docker run -d --name "$PROBE" --network "$W2NET" --entrypoint sleep "$WORKER_IMAGE" 600 >/dev/null
 
-# Run curl inside a worker; echoes the HTTP code (000 on failure).
+# Run curl inside a container; echoes the HTTP code (000 on failure).
 wcode(){ docker exec "$1" curl -s -o /dev/null -w '%{http_code}' --max-time 6 "${@:2}" 2>/dev/null; }
 
 # Positive controls: the worker can reach both proxies on its Internal net.
@@ -101,8 +110,11 @@ c=$(wcode "$W1" http://$AUTH:18081/admin/mode); [ "$c" != 200 ] && ok "worker ca
 c=$(wcode "$W1" https://1.1.1.1); [ "$c" = 000 ] && ok "worker has no direct internet (blocked)" || no "worker reached internet directly ($c)"
 
 # Isolation: worker1 cannot reach worker2 (separate Internal nets).
+# Positive control first: the probe on W2NET CAN reach worker2's listener, so a
+# 000 from worker1 proves L2 isolation rather than a non-listening port.
 W2IP=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$W2NET\").IPAddress}}" "$W2" 2>/dev/null)
-c=$(wcode "$W1" "http://$W2IP:80"); [ "$c" = 000 ] && ok "worker1 cannot reach worker2 ($W2IP)" || no "worker1 reached worker2 ($c)"
+c=$(wcode "$PROBE" "http://$W2IP:80/"); [ "$c" = 200 ] && ok "positive control: same-net probe reaches worker2 listener (200)" || no "probe could not reach worker2 listener ($c) — isolation test inconclusive"
+c=$(wcode "$W1" "http://$W2IP:80/"); [ "$c" = 000 ] && ok "worker1 cannot reach worker2 ($W2IP)" || no "worker1 reached worker2 ($c)"
 
 # LAN block: http proxy refuses a private/LAN destination.
 c=$(wcode "$W1" -x http://$HTTP:18082 http://10.255.255.1/); [ "$c" = 403 ] && ok "http proxy blocks private/LAN (403)" || no "http proxy did not block private dest ($c)"

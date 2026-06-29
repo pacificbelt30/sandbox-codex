@@ -80,7 +80,7 @@ codex-dock proxy run \
   --forward-allow-domain pypi.org
 ```
 
-`codex-dock run --no-internet` omits the `HTTP(S)_PROXY` vars for that worker (only the API reverse routes remain reachable; general egress is disabled).
+`codex-dock run --no-internet` not only omits the `HTTP(S)_PROXY` vars for that worker, it also **leaves the egress proxy (`codex-http-proxy`) off that worker's Internal network entirely**. Because the worker has no network path to the egress proxy at all — not just a missing env var — manually pointing at it (e.g. `-x codex-http-proxy:18082`) still cannot reach the internet. Only the auth proxy's API reverse routes remain reachable.
 
 ---
 
