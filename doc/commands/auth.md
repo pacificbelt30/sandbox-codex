@@ -1,6 +1,6 @@
 # `codex-dock auth` — 認証管理
 
-> **日本語** | [English](../../en/commands/auth.md)
+> **日本語** | [English](../en/commands/auth.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

@@ -1,6 +1,6 @@
 # Auth Proxy — トークンの仕組みとセキュリティ
 
-> **日本語** | [English](../../en/auth-proxy/tokens.md)
+> **日本語** | [English](../en/auth-proxy/tokens.md)
 
 - [概要・デプロイ](../auth-proxy.md)
 - [API エンドポイント仕様](endpoints.md)

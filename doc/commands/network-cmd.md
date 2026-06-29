@@ -1,6 +1,6 @@
 # `codex-dock network` — ネットワーク管理
 
-> **日本語** | [English](../../en/commands/network-cmd.md)
+> **日本語** | [English](../en/commands/network-cmd.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

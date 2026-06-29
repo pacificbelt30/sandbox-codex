@@ -43,7 +43,7 @@ make install-config
 
 ## 設定項目一覧
 
-> すべての設定キーは [`configs/config.toml.example`](../configs/config.toml.example) にまとまっています。
+> すべての設定キーは `configs/config.toml.example` にまとまっています。
 
 ### `default_image`
 

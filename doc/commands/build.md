@@ -1,6 +1,6 @@
 # `codex-dock build` — サンドボックスイメージのビルド
 
-> **日本語** | [English](../../en/commands/build.md)
+> **日本語** | [English](../en/commands/build.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

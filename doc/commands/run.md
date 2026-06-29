@@ -1,6 +1,6 @@
 # `codex-dock run` — サンドボックスコンテナの起動
 
-> **日本語** | [English](../../en/commands/run.md)
+> **日本語** | [English](../en/commands/run.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

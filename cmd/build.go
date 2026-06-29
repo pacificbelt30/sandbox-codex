@@ -33,7 +33,7 @@ var buildCmd = &cobra.Command{
 				return fmt.Errorf("--template and --dockerfile (-f) are mutually exclusive")
 			}
 			customTag := ""
-			if cmd.Flags().Changed("tag") {
+			if cmd.Flags().Changed("tag") || viper.GetString("build.tag") != "" {
 				customTag = buildTag
 			}
 			return buildFromTemplate(cmd.Context(), buildTemplate, customTag)

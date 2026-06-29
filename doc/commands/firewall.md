@@ -1,6 +1,6 @@
 # `codex-dock firewall` — 廃止
 
-> **日本語** | [English](../../en/commands/firewall.md)
+> **日本語** | [English](../en/commands/firewall.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

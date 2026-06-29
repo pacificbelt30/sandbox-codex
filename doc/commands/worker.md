@@ -1,6 +1,6 @@
 # ワーカー管理コマンド — ps / stop / rm / logs
 
-> **日本語** | [English](../../en/commands/worker.md)
+> **日本語** | [English](../en/commands/worker.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

@@ -29,7 +29,9 @@ RUN pip3 install --break-system-packages --no-cache-dir \
 # radare2 (build from source — apt version is typically very old)
 RUN git clone --depth 1 https://github.com/radareorg/radare2.git /tmp/radare2 \
     && cd /tmp/radare2 \
-    && sys/install.sh \
+    && ./configure --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make install \
     && rm -rf /tmp/radare2
 
 # pwndbg (GDB plugin)

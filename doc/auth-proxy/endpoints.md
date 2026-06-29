@@ -1,6 +1,6 @@
 # Auth Proxy — API エンドポイント仕様
 
-> **日本語** | [English](../../en/auth-proxy/endpoints.md)
+> **日本語** | [English](../en/auth-proxy/endpoints.md)
 
 Auth Proxy が公開する全 HTTP エンドポイントの詳細仕様です。
 

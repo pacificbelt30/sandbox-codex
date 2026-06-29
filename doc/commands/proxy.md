@@ -1,6 +1,6 @@
 # `codex-dock proxy` — Auth Proxy の管理
 
-> **日本語** | [English](../../en/commands/proxy.md)
+> **日本語** | [English](../en/commands/proxy.md)
 >
 > [← コマンドリファレンス一覧](../commands.md)
 

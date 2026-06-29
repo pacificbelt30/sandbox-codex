@@ -43,7 +43,7 @@ Configuration values are resolved in the following priority order (higher takes 
 
 ## Configuration Settings
 
-> All available keys are listed in [`configs/config.toml.example`](../../configs/config.toml.example).
+> All available keys are listed in `configs/config.toml.example`.
 
 ### `default_image`
 
