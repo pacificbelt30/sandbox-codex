@@ -8,7 +8,7 @@ Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネット
 
 > **ネットワーク隔離**: 起動時に各ワーカー専用の Docker `Internal` ネットワーク（`dock-net-w-<name>`）を作成し、Auth Proxy をそこへ接続します。ワーカー間・ホスト・インターネットへの直接通信は Docker により遮断されます（`iptables`/`sudo` 不要、macOS / Windows でも同等）。
 
-> **イメージの自動ビルド**: `--image` で指定したイメージがローカルに存在しない場合、`codex-dock build` と同じロジックで自動的にビルドしてからコンテナを起動します。
+> **イメージの自動ビルド**: `--image` で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。
 
 ```bash
 codex-dock run [OPTIONS]
@@ -190,6 +190,9 @@ codex-dock run --read-only --no-internet --task "コードレビュー"
 
 # 特定の Docker イメージを使用
 codex-dock run --image my-custom-codex:v2
+
+# テンプレートイメージを使用（未ビルドなら自動ビルド）
+codex-dock run --image codex-dock:pwn
 
 # カスタムモデルを指定
 codex-dock run --model "o3"
