@@ -16,7 +16,7 @@ codex-dock
 │   ├── build.go             Sandbox image build
 │   ├── ps.go / stop.go / rm.go / logs.go
 │   ├── ui.go                TUI dashboard launch
-│   └── network.go           dock-net management
+│   └── network.go           egress (proxy) network management
 │
 ├── internal/
 │   ├── authproxy/           Auth Proxy
@@ -26,8 +26,8 @@ codex-dock
 │   │   ├── manager.go       Container lifecycle
 │   │   ├── types.go         RunOptions and type definitions
 │   │   └── packages.go      Package definition parsing
-│   ├── network/             dock-net management
-│   │   └── manager.go       Bridge network create / delete
+│   ├── network/             Docker network management (egress + per-worker Internal nets)
+│   │   └── manager.go       EnsureEgressNetwork / EnsureWorkerNetwork / ConnectProxy, ...
 │   ├── worktree/            git worktree management
 │   │   └── worktree.go      Worktree create / delete
 │   └── ui/                  Terminal UI (Bubble Tea)
@@ -50,12 +50,11 @@ User               codex-dock CLI          Auth Proxy              Docker / Cont
   │  codex-dock run    │                       │                         │
   │──────────────────▶│                       │                         │
   │                    │                       │                         │
-  │                    │ 1. Ensure dock-net     │                         │
+  │                    │ 1. Create per-worker Internal net; connect proxy │
   │                    │──────────────────────────────────────────────▶ │
   │                    │                       │                         │
-  │                    │ 2. Start Auth Proxy    │                         │
+  │                    │ 2. Connect to Auth Proxy (admin)                 │
   │                    │──────────────────────▶│                         │
-  │                    │  (0.0.0.0:PORT)       │                         │
   │                    │                       │                         │
   │                    │ 3. Issue short-lived token                       │
   │                    │──────────────────────▶│                         │
@@ -64,10 +63,9 @@ User               codex-dock CLI          Auth Proxy              Docker / Cont
   │                    │ 4. Create & start container                      │
   │                    │  CODEX_TOKEN=cdx-xxx  │                         │
   │                    │  OPENAI_BASE_URL=      │                         │
-  │                    │  http://host.docker.  │                         │
-  │                    │    internal:PORT/v1   │                         │
-  │                    │  CODEX_REFRESH_TOKEN_ │                         │
-  │                    │   URL_OVERRIDE=...    │                         │
+  │                    │  http://codex-auth-   │                         │
+  │                    │    proxy:18080/v1     │                         │
+  │                    │  HTTP(S)_PROXY=proxy  │                         │
   │                    │──────────────────────────────────────────────▶ │
   │                    │                       │                         │
   │                    │                       │  5. GET /token          │
@@ -107,8 +105,8 @@ codex-dock's security is based on the principle of **"never pass secrets directl
 │   Host                                                               │
 │                                                                      │
 │  API Key ──▶ Auth Proxy ──▶ Placeholder ──▶ Container               │
-│  (protected)  (0.0.0.0)    (cdx-xxxx)       TTL-scoped              │
-│               ↑ reachable via host.docker.internal:PORT             │
+│  (protected)  (router)     (cdx-xxxx)       TTL-scoped              │
+│               ↑ reachable via Docker DNS (codex-auth-proxy:18080)   │
 │                   │                                                  │
 │                   │ On every API request:                            │
 │                   │ replaces Authorization with real credentials     │
@@ -134,7 +132,7 @@ Each sandbox container is launched with the following security settings:
 | `--security-opt no-new-privileges` | No new privileges allowed | Prevents setuid/setgid abuse |
 | `USER codex (uid:1000)` | Runs as non-root user | Prevents root-level host operations |
 | `--pids-limit 512` | Max 512 processes | Prevents fork bombs |
-| Network: `dock-net` | Bridge network with ICC disabled | Blocks inter-container communication |
+| Network: per-worker `Internal` net | A dedicated isolated network per worker | Blocks worker↔worker, worker→host, and worker→internet (egress is proxy-only) |
 
 ---
 
@@ -201,7 +199,7 @@ Host (Auth Proxy)                    Container
 
 > F-AUTH-04 (auto-revoke token on container stop): resolved — `sandbox.Manager.Stop()` calls `proxy.RevokeToken()`.
 > F-AUTH-07 (OAuth refresh relay): implemented via `/oauth/token` proxy endpoint.
-> F-NET-04 (Auth Proxy unreachable from containers): resolved — Auth Proxy binds to `0.0.0.0` and worker containers get `--add-host=host.docker.internal:host-gateway`. Containers reach the proxy via `http://host.docker.internal:PORT`.
+> F-NET-04 (Auth Proxy unreachable from containers): resolved — the proxy is multi-homed onto each worker's `Internal` network, and containers reach it via Docker embedded DNS at `http://codex-auth-proxy:18080`. No `host.docker.internal`/`--add-host` is used.
 
 See [Auth Proxy Specification](auth-proxy.md) and [Network Specification](network.md) for details.
 
@@ -211,5 +209,5 @@ See [Auth Proxy Specification](auth-proxy.md) and [Network Specification](networ
 
 - [Security Design](security.md) — Container settings, protections, known issues
 - [Auth Proxy Specification](auth-proxy.md) — Authentication proxy details
-- [Network Specification](network.md) — dock-net configuration
+- [Network Specification](network.md) — proxy router + per-worker Internal networks
 - [`codex-dock run` command](commands/run.md) — All run options

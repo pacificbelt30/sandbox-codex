@@ -79,26 +79,25 @@ sudo mv codex-dock /usr/local/bin/
 
 ## Step 0: Auth Proxy を起動する（必須）
 
-`codex-dock run` は外部 Auth Proxy（既定: `http://127.0.0.1:18080`）へ接続します。先に Auth Proxy を起動してください。
+`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ Docker DNS 経由で到達します。
+
+> **補足**: プロキシ未起動のまま `codex-dock run` を実行すると、対話端末（TTY）かつ既定の proxy URL の場合に「Build/start the auth proxy container now? [y/N]」と確認が出ます。`y` を選ぶと（必要ならイメージをビルドして）プロキシコンテナを起動し、そのまま続行します。非対話環境や proxy URL をカスタムした場合は従来どおりエラーになるので、先に手動で起動してください。
 
 ### Docker で起動（推奨）
 
 ```bash
-# 1) dock-net を作成（初回のみ）
+# 1) egress ネットワークを作成（初回のみ）
 codex-dock network create
 
 # 2) Auth Proxy イメージをビルド
 codex-dock proxy build
 
-# 3) Auth Proxy コンテナを起動（認証情報は自動検出）
+# 3) Auth Proxy（ルータ）コンテナを起動（認証情報は自動検出）
 codex-dock proxy run
-
-# 4) 推奨: firewall を設定（Linux + root）
-sudo codex-dock firewall create --proxy-container-url http://codex-auth-proxy:18080
 ```
 
 
-> **推奨**: `network create` と `proxy run` の後に firewall を設定してください。`codex-dock run` の通信制御が明確になります。詳細は [firewall 仕様・運用ガイド](firewall.md) を参照してください。
+> ネットワーク隔離は Docker のみで完結します（`iptables`/`sudo` 不要）。各ワーカー起動時に専用 `Internal` ネットワークが作られ、プロキシが接続され、ワーカーはプロキシ経由でのみ外部へ到達します。詳細は [ネットワーク仕様](network.md) を参照してください。
 
 `codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
 
@@ -203,20 +202,21 @@ codex-dock run --user current --approval-mode full-auto
 **実行時に行われること：**
 
 ```
-1. dock-net の作成確認（なければ作成）
+1. ワーカー専用 Internal ネットワーク（dock-net-w-<name>）を作成し
+   プロキシを接続
        │
        ▼
-2. 外部 Auth Proxy へ接続確認
-   (既定: http://127.0.0.1:18080)
+2. 外部 Auth Proxy の admin へ接続確認
+   (既定: http://127.0.0.1:18081)
        │
        ▼
 3. 短命トークンを発行
        │
        ▼
 4. コンテナを作成・起動
-   - Network: dock-net
+   - Network: dock-net-w-<name>（Internal）
    - Mount:   ./  →  /workspace
-   - env:     CODEX_TOKEN=cdx-xxxx
+   - env:     CODEX_TOKEN=cdx-xxxx, HTTP(S)_PROXY=proxy
        │
        ▼
 5. コンテナ内で entrypoint.sh が実行
@@ -300,7 +300,7 @@ codex-dock run
 ## ネットワークの確認
 
 ```bash
-# dock-net の状態を確認
+# egress ネットワークと per-worker ネットワークの状態を確認
 codex-dock network status
 
 # 実行中のワーカーを確認
@@ -315,10 +315,10 @@ codex-dock ps
 # 全コンテナを停止
 codex-dock stop --all
 
-# 停止済みコンテナを削除
+# 停止済みコンテナを削除（ワーカー専用ネットワークも自動で切断・削除されます）
 codex-dock rm <コンテナ名>
 
-# dock-net を削除（必要な場合）
+# egress ネットワークを削除（必要な場合）
 codex-dock network rm
 ```
 
@@ -352,7 +352,7 @@ codex-dock auth set
 ### ネットワークエラー
 
 ```bash
-# dock-net を作り直す
+# egress ネットワークを作り直す
 codex-dock network rm
 codex-dock network create
 ```

@@ -37,6 +37,60 @@ func newTestManager(p *fakeProxy) *Manager {
 	return &Manager{proxy: p}
 }
 
+func TestProxyContainerNames(t *testing.T) {
+	// Auth proxy only (no http proxy configured).
+	m := &Manager{proxy: &fakeProxy{endpoint: "http://codex-auth-proxy:18080"}}
+	if got := m.proxyContainerNames(false); len(got) != 1 || got[0] != "codex-auth-proxy" {
+		t.Errorf("auth only: got %v; want [codex-auth-proxy]", got)
+	}
+
+	// Auth + http proxy → both names, in order, de-duplicated.
+	m = &Manager{
+		proxy:        &fakeProxy{endpoint: "http://codex-auth-proxy:18080/v1"},
+		httpProxyURL: "http://codex-http-proxy:18082",
+	}
+	got := m.proxyContainerNames(false)
+	if len(got) != 2 || got[0] != "codex-auth-proxy" || got[1] != "codex-http-proxy" {
+		t.Errorf("auth+http: got %v; want [codex-auth-proxy codex-http-proxy]", got)
+	}
+
+	// --no-internet must DROP the egress http proxy so the worker has no network
+	// path to it (defends against a worker overriding HTTP(S)_PROXY manually).
+	got = m.proxyContainerNames(true)
+	if len(got) != 1 || got[0] != "codex-auth-proxy" {
+		t.Errorf("no-internet: got %v; want [codex-auth-proxy] only", got)
+	}
+
+	// No proxy configured → empty.
+	if got := (&Manager{}).proxyContainerNames(false); len(got) != 0 {
+		t.Errorf("none: got %v; want empty", got)
+	}
+}
+
+func TestBuildEnv_NoProxyExcludesProxyHostAndLoopback(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both upper- and lower-case variants must be set for tools that read either.
+	for _, key := range []string{"NO_PROXY", "no_proxy"} {
+		v, ok := envValue(env, key)
+		if !ok {
+			t.Fatalf("%s not set", key)
+		}
+		for _, want := range []string{"codex-auth-proxy", "localhost", "127.0.0.1"} {
+			if !strings.Contains(v, want) {
+				t.Errorf("%s = %q; want it to contain %q", key, v, want)
+			}
+		}
+	}
+	// The lower-case proxy variants must also be present.
+	if v, _ := envValue(env, "https_proxy"); v != "http://codex-auth-proxy:18080" {
+		t.Errorf("https_proxy = %q; want http://codex-auth-proxy:18080", v)
+	}
+}
+
 func TestBuildEnv_AlwaysSetsAgentAndSandbox(t *testing.T) {
 	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
 	env, err := m.buildEnv("w1", RunOptions{Agent: AgentCodex, TokenTTL: 60}, "")
@@ -64,8 +118,13 @@ func TestBuildEnv_Codex(t *testing.T) {
 	if v, _ := envValue(env, "OPENAI_BASE_URL"); v != "http://codex-auth-proxy:18080/v1" {
 		t.Errorf("OPENAI_BASE_URL = %q", v)
 	}
-	if _, ok := envValue(env, "CODEX_AUTH_PROXY_FALLBACK_URLS"); !ok {
-		t.Error("expected CODEX_AUTH_PROXY_FALLBACK_URLS for codex-auth-proxy endpoint")
+	// General egress is routed through the proxy/router via HTTP(S)_PROXY, with the
+	// proxy host excluded from NO_PROXY so API/token traffic reaches it directly.
+	if v, _ := envValue(env, "HTTPS_PROXY"); v != "http://codex-auth-proxy:18080" {
+		t.Errorf("HTTPS_PROXY = %q; want http://codex-auth-proxy:18080", v)
+	}
+	if v, _ := envValue(env, "NO_PROXY"); !strings.Contains(v, "codex-auth-proxy") {
+		t.Errorf("NO_PROXY = %q; want it to contain codex-auth-proxy", v)
 	}
 	// Codex agent must not receive Anthropic variables.
 	if _, ok := envValue(env, "ANTHROPIC_BASE_URL"); ok {
@@ -101,8 +160,8 @@ func TestBuildEnv_Claude(t *testing.T) {
 	if v, _ := envValue(env, "ANTHROPIC_API_KEY"); v != "cdx-faketoken" {
 		t.Errorf("ANTHROPIC_API_KEY = %q; want placeholder token", v)
 	}
-	if _, ok := envValue(env, "ANTHROPIC_PROXY_FALLBACK_URLS"); !ok {
-		t.Error("expected ANTHROPIC_PROXY_FALLBACK_URLS")
+	if v, _ := envValue(env, "HTTP_PROXY"); v != "http://codex-auth-proxy:18080" {
+		t.Errorf("HTTP_PROXY = %q; want http://codex-auth-proxy:18080", v)
 	}
 	// Claude agent must not receive Codex variables.
 	if _, ok := envValue(env, "CODEX_TOKEN"); ok {
@@ -138,6 +197,53 @@ func TestBuildEnv_ShellSetsBothProviders(t *testing.T) {
 	}
 	if _, ok := envValue(env, "ANTHROPIC_BASE_URL"); !ok {
 		t.Error("shell mode should configure Claude auth when available")
+	}
+}
+
+func TestBuildEnv_SeparateHTTPProxy(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
+	m.httpProxyURL = "http://codex-http-proxy:18082"
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// General egress → the dedicated egress proxy.
+	if v, _ := envValue(env, "HTTP_PROXY"); v != "http://codex-http-proxy:18082" {
+		t.Errorf("HTTP_PROXY = %q; want the egress proxy", v)
+	}
+	if v, _ := envValue(env, "https_proxy"); v != "http://codex-http-proxy:18082" {
+		t.Errorf("https_proxy = %q; want the egress proxy", v)
+	}
+	// API still points at the auth proxy.
+	if v, _ := envValue(env, "OPENAI_BASE_URL"); v != "http://codex-auth-proxy:18080/v1" {
+		t.Errorf("OPENAI_BASE_URL = %q; want the auth proxy", v)
+	}
+	// NO_PROXY must exclude BOTH the auth host (so API/token go direct) and the
+	// egress host itself (so a direct /health hit doesn't loop back through it).
+	v, _ := envValue(env, "NO_PROXY")
+	for _, want := range []string{"codex-auth-proxy", "codex-http-proxy", "localhost", "127.0.0.1"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("NO_PROXY = %q; want it to contain %q", v, want)
+		}
+	}
+}
+
+func TestBuildEnv_NoInternetSkipsProxyVars(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentCodex, TokenTTL: 60, NoInternet: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// API routes still configured...
+	if _, ok := envValue(env, "OPENAI_BASE_URL"); !ok {
+		t.Error("OPENAI_BASE_URL should still be set with --no-internet (API routes remain)")
+	}
+	// ...but general egress through the forward proxy is disabled.
+	if _, ok := envValue(env, "HTTP_PROXY"); ok {
+		t.Error("HTTP_PROXY should not be set when --no-internet is used")
+	}
+	if _, ok := envValue(env, "HTTPS_PROXY"); ok {
+		t.Error("HTTPS_PROXY should not be set when --no-internet is used")
 	}
 }
 

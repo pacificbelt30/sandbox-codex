@@ -20,13 +20,51 @@ import (
 	"time"
 )
 
+// Proxy roles. The credential-injecting reverse proxy and the general-traffic
+// forward proxy run as two separate containers so the one holding real
+// credentials never forwards arbitrary traffic.
+const (
+	// RoleAuth serves the credential-injecting reverse routes (/v1, /chatgpt,
+	// /anthropic), the token endpoints, and admin. It does NOT forward general
+	// traffic. This is the default (also used by the in-process proxy and tests).
+	RoleAuth = "auth"
+	// RoleEgress serves only the HTTP/CONNECT forward proxy for general traffic
+	// (git/npm/pip). It holds no credentials and exposes no admin/token routes.
+	RoleEgress = "egress"
+)
+
 // Config configures the Auth Proxy.
 type Config struct {
 	TokenTTL    int
 	Verbose     bool
-	ListenAddr  string // TCP address to listen on, e.g. "192.168.200.1:0". Defaults to "127.0.0.1:0".
+	ListenAddr  string // worker-facing TCP address. Defaults to "0.0.0.0:0".
 	AdminSecret string
+
+	// Role selects what this instance serves: RoleAuth (reverse + token + admin,
+	// no forwarding) or RoleEgress (forward proxy only, no credentials). Empty is
+	// treated as RoleAuth for backward compatibility.
+	Role string
+
+	// AdminListenAddr, when non-empty, serves the /admin/* routes on a separate
+	// listener so they are not reachable on the worker-facing data-plane port.
+	// When empty, /admin/* is served on the main listener (in-process/test use).
+	// Only meaningful for RoleAuth.
+	AdminListenAddr string
+
+	// ForwardAllowDomains optionally restricts the forward proxy (RoleEgress) to
+	// the listed domains (and their subdomains). Empty means allow all hosts.
+	ForwardAllowDomains []string
+
+	// BlockPrivate, when true, makes the forward proxy and all upstream dials
+	// refuse destinations that resolve to private/loopback/link-local ranges
+	// (RFC1918, 127/8, 169.254/16 incl. cloud metadata, ULA, CGNAT). This stops a
+	// worker from pivoting into the host LAN. Off by default so in-process/test
+	// proxies can reach 127.0.0.1 upstreams.
+	BlockPrivate bool
 }
+
+// isEgress reports whether the proxy is the forward-only egress instance.
+func (c Config) isEgress() bool { return c.Role == RoleEgress }
 
 // tokenRecord holds a single issued token and its metadata.
 type tokenRecord struct {
@@ -47,6 +85,11 @@ type Proxy struct {
 	tokens     map[string]*tokenRecord // containerName -> record
 	addr       string
 
+	// Admin listener (only used when Config.AdminListenAddr is set).
+	adminListener net.Listener
+	adminServer   *http.Server
+	adminAddr     string
+
 	// Anthropic (Claude Code) credentials. Populated independently of the
 	// OpenAI credentials above so a single proxy can serve both agents.
 	anthropicAPIKey string                     // non-empty in Anthropic API-key mode
@@ -63,6 +106,13 @@ type Proxy struct {
 	anthropicOAuthTokenURL string // default: "https://console.anthropic.com/v1/oauth/token"
 	anthropicOAuthClientID string // Claude Code public OAuth client id
 }
+
+// AdminBindEgress is a sentinel host for AdminListenAddr meaning "bind the admin
+// listener to the container's egress (primary) IPv4 address". This keeps /admin/*
+// reachable from the host (via the published port, which DNATs to that IP) while
+// making it unreachable from worker containers, which only know the proxy's IP on
+// their own Internal network. Falls back to all interfaces if detection fails.
+const AdminBindEgress = "egress"
 
 // anthropicOAuthBetaHeader is required by the Anthropic API when authenticating
 // with a Claude subscription OAuth bearer token instead of an API key.
@@ -85,6 +135,27 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		anthropicUpstreamURL:   "https://api.anthropic.com",
 		anthropicOAuthTokenURL: "https://console.anthropic.com/v1/oauth/token",
 		anthropicOAuthClientID: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+	}
+
+	// When configured to block private destinations, route every outbound dial
+	// (forward proxy and reverse upstreams) through a guard that rejects
+	// private/loopback/link-local addresses. Off by default so tests keep using
+	// 127.0.0.1 upstreams via http.DefaultClient.
+	if cfg.BlockPrivate {
+		p.httpClient = &http.Client{Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           p.guardedDialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}}
+	}
+
+	// The egress (forward-only) instance holds no credentials.
+	if cfg.isEgress() {
+		return p, nil
 	}
 
 	if IsOAuthAuth() {
@@ -159,12 +230,28 @@ func (p *Proxy) Start() error {
 	p.addr = ln.Addr().String()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/health", p.handleHealth)
+
+	// The egress (forward-only) instance serves no reverse routes, no token
+	// endpoints, and no admin: just /health plus the forward proxy below.
+	if p.cfg.isEgress() {
+		p.server = &http.Server{Handler: p.workerFacingHandler(mux)}
+		go func() {
+			if err := p.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+				log.Printf("egress proxy error: %v", err)
+			}
+		}()
+		go p.expireLoop()
+		if p.cfg.Verbose {
+			fmt.Printf("Egress proxy listening on %s (forward-only, no credentials)\n", p.addr)
+		}
+		return nil
+	}
+
+	// Data-plane mux (RoleAuth): routes the worker is allowed to use. The /admin/*
+	// routes are registered here only when no separate admin listener is configured.
+	mux.HandleFunc("/token", p.handleToken)
 	mux.HandleFunc("/revoke", p.handleRevoke)
-	mux.HandleFunc("/admin/issue", p.handleAdminIssue)
-	mux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
-	mux.HandleFunc("/admin/mode", p.handleAdminMode)
 	// OAuth token refresh: Codex CLI calls this via CODEX_REFRESH_TOKEN_URL_OVERRIDE.
 	// The proxy substitutes the host's real refresh_token so it never reaches containers.
 	mux.HandleFunc("/oauth/token", p.handleOAuthTokenRefresh)
@@ -177,7 +264,42 @@ func (p *Proxy) Start() error {
 	// Forwards to api.anthropic.com, injecting the host's real API key or OAuth bearer token.
 	mux.HandleFunc("/anthropic/", p.handleAnthropicProxy)
 
-	p.server = &http.Server{Handler: mux}
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("/admin/issue", p.handleAdminIssue)
+	adminMux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
+	adminMux.HandleFunc("/admin/mode", p.handleAdminMode)
+
+	if p.cfg.AdminListenAddr != "" {
+		// Serve /admin/* on a dedicated listener so workers cannot reach token
+		// issuance. With AdminBindEgress this binds to the egress IP only, so the
+		// admin port is unreachable from the per-worker Internal networks.
+		adminListen := resolveAdminListenAddr(p.cfg.AdminListenAddr)
+		aln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", adminListen)
+		if err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("starting auth proxy admin listener: %w", err)
+		}
+		p.adminListener = aln
+		p.adminAddr = aln.Addr().String()
+		p.adminServer = &http.Server{Handler: adminMux}
+		go func() {
+			if err := p.adminServer.Serve(aln); err != nil && err != http.ErrServerClosed {
+				log.Printf("auth proxy admin error: %v", err)
+			}
+		}()
+		if p.cfg.AdminSecret == "" {
+			log.Printf("warning: auth proxy admin listener has no --admin-secret; /admin/* is unauthenticated")
+		}
+	} else {
+		// Single-listener mode (in-process/tests): admin routes share the main mux.
+		mux.HandleFunc("/admin/issue", p.handleAdminIssue)
+		mux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
+		mux.HandleFunc("/admin/mode", p.handleAdminMode)
+	}
+
+	// Worker-facing handler: CONNECT/absolute-form requests are handled by the
+	// forward proxy (router); everything else falls through to the data-plane mux.
+	p.server = &http.Server{Handler: p.workerFacingHandler(mux)}
 	go func() {
 		if err := p.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("auth proxy error: %v", err)
@@ -189,8 +311,59 @@ func (p *Proxy) Start() error {
 
 	if p.cfg.Verbose {
 		fmt.Printf("Auth Proxy listening on %s\n", p.addr)
+		if p.adminAddr != "" {
+			fmt.Printf("Auth Proxy admin listening on %s\n", p.adminAddr)
+		}
 	}
 	return nil
+}
+
+// resolveAdminListenAddr maps the AdminBindEgress sentinel host to the container's
+// egress (primary) IPv4 so the admin port is unreachable from worker Internal
+// networks. Any other host is returned unchanged.
+func resolveAdminListenAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || host != AdminBindEgress {
+		return addr
+	}
+	if ip := primaryNonLoopbackIPv4(); ip != "" {
+		return net.JoinHostPort(ip, port)
+	}
+	// Detection failed: fall back to all interfaces so the proxy still starts.
+	log.Printf("warning: could not determine egress IP for admin listener; binding all interfaces")
+	return net.JoinHostPort("0.0.0.0", port)
+}
+
+// primaryNonLoopbackIPv4 returns the first global-unicast IPv4 address on a
+// non-loopback interface. At proxy startup the container is attached only to the
+// egress network, so this is the egress IP; the per-worker networks are connected
+// later by the sandbox manager.
+func primaryNonLoopbackIPv4() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP.To4()
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			return ip.String()
+		}
+	}
+	return ""
 }
 
 func (p *Proxy) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
@@ -275,6 +448,9 @@ func (p *Proxy) Stop() {
 	defer cancel()
 	if p.server != nil {
 		_ = p.server.Shutdown(ctx)
+	}
+	if p.adminServer != nil {
+		_ = p.adminServer.Shutdown(ctx)
 	}
 	p.mu.Lock()
 	p.tokens = make(map[string]*tokenRecord)

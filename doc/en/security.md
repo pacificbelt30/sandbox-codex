@@ -48,7 +48,7 @@ Each sandbox container has the following security settings applied:
 | `--security-opt no-new-privileges` | Prohibit new privilege acquisition | Prevents setuid/setgid binary abuse |
 | `USER codex (uid:1000)` | Run as non-root user | Prevents root-level host operations |
 | `--pids-limit 512` | Limit maximum processes to 512 | Prevents fork bombs and similar attacks |
-| Network: `dock-net` | Bridge network with ICC disabled | Blocks inter-container communication |
+| Network: per-worker `Internal` net | A dedicated isolated network per worker | Blocks worker↔worker, worker→host, and worker→internet (egress is proxy-only) |
 
 ---
 
@@ -65,9 +65,10 @@ Each sandbox container has the following security settings applied:
   Malicious behavior inside container cannot easily affect host
         │
         ▼
-[Layer 3: Network Isolation]
-  dock-net: ICC disabled, IP Masquerade allows internet only
-  Prevents lateral movement between containers
+[Layer 3: Network Isolation (Docker-native)]
+  Per-worker Internal network (no NAT / no host route)
+  Worker↔worker blocked by separate L2 segments; egress only via the proxy (router)
+  No iptables/sudo; same on macOS / Windows
         │
         ▼
 [Layer 4: Resource Limits]
@@ -86,7 +87,8 @@ Each sandbox container has the following security settings applied:
 | Short-lived tokens | ✅ | TTL-scoped; immediately revoked on container stop |
 | API traffic relay | ✅ | Reverse proxy eliminates direct external API access |
 | No credential logging | ✅ | Auth info never written to stdout/stderr |
-| Inter-container blocking | ✅ | ICC disabled (`enable_icc=false`) |
+| Worker↔worker blocking | ✅ | Per-worker `Internal` network (separate L2 segments); no iptables |
+| Worker→host/internet blocking | ✅ | `Internal: true` (no NAT/host route); egress only via the proxy. Same on macOS / Windows |
 | Privilege escalation prevention | ✅ | `--cap-drop ALL` + `--security-opt no-new-privileges` |
 | Non-root execution | ✅ | `USER codex (uid:1000)` |
 | Resource limits | ✅ | `--pids-limit 512` |
@@ -98,7 +100,7 @@ Each sandbox container has the following security settings applied:
 | ID | Issue | Severity | Details |
 |---|---|---|---|
 | NF-SEC-01 | Auth Proxy uses plaintext HTTP | High | TLS/UNIX socket not implemented; designed for Docker internal use only |
-| F-NET-02 | Container-to-host blocking is Linux-specific | Medium | Linux blocks private/link-local egress with `DOCKER-USER` + `iptables`; `run` continues with a warning if rule setup fails, and `firewall create` can apply rules explicitly. macOS / Windows automation is not implemented |
+| ~~F-NET-02~~ | (Resolved) container-to-host blocking was Linux-specific | — | Moved to Docker `Internal` networks; Docker enforces the blocking on all platforms (no iptables). |
 | F-AUTH-06 | No container ID verification | Medium | Token tied to container name but not container ID |
 
 ---
@@ -120,5 +122,5 @@ Each sandbox container has the following security settings applied:
 
 - [Auth Proxy Specification](auth-proxy.md) — Credential protection implementation details
 - [Token Lifecycle & Security](auth-proxy/tokens.md) — Security considerations
-- [Network Specification](network.md) — dock-net security policy
+- [Network Specification](network.md) — proxy router + per-worker Internal network security policy
 - [Architecture Overview](architecture.md) — Overall system design

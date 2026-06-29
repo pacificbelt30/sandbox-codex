@@ -6,9 +6,7 @@
 
 Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネットワーク隔離が自動的に設定されます。
 
-> **Linux の注意**: 起動時に `dock-net` 用の `iptables` ルール適用を試みます。
-> root 権限がない場合は Warning を表示して起動を継続します。
-> firewall を明示的に適用したい場合は `codex-dock firewall create` を使用してください。
+> **ネットワーク隔離**: 起動時に各ワーカー専用の Docker `Internal` ネットワーク（`dock-net-w-<name>`）を作成し、Auth Proxy をそこへ接続します。ワーカー間・ホスト・インターネットへの直接通信は Docker により遮断されます（`iptables`/`sudo` 不要、macOS / Windows でも同等）。
 
 > **イメージの自動ビルド**: `--image` で指定したイメージがローカルに存在しない場合、`codex-dock build` と同じロジックで自動的にビルドしてからコンテナを起動します。
 
@@ -36,11 +34,8 @@ codex-dock run [OPTIONS]
 | `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
 | `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
-| `--no-internet` | | `false` | コンテナ内のインターネットアクセスを無効化 |
-| `--no-firewall` | | `false` | codex-dock の dock-net iptables ルール適用をスキップ（ホスト側ファイアウォールに委ねる） |
-| `--allow-host` | | | dock-net ファイアウォールで追加許可する宛先 `IP:PORT`（繰り返し指定可） |
-| `--block-host` | | | dock-net ファイアウォールで追加遮断する宛先 `CIDR`/`IP`/`IP:PORT`（IPv4・繰り返し指定可） |
-| `--sudo` | | `false` | root でないとき dock-net の iptables 適用のみ `sudo` 経由で実行（対話端末では一度だけパスワード要求、非対話環境では NOPASSWD/キャッシュ資格情報を利用） |
+| `--no-internet` | | `false` | 一般 egress を無効化（`HTTP(S)_PROXY` を注入せず、プロキシの API リバースルートのみ到達可能に） |
+| `--keep` | | `false` | フォアグラウンド実行の終了時にコンテナと専用ネットワークを削除しない（既定では削除し、ネットワークの蓄積を防ぐ） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
@@ -222,5 +217,5 @@ codex-dock run --user 1000:1000
 - [クイックスタート](../getting-started.md) — 初回実行の手順
 - [アーキテクチャ概要](../architecture.md) — 起動シーケンスの詳細
 - [Auth Proxy 技術仕様](../auth-proxy.md) — 認証の仕組み
-- [ネットワーク仕様](../network.md) — dock-net の構成
+- [ネットワーク仕様](../network.md) — プロキシルータ + per-worker Internal ネットワークの構成
 - [設定リファレンス](../configuration.md) — config.toml の設定項目

@@ -1,11 +1,107 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/spf13/viper"
 )
+
+// TestInitConfigDefaults ensures the proxy image (and other settings read via
+// viper) have a built-in default even with no config file or env override, so
+// `proxy run`/`proxy build` don't fail with an empty image name.
+func TestInitConfigDefaults(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	initConfig()
+
+	if got := viper.GetString("proxy_image"); got != "codex-dock-proxy:latest" {
+		t.Errorf("proxy_image default = %q; want codex-dock-proxy:latest", got)
+	}
+	if got := viper.GetString("default_image"); got != "codex-dock:latest" {
+		t.Errorf("default_image default = %q; want codex-dock:latest", got)
+	}
+	if got := viper.GetInt("default_token_ttl"); got != 3600 {
+		t.Errorf("default_token_ttl default = %d; want 3600", got)
+	}
+}
+
+// TestBuildProxyRunArgs_AdminBindEgress checks that `proxy run` binds the admin
+// listener to the egress sentinel (so workers cannot reach it) while publishing
+// only the admin port to host loopback.
+func TestBuildProxyRunArgs_AdminBindEgress(t *testing.T) {
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "p", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img",
+		listenAddr: "0.0.0.0:18080", adminListenAddr: fmt.Sprintf("%s:18081", authproxy.AdminBindEgress),
+	})
+	if !containsSequence(args, "--admin-listen", "egress:18081") {
+		t.Errorf("expected --admin-listen egress:18081 in args: %v", args)
+	}
+	if !containsSequence(args, "-p", "127.0.0.1:18081:18081") {
+		t.Errorf("expected admin port published to loopback only: %v", args)
+	}
+	// The data-plane port must NOT be published to the host.
+	for _, a := range args {
+		if a == "18080:18080" || a == "0.0.0.0:18080:18080" || a == "127.0.0.1:18080:18080" {
+			t.Errorf("data-plane port should not be published: %v", args)
+		}
+	}
+}
+
+// TestBuildProxyRunArgs_EgressRole verifies the egress proxy publishes nothing,
+// mounts no credentials, and runs with --role egress --block-private.
+func TestBuildProxyRunArgs_EgressRole(t *testing.T) {
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "codex-http-proxy", role: authproxy.RoleEgress, networkName: "dock-net-proxy",
+		image: "img", listenAddr: "0.0.0.0:18082", blockPrivate: true,
+		forwardAllow: []string{"github.com"},
+	})
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "-p ") || strings.Contains(joined, "127.0.0.1:") {
+		t.Errorf("egress proxy must not publish any host port: %v", args)
+	}
+	for _, a := range args {
+		if strings.Contains(a, ":ro") || strings.HasPrefix(a, "OPENAI_API_KEY") || strings.HasPrefix(a, "ANTHROPIC_API_KEY") {
+			t.Errorf("egress proxy must not mount/inject credentials: %v", args)
+		}
+	}
+	assertContainsSequence(t, args, "proxy", "serve", "--listen", "0.0.0.0:18082", "--role", "egress")
+	if !containsSequence(args, "--forward-allow-domain", "github.com") {
+		t.Errorf("missing --forward-allow-domain: %v", args)
+	}
+	found := false
+	for _, a := range args {
+		if a == "--block-private" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("egress proxy missing --block-private: %v", args)
+	}
+}
+
+// TestBuildProxyRunArgs_AuthRole verifies the auth proxy runs with --role auth.
+func TestBuildProxyRunArgs_AuthRole(t *testing.T) {
+	args := buildProxyRunArgs(proxyRunArgs{
+		name: "codex-auth-proxy", role: authproxy.RoleAuth, adminPort: 18081, mountCreds: true,
+		networkName: "dock-net-proxy", image: "img", listenAddr: "0.0.0.0:18080",
+		adminListenAddr: "egress:18081",
+	})
+	assertContainsSequence(t, args, "proxy", "serve", "--listen", "0.0.0.0:18080", "--role", "auth")
+}
+
+// TestManagedProxyNames asserts both proxy containers are managed by default.
+func TestManagedProxyNames(t *testing.T) {
+	got := managedProxyNames()
+	if len(got) != 2 || got[0] != "codex-auth-proxy" || got[1] != "codex-http-proxy" {
+		t.Errorf("managedProxyNames() = %v; want [codex-auth-proxy codex-http-proxy]", got)
+	}
+}
 
 // ---- resolveProxyDockerfile -----------------------------------------------
 
@@ -150,12 +246,13 @@ func TestEnsureProxyDockerfile_Content(t *testing.T) {
 
 func TestBuildProxyRunArgs_Basic(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "my-proxy", port: 18080, networkName: "dock-net-proxy",
-		image: "codex-dock-proxy:latest", listenAddr: "0.0.0.0:18080",
+		name: "my-proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy",
+		image: "codex-dock-proxy:latest", listenAddr: "0.0.0.0:18080", adminListenAddr: "0.0.0.0:18081",
 	})
 
-	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "18080:18080")
-	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080")
+	// Only the admin port is published (host loopback); the data-plane port is internal.
+	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "127.0.0.1:18081:18081")
+	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080", "--admin-listen", "0.0.0.0:18081")
 
 	// No credential flags when nothing is set.
 	for _, a := range args {
@@ -173,7 +270,7 @@ func TestBuildProxyRunArgs_Basic(t *testing.T) {
 
 func TestBuildProxyRunArgs_APIKeyEnv(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", apiKeyEnv: "sk-test-key",
 	})
 
@@ -184,7 +281,7 @@ func TestBuildProxyRunArgs_APIKeyEnv(t *testing.T) {
 
 func TestBuildProxyRunArgs_AnthropicKeyEnv(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", anthropicKeyEnv: "sk-ant-test",
 	})
 
@@ -200,7 +297,7 @@ func TestBuildProxyRunArgs_StoredKeyMount(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", storedKeyPath: keyFile,
 	})
 
@@ -217,7 +314,7 @@ func TestBuildProxyRunArgs_OAuthMount(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", oauthJSONPath: authFile,
 	})
 
@@ -234,7 +331,7 @@ func TestBuildProxyRunArgs_ClaudeCredsMount(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", claudeCredsPath: credsFile,
 	})
 
@@ -263,7 +360,7 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 	}
 
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr:       "0.0.0.0:18080",
 		apiKeyEnv:        "sk-env-key",
 		storedKeyPath:    keyFile,
@@ -295,7 +392,7 @@ func TestBuildProxyRunArgs_AllCredentials(t *testing.T) {
 
 func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080", adminSecret: "s3cr3t",
 	})
 
@@ -306,7 +403,7 @@ func TestBuildProxyRunArgs_AdminSecret(t *testing.T) {
 
 func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr: "0.0.0.0:18080",
 	})
 
@@ -320,7 +417,7 @@ func TestBuildProxyRunArgs_NoAdminSecret(t *testing.T) {
 func TestBuildProxyRunArgs_MissingFiles(t *testing.T) {
 	// Non-existent paths must not produce volume mounts.
 	args := buildProxyRunArgs(proxyRunArgs{
-		name: "proxy", port: 18080, networkName: "dock-net-proxy", image: "img:latest",
+		name: "proxy", adminPort: 18081, mountCreds: true, networkName: "dock-net-proxy", image: "img:latest",
 		listenAddr:       "0.0.0.0:18080",
 		storedKeyPath:    "/nonexistent/apikey",
 		oauthJSONPath:    "/nonexistent/auth.json",

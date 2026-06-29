@@ -527,6 +527,47 @@ func TestStart_DefaultListenAddr(t *testing.T) {
 	}
 }
 
+func TestStart_AdminListenerSplit(t *testing.T) {
+	p, err := NewProxy(Config{
+		TokenTTL:        60,
+		ListenAddr:      "127.0.0.1:0",
+		AdminListenAddr: "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("NewProxy: %v", err)
+	}
+	if err := p.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer p.Stop()
+
+	workerBase := "http://" + p.addr
+	adminBase := "http://" + p.adminAddr
+	if p.adminAddr == "" || p.adminAddr == p.addr {
+		t.Fatalf("admin listener not separated: worker=%q admin=%q", p.addr, p.adminAddr)
+	}
+
+	// /admin/mode must NOT be reachable on the worker-facing listener.
+	resp, err := http.Get(workerBase + "/admin/mode") //nolint:noctx
+	if err != nil {
+		t.Fatalf("GET worker /admin/mode: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Errorf("worker listener served /admin/mode (status %d); admin must be isolated", resp.StatusCode)
+	}
+
+	// /admin/mode IS reachable on the dedicated admin listener.
+	resp2, err := http.Get(adminBase + "/admin/mode") //nolint:noctx
+	if err != nil {
+		t.Fatalf("GET admin /admin/mode: %v", err)
+	}
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("admin listener /admin/mode status = %d; want 200", resp2.StatusCode)
+	}
+}
+
 func TestProxy_Port(t *testing.T) {
 	p := newTestProxy(t)
 	if err := p.Start(); err != nil {

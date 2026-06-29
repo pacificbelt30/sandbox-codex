@@ -30,8 +30,8 @@
 
 | ドキュメント | 内容 |
 |---|---|
-| [ネットワーク仕様](network.md) | dock-net の構成・ネットワーク管理の基本 |
-| [firewall 仕様・運用ガイド](firewall.md) | Linux `iptables` 制御・許可/拒否ルール・運用手順 |
+| [ネットワーク仕様](network.md) | プロキシルータ + per-worker Internal ネットワーク・egress 制御 |
+| [firewall（廃止）](firewall.md) | 旧 iptables firewall は廃止。ネットワーク仕様へ移行 |
 
 ### コマンドリファレンス
 
@@ -42,8 +42,8 @@
 | [`codex-dock proxy`](commands/proxy.md) | Auth Proxy の build / run / serve / stop / rm |
 | [ワーカー管理 (ps / stop / rm / logs)](commands/worker.md) | コンテナの一覧・停止・削除・ログ表示 |
 | [`codex-dock auth`](commands/auth.md) | 認証情報の show / set / rotate |
-| [`codex-dock network`](commands/network-cmd.md) | dock-net の create / rm / status |
-| [`codex-dock firewall`](commands/firewall.md) | firewall の create / status / rm |
+| [`codex-dock network`](commands/network-cmd.md) | egress ネットワークの create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | （廃止）ルータモデルへ移行 |
 | [`codex-dock build`](commands/build.md) | サンドボックスイメージのビルド |
 | [`codex-dock ui`](commands/ui.md) | TUI ダッシュボードのキーバインド |
 
@@ -62,22 +62,22 @@
 │  ホスト環境                                                   │
 │                                                               │
 │  ┌──────────────┐    ┌────────────────────────────────────┐  │
-│  │  codex-dock  │    │  Auth Proxy (0.0.0.0:PORT)         │  │
+│  │  codex-dock  │    │  Auth Proxy / ルータ (router)      │  │
 │  │  (CLI)       │───▶│  - 短命トークン発行                │  │
 │  └──────────────┘    │  - API キー / OAuth を保護          │  │
 │         │            └──────────┬─────────────────────────┘  │
-│         │                       │ host.docker.internal:PORT   │
+│         │                       │ Docker DNS: codex-auth-proxy │
 │         ▼                       │                             │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │  dock-net (10.200.0.0/24)  Docker ブリッジネット     │    │
+│  │  per-worker Internal ネット (dock-net-w-<name>)      │    │
 │  │                                                       │    │
 │  │  ┌──────────────┐  ┌──────────────┐                  │    │
-│  │  │ コンテナ A   │  │ コンテナ B   │  (ICC 無効)      │    │
-│  │  │ codex-dock   │  │ codex-dock   │◀─ コンテナ間     │    │
+│  │  │ コンテナ A   │  │ コンテナ B   │ ✕ 別ネット/L2    │    │
+│  │  │ codex-dock   │  │ codex-dock   │◀─ ワーカー間     │    │
 │  │  │ worker-1     │  │ worker-2     │   通信ブロック   │    │
 │  │  └──────────────┘  └──────────────┘                  │    │
 │  └──────────────────────────────────────────────────────┘    │
-│                              │ IP Masquerade                  │
+│                  proxy 経由のみ │ egress (NAT は proxy 側)        │
 │                              ▼                               │
 │                        インターネット                         │
 │                        (OpenAI API等)                         │

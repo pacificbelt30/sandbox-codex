@@ -37,8 +37,10 @@ fi
 # Runs whenever the proxy issued an OpenAI/Codex token (agent=codex or shell).
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     log "Fetching Codex credentials from Auth Proxy (${CODEX_AUTH_PROXY_URL})..."
-    ORIGINAL_CODEX_AUTH_PROXY_URL="${CODEX_AUTH_PROXY_URL}"
 
+    # The worker reaches the proxy over its dedicated Internal Docker network via
+    # the embedded DNS name (codex-auth-proxy). NO_PROXY excludes that host so this
+    # request hits the proxy directly instead of looping through the forward proxy.
     fetch_token() {
         local endpoint="$1"
         curl -sf --connect-timeout 3 --max-time 10 \
@@ -47,33 +49,8 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     }
 
     RESPONSE=$(fetch_token "${CODEX_AUTH_PROXY_URL}") || {
-        FALLBACKS_RAW="${CODEX_AUTH_PROXY_FALLBACK_URLS:-${CODEX_AUTH_PROXY_FALLBACK_URL:-}}"
-        SELECTED=""
-        if [[ -n "${FALLBACKS_RAW}" ]]; then
-            IFS=',' read -r -a FALLBACKS <<< "${FALLBACKS_RAW}"
-            for endpoint in "${FALLBACKS[@]}"; do
-                [[ -z "${endpoint}" || "${endpoint}" == "${CODEX_AUTH_PROXY_URL}" ]] && continue
-                log "Primary Auth Proxy endpoint unreachable (${CODEX_AUTH_PROXY_URL}), retrying fallback (${endpoint})..."
-                if RESPONSE=$(fetch_token "${endpoint}"); then
-                    SELECTED="${endpoint}"
-                    break
-                fi
-            done
-        fi
-
-        if [[ -z "${SELECTED}" ]]; then
-            log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL} (fallbacks: ${FALLBACKS_RAW:-none})"
-            exit 1
-        fi
-
-        CODEX_AUTH_PROXY_URL="${SELECTED}"
-        # Keep downstream proxy endpoints consistent with the selected URL.
-        if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
-            export OPENAI_BASE_URL="${OPENAI_BASE_URL/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
-        fi
-        if [[ -n "${CODEX_REFRESH_TOKEN_URL_OVERRIDE:-}" ]]; then
-            export CODEX_REFRESH_TOKEN_URL_OVERRIDE="${CODEX_REFRESH_TOKEN_URL_OVERRIDE/${ORIGINAL_CODEX_AUTH_PROXY_URL}/${CODEX_AUTH_PROXY_URL}}"
-        fi
+        log "ERROR: Failed to fetch credentials from Auth Proxy at ${CODEX_AUTH_PROXY_URL}"
+        exit 1
     }
 
     # Detect OAuth mode: proxy returns oauth_access_token instead of api_key
@@ -140,28 +117,6 @@ fi
 # on every outbound request, so the real Anthropic credential never reaches the
 # container (mirrors the Codex flow).
 if [[ -n "${ANTHROPIC_BASE_URL:-}" ]]; then
-    # Select a reachable proxy endpoint. ANTHROPIC_BASE_URL is "<root>/anthropic";
-    # the proxy's unauthenticated /health endpoint is used for the probe so no
-    # token is needed. On failure, try fallback roots (host.docker.internal etc.).
-    anthropic_root() { echo "${1%/anthropic}"; }
-    probe_health() { curl -sf --connect-timeout 3 --max-time 10 "${1}/health" >/dev/null 2>&1; }
-
-    PRIMARY_ROOT="$(anthropic_root "${ANTHROPIC_BASE_URL}")"
-    if ! probe_health "${PRIMARY_ROOT}"; then
-        FALLBACKS_RAW="${ANTHROPIC_PROXY_FALLBACK_URLS:-}"
-        if [[ -n "${FALLBACKS_RAW}" ]]; then
-            IFS=',' read -r -a FALLBACKS <<< "${FALLBACKS_RAW}"
-            for fb in "${FALLBACKS[@]}"; do
-                [[ -z "${fb}" || "${fb}" == "${PRIMARY_ROOT}" ]] && continue
-                if probe_health "${fb}"; then
-                    log "Primary Anthropic proxy endpoint unreachable, using fallback (${fb})."
-                    export ANTHROPIC_BASE_URL="${fb}/anthropic"
-                    break
-                fi
-            done
-        fi
-    fi
-
     CLAUDE_HOME="$(resolve_codex_home)"
     export HOME="${CLAUDE_HOME}"
     # Skip first-run onboarding/theme prompts so the agent starts unattended.

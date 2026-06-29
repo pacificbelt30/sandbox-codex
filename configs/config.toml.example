@@ -7,7 +7,7 @@
 #              to repeat them on every command.
 #
 # Precedence (highest first):
-#   1. command-line flag        (e.g. --image, --allow-host)
+#   1. command-line flag        (e.g. --image)
 #   2. environment variable     (CODEX_DOCK_*)
 #   3. this config file
 #   4. built-in default
@@ -31,8 +31,12 @@ proxy_image = "codex-dock-proxy:latest"
 # Shorter = safer if a token leaks. 1800 = 30 min, 3600 = 1 h.
 default_token_ttl = 3600
 
-# Name of the Docker network workers attach to.        env: CODEX_DOCK_NETWORK_NAME
-network_name = "dock-net"
+# Name of the Docker egress network the auth proxy attaches to.
+#                                                      env: CODEX_DOCK_NETWORK_NAME
+# Workers no longer share a single network: each worker gets its own Internal
+# network (dock-net-w-<name>) shared only with the proxy, so worker↔worker,
+# worker→host, and worker→internet are all blocked by Docker (no iptables/sudo).
+network_name = "dock-net-proxy"
 
 # Print extra operational logs by default.             flag: --verbose / -v
 verbose = false
@@ -66,42 +70,24 @@ approval_mode = "suggest"
 
 
 # -----------------------------------------------------------------------------
-# [firewall] — defaults for the dock-net egress firewall
+# [proxy] — defaults for the auth proxy / router
 #
-# These apply to BOTH `codex-dock run` and `codex-dock firewall create`.
-# Set them here once instead of passing the flags every time.
+# Isolation is enforced by Docker networks, not iptables — there is no host
+# firewall to configure and `codex-dock` never calls sudo. The proxy container
+# is the only egress path: workers reach it over their per-worker Internal
+# network and route all general traffic (git/npm/pip/curl) through its built-in
+# HTTP CONNECT forward proxy, while OpenAI/Anthropic API calls use its
+# credential-injecting reverse-proxy routes.
 # -----------------------------------------------------------------------------
-[firewall]
+[proxy]
 
-# Auth Proxy URL reachable from worker containers.     flag: --proxy-container-url
-# This destination is always allowed through the firewall.
-proxy_container_url = "http://codex-auth-proxy:18080"
+# Auth Proxy URL reachable from worker containers (Docker DNS name + data-plane
+# port).                                               flag: --proxy-container-url
+# The legacy key `firewall.proxy_container_url` is still honored for now.
+container_url = "http://codex-auth-proxy:18080"
 
-# Extra destinations to ALWAYS allow out of the sandbox.
-#                                                      flag: --allow-host (repeatable)
-# Format : "IP:PORT" (IP literals only — hostnames are NOT resolved).
-#          IPv6 must be bracketed, e.g. "[2001:db8::1]:443".
-# Note   : passing --allow-host on the command line OVERRIDES this list.
+# Optionally restrict the forward proxy to a domain allowlist (and subdomains).
+# An empty/omitted list allows all destinations.       flag: --forward-allow-domain
 #
-# Example: always permit an internal container registry and an internal API.
-# allow_hosts = ["203.0.113.10:5000", "198.51.100.7:443"]
-
-# Extra destinations to ALWAYS block (drop) out of the sandbox.
-#                                                      flag: --block-host (repeatable)
-# Format : "CIDR" | "IP" | "IP:PORT"  (IPv4 only)
-#            "203.0.113.0/24"    drop the whole range (all ports/protocols)
-#            "203.0.113.10"      drop that host       (all ports/protocols)
-#            "203.0.113.10:443"  drop only TCP/443 to that host
-# Note   : --allow-host wins over --block-host (allow rules are evaluated first).
-#          Passing --block-host on the command line OVERRIDES this list.
-#
-# Example: block an external analytics endpoint and an internal subnet.
-# block_hosts = ["203.0.113.0/24", "198.51.100.9:443"]
-
-# Apply the iptables firewall rules via sudo when codex-dock is NOT run as root.
-#                                                      flag: --sudo
-# On an interactive terminal sudo prompts for a password once; in a
-# non-interactive environment (CI, TUI, --detach) it relies on cached
-# credentials or a NOPASSWD sudoers entry and never blocks on a prompt.
-# Note   : passing --sudo on the command line OVERRIDES this value.
-# sudo = false
+# Example: only allow common package registries and source hosts.
+# forward_allow_domains = ["github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]

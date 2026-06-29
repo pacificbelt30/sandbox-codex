@@ -16,7 +16,7 @@ codex-dock
 │   ├── build.go             サンドボックスイメージのビルド
 │   ├── ps.go / stop.go / rm.go / logs.go
 │   ├── ui.go                TUI ダッシュボード起動
-│   └── network.go           dock-net の管理
+│   └── network.go           egress（プロキシ）ネットワークの管理
 │
 ├── internal/
 │   ├── authproxy/           Auth Proxy（認証プロキシ）★プロキシ側
@@ -28,8 +28,8 @@ codex-dock
 │   │   ├── manager.go       コンテナのライフサイクル・buildEnv（エージェント別）
 │   │   ├── types.go         RunOptions / Agent(codex/claude/shell) 等の型定義
 │   │   └── packages.go      パッケージ定義解析
-│   ├── network/             dock-net 管理
-│   │   └── manager.go       ブリッジネットワークの作成/削除
+│   ├── network/             Docker ネットワーク管理（egress 網 + per-worker Internal 網）
+│   │   └── manager.go       EnsureEgressNetwork / EnsureWorkerNetwork / ConnectProxy 等
 │   ├── worktree/            git worktree 管理
 │   │   └── worktree.go      worktree の作成/削除
 │   └── ui/                  ターミナル UI (Bubble Tea)
@@ -60,7 +60,7 @@ codex-dock
   │  codex-dock run    │                       │                         │
   │──────────────────▶│                       │                         │
   │                    │                       │                         │
-  │                    │ 1. dock-net 確認/作成  │                         │
+  │                    │ 1. ワーカー専用 Internal 網を作成・プロキシを接続 │
   │                    │──────────────────────────────────────────────▶ │
   │                    │                       │                         │
   │                    │ 2. Auth Proxy に接続   │                         │
@@ -72,6 +72,7 @@ codex-dock
   │                    │ 4. コンテナ作成・起動  │                         │
   │                    │  CODEX_TOKEN=cdx-xxx  │                         │
   │                    │  OPENAI_BASE_URL=proxy │                         │
+  │                    │  HTTP(S)_PROXY=proxy   │                         │
   │                    │──────────────────────────────────────────────▶ │
   │                    │                       │                         │
   │                    │                       │  5. GET /token          │
@@ -116,5 +117,5 @@ codex-dock
 
 - [セキュリティ設計](security.md) — コンテナ設定・保護の仕組み・既知の問題
 - [Auth Proxy 技術仕様](auth-proxy.md) — 認証プロキシの詳細仕様
-- [ネットワーク仕様](network.md) — dock-net の構成・セキュリティポリシー
+- [ネットワーク仕様](network.md) — プロキシルータ + per-worker Internal ネットワークの構成
 - [コマンドリファレンス: run](commands/run.md) — `codex-dock run` の全オプション

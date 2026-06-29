@@ -26,7 +26,7 @@ It also proxies all OpenAI API traffic called by Codex CLI (Responses API, token
 │          └───────────┬───────────────┘                                 │
 │                      ▼                                                 │
 │  ┌──────────────────────────────────────────────────────────────────┐ │
-│  │  Auth Proxy (<dock-net-gateway>:PORT)      ← random port         │ │
+│  │  Auth Proxy (router)  data-plane :18080 / admin :18081           │ │
 │  │                                                                  │ │
 │  │  GET  /token        Token validation → credential delivery       │ │
 │  │  GET  /health       Health check                                 │ │
@@ -432,7 +432,7 @@ OAuth mode is activated when `~/.codex/auth.json` contains `refresh_token` or `a
 
 | ID | Issue | Severity | Details |
 |---|---|---|---|
-| F-NET-04 | Container may not reach Auth Proxy | High | `127.0.0.1` is unreachable from containers; must bind to dock-net gateway address |
+| ~~F-NET-04~~ | (Resolved) Container reachability to Auth Proxy | — | The proxy is multi-homed onto each worker's `Internal` network; containers reach it via Docker DNS at `http://codex-auth-proxy:18080`. No `host.docker.internal`/`--add-host`. |
 | NF-SEC-01 | Plain HTTP communication | High | TLS or UNIX socket not yet implemented |
 | F-AUTH-06 | No container ID verification | Medium | Token is tied to container name but not verified against container ID |
 
@@ -441,11 +441,12 @@ OAuth mode is activated when `~/.codex/auth.json` contains `refresh_token` or `a
 ## Implementation Quick Reference
 
 ```go
-// Create Auth Proxy
+// Create Auth Proxy (data plane on :18080, admin split onto :18081)
 proxy, _ := authproxy.NewProxy(authproxy.Config{
-    TokenTTL:   3600,
-    Verbose:    true,
-    ListenAddr: "10.200.0.1:0", // dock-net gateway
+    TokenTTL:        3600,
+    Verbose:         true,
+    ListenAddr:      "0.0.0.0:18080",
+    AdminListenAddr: "0.0.0.0:18081",
 })
 
 // Start
@@ -455,7 +456,7 @@ proxy.Start()
 token, _ := proxy.IssueToken("my-container", 3600)
 
 // Check endpoint
-fmt.Println(proxy.Endpoint()) // "http://10.200.0.1:XXXXX"
+fmt.Println(proxy.Endpoint()) // "http://127.0.0.1:18080"
 
 // Check OAuth mode
 if proxy.IsOAuthMode() {
@@ -476,5 +477,5 @@ defer proxy.Stop()
 - [API Endpoint Reference](auth-proxy/endpoints.md) — Full endpoint specifications
 - [Token Lifecycle & Security](auth-proxy/tokens.md) — Token lifecycle and security considerations
 - [Using Auth Proxy Standalone](proxy-standalone.md) — Configure Codex CLI without `codex-dock run`
-- [Network Specification](network.md) — dock-net and host reachability
+- [Network Specification](network.md) — proxy router and per-worker Internal networks
 - [`codex-dock proxy` command](commands/proxy.md) — How to start the proxy

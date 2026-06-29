@@ -30,8 +30,8 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 
 | Document | Description |
 |---|---|
-| [Network Specification](network.md) | dock-net layout and network management basics |
-| [Firewall Specification & Operations Guide](firewall.md) | Linux `iptables` control, allow/deny rules, and operations |
+| [Network Specification](network.md) | Proxy router + per-worker Internal networks and egress control |
+| [Firewall (Removed)](firewall.md) | The old iptables firewall is gone; see Network Specification |
 
 ### Command Reference
 
@@ -42,8 +42,8 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 | [`codex-dock proxy`](commands/proxy.md) | Auth Proxy build / run / serve / stop / rm |
 | [Worker Management (ps / stop / rm / logs)](commands/worker.md) | List, stop, remove, view logs |
 | [`codex-dock auth`](commands/auth.md) | Auth show / set / rotate |
-| [`codex-dock network`](commands/network-cmd.md) | dock-net create / rm / status |
-| [`codex-dock firewall`](commands/firewall.md) | firewall create / status / rm |
+| [`codex-dock network`](commands/network-cmd.md) | egress network create / rm / status |
+| [`codex-dock firewall`](commands/firewall.md) | (Removed) replaced by the router model |
 | [`codex-dock build`](commands/build.md) | Build sandbox image |
 | [`codex-dock ui`](commands/ui.md) | TUI dashboard key bindings |
 
@@ -62,22 +62,24 @@ It provides an Auth Proxy that isolates credentials from containers, a dedicated
 │  Host Environment                                            │
 │                                                              │
 │  ┌──────────────┐    ┌────────────────────────────────────┐ │
-│  │  codex-dock  │    │  Auth Proxy (0.0.0.0:PORT)         │ │
-│  │  (CLI)       │───▶│  - Issues short-lived tokens       │ │
-│  └──────────────┘    │  - Protects API keys / OAuth creds │ │
+│  │  codex-dock  │    │  Auth Proxy / router               │ │
+│  │  (CLI)       │───▶│  data-plane :18080 / admin :18081  │ │
+│  └──────────────┘    │  - Issues short-lived tokens       │ │
+│         │            │  - Protects API keys / OAuth creds │ │
+│         │            │  - Forward proxy (CONNECT)         │ │
 │         │            └──────────┬─────────────────────────┘ │
-│         │                       │ host.docker.internal:PORT  │
+│         │                       │ Docker DNS: codex-auth-proxy│
 │         ▼                       │                            │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  dock-net (10.200.0.0/24)  Docker bridge network     │   │
+│  │  per-worker Internal nets (dock-net-w-<name>)        │   │
 │  │                                                       │   │
 │  │  ┌──────────────┐  ┌──────────────┐                  │   │
-│  │  │ Container A  │  │ Container B  │  (ICC disabled)  │   │
-│  │  │ codex-dock   │  │ codex-dock   │◀─ inter-container│   │
-│  │  │ worker-1     │  │ worker-2     │   comm blocked   │   │
+│  │  │ Container A  │  │ Container B  │ ✕ separate L2    │   │
+│  │  │ codex-dock   │  │ codex-dock   │◀─ worker↔worker  │   │
+│  │  │ worker-1     │  │ worker-2     │   blocked        │   │
 │  │  └──────────────┘  └──────────────┘                  │   │
 │  └──────────────────────────────────────────────────────┘   │
-│                              │ IP Masquerade                 │
+│                 only via proxy │ egress (NAT on the proxy)   │
 │                              ▼                               │
 │                        Internet                              │
 │                        (OpenAI API, etc.)                    │

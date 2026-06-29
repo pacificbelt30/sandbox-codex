@@ -149,20 +149,21 @@ codex-dock run --user current --approval-mode full-auto
 **What happens automatically:**
 
 ```
-1. Create dock-net (first time only)
+1. Create the per-worker Internal network (dock-net-w-<name>)
+   and connect the proxy
        │
        ▼
-2. Start Auth Proxy
-   (127.0.0.1:random port)
+2. Connect to the Auth Proxy admin endpoint
+   (default: http://127.0.0.1:18081)
        │
        ▼
 3. Issue short-lived token
        │
        ▼
 4. Create and start container
-   - Network: dock-net
+   - Network: dock-net-w-<name> (Internal)
    - Mount:   ./  →  /workspace
-   - env:     CODEX_TOKEN=cdx-xxxx
+   - env:     CODEX_TOKEN=cdx-xxxx, HTTP(S)_PROXY=proxy
        │
        ▼
 5. entrypoint.sh runs inside container
@@ -246,7 +247,7 @@ codex-dock run
 ## Check Network Status
 
 ```bash
-# Check dock-net status
+# Check the egress network and per-worker networks
 codex-dock network status
 
 # Check running workers
@@ -261,10 +262,10 @@ codex-dock ps
 # Stop all containers
 codex-dock stop --all
 
-# Remove stopped containers
+# Remove stopped containers (the per-worker network is disconnected and removed too)
 codex-dock rm <container-name>
 
-# Remove dock-net (if needed)
+# Remove the egress network (if needed)
 codex-dock network rm
 ```
 
@@ -283,6 +284,7 @@ Common causes:
 - Docker is not running → check with `docker ps`
 - Image build failed → check with `codex-dock build --verbose`
 - API key not set → check with `codex-dock auth show`
+- Auth Proxy not running → on a terminal with the default proxy URLs, `codex-dock run` prompts `Build/start the auth proxy container now? [y/N]`; answer `y` to build (if needed) and start it automatically. In non-interactive shells, or with custom proxy URLs, start it yourself with `codex-dock proxy run`.
 
 ### Authentication Error
 
@@ -298,7 +300,7 @@ codex-dock auth set
 ### Network Error
 
 ```bash
-# Recreate dock-net
+# Recreate the egress network
 codex-dock network rm
 codex-dock network create
 ```

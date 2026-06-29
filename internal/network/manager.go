@@ -2,64 +2,48 @@ package network
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
-	"net/url"
-	"strconv"
+	"strings"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
 
 const (
-	NetworkName   = "dock-net"
-	BridgeName    = "dock-net0"
-	NetworkSubnet = "10.200.0.0/24"
-	NetworkGW     = "10.200.0.1"
+	// EgressNetworkName is the bridge network that gives the auth proxy container
+	// outbound internet access (NAT/masquerade enabled by default). Worker
+	// containers are never attached to it; only the proxy is.
+	EgressNetworkName = "dock-net-proxy"
+	// EgressBridgeName is the Linux bridge backing the egress network.
+	EgressBridgeName = "dock-net-proxy0"
 
-	ProxyNetworkName = "dock-net-proxy"
-	ProxyBridgeName  = "dock-net-proxy0"
+	// WorkerNetPrefix namespaces the per-worker internal networks. Each worker
+	// gets its own dedicated internal bridge shared only with the proxy, so
+	// workers cannot reach each other (separate L2 segments) and cannot reach
+	// the host or internet directly (Internal: true → no NAT, no host route).
+	WorkerNetPrefix = "dock-net-w-"
+
+	managedLabel = "codex-dock.managed"
 )
 
-var ErrDockNetNotFound = errors.New("dock-net does not exist")
+// Backwards-compatible aliases: the "proxy network" is the egress network.
+const (
+	ProxyNetworkName = EgressNetworkName
+	ProxyBridgeName  = EgressBridgeName
+)
 
-// NetworkInfo holds status information about dock-net.
+// NetworkInfo holds status information about a Docker network managed by codex-dock.
 type NetworkInfo struct {
-	ID           string
-	Driver       string
-	ICCDisabled  bool
-	IPMasquerade bool
-	Subnet       string
+	ID       string
+	Driver   string
+	Internal bool
+	Subnet   string
 }
 
-// FirewallInfo holds status information about dock-net firewall rules.
-type FirewallInfo struct {
-	Supported                bool
-	Root                     bool
-	IptablesFound            bool
-	ChainExists              bool
-	JumpRuleExists           bool
-	DockerUserDefaultPolicy  string
-	ManagedChainFinalVerdict string
-	Rules                    []FirewallRule
-}
-
-// Manager handles the lifecycle of the dock-net Docker network.
+// Manager handles the lifecycle of codex-dock's Docker networks: the shared
+// egress network for the proxy and the per-worker internal networks.
 type Manager struct {
-	cli      *client.Client
-	firewall firewallController
-}
-
-// EnsureOptions configures dock-net creation and host egress exceptions.
-type EnsureOptions struct {
-	NoInternet           bool
-	AllowHostTCPPorts    []int
-	AllowTCPDestinations []HostEndpoint
-	BlockDestinations    []BlockDestination
-	// Sudo runs the iptables firewall commands via sudo when codex-dock is not
-	// executed as root.
-	Sudo bool
+	cli *client.Client
 }
 
 // NewManager creates a new network Manager.
@@ -68,323 +52,181 @@ func NewManager() (*Manager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connecting to Docker: %w", err)
 	}
-	return &Manager{cli: cli, firewall: newSystemFirewall()}, nil
+	return &Manager{cli: cli}, nil
 }
 
-// EnsureNetwork creates dock-net if it does not already exist.
-func (m *Manager) EnsureNetwork(opts EnsureOptions) error {
-	ctx := context.Background()
-
-	existing, err := m.findNetwork(ctx)
-	if err != nil {
-		return err
-	}
-
-	if existing == nil {
-		options := map[string]string{
-			"com.docker.network.bridge.enable_icc":           "false",
-			"com.docker.network.bridge.enable_ip_masquerade": "true",
-			"com.docker.network.bridge.name":                 BridgeName,
-		}
-
-		if opts.NoInternet {
-			options["com.docker.network.bridge.enable_ip_masquerade"] = "false"
-		}
-
-		_, err = m.cli.NetworkCreate(ctx, NetworkName, dockernetwork.CreateOptions{
-			Driver:  "bridge",
-			Options: options,
-			Labels: map[string]string{
-				"codex-dock.managed": "true",
-			},
-			IPAM: &dockernetwork.IPAM{
-				Driver: "default",
-				Config: []dockernetwork.IPAMConfig{
-					{Subnet: NetworkSubnet, Gateway: NetworkGW},
-				},
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("creating dock-net: %w", err)
-		}
-		existing, err = m.findNetwork(ctx)
-		if err != nil {
-			return err
-		}
-		if existing == nil {
-			return fmt.Errorf("dock-net created but could not be reloaded")
-		}
-	}
-
-	return nil
+// WorkerNetworkName returns the per-worker internal network name for a worker.
+func WorkerNetworkName(worker string) string {
+	return WorkerNetPrefix + worker
 }
 
-// ProxyNetworkExists reports whether dock-net-proxy exists.
-func (m *Manager) ProxyNetworkExists() (bool, error) {
+// EnsureEgressNetwork creates the egress (proxy) bridge network if it does not
+// already exist. Masquerade is left at the Docker default (enabled), so the
+// proxy container attached to it reaches the internet.
+func (m *Manager) EnsureEgressNetwork() error {
 	ctx := context.Background()
-	net, err := m.findNetworkByName(ctx, ProxyNetworkName)
-	if err != nil {
-		return false, err
-	}
-	return net != nil, nil
-}
-
-// EnsureProxyNetwork creates dock-net-proxy if it does not exist.
-func (m *Manager) EnsureProxyNetwork() error {
-	ctx := context.Background()
-	existing, err := m.findNetworkByName(ctx, ProxyNetworkName)
+	existing, err := m.findNetworkByName(ctx, EgressNetworkName)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return nil
 	}
-
-	_, err = m.cli.NetworkCreate(ctx, ProxyNetworkName, dockernetwork.CreateOptions{
+	_, err = m.cli.NetworkCreate(ctx, EgressNetworkName, dockernetwork.CreateOptions{
 		Driver: "bridge",
 		Options: map[string]string{
-			"com.docker.network.bridge.name": ProxyBridgeName,
+			"com.docker.network.bridge.name": EgressBridgeName,
 		},
-		Labels: map[string]string{
-			"codex-dock.managed": "true",
-		},
+		Labels: map[string]string{managedLabel: "true"},
 	})
 	if err != nil {
-		return fmt.Errorf("creating %s: %w", ProxyNetworkName, err)
+		return fmt.Errorf("creating %s: %w", EgressNetworkName, err)
 	}
 	return nil
 }
 
-// ApplyFirewall applies firewall rules to dock-net if possible.
-// Returns a warning (non-nil error) for unsupported/non-root environments.
-func (m *Manager) ApplyFirewall(opts EnsureOptions) error {
+// EnsureWorkerNetwork creates a per-worker internal bridge network if it does
+// not already exist. The network is Internal (no NAT, no host route) so the
+// worker's only reachable peer is the proxy once it is connected.
+func (m *Manager) EnsureWorkerNetwork(name string) error {
 	ctx := context.Background()
-	existing, err := m.findNetwork(ctx)
+	netName := WorkerNetworkName(name)
+	existing, err := m.findNetworkByName(ctx, netName)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+	// No fixed subnet: let Docker's default address pool assign one so many
+	// concurrent workers do not collide. ICC is left at the default (enabled)
+	// because only the proxy and a single worker ever share this network.
+	_, err = m.cli.NetworkCreate(ctx, netName, dockernetwork.CreateOptions{
+		Driver:   "bridge",
+		Internal: true,
+		Labels:   map[string]string{managedLabel: "true"},
+	})
+	if err != nil {
+		return fmt.Errorf("creating worker network %s: %w", netName, err)
+	}
+	return nil
+}
+
+// ConnectProxy attaches the proxy container to a worker's internal network so
+// the worker can reach it (and route egress through it). Idempotent: a proxy
+// already connected to the network is treated as success.
+func (m *Manager) ConnectProxy(workerNet, proxyContainer string) error {
+	ctx := context.Background()
+	netName := WorkerNetworkName(workerNet)
+	err := m.cli.NetworkConnect(ctx, netName, proxyContainer, &dockernetwork.EndpointSettings{})
+	if err != nil && !isAlreadyConnected(err) {
+		return fmt.Errorf("connecting proxy %q to %s: %w", proxyContainer, netName, err)
+	}
+	return nil
+}
+
+// DisconnectProxy detaches the proxy container from a worker's internal network.
+// A proxy that is already disconnected (or a missing network) is not an error.
+func (m *Manager) DisconnectProxy(workerNet, proxyContainer string) error {
+	ctx := context.Background()
+	netName := WorkerNetworkName(workerNet)
+	err := m.cli.NetworkDisconnect(ctx, netName, proxyContainer, true)
+	if err != nil && !isNotConnected(err) {
+		return fmt.Errorf("disconnecting proxy %q from %s: %w", proxyContainer, netName, err)
+	}
+	return nil
+}
+
+// RemoveWorkerNetwork removes a worker's internal network. It first force-
+// disconnects every endpoint still attached (the multi-homed proxy, plus any
+// leftover worker container), since Docker refuses to remove a network with
+// active endpoints. A missing network is not treated as an error. This lets
+// callers tear the network down without needing a live proxy reference.
+func (m *Manager) RemoveWorkerNetwork(name string) error {
+	ctx := context.Background()
+	netName := WorkerNetworkName(name)
+	existing, err := m.findNetworkByName(ctx, netName)
 	if err != nil {
 		return err
 	}
 	if existing == nil {
-		return ErrDockNetNotFound
-	}
-
-	if m.firewall == nil {
 		return nil
 	}
 
-	cfg, err := m.firewallConfig(ctx, opts, existing)
-	if err != nil {
-		return err
-	}
-	if err := m.firewall.Apply(ctx, cfg); err != nil {
-		if IsFirewallWarning(err) {
-			return err
+	// Inspect to enumerate attached containers (the list endpoint omits them).
+	if detail, err := m.cli.NetworkInspect(ctx, existing.ID, dockernetwork.InspectOptions{}); err == nil {
+		for containerID := range detail.Containers {
+			if derr := m.cli.NetworkDisconnect(ctx, existing.ID, containerID, true); derr != nil && !isNotConnected(derr) {
+				return fmt.Errorf("disconnecting %s from %s: %w", containerID, netName, derr)
+			}
 		}
-		return fmt.Errorf("applying dock-net firewall rules: %w", err)
+	}
+
+	if err := m.cli.NetworkRemove(ctx, existing.ID); err != nil {
+		return fmt.Errorf("removing worker network %s: %w", netName, err)
 	}
 	return nil
 }
 
-// RemoveFirewall removes firewall rules associated with dock-net.
-func (m *Manager) RemoveFirewall(opts EnsureOptions) error {
+// WorkerNetworkExists reports whether the per-worker Internal network for the
+// given worker name already exists.
+func (m *Manager) WorkerNetworkExists(name string) (bool, error) {
 	ctx := context.Background()
-	existing, err := m.findNetwork(ctx)
+	net, err := m.findNetworkByName(ctx, WorkerNetworkName(name))
 	if err != nil {
-		return err
+		return false, err
 	}
-	if existing == nil {
-		return ErrDockNetNotFound
-	}
-	if m.firewall == nil {
-		return nil
-	}
-
-	cfg, err := m.firewallConfig(ctx, opts, existing)
-	if err != nil {
-		return err
-	}
-	if err := m.firewall.Remove(ctx, cfg); err != nil {
-		if IsFirewallWarning(err) {
-			return err
-		}
-		return fmt.Errorf("removing dock-net firewall rules: %w", err)
-	}
-	return nil
+	return net != nil, nil
 }
 
-// FirewallStatus returns information about dock-net firewall rule installation.
-func (m *Manager) FirewallStatus() (*FirewallInfo, error) {
+// RemoveEgressNetwork removes the egress (proxy) network.
+func (m *Manager) RemoveEgressNetwork() error {
 	ctx := context.Background()
-	existing, err := m.findNetwork(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if existing == nil {
-		return nil, ErrDockNetNotFound
-	}
-	if m.firewall == nil {
-		return &FirewallInfo{}, nil
-	}
-
-	cfg, err := m.firewallConfig(ctx, EnsureOptions{}, existing)
-	if err != nil {
-		return nil, err
-	}
-	st, err := m.firewall.Status(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("getting dock-net firewall status: %w", err)
-	}
-	return &FirewallInfo{
-		Supported:                st.Supported,
-		Root:                     st.Root,
-		IptablesFound:            st.IptablesFound,
-		ChainExists:              st.ChainExists,
-		JumpRuleExists:           st.JumpRuleExists,
-		DockerUserDefaultPolicy:  st.DockerUserDefaultPolicy,
-		ManagedChainFinalVerdict: st.ManagedChainFinalVerdict,
-		Rules:                    st.Rules,
-	}, nil
-}
-
-// RemoveNetwork removes dock-net.
-func (m *Manager) RemoveNetwork(opts EnsureOptions) error {
-	ctx := context.Background()
-	existing, err := m.findNetwork(ctx)
+	existing, err := m.findNetworkByName(ctx, EgressNetworkName)
 	if err != nil {
 		return err
 	}
 	if existing == nil {
-		return fmt.Errorf("dock-net does not exist")
-	}
-	if m.firewall != nil {
-		cfg, err := m.firewallConfig(ctx, opts, existing)
-		if err != nil {
-			return err
-		}
-		if err := m.firewall.Remove(ctx, cfg); err != nil {
-			return fmt.Errorf("removing dock-net firewall rules: %w", err)
-		}
+		return fmt.Errorf("%s does not exist", EgressNetworkName)
 	}
 	return m.cli.NetworkRemove(ctx, existing.ID)
 }
 
-// Status returns information about dock-net, or nil if it doesn't exist.
+// Status returns information about the egress network, or nil if it doesn't exist.
 func (m *Manager) Status() (*NetworkInfo, error) {
 	ctx := context.Background()
-	net, err := m.findNetwork(ctx)
+	net, err := m.findNetworkByName(ctx, EgressNetworkName)
 	if err != nil {
 		return nil, err
 	}
 	if net == nil {
 		return nil, nil
 	}
-
 	info := &NetworkInfo{
-		ID:     net.ID,
-		Driver: net.Driver,
-	}
-
-	if v, ok := net.Options["com.docker.network.bridge.enable_icc"]; ok {
-		info.ICCDisabled = v == "false"
-	}
-	if v, ok := net.Options["com.docker.network.bridge.enable_ip_masquerade"]; ok {
-		info.IPMasquerade = v == "true"
+		ID:       net.ID,
+		Driver:   net.Driver,
+		Internal: net.Internal,
 	}
 	if len(net.IPAM.Config) > 0 {
 		info.Subnet = net.IPAM.Config[0].Subnet
 	}
-
 	return info, nil
 }
 
-// GatewayAddr returns the gateway IP address of dock-net.
-// Containers on dock-net use this address to reach the host (and the Auth Proxy).
-// Returns an error if dock-net does not exist or gateway cannot be determined.
-func (m *Manager) GatewayAddr() (string, error) {
+// ListWorkerNetworks returns the names of all managed per-worker internal networks.
+func (m *Manager) ListWorkerNetworks() ([]string, error) {
 	ctx := context.Background()
 	nets, err := m.cli.NetworkList(ctx, dockernetwork.ListOptions{})
 	if err != nil {
-		return "", fmt.Errorf("listing networks: %w", err)
+		return nil, fmt.Errorf("listing networks: %w", err)
 	}
-	for _, n := range nets {
-		if n.Name != NetworkName {
-			continue
-		}
-		// Try gateway from list result first.
-		if len(n.IPAM.Config) > 0 && n.IPAM.Config[0].Gateway != "" {
-			return n.IPAM.Config[0].Gateway, nil
-		}
-		// Inspect for fuller IPAM data — the list endpoint may omit Gateway.
-		detail, err := m.cli.NetworkInspect(ctx, n.ID, dockernetwork.InspectOptions{})
-		if err == nil && len(detail.IPAM.Config) > 0 && detail.IPAM.Config[0].Gateway != "" {
-			return detail.IPAM.Config[0].Gateway, nil
-		}
-		// Last resort: derive first host address from subnet (e.g. 10.200.0.1 from .0/24).
-		if len(n.IPAM.Config) > 0 {
-			return deriveGateway(n.IPAM.Config[0].Subnet)
+	var names []string
+	for i := range nets {
+		if strings.HasPrefix(nets[i].Name, WorkerNetPrefix) {
+			names = append(names, nets[i].Name)
 		}
 	}
-	return "", fmt.Errorf("dock-net not found")
-}
-
-// deriveGateway computes the first host address of an IPv4 CIDR subnet.
-// For example "10.200.0.0/24" → "10.200.0.1".
-func deriveGateway(cidr string) (string, error) {
-	b, err := parseIPv4Network(cidr)
-	if err != nil {
-		return "", fmt.Errorf("parsing subnet %q: %w", cidr, err)
-	}
-	// Increment last byte to get the first host address.
-	for i := len(b) - 1; i >= 0; i-- {
-		b[i]++
-		if b[i] != 0 {
-			break
-		}
-	}
-	return fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3]), nil
-}
-
-// parseIPv4Network extracts the 4-byte network address from an IPv4 CIDR string.
-func parseIPv4Network(cidr string) ([4]byte, error) {
-	var b [4]byte
-	// Find the '/' separator.
-	slash := -1
-	for i, c := range cidr {
-		if c == '/' {
-			slash = i
-			break
-		}
-	}
-	if slash < 0 {
-		return b, fmt.Errorf("no prefix length in CIDR")
-	}
-	octets := cidr[:slash]
-	n := 0
-	cur := 0
-	for _, c := range octets + "." {
-		if c == '.' {
-			if n >= 4 {
-				return b, fmt.Errorf("too many octets")
-			}
-			b[n] = byte(cur)
-			n++
-			cur = 0
-		} else if c >= '0' && c <= '9' {
-			cur = cur*10 + int(c-'0')
-			if cur > 255 {
-				return b, fmt.Errorf("octet out of range")
-			}
-		} else {
-			return b, fmt.Errorf("invalid character %q", c)
-		}
-	}
-	if n != 4 {
-		return b, fmt.Errorf("expected 4 octets, got %d", n)
-	}
-	return b, nil
-}
-
-func (m *Manager) findNetwork(ctx context.Context) (*dockernetwork.Summary, error) {
-	return m.findNetworkByName(ctx, NetworkName)
+	return names, nil
 }
 
 func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockernetwork.Summary, error) {
@@ -400,93 +242,15 @@ func (m *Manager) findNetworkByName(ctx context.Context, name string) (*dockerne
 	return nil, nil
 }
 
-func (m *Manager) firewallConfig(ctx context.Context, opts EnsureOptions, dockNet *dockernetwork.Summary) (firewallConfig, error) {
-	cfg := firewallConfig{
-		BridgeName:   BridgeName,
-		BridgeSubnet: gatewaySubnet(dockNet),
-		UseSudo:      opts.Sudo,
-	}
-
-	if proxyNet, err := m.findNetworkByName(ctx, ProxyNetworkName); err == nil && proxyNet != nil {
-		cfg.ProxyBridgeName = ProxyBridgeName
-		if bridgeName := proxyNet.Options["com.docker.network.bridge.name"]; bridgeName != "" {
-			cfg.ProxyBridgeName = bridgeName
-		}
-	}
-
-	cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, normalizeHostEndpoints(opts.AllowTCPDestinations)...)
-	cfg.AllowTCPPorts = normalizePorts(opts.AllowHostTCPPorts)
-	cfg.BlockDestinations = normalizeBlockDestinations(opts.BlockDestinations)
-
-	if len(cfg.AllowTCPPorts) == 0 {
-		return cfg, nil
-	}
-
-	hostIPs := make([]string, 0, 2)
-	if gateway := gatewayFromSummary(dockNet); gateway != "" {
-		hostIPs = append(hostIPs, gateway)
-	}
-	if gateway, err := m.hostGatewayAddr(ctx); err == nil && gateway != "" {
-		hostIPs = append(hostIPs, gateway)
-	}
-
-	for _, port := range cfg.AllowTCPPorts {
-		if port <= 0 || port > 65535 {
-			continue
-		}
-		for _, ip := range hostIPs {
-			cfg.AllowTCPDestinations = append(cfg.AllowTCPDestinations, HostEndpoint{IP: ip, Port: port})
-		}
-	}
-
-	cfg.AllowTCPDestinations = normalizeHostEndpoints(cfg.AllowTCPDestinations)
-	return cfg, nil
+func isAlreadyConnected(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "already exists in network") || strings.Contains(s, "already connected")
 }
 
-func (m *Manager) hostGatewayAddr(ctx context.Context) (string, error) {
-	bridge, err := m.findNetworkByName(ctx, "bridge")
-	if err != nil {
-		return "", err
-	}
-	return gatewayFromSummary(bridge), nil
-}
-
-func gatewayFromSummary(net *dockernetwork.Summary) string {
-	if net == nil {
-		return ""
-	}
-	if len(net.IPAM.Config) == 0 {
-		return ""
-	}
-	if net.IPAM.Config[0].Gateway != "" {
-		return net.IPAM.Config[0].Gateway
-	}
-	if net.IPAM.Config[0].Subnet == "" {
-		return ""
-	}
-	gateway, err := deriveGateway(net.IPAM.Config[0].Subnet)
-	if err != nil {
-		return ""
-	}
-	return gateway
-}
-
-func gatewaySubnet(net *dockernetwork.Summary) string {
-	if net == nil || len(net.IPAM.Config) == 0 {
-		return ""
-	}
-	return net.IPAM.Config[0].Subnet
-}
-
-func AllowHostEndpoint(rawURL string) (HostEndpoint, bool) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return HostEndpoint{}, false
-	}
-	host := u.Hostname()
-	port, err := strconv.Atoi(u.Port())
-	if err != nil || net.ParseIP(host) == nil {
-		return HostEndpoint{}, false
-	}
-	return HostEndpoint{IP: host, Port: port}, true
+func isNotConnected(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "is not connected to") ||
+		strings.Contains(s, "not connected") ||
+		strings.Contains(s, "no such network") ||
+		strings.Contains(s, "not found")
 }

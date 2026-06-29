@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
-	"net/url"
+	"io"
 	"os"
 	"os/signal"
-	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
@@ -14,6 +16,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/worktree"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 // userMode is the raw value of --user before resolution.
@@ -32,11 +35,9 @@ var runOpts sandbox.RunOptions
 var (
 	proxyAdminURL       string
 	proxyContainerURL   string
+	httpProxyURL        string
 	runProxyAdminSecret string
-	runAllowHosts       []string
-	runBlockHosts       []string
-	runNoFirewall       bool
-	runSudo             bool
+	runKeep             bool
 )
 
 var runCmd = &cobra.Command{
@@ -77,17 +78,15 @@ func init() {
 	}
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
-	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable internet access inside container")
-	f.StringArrayVar(&runAllowHosts, "allow-host", nil, "Extra IP:PORT destination to allow through the dock-net firewall (repeatable)")
-	f.StringArrayVar(&runBlockHosts, "block-host", nil, "Extra CIDR/IP/IP:PORT destination to block through the dock-net firewall (repeatable)")
-	f.BoolVar(&runNoFirewall, "no-firewall", false, "Skip applying codex-dock's dock-net iptables firewall rules (leave host firewall as-is)")
-	f.BoolVar(&runSudo, "sudo", false, "Run the dock-net iptables firewall commands via sudo when not running as root (prompts once on a terminal; uses cached/NOPASSWD sudo when non-interactive)")
+	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable general egress for the worker: do not set HTTP(S)_PROXY, so only the auth proxy's API routes are reachable (no git/npm/pip egress through the router)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
-	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18080", "External auth proxy admin URL")
-	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers")
+	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18081", "External auth proxy admin URL (host-published admin port)")
+	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers (API reverse routes)")
+	f.StringVar(&httpProxyURL, "http-proxy-url", "http://codex-http-proxy:18082", "General-egress (forward) proxy URL workers use for HTTP(S)_PROXY")
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
+	f.BoolVar(&runKeep, "keep", false, "Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate)")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw bash shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
 	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
@@ -136,49 +135,22 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	runOpts.Agent = agent
 
-	// Ensure dock-net exists
+	// Network manager handles per-worker Internal networks. Each worker gets its
+	// own Internal bridge shared only with the proxy (created in sandbox.Run), so
+	// isolation is enforced by Docker without any iptables/sudo.
 	netMgr, err := network.NewManager()
 	if err != nil {
 		return fmt.Errorf("creating network manager: %w", err)
 	}
-	ensureOpts := network.EnsureOptions{
-		NoInternet: runOpts.NoInternet,
-		Sudo:       runSudo,
-	}
-	if port, ok := allowedHostPort(proxyContainerURL); ok {
-		ensureOpts.AllowHostTCPPorts = []int{port}
-	}
-	if endpoint, ok := network.AllowHostEndpoint(proxyContainerURL); ok {
-		ensureOpts.AllowTCPDestinations = []network.HostEndpoint{endpoint}
-	}
-	extraDestinations, err := network.ParseHostEndpoints(runAllowHosts)
-	if err != nil {
-		return fmt.Errorf("invalid --allow-host: %w", err)
-	}
-	ensureOpts.AllowTCPDestinations = append(ensureOpts.AllowTCPDestinations, extraDestinations...)
-	blockDestinations, err := network.ParseBlockDestinations(runBlockHosts)
-	if err != nil {
-		return fmt.Errorf("invalid --block-host: %w", err)
-	}
-	ensureOpts.BlockDestinations = blockDestinations
-	if err := netMgr.EnsureNetwork(ensureOpts); err != nil {
-		return fmt.Errorf("ensuring dock-net: %w", err)
-	}
-	if runNoFirewall {
-		if verbose {
-			fmt.Println("Skipping dock-net firewall rule application (--no-firewall)")
-		}
-	} else if err := netMgr.ApplyFirewall(ensureOpts); err != nil {
-		if network.IsFirewallWarning(err) {
-			fmt.Printf("Warning: dock-net firewall rules were not applied: %v\n", err)
-		} else {
-			return fmt.Errorf("ensuring dock-net firewall: %w", err)
-		}
-	}
 
 	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, runProxyAdminSecret)
 	if err != nil {
-		return fmt.Errorf("connecting external auth proxy: %w", err)
+		// If the proxy simply isn't running and we're on a terminal with the
+		// default proxy URLs, offer to build/start it now instead of failing.
+		proxy, err = offerToStartProxy(cmd, err)
+		if err != nil {
+			return fmt.Errorf("connecting external auth proxy: %w", err)
+		}
 	}
 
 	if runOpts.Agent == sandbox.AgentClaude && !proxy.IsAnthropicMode() {
@@ -199,10 +171,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	sbMgr, err := sandbox.NewManager(sandbox.ManagerConfig{
-		Proxy:   proxy,
-		Network: netMgr,
-		Verbose: verbose,
-		Debug:   debug,
+		Proxy:        proxy,
+		Network:      netMgr,
+		HTTPProxyURL: httpProxyURL,
+		Verbose:      verbose,
+		Debug:        debug,
 	})
 	if err != nil {
 		return fmt.Errorf("creating sandbox manager: %w", err)
@@ -227,6 +200,77 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+// offerToStartProxy is called when connecting to the auth proxy failed. When the
+// failure looks like "proxy not running", the proxy URLs are at their defaults,
+// and stdin is a terminal, it prompts the user to build/start the proxy container
+// and, on yes, starts it and retries the connection. Otherwise it returns the
+// original error unchanged.
+func offerToStartProxy(cmd *cobra.Command, connErr error) (*authproxy.RemoteProxy, error) {
+	urlsDefault := !cmd.Flags().Changed("proxy-admin-url") && !cmd.Flags().Changed("proxy-container-url")
+	if !isProxyUnreachable(connErr) || !urlsDefault || !term.IsTerminal(int(os.Stdin.Fd())) {
+		return nil, connErr
+	}
+
+	fmt.Println("Auth Proxy is not running.")
+	if !confirmYesNo(os.Stdin, "Build/start the auth proxy container now? [y/N]: ") {
+		return nil, connErr
+	}
+
+	if err := startProxyContainer(cmd.Context()); err != nil {
+		return nil, fmt.Errorf("starting auth proxy: %w", err)
+	}
+
+	// The container needs a moment to bind its listeners; retry briefly.
+	proxy, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, runProxyAdminSecret, 30)
+	if err != nil {
+		return nil, fmt.Errorf("auth proxy started but did not become ready: %w", err)
+	}
+	return proxy, nil
+}
+
+// isProxyUnreachable reports whether err indicates the proxy is simply not
+// listening (as opposed to, say, an auth/secret rejection that starting it
+// wouldn't fix).
+func isProxyUnreachable(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "no such host") ||
+		strings.Contains(s, "no route to host") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "connect: ")
+}
+
+// confirmYesNo reads a line from r and returns true only for an affirmative
+// answer. An empty line (just Enter) defaults to no.
+func confirmYesNo(r io.Reader, prompt string) bool {
+	fmt.Print(prompt)
+	line, _ := bufio.NewReader(r).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// connectProxyWithRetry retries NewRemoteProxy a few times so a just-started
+// proxy container has time to bind its listeners.
+func connectProxyWithRetry(adminURL, containerURL, secret string, attempts int) (*authproxy.RemoteProxy, error) {
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		p, err := authproxy.NewRemoteProxy(adminURL, containerURL, secret)
+		if err == nil {
+			return p, nil
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, lastErr
 }
 
 func applyRunConfigDefaults(cmd *cobra.Command) {
@@ -257,34 +301,13 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	}
 
 	if !flags.Changed("proxy-container-url") {
-		if v := viper.GetString("firewall.proxy_container_url"); v != "" {
+		if v := viper.GetString("proxy.container_url"); v != "" {
+			proxyContainerURL = v
+		} else if v := viper.GetString("firewall.proxy_container_url"); v != "" {
+			// Backwards compatibility with the old [firewall] config section.
 			proxyContainerURL = v
 		}
 	}
-
-	if !flags.Changed("allow-host") && viper.IsSet("firewall.allow_hosts") {
-		runAllowHosts = viper.GetStringSlice("firewall.allow_hosts")
-	}
-
-	if !flags.Changed("block-host") && viper.IsSet("firewall.block_hosts") {
-		runBlockHosts = viper.GetStringSlice("firewall.block_hosts")
-	}
-
-	if !flags.Changed("sudo") && viper.IsSet("firewall.sudo") {
-		runSudo = viper.GetBool("firewall.sudo")
-	}
-}
-
-func allowedHostPort(rawURL string) (int, bool) {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Port() == "" {
-		return 0, false
-	}
-	port, err := strconv.Atoi(u.Port())
-	if err != nil || port <= 0 || port > 65535 {
-		return 0, false
-	}
-	return port, true
 }
 
 func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
@@ -320,15 +343,25 @@ func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 
 	// Wait for signal or container exit
 	exitCh := mgr.Wait(containerID)
+	var runErr error
 	select {
 	case <-sigCh:
 		fmt.Println("\nStopping container...")
-		return mgr.Stop(containerID, 10) // Stop() revokes token (F-AUTH-04)
+		runErr = mgr.Stop(containerID, 10) // Stop() revokes token (F-AUTH-04)
 	case err := <-exitCh:
 		// Container exited on its own — revoke its token (F-AUTH-04)
 		mgr.RevokeToken(containerID)
-		return err
+		runErr = err
 	}
+
+	// Foreground cleanup: remove the container and its per-worker Internal network
+	// so they don't accumulate across runs (use --keep to retain them).
+	if !runKeep {
+		if err := mgr.Remove(containerID, true); err != nil && verbose {
+			fmt.Fprintf(os.Stderr, "warning: cleaning up container/network: %v\n", err)
+		}
+	}
+	return runErr
 }
 
 func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
@@ -387,6 +420,12 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	for _, id := range containerIDs {
 		if err := mgr.Stop(id, 10); err != nil && verbose {
 			fmt.Fprintf(os.Stderr, "warning: stopping %s: %v\n", id[:12], err)
+		}
+		// Remove the container and its per-worker network so they don't accumulate.
+		if !runKeep {
+			if err := mgr.Remove(id, true); err != nil && verbose {
+				fmt.Fprintf(os.Stderr, "warning: cleaning up %s: %v\n", id[:12], err)
+			}
 		}
 	}
 	for _, p := range worktreePaths {

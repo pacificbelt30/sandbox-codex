@@ -146,7 +146,9 @@ token, _ := proxy.IssueToken("my-container", 3600)
 
 // エンドポイント確認
 fmt.Println(proxy.Endpoint())           // "http://127.0.0.1:XXXXX"
-fmt.Println(proxy.ContainerEndpoint())  // "http://host.docker.internal:XXXXX"
+// ルータ構成の実デプロイでは RemoteProxy が使われ、ワーカーは Docker DNS 経由で
+// "http://codex-auth-proxy:18080" に到達します（in-process Proxy はホスト用途）。
+fmt.Println(proxy.ContainerEndpoint())
 
 // OAuth モード判定
 if proxy.IsOAuthMode() {

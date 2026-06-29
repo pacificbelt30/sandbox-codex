@@ -15,7 +15,7 @@ containers. The agent is selected per worker with `--agent codex|claude`; omitti
 available. Key capabilities:
 
 - **Auth Proxy** — OpenAI **and** Anthropic API keys / OAuth tokens never touch containers; short-lived tokens are injected instead.
-- **dock-net** — Dedicated Docker bridge network with ICC disabled and host access blocked.
+- **Two-proxy router + per-worker networks** — egress is split by role into two containers: `codex-auth-proxy` (role `auth`: credential-injecting API reverse routes + token + admin; **does NOT forward general traffic**) and `codex-http-proxy` (role `egress`: forward proxy only for git/npm/pip, **no credentials**, private/LAN-blocked). Both are multi-homed onto each worker's `Internal` network. Workers reach only the proxies; worker↔worker, worker→host, and worker→internet are blocked by Docker itself (no iptables, no sudo).
 - **git worktree** — Parallel development branches, each in their own container.
 - **dock-ui** — Terminal UI (TUI) for managing all workers.
 - **Package management** — `apt`, `pip`, `npm` packages via `--pkg` or `packages.dock`.
@@ -54,8 +54,8 @@ codex-dock/
 │   │   ├── manager.go        Create / start / stop / rm containers, buildEnv (agent-aware)
 │   │   ├── types.go          RunOptions, Agent (codex/claude/shell), ApprovalMode
 │   │   └── packages.go       packages.dock file parsing
-│   ├── network/              dock-net Docker bridge management
-│   │   └── manager.go        Create / delete / inspect network
+│   ├── network/              Docker network lifecycle (egress + per-worker Internal nets)
+│   │   └── manager.go        EnsureEgressNetwork / EnsureWorkerNetwork / ConnectProxy / DisconnectProxy / RemoveWorkerNetwork
 │   ├── worktree/             git worktree management
 │   │   └── worktree.go       Create / delete worktrees
 │   └── ui/                   Terminal UI (tcell / tview)
@@ -201,7 +201,8 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 - **Anthropic / Claude Code** follows the same model: containers set `ANTHROPIC_BASE_URL=http://<proxy>/anthropic` and a placeholder `ANTHROPIC_API_KEY`. The proxy injects the real credential on `/anthropic/*` requests — `x-api-key` (API-key mode) or `Authorization: Bearer …` + the `anthropic-beta` OAuth header (Claude subscription mode). In OAuth mode the proxy refreshes the access token itself; the refresh token stays on the host (`injectAnthropicCredentials` / `refreshAnthropicOAuthIfNeeded`).
 - Containers run as non-root (`uid:1001`, `USER codex`).
 - `--cap-drop ALL` + `--security-opt no-new-privileges` + `--pids-limit 512`.
-- `dock-net` bridge network with ICC (inter-container communication) disabled.
+- **Network isolation is 100% Docker-native (no iptables/sudo)**: each worker is on its own `Internal` bridge (`dock-net-w-<name>`). Different L2 segments block worker↔worker; `Internal: true` blocks worker→host/internet. Both proxies (`codex-auth-proxy`, `codex-http-proxy`) are multi-homed (egress net `dock-net-proxy` + each worker net) and are the only egress.
+- **Credential isolation by role**: `codex-auth-proxy` holds the real credentials but only ever sends them to its three hardcoded upstreams (api.openai.com / chatgpt.com / api.anthropic.com) and refuses to forward arbitrary traffic. `codex-http-proxy` does the arbitrary forwarding but holds no credentials and blocks private/LAN destinations (`--block-private`: RFC1918, 127/8, 169.254/16 incl. cloud metadata, ULA, CGNAT). `/admin/*` is on a separate listener bound to the egress IP so workers can't reach token issuance.
 - Container `auth.json` contains a placeholder `access_token`; `refresh_token` is empty.
 - `CODEX_TOKEN` (`cdx-xxxx…`) expires on TTL; revoked on container stop.
 
@@ -225,7 +226,8 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 |---|---|
 | F-AUTH-04 | `proxy.RevokeToken()` is called from `sandbox.Manager.Stop()` and `runSingle()` |
 | access_token leak | Containers now receive only a placeholder; proxy injects real credentials on every outbound request (`injectCredentials`) |
-| F-NET-04 | Proxy binds to `0.0.0.0`; workers get `--add-host=host.docker.internal:host-gateway` via `buildHostConfig()`; env uses `ContainerEndpoint()` → `http://host.docker.internal:PORT` |
+| F-NET-01/02/04 | Replaced the iptables firewall with Docker-native isolation: per-worker `Internal` networks + multi-homed proxy router. Workers reach the proxy via Docker DNS (`codex-auth-proxy`), no `host.docker.internal`/`--add-host`, no iptables/sudo. See `internal/network/manager.go` (`EnsureWorkerNetwork`/`ConnectProxy`) and `sandbox.Manager.Run`. |
+| iptables firewall | `internal/network/firewall.go` and the `codex-dock firewall` command group were removed; `--sudo/--no-firewall/--allow-host/--block-host` flags are gone. |
 
 ---
 
@@ -252,7 +254,7 @@ User config file: `~/.config/codex-dock/config.toml`
 ```toml
 default_image     = "codex-dock:latest"   # --image
 default_token_ttl = 3600                  # --token-ttl (seconds)
-network_name      = "dock-net"
+network_name      = "dock-net-proxy"     # egress network the proxy attaches to
 verbose           = false                 # --verbose
 debug             = false                 # --debug
 ```
@@ -278,9 +280,11 @@ The proxy loads each provider independently, so one proxy can serve both agents.
 
 | `--agent` | `DOCK_AGENT` | Behaviour | Proxy env injected by `manager.buildEnv` |
 |---|---|---|---|
-| _(omitted)_ | `""` | Auth-configured interactive shell (both CLIs on PATH) | Codex **and** Anthropic vars (when available) |
-| `codex` | `codex` | Launch Codex CLI | `CODEX_AUTH_PROXY_URL`, `CODEX_TOKEN`, `OPENAI_BASE_URL`, fallbacks, OAuth refresh override |
-| `claude` | `claude` | Launch Claude Code | `ANTHROPIC_BASE_URL` (`…/anthropic`), `ANTHROPIC_API_KEY` (placeholder), `ANTHROPIC_PROXY_FALLBACK_URLS` |
+| _(omitted)_ | `""` | Auth-configured interactive shell (both CLIs on PATH) | Codex **and** Anthropic vars (when available) + `HTTP(S)_PROXY`/`NO_PROXY` |
+| `codex` | `codex` | Launch Codex CLI | `CODEX_AUTH_PROXY_URL`, `CODEX_TOKEN`, `OPENAI_BASE_URL`, OAuth refresh override, `HTTP(S)_PROXY` |
+| `claude` | `claude` | Launch Claude Code | `ANTHROPIC_BASE_URL` (`…/anthropic`), `ANTHROPIC_API_KEY` (placeholder), `HTTP(S)_PROXY` |
+
+`HTTP_PROXY`/`HTTPS_PROXY` point at the **egress** proxy (`http://codex-http-proxy:18082`) so general egress (git/npm/pip) routes through the forward proxy; `OPENAI_/ANTHROPIC_BASE_URL` point at the **auth** proxy (`http://codex-auth-proxy:18080/…`); `NO_PROXY=codex-auth-proxy,localhost,127.0.0.1` keeps token/API traffic direct (origin-form → reverse routes). `--no-internet` omits the `HTTP(S)_PROXY` vars (API reverse routes only).
 
 `--shell` still bypasses `entrypoint.sh` entirely for a raw, **un-authenticated** debug shell.
 `run --agent claude` fails fast if the proxy reports no Anthropic credentials
@@ -298,6 +302,6 @@ The proxy loads each provider independently, so one proxy can serve both agents.
 6. **Do not pass credentials to containers** — containers receive only placeholder `cdx-xxxx` tokens. The proxy injects real credentials on every outbound request (`injectCredentials` for OpenAI, `injectAnthropicCredentials` for Anthropic).
 7. **`reverseProxy` takes an injector** — `reverseProxy(w, r, prefix, base, inject)`. OpenAI routes pass `p.injectCredentials`; the `/anthropic` route passes `p.injectAnthropicCredentials`. Any new proxy endpoint must pass an appropriate injector. The WebSocket path (`handleWebSocketProxy`) is OpenAI-only; Anthropic uses HTTP/SSE.
 8. **Proxy vs Sandbox separation** — proxy logic lives in `internal/authproxy` + `docker/proxy`; sandbox logic in `internal/sandbox` + `docker/sandbox`. They communicate only over the proxy's HTTP API (`Service` interface). Keep credential handling on the proxy side.
-8. **F-NET-04 is resolved**: Auth Proxy binds to `0.0.0.0`; worker containers have `--add-host=host.docker.internal:host-gateway` (Docker resolves this to the bridge gateway IP); `CODEX_AUTH_PROXY_URL` uses `proxy.ContainerEndpoint()` → `http://host.docker.internal:PORT`. Requires Docker Engine >= 20.10.
+8. **Network isolation is Docker-native (router model)**: workers reach the proxy via Docker embedded DNS (`codex-auth-proxy`) on their per-worker `Internal` network — no `host.docker.internal`/`--add-host`, no iptables. `sandbox.Manager.Run` calls `network.EnsureWorkerNetwork` + `ConnectProxy` before creating the container; `Remove`/`RemoveByName` call `cleanupWorkerNetwork`. The proxy is the only egress. When adding network behavior, keep it inside Docker primitives (Internal nets, ICC) rather than reintroducing iptables.
 9. **Documentation is in Japanese** (`doc/`). New docs may be written in English or Japanese consistently with existing files.
 10. **`go mod tidy` must leave `go.mod`/`go.sum` clean** — CI checks this with `git diff --exit-code`.

@@ -40,6 +40,14 @@ func init() {
 }
 
 func initConfig() {
+	// Built-in defaults so commands that read settings via viper (e.g. the
+	// proxy image used by `proxy build`/`proxy run`) work even when no config
+	// file or environment override is present.
+	viper.SetDefault("default_image", "codex-dock:latest")
+	viper.SetDefault("proxy_image", "codex-dock-proxy:latest")
+	viper.SetDefault("default_token_ttl", 3600)
+	viper.SetDefault("network_name", "dock-net-proxy")
+
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {

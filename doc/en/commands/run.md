@@ -6,9 +6,7 @@
 
 Runs Codex CLI inside a Docker container with Auth Proxy and network isolation configured automatically.
 
-> **Linux note**: `codex-dock run` attempts to apply `iptables` rules for `dock-net`.
-> If root privileges are unavailable, it prints a warning and continues.
-> To apply firewall rules explicitly, use `codex-dock firewall create`.
+> **Network isolation**: on start, a per-worker Docker `Internal` network (`dock-net-w-<name>`) is created and the Auth Proxy is connected to it. Worker↔worker, worker→host, and worker→internet traffic is blocked by Docker (no `iptables`/`sudo`; same on macOS / Windows).
 
 > **Automatic image build**: If the image specified by `--image` does not exist locally, it is built automatically using the same logic as `codex-dock build`.
 
@@ -35,11 +33,8 @@ codex-dock run [OPTIONS]
 | `--full-auto` | | `false` | **Deprecated**: use `--approval-mode full-auto` |
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
-| `--no-internet` | | `false` | Disable internet access inside container |
-| `--no-firewall` | | `false` | Skip applying codex-dock's dock-net iptables rules (leave the host firewall as-is) |
-| `--allow-host` | | | Extra `IP:PORT` destination to allow through the dock-net firewall (repeatable) |
-| `--block-host` | | | Extra `CIDR`/`IP`/`IP:PORT` destination to block through the dock-net firewall (IPv4, repeatable) |
-| `--sudo` | | `false` | When not root, run only the dock-net iptables apply via `sudo` (prompts once on a terminal; uses NOPASSWD/cached credentials when non-interactive) |
+| `--no-internet` | | `false` | Disable general egress (omit `HTTP(S)_PROXY`; only the proxy's API reverse routes remain reachable) |
+| `--keep` | | `false` | Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |

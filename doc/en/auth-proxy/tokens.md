@@ -141,7 +141,9 @@ proxy.Start()
 token, _ := proxy.IssueToken("my-container", 3600)
 
 fmt.Println(proxy.Endpoint())           // "http://127.0.0.1:XXXXX"
-fmt.Println(proxy.ContainerEndpoint())  // "http://host.docker.internal:XXXXX"
+// In the router deployment, RemoteProxy is used and workers reach the proxy via
+// Docker DNS at "http://codex-auth-proxy:18080" (the in-process Proxy is host-only).
+fmt.Println(proxy.ContainerEndpoint())
 
 if proxy.IsOAuthMode() {
     // Set CODEX_REFRESH_TOKEN_URL_OVERRIDE

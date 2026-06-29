@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/url"
@@ -23,28 +25,32 @@ import (
 )
 
 const (
-	labelPrefix    = "codex-dock."
-	labelManaged   = labelPrefix + "managed"
-	labelBranch    = labelPrefix + "branch"
-	labelTask      = labelPrefix + "task"
-	sandboxNetName = "dock-net"
+	labelPrefix  = "codex-dock."
+	labelManaged = labelPrefix + "managed"
+	labelBranch  = labelPrefix + "branch"
+	labelTask    = labelPrefix + "task"
 )
 
 // ManagerConfig holds configuration for the sandbox manager.
 type ManagerConfig struct {
 	Proxy   authproxy.Service
 	Network *network.Manager
-	Verbose bool
-	Debug   bool
+	// HTTPProxyURL is the general-egress (forward) proxy URL workers use for
+	// HTTP(S)_PROXY, e.g. http://codex-http-proxy:18082. Empty falls back to the
+	// auth proxy's endpoint (single-proxy/back-compat).
+	HTTPProxyURL string
+	Verbose      bool
+	Debug        bool
 }
 
 // Manager handles container lifecycle for codex-dock workers.
 type Manager struct {
-	cli     *client.Client
-	proxy   authproxy.Service
-	network *network.Manager
-	verbose bool
-	debug   bool
+	cli          *client.Client
+	proxy        authproxy.Service
+	network      *network.Manager
+	httpProxyURL string
+	verbose      bool
+	debug        bool
 }
 
 // NewManager creates a new Manager connected to the local Docker daemon.
@@ -54,11 +60,12 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("connecting to Docker: %w", err)
 	}
 	return &Manager{
-		cli:     cli,
-		proxy:   cfg.Proxy,
-		network: cfg.Network,
-		verbose: cfg.Verbose,
-		debug:   cfg.Debug,
+		cli:          cli,
+		proxy:        cfg.Proxy,
+		network:      cfg.Network,
+		httpProxyURL: cfg.HTTPProxyURL,
+		verbose:      cfg.Verbose,
+		debug:        cfg.Debug,
 	}, nil
 }
 
@@ -68,7 +75,10 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 
 	name := opts.Name
 	if name == "" {
-		name = generateName()
+		// Pick a name whose container and per-worker network are both free, so two
+		// workers never end up sharing one Internal network (which would break
+		// isolation) when generated names collide.
+		name = pickUniqueName(generateName, m.nameTaken, 12)
 	}
 
 	// Determine workspace path
@@ -127,8 +137,29 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		mounts[0].ReadOnly = true
 	}
 
-	// Security: drop all capabilities, non-root user
-	hostConfig := buildHostConfig(mounts)
+	// Per-worker Internal network: create it and attach the proxy so the worker
+	// can reach the proxy/router but nothing else (no other worker, host, or
+	// direct internet). Enforced entirely by Docker — no iptables/sudo.
+	netName := network.WorkerNetworkName(name)
+	if m.network != nil {
+		if err := m.network.EnsureWorkerNetwork(name); err != nil {
+			return "", fmt.Errorf("creating worker network: %w", err)
+		}
+		// Attach the proxies the worker needs to this worker's Internal network.
+		// The credential-injecting auth proxy is always attached; the
+		// general-egress http proxy is attached only when general egress is
+		// allowed. With --no-internet we deliberately leave the egress proxy
+		// OFF the worker net so the worker has no path to it at all — not just a
+		// missing HTTP(S)_PROXY env (which a worker could otherwise override).
+		for _, proxyName := range m.proxyContainerNames(opts.NoInternet) {
+			if err := m.network.ConnectProxy(name, proxyName); err != nil {
+				return "", fmt.Errorf("connecting proxy %q to worker network: %w", proxyName, err)
+			}
+		}
+	}
+
+	// Security: drop all capabilities, non-root user, isolated Internal network.
+	hostConfig := buildHostConfig(mounts, netName)
 
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
@@ -249,18 +280,28 @@ func (m *Manager) ImageExists(tag string) (bool, error) {
 	return true, nil
 }
 
-// Remove removes a container by ID.
+// Remove removes a container by ID and tears down its per-worker network.
 func (m *Manager) Remove(containerID string, force bool) error {
-	return m.cli.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: force})
+	ctx := context.Background()
+	name, _ := m.resolveNameByID(ctx, containerID)
+	if err := m.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: force}); err != nil {
+		return err
+	}
+	m.cleanupWorkerNetwork(name)
+	return nil
 }
 
-// RemoveByName removes a container by name.
+// RemoveByName removes a container by name and tears down its per-worker network.
 func (m *Manager) RemoveByName(name string, force bool) error {
 	id, err := m.resolveID(name)
 	if err != nil {
 		return err
 	}
-	return m.Remove(id, force)
+	if err := m.cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: force}); err != nil {
+		return err
+	}
+	m.cleanupWorkerNetwork(name)
+	return nil
 }
 
 // List returns all codex-dock managed workers.
@@ -426,9 +467,9 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		if err != nil {
 			return nil, fmt.Errorf("issuing auth token: %w", err)
 		}
-		// ContainerEndpoint() returns the auth proxy URL reachable from workers.
+		// ContainerEndpoint() returns the auth proxy URL reachable from workers
+		// over the per-worker Internal network via Docker DNS (codex-auth-proxy).
 		containerProxyURL := m.proxy.ContainerEndpoint()
-		fallbacks := m.computeProxyFallbacks(containerProxyURL)
 
 		wantCodex := opts.Agent == AgentCodex || opts.Agent == AgentNone
 		wantClaude := opts.Agent == AgentClaude || opts.Agent == AgentNone
@@ -442,9 +483,6 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 				// (https://chatgpt.com/backend-api/codex) in all auth modes.
 				"OPENAI_BASE_URL="+containerProxyURL+"/v1",
 			)
-			if len(fallbacks) > 0 {
-				env = append(env, "CODEX_AUTH_PROXY_FALLBACK_URLS="+strings.Join(fallbacks, ","))
-			}
 			// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.
 			// The proxy substitutes the host's real refresh_token so it never reaches
 			// the container. The short-lived token is embedded as ?cdx= for authentication
@@ -464,11 +502,33 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 				"ANTHROPIC_BASE_URL="+containerProxyURL+"/anthropic",
 				"ANTHROPIC_API_KEY="+token,
 			)
-			if len(fallbacks) > 0 {
-				// Fallback proxy roots; the entrypoint appends /anthropic to the
-				// reachable one. Reuses the same connectivity fallbacks as Codex.
-				env = append(env, "ANTHROPIC_PROXY_FALLBACK_URLS="+strings.Join(fallbacks, ","))
+		}
+
+		// Route general egress (git/npm/pip/curl) through the dedicated egress proxy
+		// (codex-http-proxy) via the standard HTTP(S)_PROXY vars. NO_PROXY excludes
+		// the AUTH proxy host so the API base URLs and token fetches reach it
+		// directly (origin-form → reverse routes) instead of being tunneled. Skipped
+		// when --no-internet is set, leaving only the auth proxy's API routes.
+		if !opts.NoInternet {
+			egressProxyURL := m.httpProxyURL
+			if egressProxyURL == "" {
+				egressProxyURL = containerProxyURL // back-compat: single proxy
 			}
+			authHost := proxyEndpointHost(containerProxyURL)
+			// NO_PROXY excludes the auth proxy (API/token traffic must reach it
+			// directly as origin-form → reverse routes) and the http proxy's own
+			// host (so a direct hit on its /health doesn't loop back through
+			// itself and get refused). De-duplicated; empty hosts dropped.
+			noProxyHosts := dedupeNonEmpty(authHost, proxyEndpointHost(egressProxyURL), "localhost", "127.0.0.1")
+			noProxy := strings.Join(noProxyHosts, ",")
+			env = append(env,
+				"HTTP_PROXY="+egressProxyURL,
+				"HTTPS_PROXY="+egressProxyURL,
+				"http_proxy="+egressProxyURL,
+				"https_proxy="+egressProxyURL,
+				"NO_PROXY="+noProxy,
+				"no_proxy="+noProxy,
+			)
 		}
 
 		if m.debug {
@@ -502,37 +562,118 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 	return env, nil
 }
 
-// computeProxyFallbacks returns the de-duplicated list of fallback proxy root
-// URLs a worker should try when the primary (DNS-based) endpoint is unreachable.
-// Only applies when the primary host is the codex-auth-proxy container alias.
-func (m *Manager) computeProxyFallbacks(primary string) []string {
-	fallbackURL := buildProxyFallbackURL(primary)
-	if fallbackURL == "" {
-		return nil
-	}
-	fallbacks := make([]string, 0, 2)
-	if m.network != nil {
-		if gateway, err := m.network.GatewayAddr(); err == nil {
-			if u := buildProxyFallbackURLWithHost(primary, gateway); u != "" {
-				fallbacks = append(fallbacks, u)
-			}
-		}
-	}
-	fallbacks = append(fallbacks, fallbackURL)
-
+// proxyContainerNames returns the container names of the proxies that must be
+// attached to each worker's Internal network: the credential-injecting auth
+// proxy (from the proxy endpoint, e.g. "codex-auth-proxy") and, when general
+// egress is allowed, the general-egress http proxy (from HTTPProxyURL, e.g.
+// "codex-http-proxy"). When noInternet is true the http proxy is omitted so the
+// worker has no network path to it. De-duplicated; empty entries dropped.
+func (m *Manager) proxyContainerNames(noInternet bool) []string {
 	seen := map[string]struct{}{}
-	unique := make([]string, 0, len(fallbacks))
-	for _, u := range fallbacks {
-		if u == "" {
-			continue
+	var names []string
+	add := func(host string) {
+		if host == "" {
+			return
 		}
-		if _, ok := seen[u]; ok {
-			continue
+		if _, ok := seen[host]; ok {
+			return
 		}
-		seen[u] = struct{}{}
-		unique = append(unique, u)
+		seen[host] = struct{}{}
+		names = append(names, host)
 	}
-	return unique
+	if m.proxy != nil {
+		add(proxyEndpointHost(m.proxy.ContainerEndpoint()))
+	}
+	if !noInternet {
+		add(proxyEndpointHost(m.httpProxyURL))
+	}
+	return names
+}
+
+// dedupeNonEmpty returns the inputs with empty strings and duplicates removed,
+// preserving first-seen order.
+func dedupeNonEmpty(items ...string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, it := range items {
+		if it == "" {
+			continue
+		}
+		if _, ok := seen[it]; ok {
+			continue
+		}
+		seen[it] = struct{}{}
+		out = append(out, it)
+	}
+	return out
+}
+
+// proxyEndpointHost extracts the hostname from a proxy endpoint URL.
+func proxyEndpointHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// nameTaken reports whether a worker name is already in use by an existing
+// container or by an existing per-worker network. Errors are treated as
+// "available" so transient lookup failures don't block name selection.
+func (m *Manager) nameTaken(name string) bool {
+	if _, err := m.resolveID(name); err == nil {
+		return true
+	}
+	if m.network != nil {
+		if exists, err := m.network.WorkerNetworkExists(name); err == nil && exists {
+			return true
+		}
+	}
+	return false
+}
+
+// pickUniqueName returns the first name produced by gen that is not reported
+// taken. After maxAttempts collisions it appends a short random suffix, which is
+// itself re-checked so the fallback name is verified free too.
+func pickUniqueName(gen func() string, taken func(string) bool, maxAttempts int) string {
+	for i := 0; i < maxAttempts; i++ {
+		n := gen()
+		if !taken(n) {
+			return n
+		}
+	}
+	base := gen()
+	for i := 0; i < maxAttempts; i++ {
+		n := base + "-" + randomSuffix()
+		if !taken(n) {
+			return n
+		}
+	}
+	// Extremely unlikely; return a suffixed name regardless.
+	return base + "-" + randomSuffix()
+}
+
+// randomSuffix returns a short random hex string for disambiguating names.
+func randomSuffix() string {
+	b := make([]byte, 4)
+	if _, err := crand.Read(b); err != nil {
+		// crypto/rand should not fail; fall back to a timestamp-based value.
+		return fmt.Sprintf("%08x", time.Now().UnixNano()&0xffffffff)
+	}
+	return hex.EncodeToString(b)
+}
+
+// cleanupWorkerNetwork removes a worker's Internal network after its container is
+// gone. RemoveWorkerNetwork force-disconnects any remaining endpoints (notably the
+// multi-homed proxy), so this works even when the Manager has no proxy reference
+// (e.g. the `rm` command / TUI). Failures are reported but not fatal.
+func (m *Manager) cleanupWorkerNetwork(name string) {
+	if m.network == nil || name == "" {
+		return
+	}
+	if err := m.network.RemoveWorkerNetwork(name); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: removing worker network for %s: %v\n", name, err)
+	}
 }
 
 func buildCodexArgs(opts RunOptions) []string {
@@ -566,45 +707,19 @@ func absolutePath(path string) (string, error) {
 }
 
 // buildHostConfig constructs the container HostConfig with security defaults.
-func buildHostConfig(mounts []mount.Mount) *container.HostConfig {
+// netName is the per-worker Internal network the container is attached to; the
+// worker reaches the proxy over this network via Docker embedded DNS
+// (codex-auth-proxy), so no host.docker.internal/host-gateway alias is needed.
+func buildHostConfig(mounts []mount.Mount, netName string) *container.HostConfig {
 	return &container.HostConfig{
-		NetworkMode: container.NetworkMode(sandboxNetName),
+		NetworkMode: container.NetworkMode(netName),
 		Mounts:      mounts,
-		// Ensure host.docker.internal resolves on Linux too.
-		// Worker entrypoint can retry auth proxy calls via this host-gateway alias
-		// when codex-auth-proxy (Docker DNS) is not reachable.
-		ExtraHosts:  []string{"host.docker.internal:host-gateway"},
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 		Resources: container.Resources{
 			PidsLimit: int64ptr(512),
 		},
 	}
-}
-
-func buildProxyFallbackURL(primary string) string {
-	return buildProxyFallbackURLWithHost(primary, "host.docker.internal")
-}
-
-func buildProxyFallbackURLWithHost(primary, host string) string {
-	u, err := url.Parse(primary)
-	if err != nil {
-		return ""
-	}
-	if !strings.EqualFold(u.Hostname(), "codex-auth-proxy") {
-		return ""
-	}
-	port := u.Port()
-	if port == "" {
-		switch strings.ToLower(u.Scheme) {
-		case "https":
-			port = "443"
-		default:
-			port = "80"
-		}
-	}
-	u.Host = host + ":" + port
-	return u.String()
 }
 
 func int64ptr(i int64) *int64 { return &i }
