@@ -34,6 +34,9 @@ codex-dock-*
 # Config with secrets
 ~/.config/codex-dock/apikey
 
+# MkDocs build output
+site/
+
 # Editor/IDE
 # .idea/
 # .vscode/
