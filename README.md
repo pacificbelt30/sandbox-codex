@@ -43,9 +43,34 @@ Go のインストール: https://go.dev/doc/install
 
 ## Installation
 
-### go install（推奨）
+### install.sh（推奨・ワンステップ）
 
-Go がインストール済みであれば、1 コマンドでインストールできます。
+バイナリのビルド・インストールに加えて、サンドボックスイメージ・Auth Proxy イメージのビルドと egress ネットワークの作成まで一括で行います（Docker Engine と Go が必要）。
+
+```bash
+git clone https://github.com/pacificbelt30/codex-dock.git
+cd codex-dock
+./scripts/install.sh
+```
+
+リポジトリを clone せずに実行することもできます（`go install` 経由で取得）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pacificbelt30/codex-dock/main/scripts/install.sh | bash
+```
+
+主なオプション：
+
+| オプション | 内容 |
+|---|---|
+| `--prefix DIR` | インストール先（既定: `/usr/local`、バイナリは `DIR/bin`） |
+| `--ref REF` | リポジトリ未 clone 時に `go install` で使うバージョン/ref（既定: `latest`） |
+| `--skip-images` | Docker イメージのビルドをスキップ |
+| `--skip-network` | egress ネットワークの作成をスキップ |
+
+### go install
+
+Go がインストール済みであれば、1 コマンドでインストールできます（Docker イメージやネットワークは別途 `codex-dock build` / `codex-dock proxy build` / `codex-dock network create` で用意してください）。
 
 ```bash
 go install github.com/pacificbelt30/codex-dock@latest
