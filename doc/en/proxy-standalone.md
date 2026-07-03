@@ -165,9 +165,15 @@ print(json.dumps(out, indent=2))
 " > ~/.codex/auth.json
 chmod 600 ~/.codex/auth.json
 
-# Write Codex CLI config.toml to route ChatGPT backend-api through proxy
-mkdir -p ~/.config/codex
-echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.config/codex/config.toml
+# Write Codex CLI config.toml to route the Responses API (model requests) AND the
+# ChatGPT backend-api through the proxy. openai_base_url is the key that actually
+# redirects model traffic — Codex CLI ignores the OPENAI_BASE_URL env var
+# (openai/codex#16719). chatgpt_base_url alone only covers the login/backend-api flow.
+mkdir -p ~/.codex
+cat > ~/.codex/config.toml <<EOF
+openai_base_url = "$PROXY_URL/v1"
+chatgpt_base_url = "$PROXY_URL/chatgpt/"
+EOF
 
 # Route OAuth token refresh through proxy
 export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
@@ -183,7 +189,8 @@ codex
 | `~/.codex/auth.json` `tokens.access_token` | `cdx-xxxx...` | Placeholder; real token injected by proxy |
 | `~/.codex/auth.json` `tokens.refresh_token` | `""` (empty) | Proxy handles refresh; container never holds it |
 | `~/.codex/auth.json` `tokens.id_token` | Real JWT | Codex CLI uses for claims extraction only (not auth credential) |
-| `~/.config/codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT backend-api calls through proxy |
+| `~/.codex/config.toml` `openai_base_url` | `http://localhost:18080/v1` | Routes the Responses API (model requests) through proxy — required |
+| `~/.codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT login/backend-api calls through proxy |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | Routes token refresh through proxy |
 
 > **Security**: The `access_token` in `auth.json` is not real.
@@ -226,14 +233,14 @@ Tokens expire automatically after TTL, but it's good practice to revoke them exp
 | Setting | Value |
 |---|---|
 | `OPENAI_API_KEY` | `cdx-xxxx...` (placeholder token from Step 2) |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"` (Codex CLI ignores the `OPENAI_BASE_URL` env var) |
 
 ### OAuth Mode
 
 | Setting | Value |
 |---|---|
 | `~/.codex/auth.json` | `access_token`: placeholder, `refresh_token`: empty, `id_token`: real JWT |
-| `~/.config/codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"` (required) + `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
 
 ---

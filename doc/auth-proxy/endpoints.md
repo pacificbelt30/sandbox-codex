@@ -168,7 +168,7 @@ chatgpt-account-id: <account_id>   ← OAuth時: プロキシが正値で上書�
 ## `ANY /chatgpt/*` — ChatGPT backend-api プロキシ
 
 `/chatgpt/` 以下を `https://chatgpt.com/backend-api/` に転送します。
-OAuth モードのコンテナは `~/.config/codex/config.toml` の `chatgpt_base_url=http://proxy/chatgpt/` 経由でレート制限情報・アカウント情報取得リクエストをここへ送ります。
+OAuth モードのコンテナは `~/.codex/config.toml` の `chatgpt_base_url=http://proxy/chatgpt/` 経由でレート制限情報・アカウント情報取得リクエストをここへ送ります。
 
 ---
 

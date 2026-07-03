@@ -172,7 +172,8 @@ Host (Auth Proxy)                    Container
                                        write ~/.codex/auth.json
                                          access_token: "cdx-xxx"  ← dummy
                                          refresh_token: ""
-                                       write ~/.config/codex/config.toml
+                                       write ~/.codex/config.toml
+                                         openai_base_url=proxy/v1
                                          chatgpt_base_url=proxy/chatgpt/
                                        exec codex
                                      ↓
