@@ -3,7 +3,9 @@ package template
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
@@ -11,10 +13,11 @@ import (
 
 // Info describes a sandbox image template.
 type Info struct {
-	Name       string
-	Dockerfile []byte
-	BaseImage  string
-	IsBase     bool
+	Name        string
+	Dockerfile  []byte
+	BaseImage   string
+	IsBase      bool
+	UserDefined bool // loaded from UserTemplatesDir rather than embedded in the binary
 }
 
 // Tag returns the Docker image tag for this template.
@@ -35,10 +38,51 @@ func (t Info) IsDerived() bool {
 	return t.BaseImage != ""
 }
 
+// UserTemplatesDir returns the directory where user-provided templates are
+// stored: ~/.config/codex-dock/templates/<name>/Dockerfile. Templates placed
+// there are picked up by Get and List alongside the built-in templates, and
+// take precedence over a built-in template of the same name — useful for
+// overriding a template locally or adding private ones without a rebuild.
+func UserTemplatesDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "codex-dock", "templates"), nil
+}
+
+// readUserTemplate reads <UserTemplatesDir>/<name>/Dockerfile, if present.
+func readUserTemplate(name string) ([]byte, bool) {
+	dir, err := UserTemplatesDir()
+	if err != nil {
+		return nil, false
+	}
+	content, err := os.ReadFile(filepath.Join(dir, name, "Dockerfile"))
+	if err != nil {
+		return nil, false
+	}
+	return content, true
+}
+
 // Get returns the Info for a named template.
-// "plain" or "" returns the built-in base template.
+// "plain" or "" returns the built-in base template, unless a user template
+// of the same name overrides it (see UserTemplatesDir).
 func Get(name string) (Info, error) {
-	if name == "plain" || name == "" {
+	if name == "" {
+		name = "plain"
+	}
+
+	if content, ok := readUserTemplate(name); ok {
+		return Info{
+			Name:        name,
+			Dockerfile:  content,
+			BaseImage:   parseBaseImage(content),
+			IsBase:      name == "plain",
+			UserDefined: true,
+		}, nil
+	}
+
+	if name == "plain" {
 		return plainTemplate(), nil
 	}
 
@@ -55,32 +99,63 @@ func Get(name string) (Info, error) {
 	}, nil
 }
 
-// List returns all available templates by scanning the embedded FS.
+// List returns all available templates: built-in templates embedded in the
+// binary plus any user-provided templates under UserTemplatesDir. A
+// user-provided template overrides a built-in template of the same name.
 func List() ([]Info, error) {
-	templates := []Info{plainTemplate()}
+	byName := map[string]Info{}
+	var order []string
 
-	entries, err := fs.ReadDir(dockerdefaults.Templates, "templates")
-	if err != nil {
-		return templates, nil
+	add := func(info Info) {
+		if _, exists := byName[info.Name]; !exists {
+			order = append(order, info.Name)
+		}
+		byName[info.Name] = info
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	add(plainTemplate())
+
+	if entries, err := fs.ReadDir(dockerdefaults.Templates, "templates"); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			dfPath := path.Join("templates", name, "Dockerfile")
+			content, err := fs.ReadFile(dockerdefaults.Templates, dfPath)
+			if err != nil {
+				continue
+			}
+			add(Info{Name: name, Dockerfile: content, BaseImage: parseBaseImage(content)})
 		}
-		name := entry.Name()
-		dfPath := path.Join("templates", name, "Dockerfile")
-		content, err := fs.ReadFile(dockerdefaults.Templates, dfPath)
-		if err != nil {
-			continue
-		}
-		templates = append(templates, Info{
-			Name:       name,
-			Dockerfile: content,
-			BaseImage:  parseBaseImage(content),
-		})
 	}
 
+	if dir, err := UserTemplatesDir(); err == nil {
+		if entries, err := os.ReadDir(dir); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				content, err := os.ReadFile(filepath.Join(dir, name, "Dockerfile"))
+				if err != nil {
+					continue
+				}
+				add(Info{
+					Name:        name,
+					Dockerfile:  content,
+					BaseImage:   parseBaseImage(content),
+					IsBase:      name == "plain",
+					UserDefined: true,
+				})
+			}
+		}
+	}
+
+	templates := make([]Info, 0, len(order))
+	for _, name := range order {
+		templates = append(templates, byName[name])
+	}
 	return templates, nil
 }
 

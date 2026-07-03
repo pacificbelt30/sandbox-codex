@@ -154,7 +154,14 @@ func listTemplates() error {
 		if t.IsDerived() {
 			extra = fmt.Sprintf(" (extends %s)", t.BaseImage)
 		}
+		if t.UserDefined {
+			extra += " [user]"
+		}
 		fmt.Printf("  %-12s %s%s\n", t.Name, tag, extra)
+	}
+	if dir, err := template.UserTemplatesDir(); err == nil {
+		fmt.Printf("\nUser templates directory: %s\n", dir)
+		fmt.Println("Add <dir>/<name>/Dockerfile to add a template or override a built-in one.")
 	}
 	return nil
 }

@@ -1,8 +1,27 @@
 package template
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+// setupUserTemplate creates <home>/.config/codex-dock/templates/<name>/Dockerfile
+// with the given content and points HOME at it for the duration of the test.
+func setupUserTemplate(t *testing.T, name, content string) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir := filepath.Join(home, ".config", "codex-dock", "templates", name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return home
+}
 
 func TestGetPlain(t *testing.T) {
 	tmpl, err := Get("plain")
@@ -158,5 +177,112 @@ func TestMatchTag_Unknown(t *testing.T) {
 func TestMatchTag_Unrelated(t *testing.T) {
 	if got := MatchTag("ubuntu:latest"); got != "" {
 		t.Errorf("MatchTag(ubuntu:latest) = %q; want empty", got)
+	}
+}
+
+func TestUserTemplatesDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir, err := UserTemplatesDir()
+	if err != nil {
+		t.Fatalf("UserTemplatesDir: %v", err)
+	}
+	want := filepath.Join(home, ".config", "codex-dock", "templates")
+	if dir != want {
+		t.Errorf("UserTemplatesDir() = %q; want %q", dir, want)
+	}
+}
+
+func TestGet_UserTemplateNew(t *testing.T) {
+	setupUserTemplate(t, "custom", "FROM codex-dock:latest\nRUN echo custom\n")
+
+	tmpl, err := Get("custom")
+	if err != nil {
+		t.Fatalf("Get(custom): %v", err)
+	}
+	if !tmpl.UserDefined {
+		t.Error("UserDefined = false; want true")
+	}
+	if !tmpl.IsDerived() {
+		t.Error("IsDerived() = false; want true")
+	}
+	if tmpl.BaseImage != "codex-dock:latest" {
+		t.Errorf("BaseImage = %q; want codex-dock:latest", tmpl.BaseImage)
+	}
+}
+
+func TestGet_UserTemplateOverridesBuiltin(t *testing.T) {
+	setupUserTemplate(t, "pwn", "FROM codex-dock:latest\nRUN echo overridden-pwn\n")
+
+	tmpl, err := Get("pwn")
+	if err != nil {
+		t.Fatalf("Get(pwn): %v", err)
+	}
+	if !tmpl.UserDefined {
+		t.Error("UserDefined = false; want true")
+	}
+	if string(tmpl.Dockerfile) != "FROM codex-dock:latest\nRUN echo overridden-pwn\n" {
+		t.Errorf("Dockerfile = %q; want user override content", tmpl.Dockerfile)
+	}
+}
+
+func TestGet_NoUserTemplate_FallsBackToBuiltin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	tmpl, err := Get("pwn")
+	if err != nil {
+		t.Fatalf("Get(pwn): %v", err)
+	}
+	if tmpl.UserDefined {
+		t.Error("UserDefined = true; want false (no user override present)")
+	}
+}
+
+func TestList_IncludesUserTemplates(t *testing.T) {
+	setupUserTemplate(t, "custom", "FROM codex-dock:latest\nRUN echo custom\n")
+
+	templates, err := List()
+	if err != nil {
+		t.Fatalf("List(): %v", err)
+	}
+
+	var found *Info
+	for i := range templates {
+		if templates[i].Name == "custom" {
+			found = &templates[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("List() missing user-defined template \"custom\"")
+	}
+	if !found.UserDefined {
+		t.Error("UserDefined = false; want true")
+	}
+}
+
+func TestList_UserTemplateOverridesBuiltinEntry(t *testing.T) {
+	setupUserTemplate(t, "pwn", "FROM codex-dock:latest\nRUN echo overridden-pwn\n")
+
+	templates, err := List()
+	if err != nil {
+		t.Fatalf("List(): %v", err)
+	}
+
+	count := 0
+	for _, tmpl := range templates {
+		if tmpl.Name != "pwn" {
+			continue
+		}
+		count++
+		if !tmpl.UserDefined {
+			t.Error("UserDefined = false; want true")
+		}
+		if string(tmpl.Dockerfile) != "FROM codex-dock:latest\nRUN echo overridden-pwn\n" {
+			t.Errorf("Dockerfile = %q; want user override content", tmpl.Dockerfile)
+		}
+	}
+	if count != 1 {
+		t.Errorf("found %d entries named %q; want exactly 1 (no duplicate)", count, "pwn")
 	}
 }

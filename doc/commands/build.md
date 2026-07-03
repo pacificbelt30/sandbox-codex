@@ -54,6 +54,22 @@ codex-dock build [OPTIONS]
 `pwn` などの派生テンプレートはベースイメージ (`codex-dock:latest`) を `FROM` として拡張します。
 ベースイメージが未ビルドの場合は自動的に先にビルドされます。
 
+### ユーザーテンプレート
+
+組み込みテンプレートに加えて、`~/.config/codex-dock/templates/<name>/Dockerfile` にファイルを置くことで
+独自テンプレートを追加できます（バイナリの再ビルド不要）。同名の組み込みテンプレートが存在する場合は
+ユーザーテンプレートが優先されます。`codex-dock build --template list` はユーザーテンプレートも一覧表示し、
+`[user]` と付記します。
+
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytemplate
+cp path/to/Dockerfile ~/.config/codex-dock/templates/mytemplate/Dockerfile
+
+codex-dock build --template mytemplate
+```
+
+ユーザーテンプレートも組み込みテンプレートと同じ静的バリデーションを受けます。
+
 ### テンプレートのバリデーション
 
 ビルド時に、テンプレートが必要最低限のツールを含んでいるか静的に検証されます：

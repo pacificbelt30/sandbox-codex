@@ -35,6 +35,22 @@ Use `--template` to build specialized images for specific workflows. Template Do
 
 Derived templates (e.g. `pwn`) extend the base image (`codex-dock:latest`) via `FROM`. If the base image hasn't been built yet, it is built automatically first.
 
+### User Templates
+
+In addition to the built-in templates, you can add your own by placing a file at
+`~/.config/codex-dock/templates/<name>/Dockerfile` — no rebuild required. A user
+template takes precedence over a built-in template of the same name.
+`codex-dock build --template list` lists user templates too, marked with `[user]`.
+
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytemplate
+cp path/to/Dockerfile ~/.config/codex-dock/templates/mytemplate/Dockerfile
+
+codex-dock build --template mytemplate
+```
+
+User templates go through the same static validation as built-in ones.
+
 ### Template Validation
 
 Before building, templates are statically validated to ensure they include essential tools:
