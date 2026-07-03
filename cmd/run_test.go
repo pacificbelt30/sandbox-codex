@@ -140,6 +140,93 @@ func TestResolveProjectDir_Absolute(t *testing.T) {
 	}
 }
 
+// TestParseMountSpecs_Empty verifies nil input yields no mounts.
+func TestParseMountSpecs_Empty(t *testing.T) {
+	got, err := parseMountSpecs(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("got %+v; want nil", got)
+	}
+}
+
+// TestParseMountSpecs_ReadWrite verifies the default mode (no suffix or ":rw") is read-write.
+func TestParseMountSpecs_ReadWrite(t *testing.T) {
+	for _, spec := range []string{"/host/data:/data", "/host/data:/data:rw"} {
+		got, err := parseMountSpecs([]string{spec})
+		if err != nil {
+			t.Fatalf("parseMountSpecs(%q): unexpected error: %v", spec, err)
+		}
+		if len(got) != 1 || got[0].Source != "/host/data" || got[0].Target != "/data" || got[0].ReadOnly {
+			t.Errorf("parseMountSpecs(%q) = %+v", spec, got)
+		}
+	}
+}
+
+// TestParseMountSpecs_ReadOnly verifies the ":ro" suffix sets ReadOnly.
+func TestParseMountSpecs_ReadOnly(t *testing.T) {
+	got, err := parseMountSpecs([]string{"/host/data:/data:ro"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || !got[0].ReadOnly {
+		t.Errorf("got %+v; want ReadOnly=true", got)
+	}
+}
+
+// TestParseMountSpecs_RelativeHostPath verifies a relative host path is resolved to absolute.
+func TestParseMountSpecs_RelativeHostPath(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	got, err := parseMountSpecs([]string{"relative/dir:/data"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := wd + "/relative/dir"
+	if len(got) != 1 || got[0].Source != want {
+		t.Errorf("got %+v; want Source %q", got, want)
+	}
+}
+
+// TestParseMountSpecs_Multiple verifies multiple --mount flags are all parsed.
+func TestParseMountSpecs_Multiple(t *testing.T) {
+	got, err := parseMountSpecs([]string{"/host/a:/a:ro", "/host/b:/b"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d; want 2", len(got))
+	}
+}
+
+// TestParseMountSpecs_Invalid covers rejected --mount values.
+func TestParseMountSpecs_Invalid(t *testing.T) {
+	tests := []string{
+		"no-colon",
+		"/host:/a:ro:extra",
+		":/data",
+		"/host:",
+		"/host:relative/path",
+		"/host:/workspace",
+		"/host:/data:bogus",
+	}
+	for _, spec := range tests {
+		if _, err := parseMountSpecs([]string{spec}); err == nil {
+			t.Errorf("parseMountSpecs(%q): expected error, got nil", spec)
+		}
+	}
+}
+
+// TestParseMountSpecs_DuplicateTarget verifies mounting the same container path twice is rejected.
+func TestParseMountSpecs_DuplicateTarget(t *testing.T) {
+	if _, err := parseMountSpecs([]string{"/host/a:/data", "/host/b:/data"}); err == nil {
+		t.Error("expected error for duplicate container path, got nil")
+	}
+}
+
 func TestApplyRunConfigDefaults(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -182,6 +269,45 @@ func TestApplyRunConfigDefaults(t *testing.T) {
 	}
 	if approvalModeFlag != "auto-edit" {
 		t.Errorf("approvalModeFlag = %q; want auto-edit", approvalModeFlag)
+	}
+}
+
+// TestApplyRunConfigDefaults_Mounts verifies that run.mounts in the config
+// file populates mountFlags when --mount was not passed on the CLI, and is
+// ignored when --mount was explicitly set.
+func TestApplyRunConfigDefaults_Mounts(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevMountFlags := mountFlags
+	t.Cleanup(func() { mountFlags = prevMountFlags })
+
+	viper.Set("run.mounts", []string{"/host/data:/data:ro", "./cache:/cache"})
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().StringArray("mount", nil, "")
+
+	mountFlags = nil
+	applyRunConfigDefaults(cmd)
+
+	want := []string{"/host/data:/data:ro", "./cache:/cache"}
+	if len(mountFlags) != len(want) {
+		t.Fatalf("mountFlags = %+v; want %+v", mountFlags, want)
+	}
+	for i := range want {
+		if mountFlags[i] != want[i] {
+			t.Errorf("mountFlags[%d] = %q; want %q", i, mountFlags[i], want[i])
+		}
+	}
+
+	// Explicit --mount on the CLI takes precedence over the config file.
+	if err := cmd.Flags().Set("mount", "/explicit:/explicit"); err != nil {
+		t.Fatalf("setting --mount: %v", err)
+	}
+	mountFlags = []string{"/explicit:/explicit"}
+	applyRunConfigDefaults(cmd)
+	if len(mountFlags) != 1 || mountFlags[0] != "/explicit:/explicit" {
+		t.Errorf("mountFlags = %+v; want CLI value preserved", mountFlags)
 	}
 }
 

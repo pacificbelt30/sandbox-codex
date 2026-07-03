@@ -229,6 +229,27 @@ approval_mode = "suggest"
 
 ---
 
+### `run.mounts`
+
+Default value for `codex-dock run --mount` (an array; repeatable). Ignored
+when `--mount` is passed on the command line — the flag always wins.
+
+```toml
+[run]
+mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+```
+
+| Item | Value |
+|---|---|
+| Type | array of strings |
+| Default | none (no extra mounts) |
+| Corresponding flag | `run --mount` |
+| Element format | `<host-path>:<container-path>[:ro\|rw]` (defaults to `rw`) |
+
+`<container-path>` must be absolute; `/workspace` (reserved for `--project`) cannot be used.
+
+---
+
 ### `[build]` section — `codex-dock build` defaults
 
 #### `build.template`

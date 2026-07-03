@@ -34,6 +34,7 @@ codex-dock run [OPTIONS]
 | `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
 | `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
+| `--mount` | | | 追加のホストディレクトリをマウント（繰り返し指定可）`<host-path>:<container-path>[:ro\|rw]`（[詳細](#--mount--任意ディレクトリの追加マウント)） |
 | `--no-internet` | | `false` | 一般 egress を無効化（`HTTP(S)_PROXY` を注入せず、プロキシの API リバースルートのみ到達可能に） |
 | `--keep` | | `false` | フォアグラウンド実行の終了時にコンテナと専用ネットワークを削除しない（既定では削除し、ネットワークの蓄積を防ぐ） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
@@ -117,6 +118,43 @@ codex-dock run --approval-mode danger --task "ビルドスクリプトを実行"
 > **注意**: カスタムユーザを指定した場合、そのユーザがコンテナの `/etc/passwd` に存在しない
 > ことがあります。`codex-dock` は `HOME=/var/tmp/codex-home` を自動注入します。認証ファイルや
 > Codex CLI 設定はその `HOME` 配下に作成され、`/workspace` 配下に補助ディレクトリは作成しません。
+
+---
+
+## `--mount` — 任意ディレクトリの追加マウント
+
+`--mount` フラグで、`/workspace`（`--project`）以外の任意のホストディレクトリを
+コンテナへバインドマウントできます。繰り返し指定することで複数のディレクトリを
+マウントできます。
+
+```
+--mount <host-path>:<container-path>[:ro|rw]
+```
+
+- `<host-path>`: ホスト側のディレクトリ（相対パスは実行時のカレントディレクトリから解決）
+- `<container-path>`: コンテナ内の絶対パス。`/workspace` は `--project` 専用のため指定不可
+- `:ro` / `:rw`: 読み取り専用 / 読み書き可能（省略時は `rw`）
+- 同じ `<container-path>` を複数回指定するとエラーになる
+
+```bash
+# ホストの共有データディレクトリを読み取り専用でマウント
+codex-dock run --mount /home/user/datasets:/data:ro
+
+# 複数のディレクトリをマウント（読み書き・読み取り専用を混在）
+codex-dock run --mount ./cache:/cache --mount /opt/models:/models:ro
+```
+
+> 追加マウントされたディレクトリはプロジェクトディレクトリ本体（`/workspace`）とは
+> 独立して読み取り専用を指定できます。`--read-only` は `/workspace` のみに適用されます。
+
+設定ファイル（`~/.config/codex-dock/config.toml`）の `[run]` セクションでも
+`mounts` として既定値を指定できます（`--mount` を指定した場合はそちらが優先）。
+詳細は [`doc/configuration.md`](../configuration.md#runmounts) を参照してください。
+
+```toml
+[run]
+mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+```
 
 ---
 

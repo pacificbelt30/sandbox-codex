@@ -33,6 +33,7 @@ codex-dock run [OPTIONS]
 | `--full-auto` | | `false` | **Deprecated**: use `--approval-mode full-auto` |
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
+| `--mount` | | | Additional host directory to mount (repeatable): `<host-path>:<container-path>[:ro\|rw]` ([details](#--mount)) |
 | `--no-internet` | | `false` | Disable general egress (omit `HTTP(S)_PROXY`; only the proxy's API reverse routes remain reachable) |
 | `--keep` | | `false` | Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
@@ -68,6 +69,44 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 | `current` | Automatically uses the uid:gid of the user running `codex-dock` |
 | `dir` | Automatically uses the uid:gid of the `--project` directory owner |
 | `uid` or `uid:gid` | Explicit value (e.g., `1000`, `1000:1000`) |
+
+---
+
+## `--mount`
+
+`--mount` bind-mounts an arbitrary host directory into the container, in addition to
+`/workspace` (`--project`). Repeat the flag to mount multiple directories.
+
+```
+--mount <host-path>:<container-path>[:ro|rw]
+```
+
+- `<host-path>`: directory on the host (relative paths are resolved against the current
+  working directory when `codex-dock run` is invoked)
+- `<container-path>`: absolute path inside the container; `/workspace` is reserved for
+  `--project` and cannot be used here
+- `:ro` / `:rw`: read-only / read-write (defaults to `rw` when omitted)
+- Mounting the same `<container-path>` more than once is an error
+
+```bash
+# Mount a shared dataset directory read-only
+codex-dock run --mount /home/user/datasets:/data:ro
+
+# Mount multiple directories, mixing read-write and read-only
+codex-dock run --mount ./cache:/cache --mount /opt/models:/models:ro
+```
+
+> Additional mounts can be independently read-only regardless of `/workspace`.
+> `--read-only` only affects the `/workspace` mount.
+
+This can also be set as a default via `mounts` in the `[run]` section of the config
+file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.
+See [`doc/en/configuration.md`](../configuration.md#runmounts) for details.
+
+```toml
+[run]
+mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+```
 
 ---
 

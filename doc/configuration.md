@@ -230,6 +230,27 @@ approval_mode = "suggest"
 
 ---
 
+### `run.mounts`
+
+`codex-dock run --mount` のデフォルト値を指定します（配列、複数指定可）。
+`--mount` がコマンドラインで指定された場合はそちらが優先され、この設定は無視されます。
+
+```toml
+[run]
+mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列配列 |
+| デフォルト | なし（追加マウントなし） |
+| 対応フラグ | `run --mount` |
+| 各要素の形式 | `<host-path>:<container-path>[:ro\|rw]`（`ro`/`rw` 省略時は `rw`） |
+
+`<container-path>` は絶対パスで指定し、`/workspace`（`--project` 専用）は使用できません。
+
+---
+
 ### `[build]` セクション — `codex-dock build` の既定値
 
 #### `build.template`
