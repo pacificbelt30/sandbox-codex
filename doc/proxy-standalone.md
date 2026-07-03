@@ -124,18 +124,23 @@ echo "Token: $TOKEN"
 PROXY_URL="http://localhost:18080"
 
 export OPENAI_API_KEY="$TOKEN"         # プレースホルダートークン（本物のキーではない）
-export OPENAI_BASE_URL="$PROXY_URL/v1" # API リクエストをプロキシ経由に
+export OPENAI_BASE_URL="$PROXY_URL/v1" # 参考用（Codex CLI 自体はこの環境変数を読まない）
+
+# Codex CLI は OPENAI_BASE_URL 環境変数を参照しないため、config.toml で明示する必要がある。
+# CODEX_HOME（未設定なら ~/.codex）配下に書くこと。$XDG_CONFIG_HOME/codex ではない。
+mkdir -p ~/.codex
+echo "openai_base_url = \"$PROXY_URL/v1\"" > ~/.codex/config.toml
 
 # Codex CLI を起動
 codex
 ```
 
-**環境変数の意味:**
+**設定の意味:**
 
-| 変数 | 値 | 説明 |
+| 設定 | 値 | 説明 |
 |---|---|---|
 | `OPENAI_API_KEY` | `cdx-xxxx...` | プレースホルダートークン。本物の API キーはプロキシがインジェクト |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` | Codex CLI の API リクエスト先をプロキシに向ける |
+| `~/.codex/config.toml`.`openai_base_url` | `http://localhost:18080/v1` | Codex CLI の API リクエスト先をプロキシに向ける（`OPENAI_BASE_URL` 環境変数は参照されないため必須） |
 
 ### OAuth モード（ChatGPT サブスクリプション）の場合
 
@@ -169,9 +174,16 @@ print(json.dumps(out, indent=2))
 " > ~/.codex/auth.json
 chmod 600 ~/.codex/auth.json
 
-# Codex CLI 用の config.toml を生成（chatgpt_base_url をプロキシに向ける）
-mkdir -p ~/.config/codex
-echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.config/codex/config.toml
+# Codex CLI 用の config.toml を生成（openai_base_url / chatgpt_base_url をプロキシに向ける）
+# CODEX_HOME（未設定なら ~/.codex）配下に書くこと。$XDG_CONFIG_HOME/codex ではない。
+# openai_base_url が無いと Responses API（WebSocket 含む）がプロキシを経由せず
+# https://chatgpt.com に直接プレースホルダートークンを送ってしまい、
+# "Could not parse your authentication token" で 401 になる。
+mkdir -p ~/.codex
+cat > ~/.codex/config.toml <<EOF
+openai_base_url = "$PROXY_URL/v1"
+chatgpt_base_url = "$PROXY_URL/chatgpt/"
+EOF
 
 # OAuth トークンリフレッシュもプロキシ経由に
 export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
@@ -187,7 +199,8 @@ codex
 | `~/.codex/auth.json`.`tokens.access_token` | `cdx-xxxx...` | プレースホルダー。本物は渡さない |
 | `~/.codex/auth.json`.`tokens.refresh_token` | `""` (空) | リフレッシュはプロキシが行うため空 |
 | `~/.codex/auth.json`.`tokens.id_token` | 本物の JWT | Codex CLI が claims 抽出に使用（認証 credential ではない） |
-| `~/.config/codex/config.toml`.`chatgpt_base_url` | `http://localhost:18080/chatgpt/` | ChatGPT backend-api リクエストをプロキシ経由に |
+| `~/.codex/config.toml`.`openai_base_url` | `http://localhost:18080/v1` | Responses API（WebSocket 含む）リクエストをプロキシ経由に。設定しないと直接 chatgpt.com に繋がり 401 になる |
+| `~/.codex/config.toml`.`chatgpt_base_url` | `http://localhost:18080/chatgpt/` | ChatGPT backend-api リクエストをプロキシ経由に |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | トークンリフレッシュをプロキシ経由に |
 
 > **セキュリティ**: `auth.json` の `access_token` は本物ではありません。
@@ -234,14 +247,14 @@ TTL を設定している場合は期限切れで自動的に失効しますが�
 | 設定 | 値 |
 |---|---|
 | `OPENAI_API_KEY` | プロキシから発行した `cdx-xxxx...` トークン |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"` |
 
 ### OAuth モード
 
 | 設定 | 値 |
 |---|---|
 | `~/.codex/auth.json` | `access_token`: プレースホルダー、`refresh_token`: 空、`id_token`: 本物 |
-| `~/.config/codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"`、`chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
 
 ---

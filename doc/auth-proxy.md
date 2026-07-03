@@ -88,6 +88,8 @@ codex-dock proxy serve --listen 0.0.0.0:18080 --admin-listen 0.0.0.0:18081 --adm
   │  200 OK {"api_key": "cdx-<hex64>"}  ← プレースホルダー
   │ ───────────────────────────────────────────▶  │
   │                                                │ export OPENAI_API_KEY=cdx-<hex64>
+  │                                                │ ~/.codex/config.toml 生成
+  │                                                │   openai_base_url=http://proxy/v1
   │                                                │ exec codex
   │                                                │
   │  POST /v1/responses (Authorization: Bearer cdx-<hex64>)
@@ -95,6 +97,12 @@ codex-dock proxy serve --listen 0.0.0.0:18080 --admin-listen 0.0.0.0:18081 --adm
   │  Authorization を差し替え: Bearer sk-...      │ ← プロキシがインジェクト
   │  転送先: https://api.openai.com/v1/responses  │
 ```
+
+> **注意**: Codex CLI は `OPENAI_BASE_URL` 環境変数を参照しません。リクエスト先を決めるのは
+> `~/.codex/config.toml`（`CODEX_HOME`、`$XDG_CONFIG_HOME/codex` ではない）の `openai_base_url`
+> キーのみです。`entrypoint.sh` はこのファイルを都度書き出すことでプロキシ経由のルーティングを
+> 実現しています。`OPENAI_BASE_URL` 環境変数自体はコンテナ内の他ツール向けの慣習として設定して
+> いるだけで、Codex CLI 自身の挙動には影響しません。
 
 ### OAuth モード（ChatGPT サブスクリプション）
 
@@ -117,7 +125,8 @@ codex-dock proxy serve --listen 0.0.0.0:18080 --admin-listen 0.0.0.0:18081 --adm
   │                                                │ ~/.codex/auth.json 生成
   │                                                │   access_token: "cdx-<hex64>"
   │                                                │   refresh_token: ""
-  │                                                │ ~/.config/codex/config.toml
+  │                                                │ ~/.codex/config.toml 生成
+  │                                                │   openai_base_url=http://proxy/v1
   │                                                │   chatgpt_base_url=http://proxy/chatgpt/
   │                                                │ exec codex
   │                                                │

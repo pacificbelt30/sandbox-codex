@@ -84,12 +84,19 @@ print(json.dumps(out))
 " <<< "$RESPONSE" > "${CODEX_HOME}/.codex/auth.json"
         chmod 600 "${CODEX_HOME}/.codex/auth.json"
 
-        # Write Codex CLI config so chatgpt.com/backend-api calls go through the proxy.
-        mkdir -p "${CODEX_HOME}/.config/codex"
-        cat > "${CODEX_HOME}/.config/codex/config.toml" <<EOF
+        # Write Codex CLI config so both the Responses API (openai_base_url) and
+        # chatgpt.com/backend-api calls (chatgpt_base_url) go through the proxy.
+        # NOTE: Codex CLI reads config.toml from CODEX_HOME (~/.codex/config.toml),
+        # NOT from $XDG_CONFIG_HOME/codex — and it does not read OPENAI_BASE_URL
+        # from the environment at all. Without openai_base_url set here, ChatGPT
+        # OAuth sessions fall back to https://chatgpt.com/backend-api/codex directly,
+        # sending the container's placeholder token as a bearer token to the real
+        # backend and failing with "Could not parse your authentication token."
+        cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
+openai_base_url = "${CODEX_AUTH_PROXY_URL}/v1"
 chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 EOF
-        chmod 600 "${CODEX_HOME}/.config/codex/config.toml"
+        chmod 600 "${CODEX_HOME}/.codex/config.toml"
 
         log "Codex OAuth credentials acquired (access_token is a placeholder; proxy injects real credentials on outbound API requests)."
     else
@@ -102,6 +109,19 @@ EOF
         fi
 
         export OPENAI_API_KEY="$API_KEY"
+
+        # Same reasoning as the OAuth branch: Codex CLI ignores OPENAI_BASE_URL and
+        # only honors openai_base_url from config.toml, so it must be written here
+        # too or requests bypass the proxy and hit api.openai.com directly with the
+        # placeholder key.
+        CODEX_HOME="$(resolve_codex_home)"
+        export HOME="${CODEX_HOME}"
+        mkdir -p "${CODEX_HOME}/.codex"
+        cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
+openai_base_url = "${CODEX_AUTH_PROXY_URL}/v1"
+EOF
+        chmod 600 "${CODEX_HOME}/.codex/config.toml"
+
         log "Codex placeholder key acquired (real API key injected by proxy on outbound requests)."
     fi
 

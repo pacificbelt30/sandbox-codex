@@ -142,7 +142,7 @@ Content-Type: application/json
 
 ## `ANY /v1/*` — Responses API リバースプロキシ
 
-Codex CLI は `OPENAI_BASE_URL=http://proxy/v1` を参照し、すべての Responses API リクエストをプロキシ経由で送ります。
+Codex CLI は環境変数 `OPENAI_BASE_URL` を参照しません。`~/.codex/config.toml` の `openai_base_url=http://proxy/v1`（`entrypoint.sh` が書き出す）を参照し、すべての Responses API リクエスト（WebSocket 含む）をプロキシ経由で送ります。
 
 | 認証モード | 転送先 |
 |---|---|
@@ -168,7 +168,7 @@ chatgpt-account-id: <account_id>   ← OAuth時: プロキシが正値で上書�
 ## `ANY /chatgpt/*` — ChatGPT backend-api プロキシ
 
 `/chatgpt/` 以下を `https://chatgpt.com/backend-api/` に転送します。
-OAuth モードのコンテナは `~/.config/codex/config.toml` の `chatgpt_base_url=http://proxy/chatgpt/` 経由でレート制限情報・アカウント情報取得リクエストをここへ送ります。
+OAuth モードのコンテナは `~/.codex/config.toml` の `chatgpt_base_url=http://proxy/chatgpt/` 経由でレート制限情報・アカウント情報取得リクエストをここへ送ります。
 
 ---
 

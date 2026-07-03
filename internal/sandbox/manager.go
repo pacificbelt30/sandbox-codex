@@ -478,9 +478,11 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 			env = append(env,
 				"CODEX_AUTH_PROXY_URL="+containerProxyURL,
 				"CODEX_TOKEN="+token,
-				// Route all Responses API traffic through the proxy so the proxy can
-				// substitute credentials. OPENAI_BASE_URL overrides the Codex CLI default
-				// (https://chatgpt.com/backend-api/codex) in all auth modes.
+				// Codex CLI does not read OPENAI_BASE_URL from the environment; it only
+				// honors the openai_base_url key in ~/.codex/config.toml, which
+				// entrypoint.sh writes from CODEX_AUTH_PROXY_URL. This env var is set
+				// only for the benefit of other tooling in the container that follows
+				// the OPENAI_BASE_URL convention.
 				"OPENAI_BASE_URL="+containerProxyURL+"/v1",
 			)
 			// In OAuth mode, redirect Codex CLI's token refresh calls to the proxy.

@@ -80,15 +80,17 @@ cdx-<64桁の16進数>
 |---|---|---|
 | `CODEX_AUTH_PROXY_URL` | `http://<proxy>:<PORT>` | `unset`（entrypoint.sh が削除） |
 | `CODEX_TOKEN` | `cdx-<hex64>` — `/token` 取得用 | `unset`（entrypoint.sh が削除） |
-| `OPENAI_BASE_URL` | `http://<proxy>:<PORT>/v1` | 常時有効（Codex CLI が参照） |
+| `OPENAI_BASE_URL` | `http://<proxy>:<PORT>/v1` | 設定されるが Codex CLI 自体は参照しない（他ツール向けの慣習） |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://<proxy>:<PORT>/oauth/token?cdx=<token>` | OAuth モード時のみ設定 |
 
-OAuth モードでは `entrypoint.sh` が以下のファイルを生成します：
+Codex CLI がプロキシ経由でリクエストするかどうかは環境変数ではなく `~/.codex/config.toml`
+（`CODEX_HOME`。`$XDG_CONFIG_HOME/codex` ではない）の `openai_base_url` / `chatgpt_base_url` キーで
+決まります。`entrypoint.sh` は両モードで以下のファイルを生成します：
 
 | ファイル | 内容 |
 |---|---|
-| `/home/codex/.codex/auth.json` | `access_token`：プレースホルダー、`id_token`：本物、`refresh_token`：空文字 |
-| `/home/codex/.config/codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
+| `/home/codex/.codex/auth.json` | `access_token`：プレースホルダー、`id_token`：本物、`refresh_token`：空文字（OAuth モードのみ） |
+| `/home/codex/.codex/config.toml` | `openai_base_url = "http://<proxy>:<PORT>/v1"`（両モード）、`chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"`（OAuth モードのみ） |
 
 ---
 

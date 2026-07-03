@@ -122,18 +122,23 @@ Set the token and proxy URL for Codex CLI.
 PROXY_URL="http://localhost:18080"
 
 export OPENAI_API_KEY="$TOKEN"         # placeholder token (not the real key)
-export OPENAI_BASE_URL="$PROXY_URL/v1" # route API requests through proxy
+export OPENAI_BASE_URL="$PROXY_URL/v1" # informational only; Codex CLI itself never reads this env var
+
+# Codex CLI ignores OPENAI_BASE_URL, so config.toml must set it explicitly.
+# Write it under CODEX_HOME (~/.codex if unset) — NOT $XDG_CONFIG_HOME/codex.
+mkdir -p ~/.codex
+echo "openai_base_url = \"$PROXY_URL/v1\"" > ~/.codex/config.toml
 
 # Start Codex CLI
 codex
 ```
 
-**Environment variables explained:**
+**Configuration explained:**
 
-| Variable | Value | Description |
+| Setting | Value | Description |
 |---|---|---|
 | `OPENAI_API_KEY` | `cdx-xxxx...` | Placeholder token. Proxy injects real API key on outbound requests |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` | Routes Codex CLI requests through the proxy |
+| `~/.codex/config.toml` `openai_base_url` | `http://localhost:18080/v1` | Routes Codex CLI requests through the proxy (required — the `OPENAI_BASE_URL` env var is not read) |
 
 ### OAuth Mode (ChatGPT Subscription)
 
@@ -165,9 +170,17 @@ print(json.dumps(out, indent=2))
 " > ~/.codex/auth.json
 chmod 600 ~/.codex/auth.json
 
-# Write Codex CLI config.toml to route ChatGPT backend-api through proxy
-mkdir -p ~/.config/codex
-echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.config/codex/config.toml
+# Write Codex CLI config.toml to route the Responses API and ChatGPT backend-api
+# through the proxy. Write it under CODEX_HOME (~/.codex if unset) — NOT
+# $XDG_CONFIG_HOME/codex. Without openai_base_url, the Responses API (including
+# the WebSocket transport) bypasses the proxy entirely and sends the placeholder
+# token straight to https://chatgpt.com, which returns
+# "Could not parse your authentication token" (401).
+mkdir -p ~/.codex
+cat > ~/.codex/config.toml <<EOF
+openai_base_url = "$PROXY_URL/v1"
+chatgpt_base_url = "$PROXY_URL/chatgpt/"
+EOF
 
 # Route OAuth token refresh through proxy
 export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
@@ -183,7 +196,8 @@ codex
 | `~/.codex/auth.json` `tokens.access_token` | `cdx-xxxx...` | Placeholder; real token injected by proxy |
 | `~/.codex/auth.json` `tokens.refresh_token` | `""` (empty) | Proxy handles refresh; container never holds it |
 | `~/.codex/auth.json` `tokens.id_token` | Real JWT | Codex CLI uses for claims extraction only (not auth credential) |
-| `~/.config/codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT backend-api calls through proxy |
+| `~/.codex/config.toml` `openai_base_url` | `http://localhost:18080/v1` | Routes Responses API (including WebSocket) calls through proxy; without it requests go straight to chatgpt.com and fail with 401 |
+| `~/.codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT backend-api calls through proxy |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | Routes token refresh through proxy |
 
 > **Security**: The `access_token` in `auth.json` is not real.
@@ -226,14 +240,14 @@ Tokens expire automatically after TTL, but it's good practice to revoke them exp
 | Setting | Value |
 |---|---|
 | `OPENAI_API_KEY` | `cdx-xxxx...` (placeholder token from Step 2) |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"` |
 
 ### OAuth Mode
 
 | Setting | Value |
 |---|---|
 | `~/.codex/auth.json` | `access_token`: placeholder, `refresh_token`: empty, `id_token`: real JWT |
-| `~/.config/codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"`, `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
 
 ---
