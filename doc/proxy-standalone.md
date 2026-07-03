@@ -169,9 +169,14 @@ print(json.dumps(out, indent=2))
 " > ~/.codex/auth.json
 chmod 600 ~/.codex/auth.json
 
-# Codex CLI 用の config.toml を生成（chatgpt_base_url をプロキシに向ける）
+# Codex CLI 用の config.toml を生成。openai_base_url が Responses API（モデルリクエスト）を
+# プロキシ経由に向ける本命のキー。Codex CLI は OPENAI_BASE_URL 環境変数を読まない
+# （openai/codex#16719）。chatgpt_base_url だけではログイン/backend-api 経路しか賄えない。
 mkdir -p ~/.codex
-echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.codex/config.toml
+cat > ~/.codex/config.toml <<EOF
+openai_base_url = "$PROXY_URL/v1"
+chatgpt_base_url = "$PROXY_URL/chatgpt/"
+EOF
 
 # OAuth トークンリフレッシュもプロキシ経由に
 export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
@@ -187,7 +192,8 @@ codex
 | `~/.codex/auth.json`.`tokens.access_token` | `cdx-xxxx...` | プレースホルダー。本物は渡さない |
 | `~/.codex/auth.json`.`tokens.refresh_token` | `""` (空) | リフレッシュはプロキシが行うため空 |
 | `~/.codex/auth.json`.`tokens.id_token` | 本物の JWT | Codex CLI が claims 抽出に使用（認証 credential ではない） |
-| `~/.codex/config.toml`.`chatgpt_base_url` | `http://localhost:18080/chatgpt/` | ChatGPT backend-api リクエストをプロキシ経由に |
+| `~/.codex/config.toml`.`openai_base_url` | `http://localhost:18080/v1` | Responses API（モデルリクエスト）をプロキシ経由に — 必須 |
+| `~/.codex/config.toml`.`chatgpt_base_url` | `http://localhost:18080/chatgpt/` | ChatGPT ログイン/backend-api リクエストをプロキシ経由に |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | トークンリフレッシュをプロキシ経由に |
 
 > **セキュリティ**: `auth.json` の `access_token` は本物ではありません。
@@ -234,14 +240,14 @@ TTL を設定している場合は期限切れで自動的に失効しますが�
 | 設定 | 値 |
 |---|---|
 | `OPENAI_API_KEY` | プロキシから発行した `cdx-xxxx...` トークン |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"`（Codex CLI は `OPENAI_BASE_URL` 環境変数を読まない） |
 
 ### OAuth モード
 
 | 設定 | 値 |
 |---|---|
 | `~/.codex/auth.json` | `access_token`: プレースホルダー、`refresh_token`: 空、`id_token`: 本物 |
-| `~/.codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
+| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"`（必須） + `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
 
 ---

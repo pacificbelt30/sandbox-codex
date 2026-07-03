@@ -118,6 +118,7 @@ codex-dock proxy serve --listen 0.0.0.0:18080 --admin-listen 0.0.0.0:18081 --adm
   │                                                │   access_token: "cdx-<hex64>"
   │                                                │   refresh_token: ""
   │                                                │ ~/.codex/config.toml
+  │                                                │   openai_base_url=http://proxy/v1
   │                                                │   chatgpt_base_url=http://proxy/chatgpt/
   │                                                │ exec codex
   │                                                │

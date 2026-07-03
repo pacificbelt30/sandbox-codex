@@ -117,6 +117,7 @@ Host (Auth Proxy)                          Container (entrypoint.sh)
   │                                                │   access_token: "cdx-<hex64>"  ← dummy
   │                                                │   refresh_token: "" (empty)
   │                                                │ write /home/codex/.codex/config.toml
+  │                                                │   openai_base_url=http://proxy/v1
   │                                                │   chatgpt_base_url=http://proxy/chatgpt/
   │                                                │ unset CODEX_TOKEN
   │                                                │ exec codex
@@ -341,15 +342,15 @@ The following environment variables are injected into containers:
 |---|---|---|
 | `CODEX_AUTH_PROXY_URL` | `http://<proxy>:<PORT>` | `unset` (removed by entrypoint.sh) |
 | `CODEX_TOKEN` | `cdx-<hex64>` — used to call `/token` | `unset` (removed by entrypoint.sh) |
-| `OPENAI_BASE_URL` | `http://<proxy>:<PORT>/v1` | Always active (referenced by Codex CLI) |
+| `OPENAI_BASE_URL` | `http://<proxy>:<PORT>/v1` | **Not** read by Codex CLI (deprecated/ignored — openai/codex#16719); kept for other OpenAI-SDK tools in the shell |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://<proxy>:<PORT>/oauth/token?cdx=<token>` | OAuth mode only |
 
-In OAuth mode, `entrypoint.sh` also generates the following files:
+`entrypoint.sh` writes `~/.codex/config.toml` with `openai_base_url` in **both** auth modes — this is what actually routes the Responses API (model requests) through the proxy, since Codex CLI ignores `OPENAI_BASE_URL`. Generated files:
 
 | File | Content |
 |---|---|
-| `/home/codex/.codex/auth.json` | `access_token`: placeholder (`cdx-<hex64>`), `id_token`: real, `refresh_token`: empty string |
-| `/home/codex/.codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
+| `/home/codex/.codex/auth.json` | OAuth mode only — `access_token`: placeholder (`cdx-<hex64>`), `id_token`: real, `refresh_token`: empty string |
+| `/home/codex/.codex/config.toml` | `openai_base_url = "http://<proxy>:<PORT>/v1"` (both modes) + `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` (OAuth mode) |
 
 > The `access_token` in the container's `auth.json` is not real.
 > It serves as a dummy Bearer token for Codex CLI API requests, which the proxy replaces with the real access_token.
