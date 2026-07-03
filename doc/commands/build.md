@@ -56,19 +56,57 @@ codex-dock build [OPTIONS]
 
 ### ユーザーテンプレート
 
-組み込みテンプレートに加えて、`~/.config/codex-dock/templates/<name>/Dockerfile` にファイルを置くことで
-独自テンプレートを追加できます（バイナリの再ビルド不要）。同名の組み込みテンプレートが存在する場合は
-ユーザーテンプレートが優先されます。`codex-dock build --template list` はユーザーテンプレートも一覧表示し、
-`[user]` と付記します。
+`pwn` のように `docker/templates/` 以下に組み込まれたテンプレートとは別に、
+**`~/.config/codex-dock/templates/` 以下に自分専用のテンプレートを置くことができます。**
+codex-dock のバイナリを再ビルドする必要はなく、Dockerfile を1つ配置するだけで
+`--template` から参照できるようになります。私的な用途のテンプレートや、社内限定のテンプレートなど、
+リポジトリにコミットしたくないものの置き場所として使えます。
 
-```bash
-mkdir -p ~/.config/codex-dock/templates/mytemplate
-cp path/to/Dockerfile ~/.config/codex-dock/templates/mytemplate/Dockerfile
+#### 配置場所
 
-codex-dock build --template mytemplate
+```
+~/.config/codex-dock/templates/
+└── <テンプレート名>/
+    └── Dockerfile
 ```
 
-ユーザーテンプレートも組み込みテンプレートと同じ静的バリデーションを受けます。
+例えば `mytool` という名前のテンプレートを追加する場合：
+
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytool
+cp path/to/Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
+
+# 動作確認（一覧に [user] 付きで表示される）
+codex-dock build --template list
+#   Available templates:
+#     plain        codex-dock:latest
+#     pwn          codex-dock:pwn (extends codex-dock:latest)
+#     mytool       codex-dock:mytool [user]
+#
+#   User templates directory: /home/you/.config/codex-dock/templates
+#   Add <dir>/<name>/Dockerfile to add a template or override a built-in one.
+
+# ビルド
+codex-dock build --template mytool
+```
+
+#### 優先順位（上書き）
+
+`~/.config/codex-dock/templates/<name>/` に組み込みテンプレートと同じ名前（例: `pwn`）の
+ディレクトリを置くと、そちらが優先して使われます。手元で組み込みテンプレートの内容を
+一時的に試したい・カスタマイズしたい場合に、リポジトリ側のファイルを直接編集する必要はありません。
+
+| 優先度 | 配置場所 |
+|---|---|
+| 1（優先） | `~/.config/codex-dock/templates/<name>/Dockerfile`（ユーザーテンプレート） |
+| 2 | `docker/templates/<name>/Dockerfile`（組み込みテンプレート、バイナリに埋め込み） |
+
+#### バリデーション
+
+ユーザーテンプレートも、次の「テンプレートのバリデーション」節にある組み込みテンプレートと
+**まったく同じ静的チェック**（`template.Validate()`）を通ります。`FROM codex-dock:*` で
+既存イメージを拡張する派生テンプレートであれば、そのチェックはスキップされます。
+そのため、動作確認（verify）や管理のしやすさは組み込みテンプレートと変わりません。
 
 ### テンプレートのバリデーション
 

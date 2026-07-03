@@ -37,19 +37,58 @@ Derived templates (e.g. `pwn`) extend the base image (`codex-dock:latest`) via `
 
 ### User Templates
 
-In addition to the built-in templates, you can add your own by placing a file at
-`~/.config/codex-dock/templates/<name>/Dockerfile` — no rebuild required. A user
-template takes precedence over a built-in template of the same name.
-`codex-dock build --template list` lists user templates too, marked with `[user]`.
+Besides the templates built into the binary under `docker/templates/`, you can keep
+**your own templates under `~/.config/codex-dock/templates/`.** No rebuild of
+codex-dock is required — just drop in a Dockerfile and it becomes available via
+`--template`. This is a good place for private or team-internal templates you don't
+want to commit to the repo.
 
-```bash
-mkdir -p ~/.config/codex-dock/templates/mytemplate
-cp path/to/Dockerfile ~/.config/codex-dock/templates/mytemplate/Dockerfile
+#### Where to put them
 
-codex-dock build --template mytemplate
+```
+~/.config/codex-dock/templates/
+└── <template-name>/
+    └── Dockerfile
 ```
 
-User templates go through the same static validation as built-in ones.
+For example, to add a template named `mytool`:
+
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytool
+cp path/to/Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
+
+# verify it shows up (marked with [user])
+codex-dock build --template list
+#   Available templates:
+#     plain        codex-dock:latest
+#     pwn          codex-dock:pwn (extends codex-dock:latest)
+#     mytool       codex-dock:mytool [user]
+#
+#   User templates directory: /home/you/.config/codex-dock/templates
+#   Add <dir>/<name>/Dockerfile to add a template or override a built-in one.
+
+# build it
+codex-dock build --template mytool
+```
+
+#### Precedence (overriding a built-in template)
+
+Placing a directory under `~/.config/codex-dock/templates/<name>/` with the same
+name as a built-in template (e.g. `pwn`) makes the user version take precedence.
+This lets you try out or customize a built-in template locally without editing
+files in the repo.
+
+| Precedence | Location |
+|---|---|
+| 1 (highest) | `~/.config/codex-dock/templates/<name>/Dockerfile` (user template) |
+| 2 | `docker/templates/<name>/Dockerfile` (built-in, embedded in the binary) |
+
+#### Validation
+
+User templates go through **exactly the same static checks** (`template.Validate()`)
+described in "Template Validation" below as built-in ones. A derived template
+(`FROM codex-dock:*`) skips those checks just like a built-in derived template does.
+So verifying and managing a user template is no different from a built-in one.
 
 ### Template Validation
 
