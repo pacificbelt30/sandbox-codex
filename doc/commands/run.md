@@ -147,6 +147,15 @@ codex-dock run --mount ./cache:/cache --mount /opt/models:/models:ro
 > 追加マウントされたディレクトリはプロジェクトディレクトリ本体（`/workspace`）とは
 > 独立して読み取り専用を指定できます。`--read-only` は `/workspace` のみに適用されます。
 
+設定ファイル（`~/.config/codex-dock/config.toml`）の `[run]` セクションでも
+`mounts` として既定値を指定できます（`--mount` を指定した場合はそちらが優先）。
+詳細は [`doc/configuration.md`](../configuration.md#runmounts) を参照してください。
+
+```toml
+[run]
+mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+```
+
 ---
 
 ## パッケージ記述形式

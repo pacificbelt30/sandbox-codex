@@ -272,6 +272,45 @@ func TestApplyRunConfigDefaults(t *testing.T) {
 	}
 }
 
+// TestApplyRunConfigDefaults_Mounts verifies that run.mounts in the config
+// file populates mountFlags when --mount was not passed on the CLI, and is
+// ignored when --mount was explicitly set.
+func TestApplyRunConfigDefaults_Mounts(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevMountFlags := mountFlags
+	t.Cleanup(func() { mountFlags = prevMountFlags })
+
+	viper.Set("run.mounts", []string{"/host/data:/data:ro", "./cache:/cache"})
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().StringArray("mount", nil, "")
+
+	mountFlags = nil
+	applyRunConfigDefaults(cmd)
+
+	want := []string{"/host/data:/data:ro", "./cache:/cache"}
+	if len(mountFlags) != len(want) {
+		t.Fatalf("mountFlags = %+v; want %+v", mountFlags, want)
+	}
+	for i := range want {
+		if mountFlags[i] != want[i] {
+			t.Errorf("mountFlags[%d] = %q; want %q", i, mountFlags[i], want[i])
+		}
+	}
+
+	// Explicit --mount on the CLI takes precedence over the config file.
+	if err := cmd.Flags().Set("mount", "/explicit:/explicit"); err != nil {
+		t.Fatalf("setting --mount: %v", err)
+	}
+	mountFlags = []string{"/explicit:/explicit"}
+	applyRunConfigDefaults(cmd)
+	if len(mountFlags) != 1 || mountFlags[0] != "/explicit:/explicit" {
+		t.Errorf("mountFlags = %+v; want CLI value preserved", mountFlags)
+	}
+}
+
 func TestIsProxyUnreachable(t *testing.T) {
 	cases := []struct {
 		err  error

@@ -99,6 +99,15 @@ codex-dock run --mount ./cache:/cache --mount /opt/models:/models:ro
 > Additional mounts can be independently read-only regardless of `/workspace`.
 > `--read-only` only affects the `/workspace` mount.
 
+This can also be set as a default via `mounts` in the `[run]` section of the config
+file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.
+See [`doc/en/configuration.md`](../configuration.md#runmounts) for details.
+
+```toml
+[run]
+mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+```
+
 ---
 
 ## Package Format

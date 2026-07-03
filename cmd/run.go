@@ -335,6 +335,10 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 		userMode = viper.GetString("run.user")
 	}
 
+	if !flags.Changed("mount") && viper.IsSet("run.mounts") {
+		mountFlags = viper.GetStringSlice("run.mounts")
+	}
+
 	if !flags.Changed("proxy-container-url") {
 		if v := viper.GetString("proxy.container_url"); v != "" {
 			proxyContainerURL = v

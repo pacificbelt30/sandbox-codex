@@ -78,6 +78,12 @@ user = "current"
 #   suggest | auto-edit | full-auto | danger
 approval_mode = "suggest"
 
+# Additional host directories to bind-mount into the worker, beyond
+# /workspace (--project).                              flag: --mount
+# Each entry: "<host-path>:<container-path>[:ro|rw]" (defaults to rw).
+# Ignored when --mount is passed on the command line.
+# mounts = ["/home/user/datasets:/data:ro", "./cache:/cache"]
+
 
 # -----------------------------------------------------------------------------
 # [build] — defaults specific to `codex-dock build`
