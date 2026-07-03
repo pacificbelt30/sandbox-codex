@@ -21,6 +21,7 @@ Full command reference for codex-dock. See the individual pages below for detail
 | [`codex-dock firewall`](commands/firewall.md) | (Removed) | Replaced by the router model |
 | [`codex-dock build`](commands/build.md) | Build sandbox image | Dockerfile auto-detection |
 | [`codex-dock ui`](commands/ui.md) | TUI dashboard | Key bindings |
+| [`codex-dock update`](commands/update.md) | Update codex-dock itself | Update via `go install` |
 
 ---
 

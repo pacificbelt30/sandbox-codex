@@ -21,6 +21,7 @@ codex-dock の全コマンドリファレンスです。各コマンドの詳細
 | [`codex-dock firewall`](commands/firewall.md) | （廃止） | ルータモデルへ移行 |
 | [`codex-dock build`](commands/build.md) | サンドボックスイメージのビルド | Dockerfile の自動検出 |
 | [`codex-dock ui`](commands/ui.md) | TUI ダッシュボード | キーバインド一覧 |
+| [`codex-dock update`](commands/update.md) | codex-dock 自体の更新 | `go install` によるアップデート |
 
 ---
 
