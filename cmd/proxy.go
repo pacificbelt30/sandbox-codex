@@ -21,6 +21,8 @@ const (
 	defaultAuthDataPort           = 18080
 	defaultAuthAdminPort          = 18081
 	defaultHTTPProxyPort          = 18082
+	proxyLayoutLabel              = "io.codex-dock.proxy-layout"
+	proxyLayoutVersion            = "split-v1"
 )
 
 var (
@@ -124,14 +126,25 @@ At least one credential source must be configured before running.`,
 	},
 }
 
-// proxyContainerState returns the Docker status string of the named container
-// ("running", "exited", "created", ...), or "" when it does not exist.
-func proxyContainerState(ctx context.Context, name string) string {
-	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Status}}", name).Output()
+// proxyContainerInfo returns the Docker status and the codex-dock proxy layout
+// version of the named container. Empty values mean the container does not
+// exist. Containers created before layout versioning have an empty version and
+// must be recreated: in particular, the old single-proxy layout publishes
+// port 18080 while current clients connect to the split admin port at 18081.
+func proxyContainerInfo(ctx context.Context, name string) (state, layout string) {
+	format := fmt.Sprintf("{{.State.Status}} {{index .Config.Labels %q}}", proxyLayoutLabel)
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", format, name).Output()
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return strings.TrimSpace(string(out))
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return "", ""
+	}
+	if len(fields) > 1 {
+		return fields[0], fields[1]
+	}
+	return fields[0], ""
 }
 
 // startProxyContainer ensures BOTH proxy containers are running:
@@ -211,7 +224,19 @@ func ensureProxyImage(ctx context.Context, image string) error {
 // ensureProxyContainer (re)starts one proxy container from its spec: a running
 // container is left alone, a stopped one is started, and a missing one is created.
 func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) error {
-	switch proxyContainerState(ctx, spec.name) {
+	state, layout := proxyContainerInfo(ctx, spec.name)
+	if state != "" && layout != proxyLayoutVersion {
+		fmt.Printf("Recreating incompatible proxy container %q (layout: %q, required: %q)...\n",
+			spec.name, layout, proxyLayoutVersion)
+		c := exec.CommandContext(ctx, "docker", "rm", "--force", spec.name)
+		c.Stdout, c.Stderr = os.Stdout, os.Stderr
+		if err := c.Run(); err != nil {
+			return fmt.Errorf("removing incompatible proxy container %q: %w", spec.name, err)
+		}
+		state = ""
+	}
+
+	switch state {
 	case "running":
 		fmt.Printf("Proxy container %q is already running.\n", spec.name)
 		return nil
@@ -356,7 +381,11 @@ type proxyRunArgs struct {
 // credentials. The data-plane / forward port is never host-published — workers
 // reach it over their per-worker Docker network.
 func buildProxyRunArgs(a proxyRunArgs) []string {
-	args := []string{"run", "-d", "--name", a.name, "--network", a.networkName}
+	args := []string{
+		"run", "-d", "--name", a.name,
+		"--label", proxyLayoutLabel + "=" + proxyLayoutVersion,
+		"--network", a.networkName,
+	}
 	if a.adminPort > 0 {
 		args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", a.adminPort, a.adminPort))
 	}

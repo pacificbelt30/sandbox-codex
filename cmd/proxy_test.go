@@ -251,7 +251,7 @@ func TestBuildProxyRunArgs_Basic(t *testing.T) {
 	})
 
 	// Only the admin port is published (host loopback); the data-plane port is internal.
-	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--network", "dock-net-proxy", "-p", "127.0.0.1:18081:18081")
+	assertContainsSequence(t, args, "run", "-d", "--name", "my-proxy", "--label", proxyLayoutLabel+"="+proxyLayoutVersion, "--network", "dock-net-proxy", "-p", "127.0.0.1:18081:18081")
 	assertContainsSequence(t, args, "codex-dock-proxy:latest", "proxy", "serve", "--listen", "0.0.0.0:18080", "--admin-listen", "0.0.0.0:18081")
 
 	// No credential flags when nothing is set.
