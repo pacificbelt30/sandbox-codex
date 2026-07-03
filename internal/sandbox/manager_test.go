@@ -311,6 +311,45 @@ func TestProxyEndpointHost(t *testing.T) {
 	}
 }
 
+func TestBuildMounts_WorkspaceOnly(t *testing.T) {
+	mounts := buildMounts(RunOptions{}, "/abs/workspace")
+	if len(mounts) != 1 {
+		t.Fatalf("len(mounts) = %d; want 1", len(mounts))
+	}
+	if mounts[0].Target != "/workspace" || mounts[0].Source != "/abs/workspace" {
+		t.Errorf("unexpected workspace mount: %+v", mounts[0])
+	}
+	if mounts[0].ReadOnly {
+		t.Error("workspace mount should not be read-only by default")
+	}
+}
+
+func TestBuildMounts_WorkspaceReadOnly(t *testing.T) {
+	mounts := buildMounts(RunOptions{ReadOnly: true}, "/abs/workspace")
+	if !mounts[0].ReadOnly {
+		t.Error("workspace mount should be read-only when opts.ReadOnly is set")
+	}
+}
+
+func TestBuildMounts_ExtraMounts(t *testing.T) {
+	opts := RunOptions{
+		Mounts: []MountSpec{
+			{Source: "/host/data", Target: "/data", ReadOnly: true},
+			{Source: "/host/cache", Target: "/cache"},
+		},
+	}
+	mounts := buildMounts(opts, "/abs/workspace")
+	if len(mounts) != 3 {
+		t.Fatalf("len(mounts) = %d; want 3", len(mounts))
+	}
+	if mounts[1].Source != "/host/data" || mounts[1].Target != "/data" || !mounts[1].ReadOnly {
+		t.Errorf("unexpected mount[1]: %+v", mounts[1])
+	}
+	if mounts[2].Source != "/host/cache" || mounts[2].Target != "/cache" || mounts[2].ReadOnly {
+		t.Errorf("unexpected mount[2]: %+v", mounts[2])
+	}
+}
+
 func TestBuildHostConfig_ReadOnly(t *testing.T) {
 	mounts := []mount.Mount{
 		{Type: mount.TypeBind, Source: "/tmp", Target: "/workspace"},

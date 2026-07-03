@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -39,6 +40,7 @@ var (
 	httpProxyURL        string
 	runProxyAdminSecret string
 	runKeep             bool
+	mountFlags          []string
 )
 
 var runCmd = &cobra.Command{
@@ -79,6 +81,10 @@ func init() {
 	}
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
+	f.StringArrayVar(&mountFlags, "mount", nil, `Additional host directory to bind-mount into the container (repeatable).
+  Format: <host-path>:<container-path>[:ro|rw]
+  <container-path> must be absolute and cannot be /workspace (use --project/--read-only for that).
+  Trailing ":ro" mounts it read-only; ":rw" (default) mounts it read-write.`)
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable general egress for the worker: do not set HTTP(S)_PROXY, so only the auth proxy's API routes are reachable (no git/npm/pip egress through the router)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
@@ -114,6 +120,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving --user: %w", err)
 	}
 	runOpts.ContainerUser = containerUser
+
+	// Resolve --mount into additional bind mounts.
+	mounts, err := parseMountSpecs(mountFlags)
+	if err != nil {
+		return fmt.Errorf("resolving --mount: %w", err)
+	}
+	runOpts.Mounts = mounts
 
 	// Resolve approval mode: --full-auto (deprecated) maps to "full-auto"
 	// when --approval-mode has not been explicitly set from its default.
@@ -456,6 +469,64 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 		}
 	}
 	return nil
+}
+
+// parseMountSpecs parses --mount flag values of the form
+// "<host-path>:<container-path>[:ro|rw]" into sandbox.MountSpec values.
+// The host path is resolved to an absolute path; the container path must
+// already be absolute and may not be "/workspace" (reserved for --project).
+func parseMountSpecs(raw []string) ([]sandbox.MountSpec, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	mounts := make([]sandbox.MountSpec, 0, len(raw))
+	targets := make(map[string]bool, len(raw))
+	for _, spec := range raw {
+		parts := strings.Split(spec, ":")
+		if len(parts) < 2 || len(parts) > 3 {
+			return nil, fmt.Errorf("invalid --mount %q; expected <host-path>:<container-path>[:ro|rw]", spec)
+		}
+
+		hostPath, containerPath := parts[0], parts[1]
+		if hostPath == "" || containerPath == "" {
+			return nil, fmt.Errorf("invalid --mount %q; host and container paths must not be empty", spec)
+		}
+		if !filepath.IsAbs(containerPath) {
+			return nil, fmt.Errorf("invalid --mount %q; container path must be absolute", spec)
+		}
+		if containerPath == "/workspace" {
+			return nil, fmt.Errorf("invalid --mount %q; /workspace is reserved for --project (use --read-only for that mount)", spec)
+		}
+		if targets[containerPath] {
+			return nil, fmt.Errorf("invalid --mount %q; container path %q is mounted more than once", spec, containerPath)
+		}
+
+		readOnly := false
+		if len(parts) == 3 {
+			switch parts[2] {
+			case "ro":
+				readOnly = true
+			case "rw":
+				readOnly = false
+			default:
+				return nil, fmt.Errorf("invalid --mount %q; mode must be \"ro\" or \"rw\"", spec)
+			}
+		}
+
+		absHost, err := filepath.Abs(hostPath)
+		if err != nil {
+			return nil, fmt.Errorf("resolving host path %q: %w", hostPath, err)
+		}
+
+		targets[containerPath] = true
+		mounts = append(mounts, sandbox.MountSpec{
+			Source:   absHost,
+			Target:   containerPath,
+			ReadOnly: readOnly,
+		})
+	}
+	return mounts, nil
 }
 
 func resolveProjectDir(dir string) (string, error) {

@@ -112,16 +112,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		return "", err
 	}
 
-	mounts := []mount.Mount{
-		{
-			Type:   mount.TypeBind,
-			Source: absWorkspace,
-			Target: "/workspace",
-			BindOptions: &mount.BindOptions{
-				Propagation: mount.PropagationRPrivate,
-			},
-		},
-	}
+	mounts := buildMounts(opts, absWorkspace)
 	// Note: auth.json is NOT bind-mounted even in OAuth mode.
 	// The Auth Proxy provides only the access_token to the container via
 	// the /token endpoint, keeping the refresh_token on the host (F-AUTH-01).
@@ -131,10 +122,6 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		labelManaged: "true",
 		labelBranch:  opts.Branch,
 		labelTask:    opts.Task,
-	}
-
-	if opts.ReadOnly {
-		mounts[0].ReadOnly = true
 	}
 
 	// Per-worker Internal network: create it and attach the proxy so the worker
@@ -696,6 +683,36 @@ func buildCodexArgs(opts RunOptions) []string {
 		args = append(args, opts.Task)
 	}
 	return args
+}
+
+// buildMounts assembles the container bind mounts: the project workspace at
+// /workspace (read-only when opts.ReadOnly is set), followed by any
+// additional user-requested mounts from opts.Mounts, each independently
+// read-only or read-write.
+func buildMounts(opts RunOptions, absWorkspace string) []mount.Mount {
+	mounts := []mount.Mount{
+		{
+			Type:     mount.TypeBind,
+			Source:   absWorkspace,
+			Target:   "/workspace",
+			ReadOnly: opts.ReadOnly,
+			BindOptions: &mount.BindOptions{
+				Propagation: mount.PropagationRPrivate,
+			},
+		},
+	}
+	for _, ms := range opts.Mounts {
+		mounts = append(mounts, mount.Mount{
+			Type:     mount.TypeBind,
+			Source:   ms.Source,
+			Target:   ms.Target,
+			ReadOnly: ms.ReadOnly,
+			BindOptions: &mount.BindOptions{
+				Propagation: mount.PropagationRPrivate,
+			},
+		})
+	}
+	return mounts
 }
 
 func absolutePath(path string) (string, error) {

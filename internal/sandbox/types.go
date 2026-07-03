@@ -61,6 +61,16 @@ func ValidApprovalMode(mode ApprovalMode) bool {
 	}
 }
 
+// MountSpec describes an additional host directory to bind-mount into the
+// container beyond the project workspace (which is always mounted at
+// /workspace). Source must be an absolute host path and Target an absolute
+// path inside the container.
+type MountSpec struct {
+	Source   string
+	Target   string
+	ReadOnly bool
+}
+
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
 	Image         string
@@ -84,6 +94,7 @@ type RunOptions struct {
 	Parallel      int
 	ShellMode     bool
 	ContainerUser string // uid[:gid] to run as inside the container; empty = image default
+	Mounts        []MountSpec
 }
 
 // Worker represents a running or stopped codex-dock container.
