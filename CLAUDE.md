@@ -42,7 +42,8 @@ codex-dock/
 │   ├── rm.go                 `codex-dock rm`
 │   ├── logs.go               `codex-dock logs`
 │   ├── ui.go                 `codex-dock ui` — TUI dashboard
-│   └── network.go            `codex-dock network` — dock-net management
+│   ├── network.go            `codex-dock network` — dock-net management
+│   └── update.go             `codex-dock update` — self-update via `go install`
 │
 ├── internal/
 │   ├── authproxy/            Auth Proxy (HTTP server + token lifecycle) — PROXY side
