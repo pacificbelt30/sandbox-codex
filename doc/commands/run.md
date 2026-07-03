@@ -8,7 +8,7 @@ Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネット
 
 > **ネットワーク隔離**: 起動時に各ワーカー専用の Docker `Internal` ネットワーク（`dock-net-w-<name>`）を作成し、Auth Proxy をそこへ接続します。ワーカー間・ホスト・インターネットへの直接通信は Docker により遮断されます（`iptables`/`sudo` 不要、macOS / Windows でも同等）。
 
-> **イメージの自動ビルド**: `--image` で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。
+> **イメージの自動ビルド**: `--image`（または `--template`）で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。`~/.config/codex-dock/templates/` に置いたユーザーテンプレートも同様に自動ビルド対象です（[`codex-dock build` のテンプレート節](build.md#ユーザーテンプレート)を参照）。
 
 ```bash
 codex-dock run [OPTIONS]
@@ -21,6 +21,7 @@ codex-dock run [OPTIONS]
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
 | `--image` | `-i` | `codex-dock:latest` | サンドボックスに使用する Docker イメージ |
+| `--template` | `-T` | | サンドボックスイメージテンプレート（`plain`, `pwn` 等）。指定したテンプレートのタグに解決される。`--image` を明示指定した場合はそちらが優先。存在しなければ自動ビルドされる |
 | `--pkg` | `-p` | | 追加パッケージ（繰り返し指定可）`apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | パッケージ定義ファイルのパス (`packages.dock`) |
 | `--project` | `-d` | `.`（カレント） | `/workspace` にマウントするプロジェクトディレクトリ |
@@ -231,6 +232,12 @@ codex-dock run --image my-custom-codex:v2
 
 # テンプレートイメージを使用（未ビルドなら自動ビルド）
 codex-dock run --image codex-dock:pwn
+
+# --template でテンプレート名から直接指定（--image codex-dock:pwn と同じ）
+codex-dock run --template pwn
+
+# ~/.config/codex-dock/templates/ に置いた自作テンプレートも同様に使える
+codex-dock run --template mytool
 
 # カスタムモデルを指定
 codex-dock run --model "o3"

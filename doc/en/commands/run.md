@@ -8,7 +8,7 @@ Runs Codex CLI inside a Docker container with Auth Proxy and network isolation c
 
 > **Network isolation**: on start, a per-worker Docker `Internal` network (`dock-net-w-<name>`) is created and the Auth Proxy is connected to it. Worker↔worker, worker→host, and worker→internet traffic is blocked by Docker (no `iptables`/`sudo`; same on macOS / Windows).
 
-> **Automatic image build**: If the image specified by `--image` does not exist locally, it is built automatically. When the tag matches a known template (e.g. `codex-dock:pwn`), the template is used; otherwise it falls back to the same logic as `codex-dock build`.
+> **Automatic image build**: If the image specified by `--image` (or `--template`) does not exist locally, it is built automatically. When the tag matches a known template (e.g. `codex-dock:pwn`), the template is used; otherwise it falls back to the same logic as `codex-dock build`. This also applies to user templates under `~/.config/codex-dock/templates/` — see the [User Templates section of `codex-dock build`](build.md#user-templates).
 
 ```bash
 codex-dock run [OPTIONS]
@@ -21,6 +21,7 @@ codex-dock run [OPTIONS]
 | Option | Short | Default | Description |
 |---|---|---|---|
 | `--image` | `-i` | `codex-dock:latest` | Docker image for the sandbox |
+| `--template` | `-T` | | Sandbox image template (`plain`, `pwn`, etc.). Resolved to the template's image tag; an explicit `--image` always takes precedence. Auto-built if not present locally |
 | `--pkg` | `-p` | | Additional packages (repeatable): `apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | Path to a package definition file (`packages.dock`) |
 | `--project` | `-d` | `.` (current dir) | Directory to mount at `/workspace` |
@@ -157,6 +158,12 @@ codex-dock run --read-only --no-internet --task "Code review"
 
 # Use a template image (auto-built if not present)
 codex-dock run --image codex-dock:pwn
+
+# Same thing via --template
+codex-dock run --template pwn
+
+# Works for your own templates under ~/.config/codex-dock/templates/ too
+codex-dock run --template mytool
 ```
 
 ---

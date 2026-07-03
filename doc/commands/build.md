@@ -108,6 +108,25 @@ codex-dock build --template mytool
 既存イメージを拡張する派生テンプレートであれば、そのチェックはスキップされます。
 そのため、動作確認（verify）や管理のしやすさは組み込みテンプレートと変わりません。
 
+#### 組み込みテンプレートをインストール時に配置する
+
+組み込みテンプレート（`plain`, `pwn` 等）はバイナリに埋め込まれているだけで、
+デフォルトでは `~/.config/codex-dock/templates/` にファイルとして存在しません。
+`make install-templates`（または `make install-all`）を実行すると、リポジトリの
+`docker/sandbox/Dockerfile`（`plain`）と `docker/templates/<name>/Dockerfile` の
+コピーがこのディレクトリに書き出され、以後は通常のファイルとして直接閲覧・編集
+できるようになります。既にファイルが存在するテンプレートはスキップされ、上書きされません。
+
+```bash
+make install-templates
+#   Default template 'plain' installed at ~/.config/codex-dock/templates/plain/Dockerfile
+#   Default template 'pwn'   installed at ~/.config/codex-dock/templates/pwn/Dockerfile
+```
+
+配置後は、これらのテンプレートは「ユーザーテンプレート」として扱われます
+（`codex-dock build --template list` に `[user]` と表示されます）。バイナリ埋め込みの
+オリジナルより優先して読み込まれるため、このファイルを直接編集すればそのままビルド内容に反映されます。
+
 ### テンプレートのバリデーション
 
 ビルド時に、テンプレートが必要最低限のツールを含んでいるか静的に検証されます：

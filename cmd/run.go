@@ -33,6 +33,9 @@ var agentFlag string
 // fullAutoFlag is a deprecated alias for --approval-mode full-auto.
 var fullAutoFlag bool
 
+// runTemplate holds the raw value of --template before resolution to an image tag.
+var runTemplate string
+
 var runOpts sandbox.RunOptions
 var (
 	proxyAdminURL       string
@@ -56,6 +59,7 @@ func init() {
 
 	f := runCmd.Flags()
 	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "Docker image for the sandbox")
+	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "codex-dock build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
 	f.StringVarP(&runOpts.ProjectDir, "project", "d", ".", "Project directory to mount as /workspace")
@@ -297,16 +301,23 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	flags := cmd.Flags()
 
 	if !flags.Changed("image") {
-		if v := viper.GetString("run.image"); v != "" {
-			runOpts.Image = v
-		} else if v := viper.GetString("default_image"); v != "" {
-			runOpts.Image = v
-		}
+		if flags.Changed("template") {
+			// An explicit --template flag always wins over config-file
+			// settings, matching the CLI flags > config.toml priority used
+			// throughout codex-dock.
+			if tmpl, err := template.Get(runTemplate); err == nil {
+				runOpts.Image = tmpl.Tag("")
+			}
+		} else {
+			if v := viper.GetString("run.image"); v != "" {
+				runOpts.Image = v
+			} else if v := viper.GetString("default_image"); v != "" {
+				runOpts.Image = v
+			}
 
-		// When a default template is configured and --image was not explicitly
-		// set, resolve the template's tag as the image name. This allows
-		// `default_template = "pwn"` to automatically use `codex-dock:pwn`.
-		if !flags.Changed("image") {
+			// When a default template is configured and --image was not explicitly
+			// set, resolve the template's tag as the image name. This allows
+			// `default_template = "pwn"` to automatically use `codex-dock:pwn`.
 			tmplName := viper.GetString("run.template")
 			if tmplName == "" {
 				tmplName = viper.GetString("default_template")

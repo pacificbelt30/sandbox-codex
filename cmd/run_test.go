@@ -484,6 +484,110 @@ func TestApplyRunConfigDefaults_ImageFlagOverridesTemplate(t *testing.T) {
 	}
 }
 
+func TestApplyRunConfigDefaults_TemplateFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevRunTemplate := runTemplate
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		runTemplate = prevRunTemplate
+	})
+
+	runOpts.Image = "codex-dock:latest"
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "", "")
+
+	if err := cmd.Flags().Set("template", "pwn"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+	runTemplate = "pwn"
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "codex-dock:pwn" {
+		t.Errorf("runOpts.Image = %q; want codex-dock:pwn", runOpts.Image)
+	}
+}
+
+func TestApplyRunConfigDefaults_TemplateFlagOverridesConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevRunTemplate := runTemplate
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		runTemplate = prevRunTemplate
+	})
+
+	runOpts.Image = "codex-dock:latest"
+	viper.Set("default_template", "plain")
+	viper.Set("run.image", "some-other:tag")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "", "")
+
+	if err := cmd.Flags().Set("template", "pwn"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+	runTemplate = "pwn"
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "codex-dock:pwn" {
+		t.Errorf("runOpts.Image = %q; want codex-dock:pwn (explicit --template overrides config)", runOpts.Image)
+	}
+}
+
+func TestApplyRunConfigDefaults_ImageFlagOverridesTemplateFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevRunTemplate := runTemplate
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		runTemplate = prevRunTemplate
+	})
+
+	runOpts.Image = "my-image:v1"
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "", "")
+
+	if err := cmd.Flags().Set("image", "my-image:v1"); err != nil {
+		t.Fatalf("set image: %v", err)
+	}
+	if err := cmd.Flags().Set("template", "pwn"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+	runTemplate = "pwn"
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "my-image:v1" {
+		t.Errorf("runOpts.Image = %q; want my-image:v1 (--image flag overrides --template flag)", runOpts.Image)
+	}
+}
+
 func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)

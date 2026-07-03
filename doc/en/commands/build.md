@@ -90,6 +90,25 @@ described in "Template Validation" below as built-in ones. A derived template
 (`FROM codex-dock:*`) skips those checks just like a built-in derived template does.
 So verifying and managing a user template is no different from a built-in one.
 
+#### Seeding built-in templates at install time
+
+Built-in templates (`plain`, `pwn`, etc.) only live embedded in the binary — by
+default no file for them exists under `~/.config/codex-dock/templates/`. Running
+`make install-templates` (or `make install-all`) copies `docker/sandbox/Dockerfile`
+(`plain`) and each `docker/templates/<name>/Dockerfile` into that directory, so you
+can view and edit them as regular files afterwards. Templates that already have a
+file there are skipped and never overwritten.
+
+```bash
+make install-templates
+#   Default template 'plain' installed at ~/.config/codex-dock/templates/plain/Dockerfile
+#   Default template 'pwn'   installed at ~/.config/codex-dock/templates/pwn/Dockerfile
+```
+
+Once seeded, these are treated as user templates (`codex-dock build --template list`
+marks them `[user]`) and take precedence over the binary-embedded originals, so
+editing the file directly changes what gets built.
+
 ### Template Validation
 
 Before building, templates are statically validated to ensure they include essential tools:
