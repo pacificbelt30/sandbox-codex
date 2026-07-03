@@ -88,7 +88,7 @@ OAuth モードでは `entrypoint.sh` が以下のファイルを生成します
 | ファイル | 内容 |
 |---|---|
 | `/home/codex/.codex/auth.json` | `access_token`：プレースホルダー、`id_token`：本物、`refresh_token`：空文字 |
-| `/home/codex/.config/codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
+| `/home/codex/.codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
 
 ---
 

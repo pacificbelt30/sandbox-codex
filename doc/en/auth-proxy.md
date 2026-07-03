@@ -116,7 +116,7 @@ Host (Auth Proxy)                          Container (entrypoint.sh)
   │                                                │ write /home/codex/.codex/auth.json
   │                                                │   access_token: "cdx-<hex64>"  ← dummy
   │                                                │   refresh_token: "" (empty)
-  │                                                │ write /home/codex/.config/codex/config.toml
+  │                                                │ write /home/codex/.codex/config.toml
   │                                                │   chatgpt_base_url=http://proxy/chatgpt/
   │                                                │ unset CODEX_TOKEN
   │                                                │ exec codex
@@ -301,7 +301,7 @@ OpenAI-Organization: <org>         ← if $OPENAI_ORGANIZATION is set
 ### `ANY /chatgpt/*` — ChatGPT Backend-API Proxy
 
 Forwards `/chatgpt/` paths to `https://chatgpt.com/backend-api/`.
-In OAuth mode, containers use `~/.config/codex/config.toml`'s `chatgpt_base_url=http://proxy/chatgpt/` for rate limit and account info requests.
+In OAuth mode, containers use `~/.codex/config.toml`'s `chatgpt_base_url=http://proxy/chatgpt/` for rate limit and account info requests.
 
 ---
 
@@ -349,7 +349,7 @@ In OAuth mode, `entrypoint.sh` also generates the following files:
 | File | Content |
 |---|---|
 | `/home/codex/.codex/auth.json` | `access_token`: placeholder (`cdx-<hex64>`), `id_token`: real, `refresh_token`: empty string |
-| `/home/codex/.config/codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
+| `/home/codex/.codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
 
 > The `access_token` in the container's `auth.json` is not real.
 > It serves as a dummy Bearer token for Codex CLI API requests, which the proxy replaces with the real access_token.

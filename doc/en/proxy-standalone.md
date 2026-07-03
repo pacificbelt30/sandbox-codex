@@ -166,8 +166,8 @@ print(json.dumps(out, indent=2))
 chmod 600 ~/.codex/auth.json
 
 # Write Codex CLI config.toml to route ChatGPT backend-api through proxy
-mkdir -p ~/.config/codex
-echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.config/codex/config.toml
+mkdir -p ~/.codex
+echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.codex/config.toml
 
 # Route OAuth token refresh through proxy
 export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
@@ -183,7 +183,7 @@ codex
 | `~/.codex/auth.json` `tokens.access_token` | `cdx-xxxx...` | Placeholder; real token injected by proxy |
 | `~/.codex/auth.json` `tokens.refresh_token` | `""` (empty) | Proxy handles refresh; container never holds it |
 | `~/.codex/auth.json` `tokens.id_token` | Real JWT | Codex CLI uses for claims extraction only (not auth credential) |
-| `~/.config/codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT backend-api calls through proxy |
+| `~/.codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT backend-api calls through proxy |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | Routes token refresh through proxy |
 
 > **Security**: The `access_token` in `auth.json` is not real.
@@ -233,7 +233,7 @@ Tokens expire automatically after TTL, but it's good practice to revoke them exp
 | Setting | Value |
 |---|---|
 | `~/.codex/auth.json` | `access_token`: placeholder, `refresh_token`: empty, `id_token`: real JWT |
-| `~/.config/codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
+| `~/.codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
 
 ---

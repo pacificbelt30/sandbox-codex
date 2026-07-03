@@ -85,11 +85,10 @@ print(json.dumps(out))
         chmod 600 "${CODEX_HOME}/.codex/auth.json"
 
         # Write Codex CLI config so chatgpt.com/backend-api calls go through the proxy.
-        mkdir -p "${CODEX_HOME}/.config/codex"
-        cat > "${CODEX_HOME}/.config/codex/config.toml" <<EOF
+        cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
 chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 EOF
-        chmod 600 "${CODEX_HOME}/.config/codex/config.toml"
+        chmod 600 "${CODEX_HOME}/.codex/config.toml"
 
         log "Codex OAuth credentials acquired (access_token is a placeholder; proxy injects real credentials on outbound API requests)."
     else

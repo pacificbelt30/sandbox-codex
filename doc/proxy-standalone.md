@@ -170,8 +170,8 @@ print(json.dumps(out, indent=2))
 chmod 600 ~/.codex/auth.json
 
 # Codex CLI 用の config.toml を生成（chatgpt_base_url をプロキシに向ける）
-mkdir -p ~/.config/codex
-echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.config/codex/config.toml
+mkdir -p ~/.codex
+echo "chatgpt_base_url = \"$PROXY_URL/chatgpt/\"" > ~/.codex/config.toml
 
 # OAuth トークンリフレッシュもプロキシ経由に
 export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
@@ -187,7 +187,7 @@ codex
 | `~/.codex/auth.json`.`tokens.access_token` | `cdx-xxxx...` | プレースホルダー。本物は渡さない |
 | `~/.codex/auth.json`.`tokens.refresh_token` | `""` (空) | リフレッシュはプロキシが行うため空 |
 | `~/.codex/auth.json`.`tokens.id_token` | 本物の JWT | Codex CLI が claims 抽出に使用（認証 credential ではない） |
-| `~/.config/codex/config.toml`.`chatgpt_base_url` | `http://localhost:18080/chatgpt/` | ChatGPT backend-api リクエストをプロキシ経由に |
+| `~/.codex/config.toml`.`chatgpt_base_url` | `http://localhost:18080/chatgpt/` | ChatGPT backend-api リクエストをプロキシ経由に |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | トークンリフレッシュをプロキシ経由に |
 
 > **セキュリティ**: `auth.json` の `access_token` は本物ではありません。
@@ -241,7 +241,7 @@ TTL を設定している場合は期限切れで自動的に失効しますが�
 | 設定 | 値 |
 |---|---|
 | `~/.codex/auth.json` | `access_token`: プレースホルダー、`refresh_token`: 空、`id_token`: 本物 |
-| `~/.config/codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
+| `~/.codex/config.toml` | `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
 
 ---

@@ -86,7 +86,7 @@ In OAuth mode, `entrypoint.sh` also writes these files:
 | File | Contents |
 |---|---|
 | `/home/codex/.codex/auth.json` | `access_token`: placeholder, `id_token`: real JWT, `refresh_token`: empty string |
-| `/home/codex/.config/codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
+| `/home/codex/.codex/config.toml` | `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
 
 ---
 
