@@ -130,9 +130,12 @@ func ensureDefaultDockerfile(dir string) error {
 }
 
 // executeBuild runs "docker build" with the given tag, Dockerfile, and build context.
+// --progress=plain forces BuildKit to stream every step's full output line-by-line
+// instead of collapsing it into a live-updating TTY view, so a build triggered from
+// `run`'s auto-build never looks stalled while it's actually still working.
 func executeBuild(ctx context.Context, tag, dockerfile, buildCtx string) error {
 	fmt.Printf("Building image %s from %s...\n", tag, dockerfile)
-	c := exec.CommandContext(ctx, "docker", "build", "-t", tag, "-f", dockerfile, buildCtx)
+	c := exec.CommandContext(ctx, "docker", "build", "--progress=plain", "-t", tag, "-f", dockerfile, buildCtx)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {

@@ -236,6 +236,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("auto-build: %w", err)
 			}
 		}
+		fmt.Println("Build finished, starting container...")
 	}
 
 	if runOpts.Parallel > 1 {
