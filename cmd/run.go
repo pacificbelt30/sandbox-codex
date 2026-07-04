@@ -36,6 +36,9 @@ var fullAutoFlag bool
 // runTemplate holds the raw value of --template before resolution to an image tag.
 var runTemplate string
 
+// shellTypeFlag holds the raw value of --shell-type before validation.
+var shellTypeFlag string
+
 var runOpts sandbox.RunOptions
 var (
 	proxyAdminURL       string
@@ -99,7 +102,10 @@ func init() {
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.BoolVar(&runKeep, "keep", false, "Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate)")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
-	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw bash shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
+	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
+	f.StringVar(&shellTypeFlag, "shell-type", "", `Interactive shell to launch (the no-agent shell, and --shell debug mode).
+  bash  (default)
+  zsh   requires zsh in the image (the built-in "plain" and "pwn" templates include it)`)
 	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
 	  "current" current command user (uid:gid, default)
 	  "codex"   codex user in image (uid:1001)
@@ -152,6 +158,16 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid --agent %q; valid values: codex, claude, or empty (shell)", agentFlag)
 	}
 	runOpts.Agent = agent
+
+	// Resolve interactive shell type.
+	shellType := sandbox.ShellType(shellTypeFlag)
+	if shellType == "" {
+		shellType = sandbox.ShellBash
+	}
+	if !sandbox.ValidShellType(shellType) {
+		return fmt.Errorf("invalid --shell-type %q; valid values: bash, zsh", shellTypeFlag)
+	}
+	runOpts.ShellType = shellType
 
 	// Network manager handles per-worker Internal networks. Each worker gets its
 	// own Internal bridge shared only with the proxy (created in sandbox.Run), so
@@ -401,6 +417,14 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 
 	if !flags.Changed("user") && viper.IsSet("run.user") {
 		userMode = viper.GetString("run.user")
+	}
+
+	if !flags.Changed("shell-type") {
+		if v := viper.GetString("run.shell_type"); v != "" {
+			shellTypeFlag = v
+		} else if v := viper.GetString("default_shell_type"); v != "" {
+			shellTypeFlag = v
+		}
 	}
 
 	if !flags.Changed("mount") && viper.IsSet("run.mounts") {

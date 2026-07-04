@@ -160,6 +160,29 @@ auto_build = true
 
 ---
 
+### `default_shell_type`
+
+サンドボックス内で起動する対話シェルの種類。エージェント未指定時のシェルと、
+`--shell` デバッグモードの両方に適用されます。
+
+```toml
+default_shell_type = "bash"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | `"bash"`（未設定時） |
+| 対応フラグ | `run --shell-type` |
+| 許可値 | `"bash"`, `"zsh"` |
+
+`"zsh"` を使うには、対象イメージに zsh がインストールされている必要があります
+（組み込みの `plain` テンプレートに含まれており、`pwn` はそれを継承するため、
+どちらのテンプレートでも利用できます）。`run.shell_type` が設定されている場合は
+そちらが優先されます。
+
+---
+
 ### `run.image`
 
 `codex-dock run --image` のデフォルト値を指定します。
@@ -235,6 +258,27 @@ auto_build = false
 | 対応箇所 | `codex-dock run` の自動ビルド判定 |
 
 > `run.auto_build` を指定すると、グローバルな `auto_build` より優先されます。
+
+---
+
+### `run.shell_type`
+
+`codex-dock run` に限定した `default_shell_type` の上書き値。
+
+```toml
+[run]
+shell_type = "zsh"
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 文字列 |
+| デフォルト | 未設定（グローバルな `default_shell_type` を参照） |
+| 対応フラグ | `run --shell-type` |
+| 許可値 | `"bash"`, `"zsh"` |
+
+> `run.shell_type` を指定すると、グローバルな `default_shell_type` より優先されます。
+> `--shell-type` フラグを明示的に指定した場合は設定ファイルより優先されます。
 
 ---
 
@@ -456,6 +500,9 @@ network_name = "dock-net-proxy"
 # テンプレートの Dockerfile が変更されていれば run 時に自動再ビルド（未指定なら true）
 # auto_build = true
 
+# デフォルトの対話シェル（未指定なら bash）："bash" | "zsh"
+# default_shell_type = "bash"
+
 # 詳細ログ（通常は false）
 verbose = false
 
@@ -474,6 +521,9 @@ token_ttl = 3600
 
 # run サブコマンドの auto_build 上書き（未指定ならグローバルな auto_build を使用）
 # auto_build = true
+
+# run サブコマンドの shell_type 上書き（未指定ならグローバルな default_shell_type を使用）
+# shell_type = "zsh"
 
 # run サブコマンドのデフォルトユーザ
 user = "current"

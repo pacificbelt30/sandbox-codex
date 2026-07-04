@@ -161,6 +161,28 @@ this setting has no effect on them (missing-image auto-build still applies).
 
 ---
 
+### `default_shell_type`
+
+Which interactive shell is launched inside the sandbox: the no-agent shell,
+and `--shell` debug mode.
+
+```toml
+default_shell_type = "bash"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | `"bash"` (when unset) |
+| Corresponding flag | `run --shell-type` |
+| Allowed values | `"bash"`, `"zsh"` |
+
+Using `"zsh"` requires zsh to be installed in the target image (the built-in
+`plain` template includes it, and `pwn` inherits it, so both work out of the
+box). `run.shell_type` takes precedence over this global default when set.
+
+---
+
 ### `run.image`
 
 Default value for `codex-dock run --image`.
@@ -235,6 +257,27 @@ auto_build = false
 | Used by | `codex-dock run`'s auto-build check |
 
 > `run.auto_build` takes precedence over the global `auto_build` when set.
+
+---
+
+### `run.shell_type`
+
+`run`-specific override for `default_shell_type`.
+
+```toml
+[run]
+shell_type = "zsh"
+```
+
+| Item | Value |
+|---|---|
+| Type | string |
+| Default | unset (falls back to the global `default_shell_type`) |
+| Corresponding flag | `run --shell-type` |
+| Allowed values | `"bash"`, `"zsh"` |
+
+> `run.shell_type` takes precedence over the global `default_shell_type` when set.
+> An explicit `--shell-type` flag always takes precedence over the config file.
 
 ---
 
@@ -458,6 +501,9 @@ network_name = "dock-net-proxy"
 # Rebuild on run if the template's Dockerfile changed (if unset, true)
 # auto_build = true
 
+# Default interactive shell (if unset, bash): "bash" | "zsh"
+# default_shell_type = "bash"
+
 # Verbose logging (normally false)
 verbose = false
 
@@ -476,6 +522,9 @@ token_ttl = 3600
 
 # run subcommand auto_build override (if unset, the global auto_build is used)
 # auto_build = true
+
+# run subcommand shell_type override (if unset, the global default_shell_type is used)
+# shell_type = "zsh"
 
 # run subcommand default user
 user = "current"

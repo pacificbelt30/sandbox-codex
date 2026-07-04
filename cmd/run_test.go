@@ -677,3 +677,80 @@ func TestAutoBuildEnabled_RunSectionOverridesGlobal(t *testing.T) {
 		t.Error("autoBuildEnabled() = true; want false (run.auto_build overrides global auto_build)")
 	}
 }
+
+func TestApplyRunConfigDefaults_ShellTypeFromGlobalConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevShellTypeFlag := shellTypeFlag
+	t.Cleanup(func() { shellTypeFlag = prevShellTypeFlag })
+	shellTypeFlag = ""
+
+	viper.Set("default_shell_type", "zsh")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("shell-type", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	applyRunConfigDefaults(cmd)
+
+	if shellTypeFlag != "zsh" {
+		t.Errorf("shellTypeFlag = %q; want zsh", shellTypeFlag)
+	}
+}
+
+func TestApplyRunConfigDefaults_ShellTypeRunSectionOverridesGlobal(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevShellTypeFlag := shellTypeFlag
+	t.Cleanup(func() { shellTypeFlag = prevShellTypeFlag })
+	shellTypeFlag = ""
+
+	viper.Set("default_shell_type", "bash")
+	viper.Set("run.shell_type", "zsh")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("shell-type", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	applyRunConfigDefaults(cmd)
+
+	if shellTypeFlag != "zsh" {
+		t.Errorf("shellTypeFlag = %q; want zsh (run.shell_type overrides default_shell_type)", shellTypeFlag)
+	}
+}
+
+func TestApplyRunConfigDefaults_ShellTypeFlagOverridesConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevShellTypeFlag := shellTypeFlag
+	t.Cleanup(func() { shellTypeFlag = prevShellTypeFlag })
+
+	viper.Set("default_shell_type", "zsh")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("shell-type", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	if err := cmd.Flags().Set("shell-type", "bash"); err != nil {
+		t.Fatalf("set shell-type: %v", err)
+	}
+	shellTypeFlag = "bash"
+
+	applyRunConfigDefaults(cmd)
+
+	if shellTypeFlag != "bash" {
+		t.Errorf("shellTypeFlag = %q; want bash (explicit flag overrides config)", shellTypeFlag)
+	}
+}

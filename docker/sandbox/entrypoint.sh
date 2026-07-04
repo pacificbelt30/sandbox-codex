@@ -7,6 +7,9 @@
 #   ""       → interactive shell (auth configured, no agent auto-launched)
 #   "codex"  → launch Codex CLI
 #   "claude" → launch Claude Code
+#
+# The interactive shell binary is driven by DOCK_SHELL ("bash", the default, or
+# "zsh"); see --shell-type / default_shell_type in the CLI.
 set -euo pipefail
 
 log() {
@@ -191,6 +194,10 @@ build_claude_args() {
 
 # launch_interactive launches an agent after bash job-control is ready so that
 # Ctrl+Z suspends the agent and returns to an in-container bash prompt.
+# Always uses bash regardless of DOCK_SHELL: the auto-launch trick relies on
+# PROMPT_COMMAND, which is bash-specific (zsh has no equivalent hook wired up
+# here). DOCK_SHELL only selects the shell for the no-agent interactive case
+# below and the --shell debug mode.
 launch_interactive() {
     local init="$1"
     export PROMPT_COMMAND="unset PROMPT_COMMAND; ${init}"
@@ -233,7 +240,7 @@ case "${DOCK_AGENT}" in
         ;;
     ""|shell)
         log "No agent selected; starting interactive shell (codex and claude are available on PATH)."
-        exec bash -i
+        exec "${DOCK_SHELL:-bash}" -i
         ;;
     *)
         log "ERROR: unknown DOCK_AGENT '${DOCK_AGENT}' (expected: codex, claude, or empty)"

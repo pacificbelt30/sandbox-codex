@@ -164,9 +164,9 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		User:         opts.ContainerUser,
 	}
 	if opts.ShellMode {
-		// Override the Dockerfile ENTRYPOINT so Docker runs bash directly
-		// instead of "/entrypoint.sh /bin/bash".
-		containerConfig.Entrypoint = []string{"/bin/bash"}
+		// Override the Dockerfile ENTRYPOINT so Docker runs the chosen shell
+		// directly instead of "/entrypoint.sh".
+		containerConfig.Entrypoint = []string{shellBinaryPath(opts.ShellType)}
 	} else {
 		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
@@ -253,6 +253,15 @@ func (m *Manager) RevokeToken(containerID string) {
 	if name, err := m.resolveNameByID(ctx, containerID); err == nil {
 		m.proxy.RevokeToken(name)
 	}
+}
+
+// shellBinaryPath returns the absolute in-container path of the requested
+// shell binary, defaulting to bash.
+func shellBinaryPath(t ShellType) string {
+	if t == ShellZsh {
+		return "/bin/zsh"
+	}
+	return "/bin/bash"
 }
 
 // ImageExists reports whether the named image tag is present in the local Docker daemon.
@@ -457,9 +466,14 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 // Containers always receive only a placeholder token; the proxy injects the real
 // credential on every outbound request.
 func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) ([]string, error) {
+	shellType := opts.ShellType
+	if shellType == "" {
+		shellType = ShellBash
+	}
 	env := []string{
 		"CODEX_SANDBOX=1",
 		"DOCK_AGENT=" + string(opts.Agent),
+		"DOCK_SHELL=" + string(shellType),
 	}
 
 	if m.proxy != nil {

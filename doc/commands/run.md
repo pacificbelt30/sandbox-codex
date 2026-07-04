@@ -44,6 +44,8 @@ codex-dock run [OPTIONS]
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
+| `--shell` | `-s` | `false` | `entrypoint.sh` をバイパスした素の（未認証の）シェルを起動（デバッグ用） |
+| `--shell-type` | | `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
 | `--user` | | `""` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
 
 ---
@@ -69,6 +71,40 @@ codex-dock run --agent codex  --approval-mode full-auto
 codex-dock run --agent claude --approval-mode full-auto --task "Refactor the auth module"
 codex-dock run                # 認証済みシェル（codex / claude 両方利用可）
 ```
+
+---
+
+## `--shell-type` — シェルの種類の指定
+
+`--shell-type` で、サンドボックス内の対話シェルに使うバイナリを選べます。
+対象は「エージェント未指定時の認証済みシェル」と「`--shell` デバッグモード」の両方です
+（コンテナ内では `DOCK_SHELL` 環境変数として渡され、`entrypoint.sh` が参照します）。
+
+| 値 | 動作 |
+|---|---|
+| `bash`（デフォルト） | 従来通り bash を起動 |
+| `zsh` | zsh を起動。対象イメージに zsh がインストールされている必要がある |
+
+組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため
+（`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh` がそのまま使えます。
+自作テンプレートで zsh を使う場合は、そのテンプレートの Dockerfile 側で zsh をインストールしてください。
+
+> エージェント（`--agent codex`/`claude`）を Ctrl+Z で一時停止してシェルに戻る機構
+> （`launch_interactive`）は、bash の `PROMPT_COMMAND` を使った実装のため、
+> `--shell-type` の値に関わらず内部的には常に bash で動作します。`--shell-type` が
+> 影響するのはエージェント未指定時の対話シェルと `--shell` デバッグモードのみです。
+
+```bash
+# zsh で対話シェルを起動
+codex-dock run --shell-type zsh
+
+# zsh の素のデバッグシェル（entrypoint.sh をバイパス）
+codex-dock run --shell --shell-type zsh
+```
+
+設定ファイル（`~/.config/codex-dock/config.toml`）の `default_shell_type`（グローバル）/
+`run.shell_type`（`run` のみ）でデフォルト値を変更できます。詳細は
+[設定リファレンス](../configuration.md#default_shell_type) を参照してください。
 
 ---
 

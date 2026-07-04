@@ -105,6 +105,28 @@ func TestBuildEnv_AlwaysSetsAgentAndSandbox(t *testing.T) {
 	}
 }
 
+func TestBuildEnv_ShellDefaultsToBash(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080"})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := envValue(env, "DOCK_SHELL"); v != "bash" {
+		t.Errorf("DOCK_SHELL = %q; want bash when ShellType is unset", v)
+	}
+}
+
+func TestBuildEnv_ShellZsh(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080"})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60, ShellType: ShellZsh}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := envValue(env, "DOCK_SHELL"); v != "zsh" {
+		t.Errorf("DOCK_SHELL = %q; want zsh", v)
+	}
+}
+
 func TestBuildEnv_Codex(t *testing.T) {
 	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
 	env, err := m.buildEnv("w1", RunOptions{Agent: AgentCodex, TokenTTL: 60}, "")

@@ -44,6 +44,21 @@ func TestEntrypointSetsOpenAIBaseURLInConfig(t *testing.T) {
 	}
 }
 
+// TestEntrypointUsesDockShellForInteractiveShell guards the no-agent shell
+// case: it must launch the shell selected via DOCK_SHELL (defaulting to bash)
+// rather than a hardcoded "bash -i".
+func TestEntrypointUsesDockShellForInteractiveShell(t *testing.T) {
+	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+
+	script := string(entrypoint)
+	if !strings.Contains(script, `exec "${DOCK_SHELL:-bash}" -i`) {
+		t.Error("entrypoint's no-agent shell case must exec \"${DOCK_SHELL:-bash}\" -i")
+	}
+}
+
 func TestEntrypointDisablesAppsInConfig(t *testing.T) {
 	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
 	if err != nil {

@@ -304,6 +304,8 @@ The proxy loads each provider independently, so one proxy can serve both agents.
 `run --agent claude` fails fast if the proxy reports no Anthropic credentials
 (`RemoteProxy.IsAnthropicMode()` via `/admin/mode`).
 
+**Shell selection** — `sandbox.ShellType` (`ShellBash`/`ShellZsh`, `ValidShellType`) picks the interactive shell binary, exposed via `run`'s `-T`-adjacent `--shell-type` flag (`shellTypeFlag` var, resolved in `applyRunConfigDefaults` from `default_shell_type` (global) / `run.shell_type` (section), config beaten by an explicit flag). `manager.buildEnv` passes it into the container as `DOCK_SHELL` (defaults to `bash` if unset); `entrypoint.sh`'s no-agent case execs `"${DOCK_SHELL:-bash}" -i`. The `--shell` raw-bypass path instead overrides the container `Entrypoint` directly to `shellBinaryPath(opts.ShellType)` (`/bin/bash` or `/bin/zsh`), skipping `entrypoint.sh` entirely. `launch_interactive` (the Ctrl+Z-suspends-agent-to-shell wrapper) always uses bash internally regardless of `DOCK_SHELL`, since it relies on bash's `PROMPT_COMMAND` — `zsh` has no equivalent hook wired up. `zsh` is installed in `docker/sandbox/Dockerfile` (the `plain` template); `pwn` inherits it via `FROM codex-dock:latest`.
+
 ---
 
 ## Notes for AI Agents

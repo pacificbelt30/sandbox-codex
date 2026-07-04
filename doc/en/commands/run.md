@@ -43,6 +43,8 @@ codex-dock run [OPTIONS]
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |
 | `--parallel` | `-P` | `1` | Number of parallel workers |
+| `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
+| `--shell-type` | | `bash` | Interactive shell to launch ([details](#--shell-type)) |
 | `--user` | | `""` | Container execution user ([details](#--user)) |
 
 ---
@@ -59,6 +61,42 @@ Controls how Codex CLI requests approval for actions. Designed with Docker conta
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | Bypass all approvals and sandbox restrictions |
 
 > **About `danger` mode**: Disables Codex CLI's built-in sandbox, but the Docker container itself provides the isolation boundary (`--cap-drop ALL`, dedicated network, pids-limit, etc.). Host environment is not affected.
+
+---
+
+## `--shell-type`
+
+Selects the shell binary used for the sandbox's interactive shell: both the
+auth-configured shell (when `--agent` is omitted) and the `--shell` debug
+mode. Passed into the container as the `DOCK_SHELL` environment variable,
+which `entrypoint.sh` reads.
+
+| Value | Behavior |
+|---|---|
+| `bash` (default) | Launches bash, as before |
+| `zsh` | Launches zsh; requires zsh to be installed in the image |
+
+The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM
+codex-dock:latest`), so `--shell-type zsh` works out of the box with either.
+For a custom template, install zsh in its Dockerfile to use it.
+
+> The job-control wrapper that lets Ctrl+Z suspend an agent (`--agent
+> codex`/`claude`) back to a shell prompt (`launch_interactive`) always uses
+> bash internally, regardless of `--shell-type` — it relies on bash's
+> `PROMPT_COMMAND`. `--shell-type` only affects the no-agent interactive shell
+> and `--shell` debug mode.
+
+```bash
+# Launch the interactive shell with zsh
+codex-dock run --shell-type zsh
+
+# Raw debug shell with zsh (bypasses entrypoint.sh)
+codex-dock run --shell --shell-type zsh
+```
+
+The default can be changed via `default_shell_type` (global) / `run.shell_type`
+(`run`-only) in `~/.config/codex-dock/config.toml` — see the
+[Configuration Reference](../configuration.md#default_shell_type).
 
 ---
 

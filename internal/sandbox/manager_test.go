@@ -134,6 +134,32 @@ func TestValidApprovalMode(t *testing.T) {
 	}
 }
 
+func TestValidShellType(t *testing.T) {
+	for _, s := range []ShellType{ShellBash, ShellZsh} {
+		if !ValidShellType(s) {
+			t.Errorf("ValidShellType(%q) = false; want true", s)
+		}
+	}
+	if ValidShellType("fish") {
+		t.Error("ValidShellType(\"fish\") = true; want false")
+	}
+	if ValidShellType("") {
+		t.Error("ValidShellType(\"\") = true; want false")
+	}
+}
+
+func TestShellBinaryPath(t *testing.T) {
+	if got := shellBinaryPath(ShellBash); got != "/bin/bash" {
+		t.Errorf("shellBinaryPath(ShellBash) = %q; want /bin/bash", got)
+	}
+	if got := shellBinaryPath(ShellZsh); got != "/bin/zsh" {
+		t.Errorf("shellBinaryPath(ShellZsh) = %q; want /bin/zsh", got)
+	}
+	if got := shellBinaryPath(""); got != "/bin/bash" {
+		t.Errorf("shellBinaryPath(\"\") = %q; want /bin/bash (default)", got)
+	}
+}
+
 func TestInt64Ptr(t *testing.T) {
 	v := int64ptr(512)
 	if *v != 512 {
