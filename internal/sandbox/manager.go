@@ -164,9 +164,9 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		User:         opts.ContainerUser,
 	}
 	if opts.ShellMode {
-		// Override the Dockerfile ENTRYPOINT so Docker runs bash directly
-		// instead of "/entrypoint.sh /bin/bash".
-		containerConfig.Entrypoint = []string{"/bin/bash"}
+		// Override the Dockerfile ENTRYPOINT so Docker runs the chosen shell
+		// directly instead of "/entrypoint.sh".
+		containerConfig.Entrypoint = []string{shellBinaryPath(opts.ShellType)}
 	} else {
 		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
@@ -255,6 +255,15 @@ func (m *Manager) RevokeToken(containerID string) {
 	}
 }
 
+// shellBinaryPath returns the absolute in-container path of the requested
+// shell binary, defaulting to bash.
+func shellBinaryPath(t ShellType) string {
+	if t == ShellZsh {
+		return "/bin/zsh"
+	}
+	return "/bin/bash"
+}
+
 // ImageExists reports whether the named image tag is present in the local Docker daemon.
 func (m *Manager) ImageExists(tag string) (bool, error) {
 	_, err := m.cli.ImageInspect(context.Background(), tag)
@@ -265,6 +274,19 @@ func (m *Manager) ImageExists(tag string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// ImageCreatedAt returns the creation timestamp recorded in the named image's
+// metadata (the same value "docker inspect" reports as .Created).
+func (m *Manager) ImageCreatedAt(tag string) (time.Time, error) {
+	info, err := m.cli.ImageInspect(context.Background(), tag)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if info.Created == "" {
+		return time.Time{}, fmt.Errorf("image %s has no creation timestamp", tag)
+	}
+	return time.Parse(time.RFC3339Nano, info.Created)
 }
 
 // Remove removes a container by ID and tears down its per-worker network.
@@ -444,9 +466,14 @@ func (m *Manager) attachIO(ctx context.Context, containerID string) {
 // Containers always receive only a placeholder token; the proxy injects the real
 // credential on every outbound request.
 func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) ([]string, error) {
+	shellType := opts.ShellType
+	if shellType == "" {
+		shellType = ShellBash
+	}
 	env := []string{
 		"CODEX_SANDBOX=1",
 		"DOCK_AGENT=" + string(opts.Agent),
+		"DOCK_SHELL=" + string(shellType),
 	}
 
 	if m.proxy != nil {

@@ -8,7 +8,9 @@ Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネット
 
 > **ネットワーク隔離**: 起動時に各ワーカー専用の Docker `Internal` ネットワーク（`dock-net-w-<name>`）を作成し、Auth Proxy をそこへ接続します。ワーカー間・ホスト・インターネットへの直接通信は Docker により遮断されます（`iptables`/`sudo` 不要、macOS / Windows でも同等）。
 
-> **イメージの自動ビルド**: `--image` で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。
+> **イメージの自動ビルド**: `--image`（または `--template`）で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。`~/.config/codex-dock/templates/` に置いたユーザーテンプレートも同様に自動ビルド対象です（[`codex-dock build` のテンプレート節](build.md#ユーザーテンプレート)を参照）。
+>
+> さらに、テンプレートの Dockerfile がディスク上のファイルとして存在する場合（ユーザーテンプレート、または `make install-templates` で配置した組み込みテンプレートのコピー）、そのファイルの更新日時とビルド済みイメージの作成日時を比較し、**ファイルの方が新しければ自動的に再ビルド**してから起動します。この挙動は `auto_build`（グローバル）/ `run.auto_build`（`run` のみ）の設定でオン・オフできます（デフォルトは有効）。詳細は [設定リファレンス](../configuration.md#auto_build) を参照してください。バイナリに埋め込まれたままの組み込みテンプレートには比較対象のファイルが無いため、この機能は働きません。
 
 ```bash
 codex-dock run [OPTIONS]
@@ -21,6 +23,7 @@ codex-dock run [OPTIONS]
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
 | `--image` | `-i` | `codex-dock:latest` | サンドボックスに使用する Docker イメージ |
+| `--template` | `-T` | | サンドボックスイメージテンプレート（`plain`, `pwn` 等）。指定したテンプレートのタグに解決される。`--image` を明示指定した場合はそちらが優先。存在しなければ自動ビルドされる |
 | `--pkg` | `-p` | | 追加パッケージ（繰り返し指定可）`apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | パッケージ定義ファイルのパス (`packages.dock`) |
 | `--project` | `-d` | `.`（カレント） | `/workspace` にマウントするプロジェクトディレクトリ |
@@ -41,6 +44,8 @@ codex-dock run [OPTIONS]
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
+| `--shell` | `-s` | `false` | `entrypoint.sh` をバイパスした素の（未認証の）シェルを起動（デバッグ用） |
+| `--shell-type` | | `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
 | `--user` | | `""` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
 
 ---
@@ -66,6 +71,40 @@ codex-dock run --agent codex  --approval-mode full-auto
 codex-dock run --agent claude --approval-mode full-auto --task "Refactor the auth module"
 codex-dock run                # 認証済みシェル（codex / claude 両方利用可）
 ```
+
+---
+
+## `--shell-type` — シェルの種類の指定
+
+`--shell-type` で、サンドボックス内の対話シェルに使うバイナリを選べます。
+対象は「エージェント未指定時の認証済みシェル」と「`--shell` デバッグモード」の両方です
+（コンテナ内では `DOCK_SHELL` 環境変数として渡され、`entrypoint.sh` が参照します）。
+
+| 値 | 動作 |
+|---|---|
+| `bash`（デフォルト） | 従来通り bash を起動 |
+| `zsh` | zsh を起動。対象イメージに zsh がインストールされている必要がある |
+
+組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため
+（`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh` がそのまま使えます。
+自作テンプレートで zsh を使う場合は、そのテンプレートの Dockerfile 側で zsh をインストールしてください。
+
+> エージェント（`--agent codex`/`claude`）を Ctrl+Z で一時停止してシェルに戻る機構
+> （`launch_interactive`）は、bash の `PROMPT_COMMAND` を使った実装のため、
+> `--shell-type` の値に関わらず内部的には常に bash で動作します。`--shell-type` が
+> 影響するのはエージェント未指定時の対話シェルと `--shell` デバッグモードのみです。
+
+```bash
+# zsh で対話シェルを起動
+codex-dock run --shell-type zsh
+
+# zsh の素のデバッグシェル（entrypoint.sh をバイパス）
+codex-dock run --shell --shell-type zsh
+```
+
+設定ファイル（`~/.config/codex-dock/config.toml`）の `default_shell_type`（グローバル）/
+`run.shell_type`（`run` のみ）でデフォルト値を変更できます。詳細は
+[設定リファレンス](../configuration.md#default_shell_type) を参照してください。
 
 ---
 
@@ -231,6 +270,12 @@ codex-dock run --image my-custom-codex:v2
 
 # テンプレートイメージを使用（未ビルドなら自動ビルド）
 codex-dock run --image codex-dock:pwn
+
+# --template でテンプレート名から直接指定（--image codex-dock:pwn と同じ）
+codex-dock run --template pwn
+
+# ~/.config/codex-dock/templates/ に置いた自作テンプレートも同様に使える
+codex-dock run --template mytool
 
 # カスタムモデルを指定
 codex-dock run --model "o3"

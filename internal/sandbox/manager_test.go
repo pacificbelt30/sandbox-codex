@@ -134,6 +134,32 @@ func TestValidApprovalMode(t *testing.T) {
 	}
 }
 
+func TestValidShellType(t *testing.T) {
+	for _, s := range []ShellType{ShellBash, ShellZsh} {
+		if !ValidShellType(s) {
+			t.Errorf("ValidShellType(%q) = false; want true", s)
+		}
+	}
+	if ValidShellType("fish") {
+		t.Error("ValidShellType(\"fish\") = true; want false")
+	}
+	if ValidShellType("") {
+		t.Error("ValidShellType(\"\") = true; want false")
+	}
+}
+
+func TestShellBinaryPath(t *testing.T) {
+	if got := shellBinaryPath(ShellBash); got != "/bin/bash" {
+		t.Errorf("shellBinaryPath(ShellBash) = %q; want /bin/bash", got)
+	}
+	if got := shellBinaryPath(ShellZsh); got != "/bin/zsh" {
+		t.Errorf("shellBinaryPath(ShellZsh) = %q; want /bin/zsh", got)
+	}
+	if got := shellBinaryPath(""); got != "/bin/bash" {
+		t.Errorf("shellBinaryPath(\"\") = %q; want /bin/bash (default)", got)
+	}
+}
+
 func TestInt64Ptr(t *testing.T) {
 	v := int64ptr(512)
 	if *v != 512 {
@@ -188,6 +214,26 @@ func TestImageExists_NotFound(t *testing.T) {
 	}
 	if exists {
 		t.Error("ImageExists returned true for a clearly nonexistent image")
+	}
+}
+
+// TestImageCreatedAt_NotFound verifies that ImageCreatedAt surfaces an error
+// for a nonexistent image tag instead of returning a zero time silently.
+// Skipped when Docker is unavailable.
+func TestImageCreatedAt_NotFound(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skip("Docker client unavailable:", err)
+	}
+	defer cli.Close() //nolint:errcheck
+
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skip("Docker daemon not running:", err)
+	}
+
+	mgr := &Manager{cli: cli}
+	if _, err := mgr.ImageCreatedAt("codex-dock-nonexistent-test-image:impossible-tag-xyz-9999"); err == nil {
+		t.Error("ImageCreatedAt should return an error for a nonexistent image")
 	}
 }
 

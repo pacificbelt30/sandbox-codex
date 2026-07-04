@@ -62,12 +62,13 @@ git clone https://github.com/pacificbelt30/codex-dock.git
 cd codex-dock
 
 # バイナリ + 設定ファイル + Docker イメージをまとめてセットアップ
-make all             # バイナリをビルドし codex-dock:latest イメージを作成
-sudo make install    # /usr/local/bin にバイナリを配置
-make install-config  # ~/.config/codex-dock/config.toml を配置（既存の場合はスキップ）
+make all               # バイナリをビルドし codex-dock:latest イメージを作成
+sudo make install      # /usr/local/bin にバイナリを配置
+make install-config    # ~/.config/codex-dock/config.toml を配置（既存の場合はスキップ）
+make install-templates # 組み込みテンプレートを ~/.config/codex-dock/templates/ にコピー（既存の場合はスキップ）
 ```
 
-または `install-all` で binary + config を一括インストール：
+または `install-all` で binary + config + templates を一括インストール：
 
 ```bash
 sudo make install-all
@@ -86,7 +87,8 @@ sudo make install PREFIX=/opt/codex-dock
 | `make build` | 現在のプラットフォーム向けにバイナリをビルド |
 | `make install` | `$(PREFIX)/bin`（デフォルト `/usr/local/bin`）にバイナリを配置 |
 | `make install-config` | `~/.config/codex-dock/config.toml` にデフォルト設定を配置 |
-| `make install-all` | `install` + `install-config` を一括実行 |
+| `make install-templates` | 組み込みテンプレート（`plain`, `pwn` 等）を `~/.config/codex-dock/templates/` にコピー（既存ファイルはスキップ） |
+| `make install-all` | `install` + `install-config` + `install-templates` を一括実行 |
 | `make docker` | `codex-dock:latest` Docker イメージをビルド |
 | `make all` | `build` + `docker`（デフォルトターゲット） |
 | `make build-all` | darwin/arm64・darwin/amd64・linux/arm64 のクロスコンパイル |

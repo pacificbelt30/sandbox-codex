@@ -484,6 +484,110 @@ func TestApplyRunConfigDefaults_ImageFlagOverridesTemplate(t *testing.T) {
 	}
 }
 
+func TestApplyRunConfigDefaults_TemplateFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevRunTemplate := runTemplate
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		runTemplate = prevRunTemplate
+	})
+
+	runOpts.Image = "codex-dock:latest"
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "", "")
+
+	if err := cmd.Flags().Set("template", "pwn"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+	runTemplate = "pwn"
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "codex-dock:pwn" {
+		t.Errorf("runOpts.Image = %q; want codex-dock:pwn", runOpts.Image)
+	}
+}
+
+func TestApplyRunConfigDefaults_TemplateFlagOverridesConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevRunTemplate := runTemplate
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		runTemplate = prevRunTemplate
+	})
+
+	runOpts.Image = "codex-dock:latest"
+	viper.Set("default_template", "plain")
+	viper.Set("run.image", "some-other:tag")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "", "")
+
+	if err := cmd.Flags().Set("template", "pwn"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+	runTemplate = "pwn"
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "codex-dock:pwn" {
+		t.Errorf("runOpts.Image = %q; want codex-dock:pwn (explicit --template overrides config)", runOpts.Image)
+	}
+}
+
+func TestApplyRunConfigDefaults_ImageFlagOverridesTemplateFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevRunOpts := runOpts
+	prevRunTemplate := runTemplate
+	t.Cleanup(func() {
+		runOpts = prevRunOpts
+		runTemplate = prevRunTemplate
+	})
+
+	runOpts.Image = "my-image:v1"
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("template", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+	cmd.Flags().String("proxy-container-url", "", "")
+
+	if err := cmd.Flags().Set("image", "my-image:v1"); err != nil {
+		t.Fatalf("set image: %v", err)
+	}
+	if err := cmd.Flags().Set("template", "pwn"); err != nil {
+		t.Fatalf("set template: %v", err)
+	}
+	runTemplate = "pwn"
+
+	applyRunConfigDefaults(cmd)
+
+	if runOpts.Image != "my-image:v1" {
+		t.Errorf("runOpts.Image = %q; want my-image:v1 (--image flag overrides --template flag)", runOpts.Image)
+	}
+}
+
 func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -539,5 +643,114 @@ func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
 	}
 	if approvalModeFlag != "danger" {
 		t.Errorf("approvalModeFlag = %q; want danger", approvalModeFlag)
+	}
+}
+
+func TestAutoBuildEnabled_DefaultsToTrue(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	if !autoBuildEnabled() {
+		t.Error("autoBuildEnabled() = false; want true when unset (default enabled)")
+	}
+}
+
+func TestAutoBuildEnabled_GlobalFalse(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("auto_build", false)
+
+	if autoBuildEnabled() {
+		t.Error("autoBuildEnabled() = true; want false when auto_build = false")
+	}
+}
+
+func TestAutoBuildEnabled_RunSectionOverridesGlobal(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("auto_build", true)
+	viper.Set("run.auto_build", false)
+
+	if autoBuildEnabled() {
+		t.Error("autoBuildEnabled() = true; want false (run.auto_build overrides global auto_build)")
+	}
+}
+
+func TestApplyRunConfigDefaults_ShellTypeFromGlobalConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevShellTypeFlag := shellTypeFlag
+	t.Cleanup(func() { shellTypeFlag = prevShellTypeFlag })
+	shellTypeFlag = ""
+
+	viper.Set("default_shell_type", "zsh")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("shell-type", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	applyRunConfigDefaults(cmd)
+
+	if shellTypeFlag != "zsh" {
+		t.Errorf("shellTypeFlag = %q; want zsh", shellTypeFlag)
+	}
+}
+
+func TestApplyRunConfigDefaults_ShellTypeRunSectionOverridesGlobal(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevShellTypeFlag := shellTypeFlag
+	t.Cleanup(func() { shellTypeFlag = prevShellTypeFlag })
+	shellTypeFlag = ""
+
+	viper.Set("default_shell_type", "bash")
+	viper.Set("run.shell_type", "zsh")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("shell-type", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	applyRunConfigDefaults(cmd)
+
+	if shellTypeFlag != "zsh" {
+		t.Errorf("shellTypeFlag = %q; want zsh (run.shell_type overrides default_shell_type)", shellTypeFlag)
+	}
+}
+
+func TestApplyRunConfigDefaults_ShellTypeFlagOverridesConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	prevShellTypeFlag := shellTypeFlag
+	t.Cleanup(func() { shellTypeFlag = prevShellTypeFlag })
+
+	viper.Set("default_shell_type", "zsh")
+
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("image", "", "")
+	cmd.Flags().String("shell-type", "", "")
+	cmd.Flags().Int("token-ttl", 0, "")
+	cmd.Flags().String("approval-mode", "", "")
+	cmd.Flags().String("user", "", "")
+
+	if err := cmd.Flags().Set("shell-type", "bash"); err != nil {
+		t.Fatalf("set shell-type: %v", err)
+	}
+	shellTypeFlag = "bash"
+
+	applyRunConfigDefaults(cmd)
+
+	if shellTypeFlag != "bash" {
+		t.Errorf("shellTypeFlag = %q; want bash (explicit flag overrides config)", shellTypeFlag)
 	}
 }

@@ -51,6 +51,30 @@ func ValidAgent(a Agent) bool {
 	}
 }
 
+// ShellType selects the interactive shell binary launched inside the sandbox:
+// the no-agent interactive shell (DOCK_AGENT="") and the --shell debug mode.
+// It does not affect the bash-specific job-control wrapper used to
+// auto-launch an agent (see entrypoint.sh's launch_interactive).
+type ShellType string
+
+const (
+	// ShellBash is the default interactive shell.
+	ShellBash ShellType = "bash"
+	// ShellZsh launches zsh instead. Must be installed in the image (the
+	// built-in "plain" and "pwn" templates include it).
+	ShellZsh ShellType = "zsh"
+)
+
+// ValidShellType returns true if s is a recognised shell type.
+func ValidShellType(s ShellType) bool {
+	switch s {
+	case ShellBash, ShellZsh:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidApprovalMode returns true if mode is one of the recognised values.
 func ValidApprovalMode(mode ApprovalMode) bool {
 	switch mode {
@@ -93,7 +117,8 @@ type RunOptions struct {
 	Detach        bool
 	Parallel      int
 	ShellMode     bool
-	ContainerUser string // uid[:gid] to run as inside the container; empty = image default
+	ShellType     ShellType // interactive shell binary; empty defaults to ShellBash
+	ContainerUser string    // uid[:gid] to run as inside the container; empty = image default
 	Mounts        []MountSpec
 }
 

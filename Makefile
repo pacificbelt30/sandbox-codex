@@ -8,13 +8,14 @@ PREFIX      ?= /usr/local
 BINDIR      := $(PREFIX)/bin
 # When invoked with sudo, use the original user's home instead of /root
 REAL_HOME   := $(if $(SUDO_USER),$(shell getent passwd $(SUDO_USER) | cut -d: -f6),$(HOME))
-CONFIG_DIR  := $(REAL_HOME)/.config/codex-dock
-CONFIG_FILE := $(CONFIG_DIR)/config.toml
+CONFIG_DIR    := $(REAL_HOME)/.config/codex-dock
+CONFIG_FILE   := $(CONFIG_DIR)/config.toml
+TEMPLATES_DIR := $(CONFIG_DIR)/templates
 
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build install install-config install-all docker proxy-docker uninstall clean test lint vet tidy help
+.PHONY: all build install install-config install-templates install-all docker proxy-docker uninstall clean test lint vet tidy help
 
 ## all: build binary and Docker images
 all: build docker proxy-docker
@@ -39,8 +40,28 @@ install-config:
 		echo "Default config installed at $(CONFIG_FILE)"; \
 	fi
 
-## install-all: install binary + default config
-install-all: install install-config
+## install-templates: place copies of the built-in templates under ~/.config/codex-dock/templates (skips entries that already exist)
+install-templates:
+	@install -d $(TEMPLATES_DIR)
+	@if [ -f "$(TEMPLATES_DIR)/plain/Dockerfile" ]; then \
+		echo "Template 'plain' already exists at $(TEMPLATES_DIR)/plain/Dockerfile, skipping."; \
+	else \
+		install -d $(TEMPLATES_DIR)/plain; \
+		install -m 0644 docker/sandbox/Dockerfile $(TEMPLATES_DIR)/plain/Dockerfile; \
+		echo "Default template 'plain' installed at $(TEMPLATES_DIR)/plain/Dockerfile"; \
+	fi
+	@for name in $(notdir $(wildcard docker/templates/*)); do \
+		if [ -f "$(TEMPLATES_DIR)/$$name/Dockerfile" ]; then \
+			echo "Template '$$name' already exists at $(TEMPLATES_DIR)/$$name/Dockerfile, skipping."; \
+		else \
+			install -d $(TEMPLATES_DIR)/$$name; \
+			install -m 0644 docker/templates/$$name/Dockerfile $(TEMPLATES_DIR)/$$name/Dockerfile; \
+			echo "Default template '$$name' installed at $(TEMPLATES_DIR)/$$name/Dockerfile"; \
+		fi; \
+	done
+
+## install-all: install binary + default config + built-in template copies
+install-all: install install-config install-templates
 
 ## docker: build the sandbox Docker image
 docker:

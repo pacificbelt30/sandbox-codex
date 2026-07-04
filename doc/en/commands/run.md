@@ -8,7 +8,9 @@ Runs Codex CLI inside a Docker container with Auth Proxy and network isolation c
 
 > **Network isolation**: on start, a per-worker Docker `Internal` network (`dock-net-w-<name>`) is created and the Auth Proxy is connected to it. Worker↔worker, worker→host, and worker→internet traffic is blocked by Docker (no `iptables`/`sudo`; same on macOS / Windows).
 
-> **Automatic image build**: If the image specified by `--image` does not exist locally, it is built automatically. When the tag matches a known template (e.g. `codex-dock:pwn`), the template is used; otherwise it falls back to the same logic as `codex-dock build`.
+> **Automatic image build**: If the image specified by `--image` (or `--template`) does not exist locally, it is built automatically. When the tag matches a known template (e.g. `codex-dock:pwn`), the template is used; otherwise it falls back to the same logic as `codex-dock build`. This also applies to user templates under `~/.config/codex-dock/templates/` — see the [User Templates section of `codex-dock build`](build.md#user-templates).
+>
+> On top of that, when a template's Dockerfile exists as a real file on disk (a user template, or a built-in one copied there via `make install-templates`), its modification time is compared against the built image's creation timestamp — **if the file is newer, the image is rebuilt automatically** before the container starts. This is controlled by the `auto_build` (global) / `run.auto_build` (`run`-only) config keys, enabled by default; see the [Configuration Reference](../configuration.md#auto_build). Built-in templates that remain purely embedded in the binary have no file to compare against, so this doesn't apply to them.
 
 ```bash
 codex-dock run [OPTIONS]
@@ -21,6 +23,7 @@ codex-dock run [OPTIONS]
 | Option | Short | Default | Description |
 |---|---|---|---|
 | `--image` | `-i` | `codex-dock:latest` | Docker image for the sandbox |
+| `--template` | `-T` | | Sandbox image template (`plain`, `pwn`, etc.). Resolved to the template's image tag; an explicit `--image` always takes precedence. Auto-built if not present locally |
 | `--pkg` | `-p` | | Additional packages (repeatable): `apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | Path to a package definition file (`packages.dock`) |
 | `--project` | `-d` | `.` (current dir) | Directory to mount at `/workspace` |
@@ -40,6 +43,8 @@ codex-dock run [OPTIONS]
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |
 | `--parallel` | `-P` | `1` | Number of parallel workers |
+| `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
+| `--shell-type` | | `bash` | Interactive shell to launch ([details](#--shell-type)) |
 | `--user` | | `""` | Container execution user ([details](#--user)) |
 
 ---
@@ -56,6 +61,42 @@ Controls how Codex CLI requests approval for actions. Designed with Docker conta
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | Bypass all approvals and sandbox restrictions |
 
 > **About `danger` mode**: Disables Codex CLI's built-in sandbox, but the Docker container itself provides the isolation boundary (`--cap-drop ALL`, dedicated network, pids-limit, etc.). Host environment is not affected.
+
+---
+
+## `--shell-type`
+
+Selects the shell binary used for the sandbox's interactive shell: both the
+auth-configured shell (when `--agent` is omitted) and the `--shell` debug
+mode. Passed into the container as the `DOCK_SHELL` environment variable,
+which `entrypoint.sh` reads.
+
+| Value | Behavior |
+|---|---|
+| `bash` (default) | Launches bash, as before |
+| `zsh` | Launches zsh; requires zsh to be installed in the image |
+
+The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM
+codex-dock:latest`), so `--shell-type zsh` works out of the box with either.
+For a custom template, install zsh in its Dockerfile to use it.
+
+> The job-control wrapper that lets Ctrl+Z suspend an agent (`--agent
+> codex`/`claude`) back to a shell prompt (`launch_interactive`) always uses
+> bash internally, regardless of `--shell-type` — it relies on bash's
+> `PROMPT_COMMAND`. `--shell-type` only affects the no-agent interactive shell
+> and `--shell` debug mode.
+
+```bash
+# Launch the interactive shell with zsh
+codex-dock run --shell-type zsh
+
+# Raw debug shell with zsh (bypasses entrypoint.sh)
+codex-dock run --shell --shell-type zsh
+```
+
+The default can be changed via `default_shell_type` (global) / `run.shell_type`
+(`run`-only) in `~/.config/codex-dock/config.toml` — see the
+[Configuration Reference](../configuration.md#default_shell_type).
 
 ---
 
@@ -157,6 +198,12 @@ codex-dock run --read-only --no-internet --task "Code review"
 
 # Use a template image (auto-built if not present)
 codex-dock run --image codex-dock:pwn
+
+# Same thing via --template
+codex-dock run --template pwn
+
+# Works for your own templates under ~/.config/codex-dock/templates/ too
+codex-dock run --template mytool
 ```
 
 ---

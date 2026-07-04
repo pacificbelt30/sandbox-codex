@@ -44,6 +44,21 @@ network_name = "dock-net-proxy"
 # Available templates: "plain" (minimal), "pwn" (CTF/RE tools).
 # default_template = "plain"
 
+# Whether `codex-dock run` rebuilds an existing template-derived image when
+# its Dockerfile has changed on disk since the image was built (compares the
+# Dockerfile's mtime against the image's build timestamp). Only applies to
+# templates with an on-disk Dockerfile (user templates, or built-in ones
+# copied in via `make install-templates`) — has no effect on templates that
+# only live embedded in the binary. Building if the image is simply missing
+# always happens regardless of this setting.
+# auto_build = true
+
+# Default interactive shell launched inside the sandbox (the no-agent shell,
+# and --shell debug mode).                             flag: --shell-type
+#   "bash" (default) | "zsh" (must be installed in the image; the built-in
+#   "plain" and "pwn" templates include it)
+# default_shell_type = "bash"
+
 # Print extra operational logs by default.             flag: --verbose / -v
 verbose = false
 
@@ -65,6 +80,13 @@ image = "codex-dock:latest"
 
 # Token TTL for `run` only. If unset, the global `default_token_ttl` is used.
 token_ttl = 3600
+
+# Auto-rebuild-on-stale-template for `run` only. If unset, the global
+# `auto_build` is used.
+# auto_build = true
+
+# Shell type for `run` only. If unset, the global `default_shell_type` is used.
+# shell_type = "zsh"
 
 # Which user the agent runs as inside the container.   flag: --user
 #   current        host user's uid:gid (default)

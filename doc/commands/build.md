@@ -54,6 +54,79 @@ codex-dock build [OPTIONS]
 `pwn` などの派生テンプレートはベースイメージ (`codex-dock:latest`) を `FROM` として拡張します。
 ベースイメージが未ビルドの場合は自動的に先にビルドされます。
 
+### ユーザーテンプレート
+
+`pwn` のように `docker/templates/` 以下に組み込まれたテンプレートとは別に、
+**`~/.config/codex-dock/templates/` 以下に自分専用のテンプレートを置くことができます。**
+codex-dock のバイナリを再ビルドする必要はなく、Dockerfile を1つ配置するだけで
+`--template` から参照できるようになります。私的な用途のテンプレートや、社内限定のテンプレートなど、
+リポジトリにコミットしたくないものの置き場所として使えます。
+
+#### 配置場所
+
+```
+~/.config/codex-dock/templates/
+└── <テンプレート名>/
+    └── Dockerfile
+```
+
+例えば `mytool` という名前のテンプレートを追加する場合：
+
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytool
+cp path/to/Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
+
+# 動作確認（一覧に [user] 付きで表示される）
+codex-dock build --template list
+#   Available templates:
+#     plain        codex-dock:latest
+#     pwn          codex-dock:pwn (extends codex-dock:latest)
+#     mytool       codex-dock:mytool [user]
+#
+#   User templates directory: /home/you/.config/codex-dock/templates
+#   Add <dir>/<name>/Dockerfile to add a template or override a built-in one.
+
+# ビルド
+codex-dock build --template mytool
+```
+
+#### 優先順位（上書き）
+
+`~/.config/codex-dock/templates/<name>/` に組み込みテンプレートと同じ名前（例: `pwn`）の
+ディレクトリを置くと、そちらが優先して使われます。手元で組み込みテンプレートの内容を
+一時的に試したい・カスタマイズしたい場合に、リポジトリ側のファイルを直接編集する必要はありません。
+
+| 優先度 | 配置場所 |
+|---|---|
+| 1（優先） | `~/.config/codex-dock/templates/<name>/Dockerfile`（ユーザーテンプレート） |
+| 2 | `docker/templates/<name>/Dockerfile`（組み込みテンプレート、バイナリに埋め込み） |
+
+#### バリデーション
+
+ユーザーテンプレートも、次の「テンプレートのバリデーション」節にある組み込みテンプレートと
+**まったく同じ静的チェック**（`template.Validate()`）を通ります。`FROM codex-dock:*` で
+既存イメージを拡張する派生テンプレートであれば、そのチェックはスキップされます。
+そのため、動作確認（verify）や管理のしやすさは組み込みテンプレートと変わりません。
+
+#### 組み込みテンプレートをインストール時に配置する
+
+組み込みテンプレート（`plain`, `pwn` 等）はバイナリに埋め込まれているだけで、
+デフォルトでは `~/.config/codex-dock/templates/` にファイルとして存在しません。
+`make install-templates`（または `make install-all`）を実行すると、リポジトリの
+`docker/sandbox/Dockerfile`（`plain`）と `docker/templates/<name>/Dockerfile` の
+コピーがこのディレクトリに書き出され、以後は通常のファイルとして直接閲覧・編集
+できるようになります。既にファイルが存在するテンプレートはスキップされ、上書きされません。
+
+```bash
+make install-templates
+#   Default template 'plain' installed at ~/.config/codex-dock/templates/plain/Dockerfile
+#   Default template 'pwn'   installed at ~/.config/codex-dock/templates/pwn/Dockerfile
+```
+
+配置後は、これらのテンプレートは「ユーザーテンプレート」として扱われます
+（`codex-dock build --template list` に `[user]` と表示されます）。バイナリ埋め込みの
+オリジナルより優先して読み込まれるため、このファイルを直接編集すればそのままビルド内容に反映されます。
+
 ### テンプレートのバリデーション
 
 ビルド時に、テンプレートが必要最低限のツールを含んでいるか静的に検証されます：
