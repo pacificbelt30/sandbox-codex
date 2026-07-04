@@ -645,3 +645,35 @@ func TestApplyRunConfigDefaults_FlagPriority(t *testing.T) {
 		t.Errorf("approvalModeFlag = %q; want danger", approvalModeFlag)
 	}
 }
+
+func TestAutoBuildEnabled_DefaultsToTrue(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	if !autoBuildEnabled() {
+		t.Error("autoBuildEnabled() = false; want true when unset (default enabled)")
+	}
+}
+
+func TestAutoBuildEnabled_GlobalFalse(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("auto_build", false)
+
+	if autoBuildEnabled() {
+		t.Error("autoBuildEnabled() = true; want false when auto_build = false")
+	}
+}
+
+func TestAutoBuildEnabled_RunSectionOverridesGlobal(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("auto_build", true)
+	viper.Set("run.auto_build", false)
+
+	if autoBuildEnabled() {
+		t.Error("autoBuildEnabled() = true; want false (run.auto_build overrides global auto_build)")
+	}
+}

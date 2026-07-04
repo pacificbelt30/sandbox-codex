@@ -125,11 +125,39 @@ default_template = "plain"
 |---|---|
 | Type | string |
 | Default | unset (no template) |
-| Corresponding flag | `build --template`, `run --image` (indirect) |
+| Corresponding flag | `build --template`, `run --template`/`-T` |
 | Allowed values | `"plain"`, `"pwn"`, etc. (run `codex-dock build --template list` to see all) |
 
 When a template is set, the corresponding tagged image is used (e.g. `"pwn"` → `codex-dock:pwn`).
 Section-specific settings (`build.template`, `run.template`) take precedence over this global default.
+
+---
+
+### `auto_build`
+
+Whether `codex-dock run` rebuilds an existing template-derived image when the
+template's Dockerfile has changed on disk since the image was built. Building an
+image that's simply missing always happens regardless of this setting.
+
+```toml
+auto_build = true
+```
+
+| Item | Value |
+|---|---|
+| Type | boolean |
+| Default | `true` (when unset) |
+| Used by | `codex-dock run`'s auto-build check |
+
+The check is a straightforward comparison between the template Dockerfile's
+modification time and the built image's creation timestamp (`docker inspect`'s
+`Created`). It only has an effect for templates whose Dockerfile exists as a
+real file on disk — user templates under `~/.config/codex-dock/templates/`, or
+built-in templates copied there via `make install-templates`. Built-in templates
+that remain purely embedded in the binary have no file to compare against, so
+this setting has no effect on them (missing-image auto-build still applies).
+
+`run.auto_build` takes precedence over this global default when set.
 
 ---
 
@@ -188,6 +216,25 @@ template = "pwn"
 
 > `run.template` takes precedence over `default_template`.
 > An explicit `--image` flag always takes precedence over template settings.
+
+---
+
+### `run.auto_build`
+
+`run`-specific override for `auto_build`.
+
+```toml
+[run]
+auto_build = false
+```
+
+| Item | Value |
+|---|---|
+| Type | boolean |
+| Default | unset (falls back to the global `auto_build`) |
+| Used by | `codex-dock run`'s auto-build check |
+
+> `run.auto_build` takes precedence over the global `auto_build` when set.
 
 ---
 
@@ -408,6 +455,9 @@ network_name = "dock-net-proxy"
 # Default template (if unset, no template is used)
 # default_template = "plain"
 
+# Rebuild on run if the template's Dockerfile changed (if unset, true)
+# auto_build = true
+
 # Verbose logging (normally false)
 verbose = false
 
@@ -423,6 +473,9 @@ image = "codex-dock:latest"
 
 # run subcommand token TTL (if unset, default_token_ttl is used)
 token_ttl = 3600
+
+# run subcommand auto_build override (if unset, the global auto_build is used)
+# auto_build = true
 
 # run subcommand default user
 user = "current"

@@ -267,6 +267,19 @@ func (m *Manager) ImageExists(tag string) (bool, error) {
 	return true, nil
 }
 
+// ImageCreatedAt returns the creation timestamp recorded in the named image's
+// metadata (the same value "docker inspect" reports as .Created).
+func (m *Manager) ImageCreatedAt(tag string) (time.Time, error) {
+	info, err := m.cli.ImageInspect(context.Background(), tag)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if info.Created == "" {
+		return time.Time{}, fmt.Errorf("image %s has no creation timestamp", tag)
+	}
+	return time.Parse(time.RFC3339Nano, info.Created)
+}
+
 // Remove removes a container by ID and tears down its per-worker network.
 func (m *Manager) Remove(containerID string, force bool) error {
 	ctx := context.Background()

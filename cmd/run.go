@@ -199,11 +199,14 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating sandbox manager: %w", err)
 	}
 
-	// Auto-build the sandbox image when it is not present locally.
-	if exists, err := sbMgr.ImageExists(runOpts.Image); err != nil {
+	// Auto-build the sandbox image when it is not present locally, or when it
+	// is stale relative to its template's Dockerfile (see imageNeedsBuild).
+	needsBuild, reason, err := imageNeedsBuild(sbMgr, runOpts.Image)
+	if err != nil {
 		return fmt.Errorf("checking image %s: %w", runOpts.Image, err)
-	} else if !exists {
-		fmt.Printf("Image %s not found locally, building...\n", runOpts.Image)
+	}
+	if needsBuild {
+		fmt.Printf("%s, building...\n", reason)
 		if tmplName := template.MatchTag(runOpts.Image); tmplName != "" {
 			if err := buildFromTemplate(cmd.Context(), tmplName, runOpts.Image); err != nil {
 				return fmt.Errorf("auto-build template %q: %w", tmplName, err)
@@ -224,6 +227,60 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+// imageNeedsBuild reports whether image should be (re)built before starting the
+// container, and why. It always returns true when the image doesn't exist
+// locally. When auto-build is enabled (see autoBuildEnabled) and the image
+// matches a known template, it also rebuilds when the template's on-disk
+// Dockerfile has been modified since the image was last built. Errors from the
+// (best-effort) staleness check are swallowed — only the initial existence
+// check can fail this function, so a transient Docker API hiccup while
+// checking staleness never blocks a run that would otherwise succeed.
+func imageNeedsBuild(sbMgr *sandbox.Manager, image string) (bool, string, error) {
+	exists, err := sbMgr.ImageExists(image)
+	if err != nil {
+		return false, "", err
+	}
+	if !exists {
+		return true, fmt.Sprintf("Image %s not found locally", image), nil
+	}
+
+	if !autoBuildEnabled() {
+		return false, "", nil
+	}
+
+	tmplName := template.MatchTag(image)
+	if tmplName == "" {
+		return false, "", nil
+	}
+	tmpl, err := template.Get(tmplName)
+	if err != nil {
+		return false, "", nil
+	}
+	createdAt, err := sbMgr.ImageCreatedAt(image)
+	if err != nil {
+		return false, "", nil
+	}
+	stale, err := tmpl.StaleAgainst(createdAt)
+	if err != nil || !stale {
+		return false, "", nil
+	}
+	return true, fmt.Sprintf("Template for %s has changed since it was last built", image), nil
+}
+
+// autoBuildEnabled reports whether codex-dock should rebuild an existing
+// template-derived image when its Dockerfile has changed on disk since the
+// image was built. Controlled via the "auto_build" (global) / "run.auto_build"
+// (section) config keys; defaults to enabled when unset.
+func autoBuildEnabled() bool {
+	if viper.IsSet("run.auto_build") {
+		return viper.GetBool("run.auto_build")
+	}
+	if viper.IsSet("auto_build") {
+		return viper.GetBool("auto_build")
+	}
+	return true
 }
 
 // offerToStartProxy is called when connecting to the auth proxy failed. When the

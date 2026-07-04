@@ -125,11 +125,38 @@ default_template = "plain"
 |---|---|
 | 型 | 文字列 |
 | デフォルト | 未設定（テンプレートなし） |
-| 対応フラグ | `build --template`, `run --image`（間接） |
+| 対応フラグ | `build --template`, `run --template`/`-T` |
 | 許可値 | `"plain"`, `"pwn"` など（`codex-dock build --template list` で一覧） |
 
 テンプレートを指定すると、対応するタグのイメージが使用されます（例: `"pwn"` → `codex-dock:pwn`）。
 セクション固有の設定（`build.template`、`run.template`）がある場合はそちらが優先されます。
+
+---
+
+### `auto_build`
+
+既存のテンプレート由来イメージについて、`codex-dock run` 実行時にテンプレートの
+Dockerfile がビルド後に変更されていれば自動的に再ビルドするかどうか。
+イメージそのものが存在しない場合の自動ビルドは、この設定に関わらず常に行われます。
+
+```toml
+auto_build = true
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 真偽値 |
+| デフォルト | `true`（未設定時） |
+| 対応箇所 | `codex-dock run` の自動ビルド判定 |
+
+判定方法は、テンプレートの Dockerfile の更新日時と、ビルド済みイメージの作成日時
+（`docker inspect` の `Created`）を比較するだけの単純なものです。そのため
+**Dockerfile がディスク上のファイルとして存在するテンプレート**（`~/.config/codex-dock/templates/`
+配下のユーザーテンプレート、または `make install-templates` で配置した組み込みテンプレートのコピー）
+にのみ効果があります。バイナリに埋め込まれたままの組み込みテンプレートには比較対象のファイルが
+無いため、この機能は働きません（従来通り「イメージが無ければビルド」のみ）。
+
+`run.auto_build` が設定されている場合はそちらが優先されます。
 
 ---
 
@@ -189,6 +216,25 @@ template = "pwn"
 
 > `run.template` を指定すると、`default_template` より優先されます。
 > `--image` フラグを明示的に指定した場合はテンプレート設定より優先されます。
+
+---
+
+### `run.auto_build`
+
+`codex-dock run` に限定した `auto_build` の上書き値。
+
+```toml
+[run]
+auto_build = false
+```
+
+| 項目 | 内容 |
+|---|---|
+| 型 | 真偽値 |
+| デフォルト | 未設定（グローバルな `auto_build` を参照） |
+| 対応箇所 | `codex-dock run` の自動ビルド判定 |
+
+> `run.auto_build` を指定すると、グローバルな `auto_build` より優先されます。
 
 ---
 
@@ -407,6 +453,9 @@ network_name = "dock-net-proxy"
 # デフォルトテンプレート（未指定ならテンプレートなし）
 # default_template = "plain"
 
+# テンプレートの Dockerfile が変更されていれば run 時に自動再ビルド（未指定なら true）
+# auto_build = true
+
 # 詳細ログ（通常は false）
 verbose = false
 
@@ -422,6 +471,9 @@ image = "codex-dock:latest"
 
 # run サブコマンドのトークン TTL（未指定なら default_token_ttl を使用）
 token_ttl = 3600
+
+# run サブコマンドの auto_build 上書き（未指定ならグローバルな auto_build を使用）
+# auto_build = true
 
 # run サブコマンドのデフォルトユーザ
 user = "current"

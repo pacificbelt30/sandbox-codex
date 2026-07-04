@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 )
@@ -17,7 +18,8 @@ type Info struct {
 	Dockerfile  []byte
 	BaseImage   string
 	IsBase      bool
-	UserDefined bool // loaded from UserTemplatesDir rather than embedded in the binary
+	UserDefined bool   // loaded from UserTemplatesDir rather than embedded in the binary
+	SourcePath  string // on-disk path to the Dockerfile; empty for templates embedded in the binary
 }
 
 // Tag returns the Docker image tag for this template.
@@ -38,6 +40,22 @@ func (t Info) IsDerived() bool {
 	return t.BaseImage != ""
 }
 
+// StaleAgainst reports whether this template's on-disk Dockerfile (SourcePath)
+// has been modified after builtAt, meaning an image built at builtAt no longer
+// reflects the current template and should be rebuilt. Templates with no
+// SourcePath (embedded in the binary, never materialized on disk) always
+// report false — there is no file timestamp to compare against.
+func (t Info) StaleAgainst(builtAt time.Time) (bool, error) {
+	if t.SourcePath == "" {
+		return false, nil
+	}
+	fi, err := os.Stat(t.SourcePath)
+	if err != nil {
+		return false, err
+	}
+	return fi.ModTime().After(builtAt), nil
+}
+
 // UserTemplatesDir returns the directory where user-provided templates are
 // stored: ~/.config/codex-dock/templates/<name>/Dockerfile. Templates placed
 // there are picked up by Get and List alongside the built-in templates, and
@@ -51,17 +69,19 @@ func UserTemplatesDir() (string, error) {
 	return filepath.Join(home, ".config", "codex-dock", "templates"), nil
 }
 
-// readUserTemplate reads <UserTemplatesDir>/<name>/Dockerfile, if present.
-func readUserTemplate(name string) ([]byte, bool) {
+// readUserTemplate reads <UserTemplatesDir>/<name>/Dockerfile, if present,
+// returning its content and absolute path.
+func readUserTemplate(name string) ([]byte, string, bool) {
 	dir, err := UserTemplatesDir()
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
-	content, err := os.ReadFile(filepath.Join(dir, name, "Dockerfile"))
+	path := filepath.Join(dir, name, "Dockerfile")
+	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
-	return content, true
+	return content, path, true
 }
 
 // Get returns the Info for a named template.
@@ -72,13 +92,14 @@ func Get(name string) (Info, error) {
 		name = "plain"
 	}
 
-	if content, ok := readUserTemplate(name); ok {
+	if content, srcPath, ok := readUserTemplate(name); ok {
 		return Info{
 			Name:        name,
 			Dockerfile:  content,
 			BaseImage:   parseBaseImage(content),
 			IsBase:      name == "plain",
 			UserDefined: true,
+			SourcePath:  srcPath,
 		}, nil
 	}
 
@@ -137,7 +158,8 @@ func List() ([]Info, error) {
 					continue
 				}
 				name := entry.Name()
-				content, err := os.ReadFile(filepath.Join(dir, name, "Dockerfile"))
+				srcPath := filepath.Join(dir, name, "Dockerfile")
+				content, err := os.ReadFile(srcPath)
 				if err != nil {
 					continue
 				}
@@ -147,6 +169,7 @@ func List() ([]Info, error) {
 					BaseImage:   parseBaseImage(content),
 					IsBase:      name == "plain",
 					UserDefined: true,
+					SourcePath:  srcPath,
 				})
 			}
 		}

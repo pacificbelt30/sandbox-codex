@@ -9,6 +9,8 @@ Runs Codex CLI inside a Docker container with Auth Proxy and network isolation c
 > **Network isolation**: on start, a per-worker Docker `Internal` network (`dock-net-w-<name>`) is created and the Auth Proxy is connected to it. Worker↔worker, worker→host, and worker→internet traffic is blocked by Docker (no `iptables`/`sudo`; same on macOS / Windows).
 
 > **Automatic image build**: If the image specified by `--image` (or `--template`) does not exist locally, it is built automatically. When the tag matches a known template (e.g. `codex-dock:pwn`), the template is used; otherwise it falls back to the same logic as `codex-dock build`. This also applies to user templates under `~/.config/codex-dock/templates/` — see the [User Templates section of `codex-dock build`](build.md#user-templates).
+>
+> On top of that, when a template's Dockerfile exists as a real file on disk (a user template, or a built-in one copied there via `make install-templates`), its modification time is compared against the built image's creation timestamp — **if the file is newer, the image is rebuilt automatically** before the container starts. This is controlled by the `auto_build` (global) / `run.auto_build` (`run`-only) config keys, enabled by default; see the [Configuration Reference](../configuration.md#auto_build). Built-in templates that remain purely embedded in the binary have no file to compare against, so this doesn't apply to them.
 
 ```bash
 codex-dock run [OPTIONS]

@@ -9,6 +9,8 @@ Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネット
 > **ネットワーク隔離**: 起動時に各ワーカー専用の Docker `Internal` ネットワーク（`dock-net-w-<name>`）を作成し、Auth Proxy をそこへ接続します。ワーカー間・ホスト・インターネットへの直接通信は Docker により遮断されます（`iptables`/`sudo` 不要、macOS / Windows でも同等）。
 
 > **イメージの自動ビルド**: `--image`（または `--template`）で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。`~/.config/codex-dock/templates/` に置いたユーザーテンプレートも同様に自動ビルド対象です（[`codex-dock build` のテンプレート節](build.md#ユーザーテンプレート)を参照）。
+>
+> さらに、テンプレートの Dockerfile がディスク上のファイルとして存在する場合（ユーザーテンプレート、または `make install-templates` で配置した組み込みテンプレートのコピー）、そのファイルの更新日時とビルド済みイメージの作成日時を比較し、**ファイルの方が新しければ自動的に再ビルド**してから起動します。この挙動は `auto_build`（グローバル）/ `run.auto_build`（`run` のみ）の設定でオン・オフできます（デフォルトは有効）。詳細は [設定リファレンス](../configuration.md#auto_build) を参照してください。バイナリに埋め込まれたままの組み込みテンプレートには比較対象のファイルが無いため、この機能は働きません。
 
 ```bash
 codex-dock run [OPTIONS]

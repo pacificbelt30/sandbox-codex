@@ -191,6 +191,26 @@ func TestImageExists_NotFound(t *testing.T) {
 	}
 }
 
+// TestImageCreatedAt_NotFound verifies that ImageCreatedAt surfaces an error
+// for a nonexistent image tag instead of returning a zero time silently.
+// Skipped when Docker is unavailable.
+func TestImageCreatedAt_NotFound(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skip("Docker client unavailable:", err)
+	}
+	defer cli.Close() //nolint:errcheck
+
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skip("Docker daemon not running:", err)
+	}
+
+	mgr := &Manager{cli: cli}
+	if _, err := mgr.ImageCreatedAt("codex-dock-nonexistent-test-image:impossible-tag-xyz-9999"); err == nil {
+		t.Error("ImageCreatedAt should return an error for a nonexistent image")
+	}
+}
+
 func TestBuildHostConfig_Security(t *testing.T) {
 	hc := buildHostConfig(nil, "dock-net-w-test")
 

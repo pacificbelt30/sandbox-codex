@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // setupUserTemplate creates <home>/.config/codex-dock/templates/<name>/Dockerfile
@@ -284,5 +285,82 @@ func TestList_UserTemplateOverridesBuiltinEntry(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("found %d entries named %q; want exactly 1 (no duplicate)", count, "pwn")
+	}
+}
+
+func TestGet_UserTemplate_SetsSourcePath(t *testing.T) {
+	home := setupUserTemplate(t, "custom", "FROM codex-dock:latest\n")
+
+	tmpl, err := Get("custom")
+	if err != nil {
+		t.Fatalf("Get(custom): %v", err)
+	}
+	want := filepath.Join(home, ".config", "codex-dock", "templates", "custom", "Dockerfile")
+	if tmpl.SourcePath != want {
+		t.Errorf("SourcePath = %q; want %q", tmpl.SourcePath, want)
+	}
+}
+
+func TestGet_BuiltinTemplate_NoSourcePath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	tmpl, err := Get("pwn")
+	if err != nil {
+		t.Fatalf("Get(pwn): %v", err)
+	}
+	if tmpl.SourcePath != "" {
+		t.Errorf("SourcePath = %q; want empty for a binary-embedded template", tmpl.SourcePath)
+	}
+}
+
+func TestStaleAgainst_NoSourcePath(t *testing.T) {
+	tmpl := plainTemplate()
+	stale, err := tmpl.StaleAgainst(time.Now())
+	if err != nil {
+		t.Fatalf("StaleAgainst: %v", err)
+	}
+	if stale {
+		t.Error("StaleAgainst = true; want false when there is no SourcePath to compare")
+	}
+}
+
+func TestStaleAgainst_ModifiedAfterBuild(t *testing.T) {
+	setupUserTemplate(t, "custom", "FROM codex-dock:latest\n")
+	tmpl, err := Get("custom")
+	if err != nil {
+		t.Fatalf("Get(custom): %v", err)
+	}
+
+	builtAt := time.Now().Add(-1 * time.Hour)
+	stale, err := tmpl.StaleAgainst(builtAt)
+	if err != nil {
+		t.Fatalf("StaleAgainst: %v", err)
+	}
+	if !stale {
+		t.Error("StaleAgainst = false; want true when the file was modified after builtAt")
+	}
+}
+
+func TestStaleAgainst_NotModifiedSinceBuild(t *testing.T) {
+	setupUserTemplate(t, "custom", "FROM codex-dock:latest\n")
+	tmpl, err := Get("custom")
+	if err != nil {
+		t.Fatalf("Get(custom): %v", err)
+	}
+
+	builtAt := time.Now().Add(1 * time.Hour)
+	stale, err := tmpl.StaleAgainst(builtAt)
+	if err != nil {
+		t.Fatalf("StaleAgainst: %v", err)
+	}
+	if stale {
+		t.Error("StaleAgainst = true; want false when the file predates builtAt")
+	}
+}
+
+func TestStaleAgainst_MissingFile(t *testing.T) {
+	tmpl := Info{SourcePath: filepath.Join(t.TempDir(), "does-not-exist", "Dockerfile")}
+	if _, err := tmpl.StaleAgainst(time.Now()); err == nil {
+		t.Error("StaleAgainst should return an error when SourcePath does not exist")
 	}
 }
