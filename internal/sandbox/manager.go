@@ -553,6 +553,9 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		}
 	}
 
+	if opts.ExecCmd != "" {
+		env = append(env, "DOCK_EXEC_CMD="+opts.ExecCmd)
+	}
 	if opts.Task != "" {
 		env = append(env, "CODEX_TASK="+opts.Task)
 	}

@@ -283,6 +283,28 @@ func TestBuildEnv_NoProxy(t *testing.T) {
 	}
 }
 
+func TestBuildEnv_ExecCmd(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080"})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60, ExecCmd: "ls -la"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := envValue(env, "DOCK_EXEC_CMD"); !ok || v != "ls -la" {
+		t.Errorf("DOCK_EXEC_CMD = %q, ok=%v; want \"ls -la\"", v, ok)
+	}
+}
+
+func TestBuildEnv_ExecCmdOmittedWhenUnset(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080"})
+	env, err := m.buildEnv("w1", RunOptions{Agent: AgentNone, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := envValue(env, "DOCK_EXEC_CMD"); ok {
+		t.Error("DOCK_EXEC_CMD should not be set when --exec is not used")
+	}
+}
+
 func TestValidAgent(t *testing.T) {
 	for _, a := range []Agent{AgentNone, AgentCodex, AgentClaude} {
 		if !ValidAgent(a) {
