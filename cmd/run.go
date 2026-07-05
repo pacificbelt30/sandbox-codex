@@ -75,6 +75,7 @@ func init() {
   codex    launch OpenAI Codex CLI
   claude   launch Anthropic Claude Code`)
 	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for the agent")
+	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", "Run this command instead of an interactive shell. Only takes effect when --agent is omitted (and --shell is not set) — an agent, if selected, always takes priority.")
 	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Approval mode for Codex CLI.
   suggest   ask for approval on every action (default, safest)
   auto-edit auto-apply file edits; ask before running shell commands
@@ -159,6 +160,10 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	runOpts.Agent = agent
 
+	if runOpts.ExecCmd != "" && runOpts.ShellMode {
+		return fmt.Errorf("--exec and --shell are mutually exclusive (--shell bypasses entrypoint.sh entirely, so --exec would never run)")
+	}
+
 	// Resolve interactive shell type.
 	shellType := sandbox.ShellType(shellTypeFlag)
 	if shellType == "" {
@@ -236,6 +241,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("auto-build: %w", err)
 			}
 		}
+		fmt.Println("Build finished, starting container...")
 	}
 
 	if runOpts.Parallel > 1 {

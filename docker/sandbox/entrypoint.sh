@@ -10,6 +10,10 @@
 #
 # The interactive shell binary is driven by DOCK_SHELL ("bash", the default, or
 # "zsh"); see --shell-type / default_shell_type in the CLI.
+#
+# When DOCK_AGENT is empty and DOCK_EXEC_CMD is set (--exec), that command runs
+# once instead of the interactive shell. An agent, when selected, always takes
+# priority over DOCK_EXEC_CMD.
 set -euo pipefail
 
 log() {
@@ -239,6 +243,10 @@ case "${DOCK_AGENT}" in
         launch_interactive "$INIT"
         ;;
     ""|shell)
+        if [[ -n "${DOCK_EXEC_CMD:-}" ]]; then
+            log "No agent selected; running command: ${DOCK_EXEC_CMD}"
+            exec "${DOCK_SHELL:-bash}" -c "${DOCK_EXEC_CMD}"
+        fi
         log "No agent selected; starting interactive shell (codex and claude are available on PATH)."
         exec "${DOCK_SHELL:-bash}" -i
         ;;

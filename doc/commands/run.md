@@ -33,6 +33,7 @@ codex-dock run [OPTIONS]
 | `--name` | `-n` | 自動生成 | コンテナ名（省略すると `codex-<形容詞>-<名詞>` 形式で自動生成） |
 | `--agent` | | `""`（シェル） | 起動するエージェント（[詳細](#--agent--エージェントの選択)） |
 | `--task` | `-t` | | エージェントに渡す初期タスクプロンプト |
+| `--exec` | `-e` | | エージェント未指定時に、対話シェルの代わりに実行するコマンド（[詳細](#--exec--コマンドの実行)） |
 | `--approval-mode` | | `suggest` | 承認モード（[詳細](#--approval-mode--承認モードの指定)） |
 | `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
 | `--model` | `-m` | | エージェントに渡すモデル名 |
@@ -70,6 +71,30 @@ codex-dock run [OPTIONS]
 codex-dock run --agent codex  --approval-mode full-auto
 codex-dock run --agent claude --approval-mode full-auto --task "Refactor the auth module"
 codex-dock run                # 認証済みシェル（codex / claude 両方利用可）
+```
+
+---
+
+## `--exec` — コマンドの実行
+
+`--exec` フラグで、対話シェルの代わりにコンテナ内で1回だけ実行するコマンドを指定できます。
+コンテナ内では `DOCK_EXEC_CMD` 環境変数として渡され、`entrypoint.sh` の「エージェント未指定」
+分岐（認証設定済みシェルを起動する分岐）でのみ参照されます。
+
+- `--agent` を指定した場合は**エージェントが常に優先され**、`--exec` は無視されます。
+- `--shell`（`entrypoint.sh` を完全にバイパスする素のデバッグシェル）と併用するとエラーになります
+  （`--shell` では `entrypoint.sh` 自体が実行されないため `--exec` が効きません）。
+- コマンドは `--shell-type` で選んだシェル（既定は bash）の `-c` 経由で実行されます。
+
+```bash
+# 認証設定済みの環境でコマンドを1つ実行して終了
+codex-dock run --exec "ls -la"
+
+# バックグラウンドでコマンドを実行
+codex-dock run --exec "npm test" --detach
+
+# --agent を指定すると --exec は無視され、エージェントが起動する
+codex-dock run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 ```
 
 ---
@@ -279,6 +304,9 @@ codex-dock run --template mytool
 
 # カスタムモデルを指定
 codex-dock run --model "o3"
+
+# エージェントを使わずコマンドを1つ実行して終了
+codex-dock run --exec "ls -la"
 
 # デフォルトで、コマンド実行ユーザと同じ uid:gid でコンテナを起動
 codex-dock run

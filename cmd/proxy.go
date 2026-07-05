@@ -499,9 +499,12 @@ func ensureProxyDockerfile(dir string) error {
 }
 
 // executeProxyBuild runs "docker build" for the auth proxy image.
+// --progress=plain forces BuildKit to stream every step's full output line-by-line
+// instead of collapsing it into a live-updating TTY view, so an auto-build
+// triggered by `run` never looks stalled while it's actually still working.
 func executeProxyBuild(ctx context.Context, tag, dockerfile, buildCtx string) error {
 	fmt.Printf("Building proxy image %s from %s...\n", tag, dockerfile)
-	c := exec.CommandContext(ctx, "docker", "build", "-t", tag, "-f", dockerfile, buildCtx)
+	c := exec.CommandContext(ctx, "docker", "build", "--progress=plain", "-t", tag, "-f", dockerfile, buildCtx)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {
