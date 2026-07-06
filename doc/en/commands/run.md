@@ -13,8 +13,12 @@ Runs Codex CLI inside a Docker container with Auth Proxy and network isolation c
 > On top of that, when a template's Dockerfile exists as a real file on disk (a user template, or a built-in one copied there via `make install-templates`), its modification time is compared against the built image's creation timestamp — **if the file is newer, the image is rebuilt automatically** before the container starts. This is controlled by the `auto_build` (global) / `run.auto_build` (`run`-only) config keys, enabled by default; see the [Configuration Reference](../configuration.md#auto_build). Built-in templates that remain purely embedded in the binary have no file to compare against, so this doesn't apply to them.
 
 ```bash
-codex-dock run [OPTIONS]
+codex-dock run [OPTIONS] [-- command...]
 ```
+
+A command placed after `--` runs once instead of the interactive shell — like
+`docker run <image> <cmd>` — and is equivalent to `--exec` but without having
+to quote the whole command as one string ([details](#--exec)).
 
 ---
 
@@ -31,7 +35,9 @@ codex-dock run [OPTIONS]
 | `--branch` | `-b` | | Branch name to check out (requires `--worktree`) |
 | `--new-branch` | `-B` | `false` | Create a new branch (requires `--worktree` and `--branch`) |
 | `--name` | `-n` | auto-generated | Container name (defaults to `codex-<adj>-<noun>`) |
+| `--agent` | | `""` (shell) | AI agent to launch inside the sandbox: `""` (auth-configured shell), `codex`, or `claude` |
 | `--task` | `-t` | | Initial task prompt passed to Codex |
+| `--exec` | `-e` | | Command to run once instead of an interactive shell when `--agent` is omitted ([details](#--exec)) |
 | `--approval-mode` | | `suggest` | Codex CLI approval mode ([details](#--approval-mode)) |
 | `--full-auto` | | `false` | **Deprecated**: use `--approval-mode full-auto` |
 | `--model` | `-m` | | Model name to pass to Codex |
@@ -44,7 +50,7 @@ codex-dock run [OPTIONS]
 | `--detach` | `-D` | `false` | Run in background (no log output) |
 | `--parallel` | `-P` | `1` | Number of parallel workers |
 | `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
-| `--shell-type` | | `bash` | Interactive shell to launch ([details](#--shell-type)) |
+| `--shell-type` | | auto-detected from `$SHELL`, else `bash` | Interactive shell to launch ([details](#--shell-type)) |
 | `--user` | | `""` | Container execution user ([details](#--user)) |
 
 ---
@@ -64,6 +70,36 @@ Controls how Codex CLI requests approval for actions. Designed with Docker conta
 
 ---
 
+## `--exec`
+
+Runs a single command inside the sandbox instead of an interactive shell.
+Passed into the container as the `DOCK_EXEC_CMD` environment variable, which
+`entrypoint.sh` only consults in its no-agent branch (the auth-configured
+shell case).
+
+- If `--agent` is given, the agent **always takes priority** and `--exec` is ignored.
+- Combining it with `--shell` (the raw debug shell that bypasses `entrypoint.sh`
+  entirely) is an error, since `entrypoint.sh` — and therefore `--exec` — never runs.
+- The command runs via the shell selected by `--shell-type` (default `bash`), through its `-c` flag.
+- Mutually exclusive with a trailing `-- command...` on the command line — use whichever is
+  more convenient; the latter avoids having to quote a multi-word command as a single string.
+
+```bash
+# Run one command in the auth-configured environment, then exit
+codex-dock run --exec "ls -la"
+
+# Equivalent, without needing to quote the whole command as one string
+codex-dock run -- ls -la
+
+# Run in the background
+codex-dock run --exec "npm test" --detach
+
+# --agent takes priority over --exec, so this launches Codex CLI, not `ls -la`
+codex-dock run --agent codex --exec "ls -la"
+```
+
+---
+
 ## `--shell-type`
 
 Selects the shell binary used for the sandbox's interactive shell: both the
@@ -73,12 +109,27 @@ which `entrypoint.sh` reads.
 
 | Value | Behavior |
 |---|---|
-| `bash` (default) | Launches bash, as before |
+| `bash` | Launches bash |
 | `zsh` | Launches zsh; requires zsh to be installed in the image |
+
+When neither the flag nor a config value (`default_shell_type` /
+`run.shell_type`) sets a value, it is auto-detected from the basename of the
+host's `$SHELL` environment variable — `zsh` maps to `zsh`, anything else
+(including an unset or unrecognized `$SHELL`) falls back to `bash`. **This
+auto-detection does not apply to `--shell` debug mode**, which always
+defaults to `bash` when the flag is omitted: `--shell` overrides the
+container's `Entrypoint` directly with the shell binary, bypassing
+`entrypoint.sh` entirely, so there's no way for it to fall back if that
+binary isn't present in the image — Docker just fails to start the
+container. Pass `--shell --shell-type zsh` explicitly if you want zsh there.
 
 The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM
 codex-dock:latest`), so `--shell-type zsh` works out of the box with either.
-For a custom template, install zsh in its Dockerfile to use it.
+For a custom template, install zsh in its Dockerfile to use it. Outside
+`--shell` mode (i.e. the no-agent shell and `--exec`), `entrypoint.sh` checks
+whether the requested shell binary actually exists before using it and logs a
+warning and falls back to bash if not, so a missing zsh there never fails the
+container outright.
 
 > The job-control wrapper that lets Ctrl+Z suspend an agent (`--agent
 > codex`/`claude`) back to a shell prompt (`launch_interactive`) always uses

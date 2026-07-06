@@ -173,13 +173,18 @@ default_shell_type = "bash"
 | Item | Value |
 |---|---|
 | Type | string |
-| Default | `"bash"` (when unset) |
+| Default | unset (auto-detected from the host's `$SHELL`: `"zsh"` maps to `"zsh"`, anything else falls back to `"bash"`; `--shell` debug mode is excluded from this auto-detection and always defaults to `"bash"`) |
 | Corresponding flag | `run --shell-type` |
 | Allowed values | `"bash"`, `"zsh"` |
 
 Using `"zsh"` requires zsh to be installed in the target image (the built-in
 `plain` template includes it, and `pwn` inherits it, so both work out of the
 box). `run.shell_type` takes precedence over this global default when set.
+Outside `--shell` mode (the no-agent shell and `--exec`), `entrypoint.sh`
+falls back to bash automatically with a warning if the requested shell isn't
+installed, so this is safe even on images without zsh. `--shell` can't fall
+back the same way (it bypasses `entrypoint.sh` entirely), which is why it
+always defaults to bash unless you pass `--shell-type` explicitly.
 
 ---
 

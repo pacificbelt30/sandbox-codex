@@ -1,14 +1,32 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+// TestWriteEntrypoint_MatchesEmbedded verifies --print-entrypoint (via
+// writeEntrypoint) emits exactly the embedded entrypoint.sh, byte for byte,
+// so a vendored copy is guaranteed identical to what the built-in images ship.
+func TestWriteEntrypoint_MatchesEmbedded(t *testing.T) {
+	var buf bytes.Buffer
+	if err := writeEntrypoint(&buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), dockerdefaults.Entrypoint) {
+		t.Error("writeEntrypoint output does not match dockerdefaults.Entrypoint")
+	}
+	if !bytes.HasPrefix(buf.Bytes(), []byte("#!/bin/bash")) {
+		t.Errorf("expected output to start with a bash shebang, got: %q", buf.Bytes()[:40])
+	}
+}
 
 // TestResolveDockerfile_ExplicitFlag verifies that an explicit -f value is
 // returned as-is with "." as the build context.

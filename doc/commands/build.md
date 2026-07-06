@@ -19,6 +19,7 @@ codex-dock build [OPTIONS]
 | `--tag` | `-t` | `codex-dock:latest` | イメージのタグ |
 | `--dockerfile` | `-f` | （自動検出） | Dockerfile のパス |
 | `--template` | `-T` | | テンプレート名（`plain`, `pwn` 等）。`--template list` で一覧表示 |
+| `--print-entrypoint` | | `false` | 組み込みの `entrypoint.sh` を stdout に出力して終了する（ビルドは行わない）（[詳細](#--print-entrypoint--entrypointsh-を独自-dockerfile-に取り込む)） |
 
 > **注意**: `--template` と `--dockerfile` (`-f`) は同時に指定できません。
 
@@ -172,6 +173,38 @@ codex-dock run --image my-codex:v2
 
 > **省略可能**: `codex-dock run` 実行時にイメージが存在しない場合は自動的にビルドされます。
 > テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合は自動的にテンプレートからビルドされます。
+
+---
+
+## `--print-entrypoint` — entrypoint.sh を独自 Dockerfile に取り込む
+
+`FROM codex-dock:*` **しない**独自 Dockerfile（組み込みサンドボックスイメージから
+派生していないテンプレート）でも、`docker/sandbox/entrypoint.sh` をコピーして
+`ENTRYPOINT` に設定する必要があります。このスクリプトが Auth Proxy からプレースホルダ
+トークンを取得し、`--agent`/`--exec` へディスパッチする役割を担っているためです。
+これまでは本リポジトリのチェックアウトから手動でコピーする以外に入手方法がなく、
+Auth Proxy 側のプロトコルが変わった際に追従漏れが起きるリスクがありました。
+
+`--print-entrypoint` は、`codex-dock` バイナリに組み込まれている `entrypoint.sh` を
+そのまま stdout に出力してビルドは行わずに終了します。手元にインストール済みの
+バイナリから、正規のコピーをそのまま取得できます。
+
+```bash
+codex-dock build --print-entrypoint > entrypoint.sh
+chmod +x entrypoint.sh
+```
+
+あとは `docker/sandbox/Dockerfile` と同様に、自分の Dockerfile から参照します：
+
+```dockerfile
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+USER codex
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+```
+
+`codex-dock` をアップグレードした際は、このコマンドを再実行して Auth Proxy
+プロトコルの変更を取り込んでください。
 
 ---
 
