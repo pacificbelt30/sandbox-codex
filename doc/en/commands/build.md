@@ -13,6 +13,7 @@ codex-dock build [OPTIONS]
 | `--tag` | `-t` | `codex-dock:latest` | Image tag |
 | `--dockerfile` | `-f` | (auto-detected) | Dockerfile path |
 | `--template` | `-T` | | Template name (`plain`, `pwn`, etc.). Use `--template list` to see available templates |
+| `--print-entrypoint` | | `false` | Print the embedded `entrypoint.sh` to stdout and exit, without building anything ([details](#--print-entrypoint--vendoring-entrypointsh-into-a-custom-dockerfile)) |
 
 > **Note**: `--template` and `--dockerfile` (`-f`) are mutually exclusive.
 
@@ -139,6 +140,40 @@ codex-dock build --template pwn --tag my-pwn:v1
 # Use a template image with codex-dock run
 codex-dock run --image codex-dock:pwn
 ```
+
+---
+
+## `--print-entrypoint` — vendoring entrypoint.sh into a custom Dockerfile
+
+A Dockerfile that does **not** `FROM codex-dock:*` (i.e. it isn't a template
+derived from the built-in sandbox image) still needs `docker/sandbox/entrypoint.sh`
+copied in and set as its `ENTRYPOINT` — that script is what fetches the
+placeholder token from the Auth Proxy and dispatches to `--agent`/`--exec`.
+Until now the only way to get it was to copy it out of a checkout of this
+repository by hand, which risks drifting from the Auth Proxy protocol as it
+changes.
+
+`--print-entrypoint` writes the exact `entrypoint.sh` embedded in the
+`codex-dock` binary to stdout and exits without building anything, so you can
+fetch the canonical copy from the binary you already have installed:
+
+```bash
+codex-dock build --print-entrypoint > entrypoint.sh
+chmod +x entrypoint.sh
+```
+
+Then reference it from your own Dockerfile, mirroring what
+`docker/sandbox/Dockerfile` does:
+
+```dockerfile
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+USER codex
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+```
+
+Re-run the command whenever you upgrade `codex-dock` to pick up any changes to
+the Auth Proxy protocol.
 
 ---
 

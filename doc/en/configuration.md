@@ -173,7 +173,7 @@ default_shell_type = "bash"
 | Item | Value |
 |---|---|
 | Type | string |
-| Default | `"bash"` (when unset) |
+| Default | unset (auto-detected from the host's `$SHELL`: `"zsh"` maps to `"zsh"`, anything else falls back to `"bash"`) |
 | Corresponding flag | `run --shell-type` |
 | Allowed values | `"bash"`, `"zsh"` |
 

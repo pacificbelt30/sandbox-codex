@@ -13,8 +13,12 @@ Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネット
 > さらに、テンプレートの Dockerfile がディスク上のファイルとして存在する場合（ユーザーテンプレート、または `make install-templates` で配置した組み込みテンプレートのコピー）、そのファイルの更新日時とビルド済みイメージの作成日時を比較し、**ファイルの方が新しければ自動的に再ビルド**してから起動します。この挙動は `auto_build`（グローバル）/ `run.auto_build`（`run` のみ）の設定でオン・オフできます（デフォルトは有効）。詳細は [設定リファレンス](../configuration.md#auto_build) を参照してください。バイナリに埋め込まれたままの組み込みテンプレートには比較対象のファイルが無いため、この機能は働きません。
 
 ```bash
-codex-dock run [OPTIONS]
+codex-dock run [OPTIONS] [-- command...]
 ```
+
+`--` の後にコマンドを置くと、対話シェルの代わりにそのコマンドを1回だけ実行します
+（`docker run <image> <cmd>` と同様の形）。`--exec` と同等ですが、コマンド全体を
+1つの文字列としてクォートする必要がありません（[詳細](#--exec--コマンドの実行)）。
 
 ---
 
@@ -46,7 +50,7 @@ codex-dock run [OPTIONS]
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
 | `--shell` | `-s` | `false` | `entrypoint.sh` をバイパスした素の（未認証の）シェルを起動（デバッグ用） |
-| `--shell-type` | | `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
+| `--shell-type` | | `$SHELL` から自動判定、それ以外は `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
 | `--user` | | `""` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
 
 ---
@@ -85,10 +89,15 @@ codex-dock run                # 認証済みシェル（codex / claude 両方利
 - `--shell`（`entrypoint.sh` を完全にバイパスする素のデバッグシェル）と併用するとエラーになります
   （`--shell` では `entrypoint.sh` 自体が実行されないため `--exec` が効きません）。
 - コマンドは `--shell-type` で選んだシェル（既定は bash）の `-c` 経由で実行されます。
+- コマンドラインの末尾に置く `-- command...`（上記参照）とは同時に指定できません。
+  どちらを使っても構いませんが、複数語のコマンドは後者の方が1つの文字列にクォートしなくて済む分手軽です。
 
 ```bash
 # 認証設定済みの環境でコマンドを1つ実行して終了
 codex-dock run --exec "ls -la"
+
+# 同じことを、コマンド全体をクォートせずに
+codex-dock run -- ls -la
 
 # バックグラウンドでコマンドを実行
 codex-dock run --exec "npm test" --detach
@@ -107,11 +116,15 @@ codex-dock run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 
 | 値 | 動作 |
 |---|---|
-| `bash`（デフォルト） | 従来通り bash を起動 |
+| `bash` | bash を起動 |
 | `zsh` | zsh を起動。対象イメージに zsh がインストールされている必要がある |
 
+フラグにも設定ファイル（`default_shell_type` / `run.shell_type`）にも値が無い場合は、
+ホスト側の `$SHELL` 環境変数のベース名から自動判定されます。`zsh` なら `zsh`、
+それ以外（`$SHELL` が未設定、または認識できないシェルの場合を含む）は `bash` にフォールバックします。
+
 組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため
-（`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh` がそのまま使えます。
+（`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh`（や `$SHELL=zsh` による自動判定）がそのまま使えます。
 自作テンプレートで zsh を使う場合は、そのテンプレートの Dockerfile 側で zsh をインストールしてください。
 
 > エージェント（`--agent codex`/`claude`）を Ctrl+Z で一時停止してシェルに戻る機構

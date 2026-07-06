@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,11 +18,16 @@ import (
 var buildTag string
 var buildDockerfile string
 var buildTemplate string
+var buildPrintEntrypoint bool
 
 var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Build the codex-dock base Docker image",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if buildPrintEntrypoint {
+			return writeEntrypoint(os.Stdout)
+		}
+
 		applyBuildConfigDefaults(cmd)
 
 		if buildTemplate == "list" {
@@ -52,6 +58,7 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildTag, "tag", "t", "codex-dock:latest", "Image tag")
 	buildCmd.Flags().StringVarP(&buildDockerfile, "dockerfile", "f", "", "Path to Dockerfile")
 	buildCmd.Flags().StringVarP(&buildTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Use --template list to see available templates.`)
+	buildCmd.Flags().BoolVar(&buildPrintEntrypoint, "print-entrypoint", false, `Print the embedded entrypoint.sh to stdout and exit (no build). Use this to vendor the canonical entrypoint into a custom, non-derived Dockerfile (i.e. one that does not FROM codex-dock:*), so it stays in sync with the auth-proxy protocol: codex-dock build --print-entrypoint > entrypoint.sh`)
 }
 
 func applyBuildConfigDefaults(cmd *cobra.Command) {
@@ -70,6 +77,16 @@ func applyBuildConfigDefaults(cmd *cobra.Command) {
 			buildTag = v
 		}
 	}
+}
+
+// writeEntrypoint writes the embedded, canonical entrypoint.sh to w. Used by
+// --print-entrypoint so a custom, non-derived Dockerfile (one that does not
+// FROM codex-dock:*) can vendor the exact script the built-in images ship,
+// keeping it in sync with the auth-proxy protocol instead of relying on a
+// hand-copied file that can drift.
+func writeEntrypoint(w io.Writer) error {
+	_, err := w.Write(dockerdefaults.Entrypoint)
+	return err
 }
 
 // resolveDockerfile returns the Dockerfile path and build context directory to use.

@@ -50,10 +50,17 @@ var (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run",
+	Use:   "run [flags] [-- command...]",
 	Short: "Start a sandboxed Codex worker container",
 	Long: `Start a Docker container with Codex CLI isolated from the host environment.
-Auth credentials are injected via the Auth Proxy instead of being directly mounted.`,
+Auth credentials are injected via the Auth Proxy instead of being directly mounted.
+
+A command placed after "--" is run once instead of an interactive shell (like
+"docker run <image> <cmd>"), equivalent to --exec but without having to quote
+the whole command as a single string:
+
+  codex-dock run -- npm test -- --watch=false`,
+	Args: cobra.ArbitraryArgs,
 	RunE: runWorker,
 }
 
@@ -75,7 +82,8 @@ func init() {
   codex    launch OpenAI Codex CLI
   claude   launch Anthropic Claude Code`)
 	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for the agent")
-	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", "Run this command instead of an interactive shell. Only takes effect when --agent is omitted (and --shell is not set) — an agent, if selected, always takes priority.")
+	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", `Run this command instead of an interactive shell. Only takes effect when --agent is omitted (and --shell is not set) — an agent, if selected, always takes priority.
+  Mutually exclusive with a "-- command..." trailing on the command line (see the "run" command's usage), which is usually easier for multi-word commands since it avoids having to quote the whole thing as one string.`)
 	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Approval mode for Codex CLI.
   suggest   ask for approval on every action (default, safest)
   auto-edit auto-apply file edits; ask before running shell commands
@@ -105,8 +113,9 @@ func init() {
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
 	f.StringVar(&shellTypeFlag, "shell-type", "", `Interactive shell to launch (the no-agent shell, and --shell debug mode).
-  bash  (default)
-  zsh   requires zsh in the image (the built-in "plain" and "pwn" templates include it)`)
+  bash  (default, and the fallback when auto-detection below doesn't recognize $SHELL)
+  zsh   requires zsh in the image (the built-in "plain" and "pwn" templates include it)
+  When omitted (and not set via config), this is auto-detected from the host's $SHELL environment variable.`)
 	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
 	  "current" current command user (uid:gid, default)
 	  "codex"   codex user in image (uid:1001)
@@ -117,6 +126,14 @@ func init() {
 
 func runWorker(cmd *cobra.Command, args []string) error {
 	applyRunConfigDefaults(cmd)
+
+	// A trailing "-- command..." is equivalent to --exec, but as separate
+	// argv entries rather than one pre-quoted string.
+	execCmd, err := resolveExecCmd(runOpts.ExecCmd, args)
+	if err != nil {
+		return err
+	}
+	runOpts.ExecCmd = execCmd
 
 	// Resolve project directory
 	projectDir, err := resolveProjectDir(runOpts.ProjectDir)
@@ -164,10 +181,12 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--exec and --shell are mutually exclusive (--shell bypasses entrypoint.sh entirely, so --exec would never run)")
 	}
 
-	// Resolve interactive shell type.
+	// Resolve interactive shell type. When neither a flag nor config set one,
+	// auto-detect from the host's $SHELL so zsh users get a zsh shell with no
+	// extra configuration.
 	shellType := sandbox.ShellType(shellTypeFlag)
 	if shellType == "" {
-		shellType = sandbox.ShellBash
+		shellType = detectShellTypeFromEnv()
 	}
 	if !sandbox.ValidShellType(shellType) {
 		return fmt.Errorf("invalid --shell-type %q; valid values: bash, zsh", shellTypeFlag)
@@ -629,6 +648,51 @@ func parseMountSpecs(raw []string) ([]sandbox.MountSpec, error) {
 		})
 	}
 	return mounts, nil
+}
+
+// detectShellTypeFromEnv picks a sandbox.ShellType from the host's $SHELL
+// environment variable, falling back to ShellBash when $SHELL is unset or
+// names a shell codex-dock doesn't support inside the container.
+func detectShellTypeFromEnv() sandbox.ShellType {
+	switch filepath.Base(os.Getenv("SHELL")) {
+	case "zsh":
+		return sandbox.ShellZsh
+	default:
+		return sandbox.ShellBash
+	}
+}
+
+// resolveExecCmd merges --exec with a trailing "-- command..." into the single
+// DOCK_EXEC_CMD string the container runs. The two are mutually exclusive.
+func resolveExecCmd(execFlag string, trailingArgs []string) (string, error) {
+	if len(trailingArgs) == 0 {
+		return execFlag, nil
+	}
+	if execFlag != "" {
+		return "", fmt.Errorf("--exec and a trailing \"-- command...\" are mutually exclusive")
+	}
+	return shellJoin(trailingArgs), nil
+}
+
+// shellJoin re-quotes argv so that, when passed to `sh -c`, it reproduces the
+// same arguments verbatim. Used for a trailing "-- command..." on the command
+// line so multi-word commands don't need to be hand-quoted into one string
+// the way --exec requires.
+func shellJoin(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		parts[i] = shellQuote(a)
+	}
+	return strings.Join(parts, " ")
+}
+
+// shellQuote wraps s in single quotes if it contains characters that would
+// otherwise be interpreted by the shell, escaping any embedded single quotes.
+func shellQuote(s string) string {
+	if s != "" && !strings.ContainsAny(s, " \t\n\\\"'`$&|;<>(){}[]*?!~#") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func resolveProjectDir(dir string) (string, error) {

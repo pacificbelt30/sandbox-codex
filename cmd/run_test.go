@@ -3,10 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"testing"
 
+	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -752,5 +754,102 @@ func TestApplyRunConfigDefaults_ShellTypeFlagOverridesConfig(t *testing.T) {
 
 	if shellTypeFlag != "bash" {
 		t.Errorf("shellTypeFlag = %q; want bash (explicit flag overrides config)", shellTypeFlag)
+	}
+}
+
+// TestDetectShellTypeFromEnv_Zsh verifies that a $SHELL ending in "zsh" (any
+// path) resolves to ShellZsh.
+func TestDetectShellTypeFromEnv_Zsh(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/zsh")
+	if got := detectShellTypeFromEnv(); got != sandbox.ShellZsh {
+		t.Errorf("detectShellTypeFromEnv() = %q; want zsh", got)
+	}
+}
+
+// TestDetectShellTypeFromEnv_Bash verifies that $SHELL=bash resolves to
+// ShellBash.
+func TestDetectShellTypeFromEnv_Bash(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	if got := detectShellTypeFromEnv(); got != sandbox.ShellBash {
+		t.Errorf("detectShellTypeFromEnv() = %q; want bash", got)
+	}
+}
+
+// TestDetectShellTypeFromEnv_Unset verifies that an unset $SHELL falls back
+// to ShellBash rather than erroring or leaving the type empty.
+func TestDetectShellTypeFromEnv_Unset(t *testing.T) {
+	t.Setenv("SHELL", "")
+	if got := detectShellTypeFromEnv(); got != sandbox.ShellBash {
+		t.Errorf("detectShellTypeFromEnv() = %q; want bash", got)
+	}
+}
+
+// TestDetectShellTypeFromEnv_Unrecognized verifies that an unsupported shell
+// (e.g. fish) falls back to ShellBash instead of propagating an invalid value.
+func TestDetectShellTypeFromEnv_Unrecognized(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/fish")
+	if got := detectShellTypeFromEnv(); got != sandbox.ShellBash {
+		t.Errorf("detectShellTypeFromEnv() = %q; want bash", got)
+	}
+}
+
+func TestResolveExecCmd_NoTrailingArgs(t *testing.T) {
+	got, err := resolveExecCmd("npm test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "npm test" {
+		t.Errorf("got %q; want %q", got, "npm test")
+	}
+}
+
+func TestResolveExecCmd_TrailingArgsOnly(t *testing.T) {
+	got, err := resolveExecCmd("", []string{"npm", "test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "npm test" {
+		t.Errorf("got %q; want %q", got, "npm test")
+	}
+}
+
+// TestResolveExecCmd_BothSet verifies --exec and a trailing "-- command..."
+// cannot be combined.
+func TestResolveExecCmd_BothSet(t *testing.T) {
+	if _, err := resolveExecCmd("npm test", []string{"ls"}); err == nil {
+		t.Error("expected error when --exec and trailing args are both set, got nil")
+	}
+}
+
+func TestShellJoin_SimpleArgsUnquoted(t *testing.T) {
+	got := shellJoin([]string{"ls", "-la", "/workspace"})
+	want := "ls -la /workspace"
+	if got != want {
+		t.Errorf("shellJoin() = %q; want %q", got, want)
+	}
+}
+
+// TestShellJoin_QuotesSpacesAndSpecialChars verifies that arguments containing
+// shell metacharacters round-trip through `sh -c` as a single literal argv
+// entry, so callers don't have to hand-quote multi-word commands themselves.
+func TestShellJoin_QuotesSpacesAndSpecialChars(t *testing.T) {
+	joined := shellJoin([]string{"echo", "hello world", "$HOME", "it's"})
+
+	out, err := exec.Command("sh", "-c", joined+" ; true").CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh -c %q: %v (%s)", joined, err, out)
+	}
+
+	// Re-run through a script that prints one argv entry per line so we can
+	// verify the exact argument boundaries survived quoting.
+	script := "print_args() { for a in \"$@\"; do echo \"[$a]\"; done; }; print_args " + shellJoin([]string{"a b", "c\"d", "it's", "$PATH"})
+	out, err = exec.Command("sh", "-c", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh -c %q: %v (%s)", script, err, out)
+	}
+	got := strings.TrimRight(string(out), "\n")
+	want := "[a b]\n[c\"d]\n[it's]\n[$PATH]"
+	if got != want {
+		t.Errorf("shellJoin round-trip = %q; want %q", got, want)
 	}
 }
