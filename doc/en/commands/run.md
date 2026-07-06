@@ -115,11 +115,21 @@ which `entrypoint.sh` reads.
 When neither the flag nor a config value (`default_shell_type` /
 `run.shell_type`) sets a value, it is auto-detected from the basename of the
 host's `$SHELL` environment variable — `zsh` maps to `zsh`, anything else
-(including an unset or unrecognized `$SHELL`) falls back to `bash`.
+(including an unset or unrecognized `$SHELL`) falls back to `bash`. **This
+auto-detection does not apply to `--shell` debug mode**, which always
+defaults to `bash` when the flag is omitted: `--shell` overrides the
+container's `Entrypoint` directly with the shell binary, bypassing
+`entrypoint.sh` entirely, so there's no way for it to fall back if that
+binary isn't present in the image — Docker just fails to start the
+container. Pass `--shell --shell-type zsh` explicitly if you want zsh there.
 
 The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM
 codex-dock:latest`), so `--shell-type zsh` works out of the box with either.
-For a custom template, install zsh in its Dockerfile to use it.
+For a custom template, install zsh in its Dockerfile to use it. Outside
+`--shell` mode (i.e. the no-agent shell and `--exec`), `entrypoint.sh` checks
+whether the requested shell binary actually exists before using it and logs a
+warning and falls back to bash if not, so a missing zsh there never fails the
+container outright.
 
 > The job-control wrapper that lets Ctrl+Z suspend an agent (`--agent
 > codex`/`claude`) back to a shell prompt (`launch_interactive`) always uses

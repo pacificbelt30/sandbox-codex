@@ -208,6 +208,24 @@ launch_interactive() {
     exec bash -i
 }
 
+# resolve_shell prints the shell binary to use for the no-agent interactive
+# shell and --exec: DOCK_SHELL if it exists in the image, otherwise bash.
+# DOCK_SHELL can come from an explicit --shell-type or be auto-detected from
+# the host's $SHELL (see cmd/run.go), so it may name a shell this particular
+# image never installed; falling back here keeps that auto-detection from
+# turning into a hard failure on images that only ship bash.
+resolve_shell() {
+    local requested="${DOCK_SHELL:-bash}"
+    if command -v "$requested" >/dev/null 2>&1; then
+        echo "$requested"
+        return
+    fi
+    if [[ "$requested" != "bash" ]]; then
+        log "WARNING: DOCK_SHELL='${requested}' not found in this image; falling back to bash."
+    fi
+    echo "bash"
+}
+
 if [[ -f "/workspace/AGENTS.md" ]]; then
     log "Found AGENTS.md in workspace."
 fi
@@ -243,12 +261,13 @@ case "${DOCK_AGENT}" in
         launch_interactive "$INIT"
         ;;
     ""|shell)
+        SHELL_BIN="$(resolve_shell)"
         if [[ -n "${DOCK_EXEC_CMD:-}" ]]; then
             log "No agent selected; running command: ${DOCK_EXEC_CMD}"
-            exec "${DOCK_SHELL:-bash}" -c "${DOCK_EXEC_CMD}"
+            exec "${SHELL_BIN}" -c "${DOCK_EXEC_CMD}"
         fi
         log "No agent selected; starting interactive shell (codex and claude are available on PATH)."
-        exec "${DOCK_SHELL:-bash}" -i
+        exec "${SHELL_BIN}" -i
         ;;
     *)
         log "ERROR: unknown DOCK_AGENT '${DOCK_AGENT}' (expected: codex, claude, or empty)"

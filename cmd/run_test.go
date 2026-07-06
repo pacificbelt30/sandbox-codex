@@ -757,6 +757,56 @@ func TestApplyRunConfigDefaults_ShellTypeFlagOverridesConfig(t *testing.T) {
 	}
 }
 
+// TestResolveShellType_AutoDetectsForNormalRun verifies that, outside --shell
+// mode, an empty flag value falls back to $SHELL auto-detection.
+func TestResolveShellType_AutoDetectsForNormalRun(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/zsh")
+	got, err := resolveShellType("", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != sandbox.ShellZsh {
+		t.Errorf("resolveShellType(\"\", false) = %q; want zsh", got)
+	}
+}
+
+// TestResolveShellType_ShellModeIgnoresAutoDetect verifies that --shell
+// (shellMode=true) always defaults to bash when --shell-type is omitted,
+// even if the host's $SHELL is zsh. --shell overrides the container
+// Entrypoint directly to the shell binary (bypassing entrypoint.sh), so an
+// auto-detected shell that isn't installed in the image would make Docker
+// fail to start the container outright, with no way to fall back.
+func TestResolveShellType_ShellModeIgnoresAutoDetect(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/zsh")
+	got, err := resolveShellType("", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != sandbox.ShellBash {
+		t.Errorf("resolveShellType(\"\", true) = %q; want bash (auto-detection skipped in --shell mode)", got)
+	}
+}
+
+// TestResolveShellType_ShellModeHonorsExplicitFlag verifies that an explicit
+// --shell-type still applies in --shell mode.
+func TestResolveShellType_ShellModeHonorsExplicitFlag(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	got, err := resolveShellType("zsh", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != sandbox.ShellZsh {
+		t.Errorf("resolveShellType(\"zsh\", true) = %q; want zsh", got)
+	}
+}
+
+// TestResolveShellType_InvalidFlag verifies an unrecognized explicit value is rejected.
+func TestResolveShellType_InvalidFlag(t *testing.T) {
+	if _, err := resolveShellType("fish", false); err == nil {
+		t.Error("expected error for invalid --shell-type, got nil")
+	}
+}
+
 // TestDetectShellTypeFromEnv_Zsh verifies that a $SHELL ending in "zsh" (any
 // path) resolves to ShellZsh.
 func TestDetectShellTypeFromEnv_Zsh(t *testing.T) {

@@ -45,8 +45,9 @@ func TestEntrypointSetsOpenAIBaseURLInConfig(t *testing.T) {
 }
 
 // TestEntrypointUsesDockShellForInteractiveShell guards the no-agent shell
-// case: it must launch the shell selected via DOCK_SHELL (defaulting to bash)
-// rather than a hardcoded "bash -i".
+// case: it must launch the shell selected via DOCK_SHELL (defaulting to bash,
+// and falling back to bash via resolve_shell if DOCK_SHELL names a binary
+// that isn't installed in the image) rather than a hardcoded "bash -i".
 func TestEntrypointUsesDockShellForInteractiveShell(t *testing.T) {
 	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
 	if err != nil {
@@ -54,8 +55,17 @@ func TestEntrypointUsesDockShellForInteractiveShell(t *testing.T) {
 	}
 
 	script := string(entrypoint)
-	if !strings.Contains(script, `exec "${DOCK_SHELL:-bash}" -i`) {
-		t.Error("entrypoint's no-agent shell case must exec \"${DOCK_SHELL:-bash}\" -i")
+	if !strings.Contains(script, `exec "${SHELL_BIN}" -i`) {
+		t.Error(`entrypoint's no-agent shell case must exec "${SHELL_BIN}" -i (SHELL_BIN from resolve_shell, which reads DOCK_SHELL)`)
+	}
+	if !strings.Contains(script, `SHELL_BIN="$(resolve_shell)"`) {
+		t.Error("entrypoint's no-agent branch must set SHELL_BIN via resolve_shell")
+	}
+	if !strings.Contains(script, `local requested="${DOCK_SHELL:-bash}"`) {
+		t.Error("resolve_shell must read the requested shell from DOCK_SHELL, defaulting to bash")
+	}
+	if !strings.Contains(script, `command -v "$requested"`) {
+		t.Error("resolve_shell must verify the requested shell exists before using it, falling back to bash otherwise")
 	}
 }
 

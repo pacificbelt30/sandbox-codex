@@ -113,9 +113,9 @@ func init() {
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
 	f.StringVar(&shellTypeFlag, "shell-type", "", `Interactive shell to launch (the no-agent shell, and --shell debug mode).
-  bash  (default, and the fallback when auto-detection below doesn't recognize $SHELL)
+  bash  (default, and the fallback when the requested shell isn't installed in the image)
   zsh   requires zsh in the image (the built-in "plain" and "pwn" templates include it)
-  When omitted (and not set via config), this is auto-detected from the host's $SHELL environment variable.`)
+  When omitted (and not set via config), this is auto-detected from the host's $SHELL environment variable — except for --shell, which always defaults to bash since it bypasses entrypoint.sh and so cannot fall back if the auto-detected shell is missing.`)
 	f.StringVar(&userMode, "user", "current", `User to run as inside the container.
 	  "current" current command user (uid:gid, default)
 	  "codex"   codex user in image (uid:1001)
@@ -181,15 +181,10 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--exec and --shell are mutually exclusive (--shell bypasses entrypoint.sh entirely, so --exec would never run)")
 	}
 
-	// Resolve interactive shell type. When neither a flag nor config set one,
-	// auto-detect from the host's $SHELL so zsh users get a zsh shell with no
-	// extra configuration.
-	shellType := sandbox.ShellType(shellTypeFlag)
-	if shellType == "" {
-		shellType = detectShellTypeFromEnv()
-	}
-	if !sandbox.ValidShellType(shellType) {
-		return fmt.Errorf("invalid --shell-type %q; valid values: bash, zsh", shellTypeFlag)
+	// Resolve interactive shell type.
+	shellType, err := resolveShellType(shellTypeFlag, runOpts.ShellMode)
+	if err != nil {
+		return err
 	}
 	runOpts.ShellType = shellType
 
@@ -648,6 +643,30 @@ func parseMountSpecs(raw []string) ([]sandbox.MountSpec, error) {
 		})
 	}
 	return mounts, nil
+}
+
+// resolveShellType resolves --shell-type (and its config-file defaults,
+// already folded into flagValue by applyRunConfigDefaults) into a
+// sandbox.ShellType. When flagValue is empty, it auto-detects from the
+// host's $SHELL so zsh users get a zsh shell with no extra configuration —
+// except in shellMode (--shell), which overrides the container Entrypoint
+// directly to the shell binary, bypassing entrypoint.sh entirely. That path
+// has no way to fall back to bash if the auto-detected shell isn't installed
+// in the image (Docker just fails to start the container), so it defaults to
+// bash instead and only honors an explicit --shell-type.
+func resolveShellType(flagValue string, shellMode bool) (sandbox.ShellType, error) {
+	shellType := sandbox.ShellType(flagValue)
+	if shellType == "" {
+		if shellMode {
+			shellType = sandbox.ShellBash
+		} else {
+			shellType = detectShellTypeFromEnv()
+		}
+	}
+	if !sandbox.ValidShellType(shellType) {
+		return "", fmt.Errorf("invalid --shell-type %q; valid values: bash, zsh", flagValue)
+	}
+	return shellType, nil
 }
 
 // detectShellTypeFromEnv picks a sandbox.ShellType from the host's $SHELL

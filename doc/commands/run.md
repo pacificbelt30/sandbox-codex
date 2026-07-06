@@ -120,12 +120,20 @@ codex-dock run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 | `zsh` | zsh を起動。対象イメージに zsh がインストールされている必要がある |
 
 フラグにも設定ファイル（`default_shell_type` / `run.shell_type`）にも値が無い場合は、
-ホスト側の `$SHELL` 環境変数のベース名から自動判定されます。`zsh` なら `zsh`、
-それ以外（`$SHELL` が未設定、または認識できないシェルの場合を含む）は `bash` にフォールバックします。
+ホスト側の `$SHELL` 環境変数のベース名から自動判定されます（`zsh` なら `zsh`、それ以外
+（`$SHELL` が未設定、または認識できないシェルの場合を含む）は `bash`）。**ただし `--shell`
+デバッグモードはこの自動判定の対象外**で、フラグ未指定なら常に `bash` になります。`--shell`
+はコンテナの `Entrypoint` を直接シェルバイナリに置き換えて `entrypoint.sh` 自体をバイパス
+するため、そのバイナリがイメージに無かった場合に `entrypoint.sh` 側でフォールバックする
+手段が無く、Docker がコンテナの起動自体に失敗してしまうためです。`--shell --shell-type zsh`
+のように明示すれば、`--shell` でも zsh を使えます。
 
 組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため
 （`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh`（や `$SHELL=zsh` による自動判定）がそのまま使えます。
 自作テンプレートで zsh を使う場合は、そのテンプレートの Dockerfile 側で zsh をインストールしてください。
+インストールされていない場合でも、`--shell` 以外（エージェント未指定時のシェルや `--exec`）
+では `entrypoint.sh` が起動時にバイナリの有無を確認し、無ければ警告を出して `bash` に
+フォールバックするため、コンテナが起動に失敗することはありません。
 
 > エージェント（`--agent codex`/`claude`）を Ctrl+Z で一時停止してシェルに戻る機構
 > （`launch_interactive`）は、bash の `PROMPT_COMMAND` を使った実装のため、
