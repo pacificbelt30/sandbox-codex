@@ -229,10 +229,6 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 | ID | Issue | Notes |
 |---|---|---|
 | NF-SEC-01 | Auth Proxy uses plain HTTP | TLS or UNIX socket required per SRS |
-| F-UI-02 | TUI `[R]` start key unimplemented | Key handler missing |
-| F-UI-03 | TUI log view shows stub text | `mgr.Logs()` not called |
-| `--agents-md` | `CODEX_AGENTS_MD` env var not set in container | `entrypoint.sh` handler exists but env var not injected |
-| `mountMode` | `ReadOnly` applied via `Mounts[0].ReadOnly`, `mountMode` var is dead code | |
 
 **Resolved gaps** (no longer applicable):
 
@@ -240,6 +236,10 @@ API Key ──▶ Auth Proxy (127.0.0.1) ──▶ placeholder token ──▶ c
 |---|---|
 | F-AUTH-04 | `proxy.RevokeToken()` is called from `sandbox.Manager.Stop()` and `runSingle()` |
 | access_token leak | Containers now receive only a placeholder; proxy injects real credentials on every outbound request (`injectCredentials`) |
+| F-UI-02 | TUI `[R]` key now calls `Manager.Start()` to restart a stopped container (`S`/stop, `D`/delete, `A`/stop-all also implemented) |
+| F-UI-03 | TUI log view now calls `mgr.Logs()` and streams output live via `tviewWriter` |
+| `--agents-md` | `manager.go`'s `buildEnv` now sets `CODEX_AGENTS_MD` on the container env, consumed by `entrypoint.sh`'s `build_codex_args` |
+| `mountMode` | Dead `mountMode` var removed; `ReadOnly` is applied per-mount via `sandbox.MountSpec.ReadOnly` in `buildMounts` (see the `--mount` flag) |
 | F-NET-01/02/04 | Replaced the iptables firewall with Docker-native isolation: per-worker `Internal` networks + multi-homed proxy router. Workers reach the proxy via Docker DNS (`codex-auth-proxy`), no `host.docker.internal`/`--add-host`, no iptables/sudo. See `internal/network/manager.go` (`EnsureWorkerNetwork`/`ConnectProxy`) and `sandbox.Manager.Run`. |
 | iptables firewall | `internal/network/firewall.go` and the `codex-dock firewall` command group were removed; `--sudo/--no-firewall/--allow-host/--block-host` flags are gone. |
 

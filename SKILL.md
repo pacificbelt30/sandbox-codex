@@ -75,12 +75,9 @@ The Auth Proxy is the security boundary. When writing code that starts or stops 
 2. Issue a short-lived token: `proxy.IssueToken(containerName, ttl)` → `cdx-xxxx`.
 3. Pass `CODEX_TOKEN` and `CODEX_AUTH_PROXY_URL` as container env vars.
 
-**Shutdown sequence** (F-AUTH-04 — **not yet implemented**):
-```go
-// TODO: call this when container stops
-proxy.RevokeToken(token)
-```
-When implementing F-AUTH-04, call `RevokeToken` from `sandbox.Manager.Stop()` or the stop flow in `cmd/run.go`.
+**Shutdown sequence** (F-AUTH-04 — implemented): `sandbox.Manager.Stop()`/`Remove()` and the stop flow in
+`cmd/run.go`'s `runSingle()` call `proxy.RevokeToken(name)` (`internal/sandbox/manager.go`), which immediately
+invalidates the container's token on the Auth Proxy.
 
 **OAuth vs API key**: The Auth Proxy auto-detects the mode by checking if `~/.codex/auth.json` contains a `refresh_token` field. The `/token` endpoint returns either `{"api_key": "..."}` or `{"oauth_access_token": "..."}`.
 
@@ -176,13 +173,14 @@ case tcell.KeyRune:
     case 'S': // stop selected container
     case 'D': // delete selected container
     case 'A': // stop all containers
-    case 'R': // TODO: start container (F-UI-02 — unimplemented)
+    case 'R': // restart selected (stopped) container via Manager.Start()
     case 'Q': // quit
     }
 }
 ```
 
-**Log view** (F-UI-03): The log panel currently shows stub text. Fix by calling `mgr.Logs(containerName)` and feeding output to the tview `TextView`.
+**Log view** (F-UI-03 — implemented): Enter transitions to the log view, which calls `mgr.Logs(opts)` and streams
+output live into the tview `TextView` via `tviewWriter`.
 
 ---
 
