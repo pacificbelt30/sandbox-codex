@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -46,6 +48,7 @@ var (
 	httpProxyURL        string
 	runProxyAdminSecret string
 	runKeep             bool
+	forceRecreateProxy  bool
 	mountFlags          []string
 )
 
@@ -110,6 +113,7 @@ func init() {
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
 	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
 	f.BoolVar(&runKeep, "keep", false, "Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate)")
+	f.BoolVar(&forceRecreateProxy, "force-recreate-proxy", false, "Recreate an auth proxy whose credential state differs from the host even when workers are running (existing workers will lose authentication)")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
 	f.BoolVarP(&runOpts.ShellMode, "shell", "s", false, "Start a raw shell, bypassing entrypoint auth setup (debugging). The default (no --agent) already provides an auth-configured shell.")
 	f.StringVar(&shellTypeFlag, "shell-type", "", `Interactive shell to launch (the no-agent shell, and --shell debug mode).
@@ -206,6 +210,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	proxy, err = reconcileProxyAuthState(cmd.Context(), proxy, forceRecreateProxy)
+	if err != nil {
+		return err
+	}
+
 	if runOpts.Agent == sandbox.AgentClaude && !proxy.IsAnthropicMode() {
 		return fmt.Errorf("--agent claude requires Anthropic credentials on the auth proxy; " +
 			"set ANTHROPIC_API_KEY or run `claude` OAuth login (~/.claude/.credentials.json) before starting the proxy")
@@ -263,6 +272,92 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+type proxyAuthState struct {
+	openAIOAuth        bool
+	anthropicAvailable bool
+	anthropicOAuth     bool
+}
+
+func hostProxyAuthState() proxyAuthState {
+	return proxyAuthState{
+		openAIOAuth:        authproxy.IsOAuthAuth(),
+		anthropicAvailable: authproxy.HasAnthropicCredentials(),
+		anthropicOAuth:     authproxy.IsAnthropicOAuth(),
+	}
+}
+
+func remoteProxyAuthState(proxy *authproxy.RemoteProxy) proxyAuthState {
+	return proxyAuthState{
+		openAIOAuth:        proxy.IsOAuthMode(),
+		anthropicAvailable: proxy.IsAnthropicMode(),
+		anthropicOAuth:     proxy.IsAnthropicOAuthMode(),
+	}
+}
+
+func proxyAuthStateMismatch(host, remote proxyAuthState) bool {
+	return host != remote
+}
+
+func runningWorkersBlockProxyRecreation(workerCount int, force bool) bool {
+	return workerCount > 0 && !force
+}
+
+// reconcileProxyAuthState recreates only the credential-holding auth proxy
+// when its loaded auth modes differ from the host. Recreating that proxy drops
+// its in-memory worker tokens, so an automatic recreation is safe only when no
+// workers are running unless the caller explicitly forces it.
+func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, force bool) (*authproxy.RemoteProxy, error) {
+	hostState := hostProxyAuthState()
+	if !proxyAuthStateMismatch(hostState, remoteProxyAuthState(proxy)) {
+		return proxy, nil
+	}
+
+	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("checking workers before auth proxy recreation: %w", err)
+	}
+	workers, err := mgr.List(false)
+	if err != nil {
+		return nil, fmt.Errorf("checking workers before auth proxy recreation: %w", err)
+	}
+	if runningWorkersBlockProxyRecreation(len(workers), force) {
+		names := make([]string, 0, len(workers))
+		for _, worker := range workers {
+			names = append(names, worker.Name)
+		}
+		return nil, fmt.Errorf(
+			"host and auth proxy credentials differ, but %d worker(s) are running (%s); stop and restart them, or rerun with --force-recreate-proxy (running workers will lose authentication)",
+			len(workers), strings.Join(names, ", "))
+	}
+
+	if len(workers) > 0 {
+		fmt.Printf("Host and auth proxy credentials differ; force-recreating auth proxy with %d running worker(s)...\n", len(workers))
+	} else {
+		fmt.Println("Host and auth proxy credentials differ; recreating auth proxy...")
+	}
+	remove := exec.CommandContext(ctx, "docker", "rm", "--force", proxyRunName)
+	remove.Stdout, remove.Stderr = os.Stdout, os.Stderr
+	if err := remove.Run(); err != nil {
+		return nil, fmt.Errorf("removing stale auth proxy container %q: %w", proxyRunName, err)
+	}
+
+	// `codex-dock run` has its own admin-secret flag; propagate it to the shared
+	// proxy startup path used by `codex-dock proxy run`.
+	proxyAdminSecret = runProxyAdminSecret
+	if err := startProxyContainer(ctx); err != nil {
+		return nil, fmt.Errorf("recreating auth proxy: %w", err)
+	}
+
+	refreshed, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, runProxyAdminSecret, 30)
+	if err != nil {
+		return nil, fmt.Errorf("reconnecting recreated auth proxy: %w", err)
+	}
+	if proxyAuthStateMismatch(hostState, remoteProxyAuthState(refreshed)) {
+		return nil, fmt.Errorf("recreated auth proxy still does not match host credentials")
+	}
+	return refreshed, nil
 }
 
 // imageNeedsBuild reports whether image should be (re)built before starting the

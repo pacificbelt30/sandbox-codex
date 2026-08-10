@@ -45,6 +45,7 @@ to quote the whole command as one string ([details](#--exec)).
 | `--mount` | | | Additional host directory to mount (repeatable): `<host-path>:<container-path>[:ro\|rw]` ([details](#--mount)) |
 | `--no-internet` | | `false` | Disable general egress (omit `HTTP(S)_PROXY`; only the proxy's API reverse routes remain reachable) |
 | `--keep` | | `false` | Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate) |
+| `--force-recreate-proxy` | | `false` | Recreate the Auth Proxy when its credential state differs from the host even if workers are running (existing workers lose authentication) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
 | `--agents-md` | | | Path to `AGENTS.md` file |
 | `--detach` | `-D` | `false` | Run in background (no log output) |
@@ -52,6 +53,12 @@ to quote the whole command as one string ([details](#--exec)).
 | `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
 | `--shell-type` | | auto-detected from `$SHELL`, else `bash` | Interactive shell to launch ([details](#--shell-type)) |
 | `--user` | | `""` | Container execution user ([details](#--user)) |
+
+When the host and Auth Proxy credential modes differ, `run` automatically
+recreates the Auth Proxy if no workers are running. If workers are running it
+stops with an error so their in-memory tokens are not invalidated. Pass
+`--force-recreate-proxy` to recreate it anyway, then restart the existing
+workers.
 
 ---
 

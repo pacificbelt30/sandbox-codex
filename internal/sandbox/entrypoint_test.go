@@ -69,6 +69,21 @@ func TestEntrypointUsesDockShellForInteractiveShell(t *testing.T) {
 	}
 }
 
+func TestEntrypointPreventsZshNewUserWizard(t *testing.T) {
+	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+
+	script := string(entrypoint)
+	if !strings.Contains(script, `ensure_zsh_startup_file "${SHELL_BIN}"`) {
+		t.Error("entrypoint must ensure a startup file exists before launching interactive zsh")
+	}
+	if !strings.Contains(script, `[[ ! -e "${startup_dir}/.zshrc" ]]`) {
+		t.Error("entrypoint must preserve an existing or bind-mounted .zshrc")
+	}
+}
+
 func TestEntrypointDisablesAppsInConfig(t *testing.T) {
 	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
 	if err != nil {

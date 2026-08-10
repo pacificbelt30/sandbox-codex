@@ -364,6 +364,46 @@ func TestRunKeepFlag(t *testing.T) {
 	}
 }
 
+func TestRunForceRecreateProxyFlag(t *testing.T) {
+	f := runCmd.Flags().Lookup("force-recreate-proxy")
+	if f == nil {
+		t.Fatal("run command is missing --force-recreate-proxy")
+	}
+	if f.DefValue != "false" {
+		t.Fatalf("--force-recreate-proxy default = %q; want false", f.DefValue)
+	}
+}
+
+func TestProxyAuthStateMismatch(t *testing.T) {
+	oauth := proxyAuthState{openAIOAuth: true, anthropicAvailable: true, anthropicOAuth: true}
+	if proxyAuthStateMismatch(oauth, oauth) {
+		t.Fatal("equal auth states must not trigger proxy recreation")
+	}
+
+	cases := []proxyAuthState{
+		{openAIOAuth: false, anthropicAvailable: true, anthropicOAuth: true},
+		{openAIOAuth: true, anthropicAvailable: false, anthropicOAuth: false},
+		{openAIOAuth: true, anthropicAvailable: true, anthropicOAuth: false},
+	}
+	for _, remote := range cases {
+		if !proxyAuthStateMismatch(oauth, remote) {
+			t.Fatalf("different auth states must trigger recreation: host=%+v remote=%+v", oauth, remote)
+		}
+	}
+}
+
+func TestRunningWorkersBlockProxyRecreation(t *testing.T) {
+	if runningWorkersBlockProxyRecreation(0, false) {
+		t.Fatal("zero workers must allow automatic proxy recreation")
+	}
+	if !runningWorkersBlockProxyRecreation(1, false) {
+		t.Fatal("running workers must block automatic proxy recreation")
+	}
+	if runningWorkersBlockProxyRecreation(1, true) {
+		t.Fatal("--force-recreate-proxy must allow recreation with running workers")
+	}
+}
+
 // TestRunNoFirewallFlagRemoved asserts the iptables-era flags are gone now that
 // isolation is enforced entirely by Docker networks.
 func TestRunNoFirewallFlagRemoved(t *testing.T) {

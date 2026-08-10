@@ -172,6 +172,13 @@ func IsAnthropicOAuth() bool {
 	return f.ClaudeAiOauth != nil && f.ClaudeAiOauth.AccessToken != ""
 }
 
+// HasAnthropicCredentials reports whether the host currently has any usable
+// Anthropic credential source (Claude OAuth or an API key). It intentionally
+// exposes only availability, never credential contents.
+func HasAnthropicCredentials() bool {
+	return IsAnthropicOAuth() || loadAnthropicAPIKey() != ""
+}
+
 // loadAnthropicAPIKey returns the best available Anthropic API key, or "".
 // Priority: ANTHROPIC_API_KEY env > ~/.config/codex-dock/anthropic-apikey.
 func loadAnthropicAPIKey() string {

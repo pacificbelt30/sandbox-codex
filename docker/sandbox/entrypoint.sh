@@ -226,6 +226,21 @@ resolve_shell() {
     echo "bash"
 }
 
+# zsh starts zsh-newuser-install when an interactive shell has no user startup
+# files. This is common when a numeric host UID uses the writable fallback HOME.
+# Create an empty .zshrc only when none exists; custom and bind-mounted dotfiles
+# remain untouched.
+ensure_zsh_startup_file() {
+    local shell_bin="$1"
+    [[ "${shell_bin}" == "zsh" ]] || return 0
+
+    local startup_dir="${ZDOTDIR:-${HOME}}"
+    if [[ ! -e "${startup_dir}/.zshrc" ]]; then
+        mkdir -p "${startup_dir}"
+        : > "${startup_dir}/.zshrc"
+    fi
+}
+
 if [[ -f "/workspace/AGENTS.md" ]]; then
     log "Found AGENTS.md in workspace."
 fi
@@ -266,6 +281,7 @@ case "${DOCK_AGENT}" in
             log "No agent selected; running command: ${DOCK_EXEC_CMD}"
             exec "${SHELL_BIN}" -c "${DOCK_EXEC_CMD}"
         fi
+        ensure_zsh_startup_file "${SHELL_BIN}"
         log "No agent selected; starting interactive shell (codex and claude are available on PATH)."
         exec "${SHELL_BIN}" -i
         ;;

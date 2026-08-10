@@ -14,13 +14,14 @@ import (
 
 // RemoteProxy talks to an externally running auth proxy service.
 type RemoteProxy struct {
-	adminURL          string
-	containerURL      string
-	adminSecret       string
-	oauthMode         bool
-	anthropicMode     bool
-	httpClient        *http.Client
-	adminSecretHeader string
+	adminURL           string
+	containerURL       string
+	adminSecret        string
+	oauthMode          bool
+	anthropicMode      bool
+	anthropicOAuthMode bool
+	httpClient         *http.Client
+	adminSecretHeader  string
 }
 
 func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, error) {
@@ -37,12 +38,14 @@ func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, e
 	}
 	r.oauthMode = mode["oauth_mode"]
 	r.anthropicMode = mode["anthropic_available"]
+	r.anthropicOAuthMode = mode["anthropic_oauth_mode"]
 	return r, nil
 }
 
-func (r *RemoteProxy) ContainerEndpoint() string { return r.containerURL }
-func (r *RemoteProxy) IsOAuthMode() bool         { return r.oauthMode }
-func (r *RemoteProxy) IsAnthropicMode() bool     { return r.anthropicMode }
+func (r *RemoteProxy) ContainerEndpoint() string  { return r.containerURL }
+func (r *RemoteProxy) IsOAuthMode() bool          { return r.oauthMode }
+func (r *RemoteProxy) IsAnthropicMode() bool      { return r.anthropicMode }
+func (r *RemoteProxy) IsAnthropicOAuthMode() bool { return r.anthropicOAuthMode }
 
 func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, error) {
 	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec})

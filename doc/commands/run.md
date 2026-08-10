@@ -45,6 +45,7 @@ codex-dock run [OPTIONS] [-- command...]
 | `--mount` | | | 追加のホストディレクトリをマウント（繰り返し指定可）`<host-path>:<container-path>[:ro\|rw]`（[詳細](#--mount--任意ディレクトリの追加マウント)） |
 | `--no-internet` | | `false` | 一般 egress を無効化（`HTTP(S)_PROXY` を注入せず、プロキシの API リバースルートのみ到達可能に） |
 | `--keep` | | `false` | フォアグラウンド実行の終了時にコンテナと専用ネットワークを削除しない（既定では削除し、ネットワークの蓄積を防ぐ） |
+| `--force-recreate-proxy` | | `false` | ホストとAuth Proxyの認証状態が異なる場合、稼働中ワーカーがあってもAuth Proxyを再作成する（既存ワーカーの認証は失効） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
 | `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
@@ -68,6 +69,9 @@ codex-dock run [OPTIONS] [-- command...]
 
 - `--agent claude` は Auth Proxy が Anthropic 認証情報を持たない場合、起動前にエラーで停止します
   （Proxy の `/admin/mode` を参照）。
+- ホストと Auth Proxy の認証状態が異なる場合、稼働中ワーカーがなければ Auth Proxy を自動再作成します。
+  稼働中ワーカーがある場合は、それらの認証を失効させないようエラーで停止します。意図的に再作成する場合は
+  `--force-recreate-proxy` を指定し、既存ワーカーも再起動してください。
 - `--shell` は `entrypoint.sh` を完全にバイパスして**認証なし**の素のシェルを起動します（デバッグ用）。
   認証済みシェルが欲しい場合は `--agent` を省略してください。
 

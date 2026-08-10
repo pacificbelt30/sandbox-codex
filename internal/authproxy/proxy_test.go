@@ -1617,6 +1617,29 @@ func TestRemoteProxy_IssueToken(t *testing.T) {
 	r.RevokeToken("worker-r1")
 }
 
+func TestRemoteProxy_ReportsAnthropicOAuthMode(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/mode" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]bool{
+			"oauth_mode":           true,
+			"anthropic_available":  true,
+			"anthropic_oauth_mode": true,
+		})
+	}))
+	defer ts.Close()
+
+	r, err := NewRemoteProxy(ts.URL, "http://codex-auth-proxy:18080", "")
+	if err != nil {
+		t.Fatalf("NewRemoteProxy: %v", err)
+	}
+	if !r.IsAnthropicOAuthMode() {
+		t.Fatal("IsAnthropicOAuthMode() = false; want true")
+	}
+}
+
 func TestConnectionHint_ConnectionRefused(t *testing.T) {
 	err := &net.OpError{Err: fmt.Errorf("connect: connection refused")}
 	hint := connectionHint(err)
