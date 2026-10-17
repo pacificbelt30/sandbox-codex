@@ -3,10 +3,10 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -55,7 +55,8 @@ var (
 var runCmd = &cobra.Command{
 	Use:   "run [flags] [-- command...]",
 	Short: "Start a sandboxed Codex worker container",
-	Long: `Start a Docker container with Codex CLI isolated from the host environment.
+	Long: `Start a Kata VM-isolated worker managed through containerd and Dragonball (Linux/KVM required).
+Use --runtime runc for explicit compatibility without VM isolation.
 Auth credentials are injected via the Auth Proxy instead of being directly mounted.
 
 A command placed after "--" is run once instead of an interactive shell (like
@@ -71,7 +72,9 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	f := runCmd.Flags()
-	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "Docker image for the sandbox")
+	f.StringVar(&runOpts.Runtime, "runtime", sandbox.RuntimeKata, "Worker isolation: kata (default, requires Linux/KVM) or explicit runc compatibility mode; never falls back automatically")
+	f.StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration on the dedicated containerd node")
+	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "OCI image for the sandbox")
 	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "codex-dock build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
@@ -93,7 +96,7 @@ func init() {
   full-auto never ask for approval (--ask-for-approval never)
   danger    bypass all approvals and sandbox restrictions
             (--dangerously-bypass-approvals-and-sandbox)
-            Docker container isolation provides the safety boundary.`)
+            The selected worker runtime provides the safety boundary.`)
 	f.BoolVar(&fullAutoFlag, "full-auto", false, "Deprecated: use --approval-mode full-auto")
 	if err := f.MarkDeprecated("full-auto", "use --approval-mode full-auto instead"); err != nil {
 		panic(err)
@@ -130,6 +133,18 @@ func init() {
 
 func runWorker(cmd *cobra.Command, args []string) error {
 	applyRunConfigDefaults(cmd)
+	if _, _, err := sandbox.ResolveRuntime(runOpts.Runtime, runOpts.KataRuntime); err != nil {
+		return err
+	}
+	// Check before proxy startup, token issuance, worktrees or image builds.
+	preflight, err := sandbox.NewManager(managementConfig())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = preflight.Close() }()
+	if err := preflight.CheckRuntime(cmd.Context(), runOpts); err != nil {
+		return err
+	}
 
 	// A trailing "-- command..." is equivalent to --exec, but as separate
 	// argv entries rather than one pre-quoted string.
@@ -232,13 +247,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	sbMgr, err := sandbox.NewManager(sandbox.ManagerConfig{
-		Proxy:        proxy,
-		Network:      netMgr,
-		HTTPProxyURL: httpProxyURL,
-		Verbose:      verbose,
-		Debug:        debug,
-	})
+	managerCfg := managementConfig()
+	managerCfg.Proxy = proxy
+	managerCfg.Network = netMgr
+	managerCfg.HTTPProxyURL = httpProxyURL
+	managerCfg.Debug = debug
+	managerCfg.ProxyAdminURL = proxyAdminURL
+	sbMgr, err := sandbox.NewManager(managerCfg)
 	if err != nil {
 		return fmt.Errorf("creating sandbox manager: %w", err)
 	}
@@ -337,9 +352,7 @@ func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, 
 	} else {
 		fmt.Println("Host and auth proxy credentials differ; recreating auth proxy...")
 	}
-	remove := exec.CommandContext(ctx, "docker", "rm", "--force", proxyRunName)
-	remove.Stdout, remove.Stderr = os.Stdout, os.Stderr
-	if err := remove.Run(); err != nil {
+	if err := removeProxy(ctx, proxyRunName, true); err != nil {
 		return nil, fmt.Errorf("removing stale auth proxy container %q: %w", proxyRunName, err)
 	}
 
@@ -430,6 +443,7 @@ func offerToStartProxy(cmd *cobra.Command, connErr error) (*authproxy.RemoteProx
 		return nil, connErr
 	}
 
+	applyForwardPolicyDefaults(cmd)
 	if err := startProxyContainer(cmd.Context()); err != nil {
 		return nil, fmt.Errorf("starting auth proxy: %w", err)
 	}
@@ -487,6 +501,7 @@ func connectProxyWithRetry(adminURL, containerURL, secret string, attempts int) 
 
 func applyRunConfigDefaults(cmd *cobra.Command) {
 	flags := cmd.Flags()
+	applyRuntimeDefaults(cmd)
 
 	if !flags.Changed("image") {
 		if flags.Changed("template") {
@@ -554,10 +569,22 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 			proxyContainerURL = v
 		}
 	}
+	if !flags.Changed("proxy-admin-url") {
+		if value := viper.GetString("proxy.admin_url"); value != "" {
+			proxyAdminURL = value
+		}
+	}
+	if !flags.Changed("proxy-admin-secret") {
+		runProxyAdminSecret = viper.GetString("proxy.admin_secret")
+		if value, ok := os.LookupEnv("CODEX_DOCK_PROXY_ADMIN_SECRET"); ok {
+			runProxyAdminSecret = value
+		}
+	}
 }
 
 func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	opts := runOpts
+	worktreeHandedOff := false
 
 	// Handle worktree
 	if opts.UseWorktree {
@@ -571,6 +598,9 @@ func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 		}
 		opts.WorktreePath = wtPath
 		defer func() {
+			if worktreeHandedOff {
+				return
+			}
 			if err := worktree.Remove(wtPath); err != nil && verbose {
 				fmt.Fprintf(os.Stderr, "warning: removing worktree %s: %v\n", wtPath, err)
 			}
@@ -579,8 +609,12 @@ func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 
 	containerID, err := mgr.Run(opts)
 	if err != nil {
+		if containerID != "" {
+			worktreeHandedOff = true
+		}
 		return fmt.Errorf("starting container: %w", err)
 	}
+	worktreeHandedOff = true // Manager.Remove owns cleanup, including detached workers.
 
 	if opts.Detach {
 		fmt.Printf("Container started: %s\n", containerID[:12])
@@ -603,8 +637,8 @@ func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	// Foreground cleanup: remove the container and its per-worker Internal network
 	// so they don't accumulate across runs (use --keep to retain them).
 	if !runKeep {
-		if err := mgr.Remove(containerID, true); err != nil && verbose {
-			fmt.Fprintf(os.Stderr, "warning: cleaning up container/network: %v\n", err)
+		if err := mgr.Remove(containerID, true); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("cleaning up container/network: %w", err))
 		}
 	}
 	return runErr
@@ -616,7 +650,13 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	fmt.Printf("Starting %d parallel workers...\n", n)
 
 	containerIDs := make([]string, 0, n)
-	worktreePaths := make([]string, 0, n)
+	cleanupFailedBatch := func() {
+		for _, id := range containerIDs {
+			if err := mgr.Remove(id, true); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: cleaning failed batch worker %s: %v\n", id, err)
+			}
+		}
+	}
 
 	for i := 1; i <= n; i++ {
 		o := opts
@@ -636,20 +676,17 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 				NewBranch:  true,
 			})
 			if err != nil {
-				// cleanup already-created worktrees
-				for _, p := range worktreePaths {
-					_ = worktree.Remove(p)
-				}
+				cleanupFailedBatch()
 				return fmt.Errorf("creating worktree %d: %w", i, err)
 			}
-			worktreePaths = append(worktreePaths, wtPath)
 			o.WorktreePath = wtPath
 		}
 
 		containerID, err := mgr.Run(o)
 		if err != nil {
-			for _, p := range worktreePaths {
-				_ = worktree.Remove(p)
+			cleanupFailedBatch()
+			if containerID == "" && o.WorktreePath != "" {
+				_ = worktree.Remove(o.WorktreePath)
 			}
 			return fmt.Errorf("starting worker %d: %w", i, err)
 		}
@@ -663,23 +700,19 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 
 	<-sigCh
 	fmt.Println("\nStopping all workers...")
+	var cleanupErr error
 	for _, id := range containerIDs {
-		if err := mgr.Stop(id, 10); err != nil && verbose {
-			fmt.Fprintf(os.Stderr, "warning: stopping %s: %v\n", id[:12], err)
+		if err := mgr.Stop(id, 10); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("stopping %s: %w", id, err))
 		}
 		// Remove the container and its per-worker network so they don't accumulate.
 		if !runKeep {
-			if err := mgr.Remove(id, true); err != nil && verbose {
-				fmt.Fprintf(os.Stderr, "warning: cleaning up %s: %v\n", id[:12], err)
+			if err := mgr.Remove(id, true); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleaning up %s: %w", id, err))
 			}
 		}
 	}
-	for _, p := range worktreePaths {
-		if err := worktree.Remove(p); err != nil && verbose {
-			fmt.Fprintf(os.Stderr, "warning: removing worktree %s: %v\n", p, err)
-		}
-	}
-	return nil
+	return cleanupErr
 }
 
 // parseMountSpecs parses --mount flag values of the form

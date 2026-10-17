@@ -14,7 +14,7 @@ import (
 const pollInterval = 2 * time.Second
 
 // Run starts the dock-ui TUI.
-func Run() error {
+func Run(cfg sandbox.ManagerConfig) error {
 	app := tview.NewApplication()
 
 	// Include a network manager so deleting a worker also removes its per-worker
@@ -23,7 +23,8 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("connecting to Docker: %w", err)
 	}
-	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Network: netMgr})
+	cfg.Network = netMgr
+	mgr, err := sandbox.NewManager(cfg)
 	if err != nil {
 		return fmt.Errorf("connecting to Docker: %w", err)
 	}
@@ -45,6 +46,11 @@ func Run() error {
 	footer := tview.NewTextView().
 		SetDynamicColors(true).
 		SetText("[yellow][↑↓][white] Select  [yellow][Enter][white] Logs  [yellow][S][white] Stop  [yellow][D][white] Delete  [yellow][R][white] Restart  [yellow][A][white] Stop All  [yellow][Q][white] Quit")
+	reportError := func(err error) {
+		if err != nil {
+			app.QueueUpdateDraw(func() { footer.SetText("[red]" + tview.Escape(err.Error()) + "[-]") })
+		}
+	}
 
 	// Log view panel
 	logView := tview.NewTextView().
@@ -69,10 +75,12 @@ func Run() error {
 
 	refreshData := func() {
 		ws, err := mgr.List(true)
-		if err == nil {
-			workers = ws
+		if err != nil {
+			reportError(err)
+			return
 		}
 		app.QueueUpdateDraw(func() {
+			workers = ws
 			// Update header
 			running := 0
 			for _, w := range workers {
@@ -141,7 +149,7 @@ func Run() error {
 		case 's', 'S':
 			if idx >= 0 && idx < len(workers) {
 				go func(w sandbox.Worker) {
-					_ = mgr.Stop(w.ID, 10)
+					reportError(mgr.Stop(w.ID, 10))
 					refreshData()
 				}(workers[idx])
 			}
@@ -149,7 +157,7 @@ func Run() error {
 		case 'd', 'D':
 			if idx >= 0 && idx < len(workers) {
 				go func(w sandbox.Worker) {
-					_ = mgr.Remove(w.ID, true)
+					reportError(mgr.Remove(w.ID, true))
 					refreshData()
 				}(workers[idx])
 			}
@@ -158,19 +166,17 @@ func Run() error {
 			// F-UI-02: Restart a stopped/exited container via Docker start.
 			if idx >= 0 && idx < len(workers) {
 				go func(w sandbox.Worker) {
-					if err := mgr.Start(w.ID); err != nil {
-						// Silently ignore; container may already be running.
-						_ = err
-					}
+					reportError(mgr.Start(w.ID))
 					refreshData()
 				}(workers[idx])
 			}
 
 		case 'a', 'A':
+			selected := append([]sandbox.Worker(nil), workers...)
 			go func() {
-				for _, w := range workers {
+				for _, w := range selected {
 					if w.Status == "running" {
-						_ = mgr.Stop(w.ID, 10)
+						reportError(mgr.Stop(w.ID, 10))
 					}
 				}
 				refreshData()

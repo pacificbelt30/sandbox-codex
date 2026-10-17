@@ -9,10 +9,10 @@ import (
 
 var networkCmd = &cobra.Command{
 	Use:   "network",
-	Short: "Manage codex-dock Docker networks",
-	Long: `Manage codex-dock's Docker networks.
+	Short: "Manage codex-dock isolated networks",
+	Long: `Manage codex-dock's isolated networks through the trusted node service.
 
-Isolation is enforced entirely by Docker network primitives (no iptables/sudo):
+The node manages dedicated bridges, namespaces and nftables:
   - the egress network (dock-net-proxy) gives the auth proxy internet access;
   - each worker gets its own Internal network shared only with the proxy, so
     workers cannot reach each other, the host, or the internet directly — all

@@ -4,6 +4,8 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -11,6 +13,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +23,8 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"golang.org/x/term"
 )
@@ -41,37 +46,89 @@ type ManagerConfig struct {
 	HTTPProxyURL string
 	Verbose      bool
 	Debug        bool
+	// Used by management commands to reconnect without putting the admin
+	// secret in worker labels or its VM. Only the URLs are persisted.
+	ProxyAdminURL  string
+	ProxyConnector func(adminURL, containerURL string) (authproxy.Service, error)
+	KataConfig     *kataguard.Config
+	StateDir       string
 }
 
 // Manager handles container lifecycle for codex-dock workers.
 type Manager struct {
-	cli          *client.Client
-	proxy        authproxy.Service
-	network      *network.Manager
-	httpProxyURL string
-	verbose      bool
-	debug        bool
+	cli            *client.Client
+	proxy          authproxy.Service
+	network        *network.Manager
+	httpProxyURL   string
+	verbose        bool
+	debug          bool
+	proxyAdminURL  string
+	proxyConnector func(adminURL, containerURL string) (authproxy.Service, error)
+	kataConfig     *kataguard.Config
+	guard          kataNode
+	guardMu        sync.Mutex
+	stateDir       string
+	execProbe      func(context.Context, string, []string) ([]byte, error)
 }
 
 // NewManager creates a new Manager connected to the local Docker daemon.
 func NewManager(cfg ManagerConfig) (*Manager, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := engine.NewClient()
 	if err != nil {
-		return nil, fmt.Errorf("connecting to Docker: %w", err)
+		return nil, fmt.Errorf("connecting to containerd node: %w", err)
 	}
 	return &Manager{
-		cli:          cli,
-		proxy:        cfg.Proxy,
-		network:      cfg.Network,
-		httpProxyURL: cfg.HTTPProxyURL,
-		verbose:      cfg.Verbose,
-		debug:        cfg.Debug,
+		cli:            cli,
+		proxy:          cfg.Proxy,
+		network:        cfg.Network,
+		httpProxyURL:   cfg.HTTPProxyURL,
+		verbose:        cfg.Verbose,
+		debug:          cfg.Debug,
+		proxyAdminURL:  cfg.ProxyAdminURL,
+		proxyConnector: cfg.ProxyConnector,
+		kataConfig:     cfg.KataConfig,
+		stateDir:       cfg.StateDir,
 	}, nil
 }
 
+func (m *Manager) Close() error {
+	m.guardMu.Lock()
+	defer m.guardMu.Unlock()
+	var err error
+	if closer, ok := m.guard.(io.Closer); ok {
+		err = closer.Close()
+	}
+	return errors.Join(err, m.cli.Close())
+}
+
 // Run creates and starts a sandboxed Codex container.
-func (m *Manager) Run(opts RunOptions) (string, error) {
-	ctx := context.Background()
+func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
+	if opts.Image == "" {
+		opts.Image = "codex-dock:latest"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	isolation, registration, err := ResolveRuntime(opts.Runtime, opts.KataRuntime)
+	if err != nil {
+		return "", err
+	}
+	if err := m.CheckRuntime(ctx, opts); err != nil {
+		return "", err
+	}
+	if m.proxy != nil {
+		for _, endpoint := range []string{m.proxyAdminURL, m.proxy.ContainerEndpoint()} {
+			if endpoint == "" {
+				continue
+			}
+			u, err := url.Parse(endpoint)
+			if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+				return "", fmt.Errorf("proxy URLs must not contain credentials, queries or fragments; use the admin-secret setting")
+			}
+		}
+	}
+	if isolation == RuntimeKata && m.network == nil {
+		m.network = network.NewManagerWithClient(m.cli)
+	}
 
 	name := opts.Name
 	if name == "" {
@@ -105,23 +162,68 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		allPkgs = append(allPkgs, filePkgs...)
 	}
 	installScript := BuildInstallScript(allPkgs)
-
-	// Build environment variables (issues the auth token as a side effect).
-	env, err := m.buildEnv(name, opts, installScript)
+	mounts := buildMounts(opts, absWorkspace)
+	gitMounts, gitEnv, err := linkedWorktreeMounts(ctx, absWorkspace, opts.ReadOnly, mounts)
 	if err != nil {
 		return "", err
 	}
+	mounts = append(mounts, gitMounts...)
+	if isolation == RuntimeKata {
+		if err = m.protectKataMounts(mounts); err != nil {
+			return "", err
+		}
+	}
 
-	mounts := buildMounts(opts, absWorkspace)
+	var createdID, createdNetwork string
+	var allocation string
+	tokenIssued := false
+	proxies := m.proxyContainerNames(opts.NoInternet)
+	defer func() {
+		if runErr == nil {
+			return
+		}
+		if tokenIssued && m.proxy != nil {
+			m.proxy.RevokeToken(name)
+		}
+		if createdID != "" {
+			if err := m.Remove(createdID, true); err != nil {
+				containerID = createdID // Caller must retain its worktree for recovery.
+				runErr = errors.Join(runErr, fmt.Errorf("cleanup container %s: %w", createdID, err))
+				return // Do not detach the network while a VM may still be alive.
+			}
+			return // Durable removal also recovered the network/allocation/worktree.
+		}
+		if createdNetwork != "" {
+			if err := m.network.RemoveKataWorkerNetwork(ctx, createdNetwork, proxies); err != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("cleanup network %s: %w", createdNetwork, err))
+			}
+		}
+		if allocation != "" {
+			if err := m.releaseKataAllocation(context.Background(), allocation, createdID); err != nil {
+				runErr = errors.Join(runErr, err)
+			}
+		}
+	}()
+
 	// Note: auth.json is NOT bind-mounted even in OAuth mode.
-	// The Auth Proxy provides only the access_token to the container via
+	// The Auth Proxy provides only a placeholder token to the container via
 	// the /token endpoint, keeping the refresh_token on the host (F-AUTH-01).
 
 	// Container labels for identification
 	labels := map[string]string{
-		labelManaged: "true",
-		labelBranch:  opts.Branch,
-		labelTask:    opts.Task,
+		labelManaged:   "true",
+		labelBranch:    opts.Branch,
+		labelTask:      opts.Task,
+		labelIsolation: isolation,
+		labelRuntime:   registration,
+	}
+	if opts.UseWorktree && opts.WorktreePath != "" {
+		labels[labelPrefix+"worktree"] = absWorkspace
+	}
+	if m.proxy != nil {
+		labels[labelPrefix+"proxy-container-url"] = m.proxy.ContainerEndpoint()
+		labels[labelPrefix+"proxy-admin-url"] = m.proxyAdminURL
+		labels[labelPrefix+"token-ttl"] = strconv.Itoa(opts.TokenTTL)
 	}
 
 	// Per-worker Internal network: create it and attach the proxy so the worker
@@ -129,8 +231,21 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	// direct internet). Enforced entirely by Docker — no iptables/sudo.
 	netName := network.WorkerNetworkName(name)
 	if m.network != nil {
-		if err := m.network.EnsureWorkerNetwork(name); err != nil {
-			return "", fmt.Errorf("creating worker network: %w", err)
+		if isolation == RuntimeKata {
+			createdNetwork, err = m.network.CreateKataWorkerNetwork(ctx, name)
+			if err != nil {
+				return "", err
+			}
+			labels[labelPrefix+"network-id"] = createdNetwork
+			encoded, err := json.Marshal(proxies)
+			if err != nil {
+				return "", err
+			}
+			labels[labelProxyHosts] = string(encoded)
+		} else {
+			if err := m.network.EnsureWorkerNetwork(name); err != nil {
+				return "", fmt.Errorf("creating worker network: %w", err)
+			}
 		}
 		// Attach the proxies the worker needs to this worker's Internal network.
 		// The credential-injecting auth proxy is always attached; the
@@ -138,7 +253,7 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		// allowed. With --no-internet we deliberately leave the egress proxy
 		// OFF the worker net so the worker has no path to it at all — not just a
 		// missing HTTP(S)_PROXY env (which a worker could otherwise override).
-		for _, proxyName := range m.proxyContainerNames(opts.NoInternet) {
+		for _, proxyName := range proxies {
 			if err := m.network.ConnectProxy(name, proxyName); err != nil {
 				return "", fmt.Errorf("connecting proxy %q to worker network: %w", proxyName, err)
 			}
@@ -147,6 +262,29 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 
 	// Security: drop all capabilities, non-root user, isolated Internal network.
 	hostConfig := buildHostConfig(mounts, netName)
+	var proxyHosts []string
+	if isolation == RuntimeKata {
+		proxyHosts, err = m.network.KataProxyHosts(ctx, createdNetwork, "", proxies)
+		if err != nil {
+			return "", err
+		}
+	}
+	applyRuntime(hostConfig, isolation, registration, proxyHosts)
+	// Reserve and validate the network before issuing credentials. A name
+	// collision must not replace or revoke another worker's token.
+	tokenIssued = m.proxy != nil && isolation != RuntimeKata
+	if isolation == RuntimeKata && m.proxy != nil {
+		token, err := randomID(32)
+		if err != nil {
+			return "", err
+		}
+		opts.pendingPlaceholder = "cdx-" + token
+	}
+	env, err := m.buildEnv(name, opts, installScript)
+	if err != nil {
+		return "", err
+	}
+	env = append(env, gitEnv...)
 
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
@@ -171,10 +309,30 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
 	_ = codexArgs // passed via env
+	if isolation == RuntimeKata {
+		allocation, err = randomID(16)
+		if err != nil {
+			return "", err
+		}
+		if err = m.prepareKataBootstrap(ctx, containerConfig, hostConfig, allocation); err != nil {
+			return "", err
+		}
+	}
 
 	resp, err := m.cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, name)
 	if err != nil {
 		return "", fmt.Errorf("creating container %s: %w", name, err)
+	}
+	createdID = resp.ID
+	unlock, err := m.lockCleanup(ctx, resp.ID)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	if isolation == RuntimeKata {
+		if err := m.validateKataWorker(ctx, resp.ID); err != nil {
+			return "", err
+		}
 	}
 
 	if m.verbose {
@@ -184,18 +342,113 @@ func (m *Manager) Run(opts RunOptions) (string, error) {
 	if err := m.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return "", fmt.Errorf("starting container %s: %w", name, err)
 	}
+	if isolation == RuntimeKata {
+		if err := m.validateKataWorker(ctx, resp.ID); err != nil {
+			return "", err
+		}
+		if err = m.verifyKataGuest(ctx, resp.ID, true); err != nil {
+			return "", err
+		}
+		v, err := m.cli.ContainerInspect(ctx, resp.ID)
+		if err != nil {
+			return "", err
+		}
+		tokenIssued = m.proxy != nil
+		if err = m.restoreWorkerToken(v); err != nil {
+			return "", err
+		}
+		if _, err = m.execTrusted(ctx, resp.ID, []string{guestGuard, "release", allocation}); err != nil {
+			return "", err
+		}
+	}
 
 	if !opts.Detach {
 		// Attach stdio
-		go m.attachIO(ctx, resp.ID)
+		go m.attachIO(context.Background(), resp.ID)
 	}
 
 	return resp.ID, nil
 }
 
 // Start (re)starts a stopped container by ID. Used by the TUI to restart exited workers (F-UI-02).
-func (m *Manager) Start(containerID string) error {
-	return m.cli.ContainerStart(context.Background(), containerID, container.StartOptions{})
+func (m *Manager) Start(containerID string) (startErr error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	v, err := m.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return err
+	}
+	if v.ContainerJSONBase == nil || v.Config == nil || v.HostConfig == nil || v.Config.Labels[labelManaged] != "true" {
+		return fmt.Errorf("worker is missing its managed configuration")
+	}
+	unlock, err := m.lockCleanup(ctx, v.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if _, err := m.readCleanup(v.ID); err == nil {
+		return fmt.Errorf("worker removal is pending; retry rm before creating another worker")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	kata := v.Config.Labels[labelIsolation] == RuntimeKata
+	if kata {
+		if err = m.CheckRuntime(ctx, RunOptions{Runtime: RuntimeKata, KataRuntime: v.Config.Labels[labelRuntime]}); err != nil {
+			return err
+		}
+		if err = m.validateKataWorker(ctx, v.ID); err != nil {
+			return err
+		}
+	}
+	if v.State != nil && v.State.Running {
+		if kata {
+			return m.verifyKataGuest(ctx, v.ID, false)
+		}
+		return nil
+	}
+	if kata {
+		g, err := m.kataNode()
+		if err != nil {
+			return err
+		}
+		if _, err = g.Reserve(ctx, v.Config.Labels[labelAllocation]); err != nil {
+			return err
+		}
+	} else if err = m.restoreWorkerToken(v); err != nil {
+		return err
+	}
+	failed := true
+	defer func() {
+		if failed && kata {
+			m.revokeWorkerToken(v)
+			timeout := 5
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			stopErr := m.cli.ContainerStop(cleanupCtx, v.ID, container.StopOptions{Timeout: &timeout})
+			releaseErr := m.releaseKataAllocation(cleanupCtx, v.Config.Labels[labelAllocation], v.ID)
+			startErr = errors.Join(startErr, stopErr, releaseErr)
+		}
+	}()
+	if err = m.cli.ContainerStart(ctx, v.ID, container.StartOptions{}); err != nil {
+		m.revokeWorkerToken(v)
+		return err
+	}
+	if kata {
+		if err = m.validateKataWorker(ctx, v.ID); err != nil {
+			return err
+		}
+		if err = m.verifyKataGuest(ctx, v.ID, true); err != nil {
+			return err
+		}
+		if err = m.restoreWorkerToken(v); err != nil {
+			return err
+		}
+		if _, err = m.execTrusted(ctx, v.ID, []string{guestGuard, "release", v.Config.Labels[labelAllocation]}); err != nil {
+			return err
+		}
+	}
+	failed = false
+	return nil
 }
 
 // Wait returns a channel that receives nil when the container exits cleanly, or an error.
@@ -219,28 +472,34 @@ func (m *Manager) Wait(containerID string) <-chan error {
 
 // Stop gracefully stops a container by ID and revokes its auth token (F-AUTH-04).
 func (m *Manager) Stop(containerID string, timeoutSec int) error {
-	ctx := context.Background()
-	// Revoke token before stopping so it cannot be used after this point.
-	if m.proxy != nil {
-		if name, err := m.resolveNameByID(ctx, containerID); err == nil {
-			m.proxy.RevokeToken(name)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	v, err := m.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return err
 	}
-	return m.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeoutSec})
+	unlock, err := m.lockCleanup(ctx, v.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	revokeErr := m.revokeWorkerTokenChecked(v)
+	if err = m.cli.ContainerStop(ctx, v.ID, container.StopOptions{Timeout: &timeoutSec}); err != nil {
+		return err
+	}
+	if v.Config != nil && v.Config.Labels[labelIsolation] == RuntimeKata && v.Config.Labels[labelAllocation] != "" {
+		return errors.Join(revokeErr, m.releaseKataAllocation(ctx, v.Config.Labels[labelAllocation], v.ID))
+	}
+	return revokeErr
 }
 
 // StopByName stops a container by name and revokes its auth token (F-AUTH-04).
 func (m *Manager) StopByName(name string, timeoutSec int) error {
-	// Revoke token immediately; Stop() will also attempt but name resolution is cheaper here.
-	if m.proxy != nil {
-		m.proxy.RevokeToken(name)
-	}
 	id, err := m.resolveID(name)
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	return m.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeoutSec})
+	return m.Stop(id, timeoutSec)
 }
 
 // RevokeToken revokes the auth token for a container identified by ID or name.
@@ -291,26 +550,20 @@ func (m *Manager) ImageCreatedAt(tag string) (time.Time, error) {
 
 // Remove removes a container by ID and tears down its per-worker network.
 func (m *Manager) Remove(containerID string, force bool) error {
-	ctx := context.Background()
-	name, _ := m.resolveNameByID(ctx, containerID)
-	if err := m.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: force}); err != nil {
-		return err
-	}
-	m.cleanupWorkerNetwork(name)
-	return nil
+	return m.removeDurably(containerID, force)
 }
 
-// RemoveByName removes a container by name and tears down its per-worker network.
+// RemoveByName also finds an interrupted cleanup after its Docker object is gone.
 func (m *Manager) RemoveByName(name string, force bool) error {
 	id, err := m.resolveID(name)
 	if err != nil {
-		return err
+		record, recoveryErr := m.findCleanup(name)
+		if recoveryErr != nil {
+			return errors.Join(err, recoveryErr)
+		}
+		id = record.ID
 	}
-	if err := m.cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: force}); err != nil {
-		return err
-	}
-	m.cleanupWorkerNetwork(name)
-	return nil
+	return m.Remove(id, force)
 }
 
 // List returns all codex-dock managed workers.
@@ -471,15 +724,20 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		shellType = ShellBash
 	}
 	env := []string{
+		"CODEX_DOCK_VERIFIED_KATA=0",
 		"CODEX_SANDBOX=1",
 		"DOCK_AGENT=" + string(opts.Agent),
 		"DOCK_SHELL=" + string(shellType),
 	}
 
 	if m.proxy != nil {
-		token, err := m.proxy.IssueToken(name, opts.TokenTTL)
-		if err != nil {
-			return nil, fmt.Errorf("issuing auth token: %w", err)
+		token := opts.pendingPlaceholder
+		if token == "" {
+			var err error
+			token, err = m.proxy.IssueToken(name, opts.TokenTTL)
+			if err != nil {
+				return nil, fmt.Errorf("issuing auth token: %w", err)
+			}
 		}
 		// ContainerEndpoint() returns the auth proxy URL reachable from workers
 		// over the per-worker Internal network via Docker DNS (codex-auth-proxy).
@@ -700,7 +958,7 @@ func buildCodexArgs(opts RunOptions) []string {
 	args := []string{"codex"}
 	switch opts.ApprovalMode {
 	case ApprovalModeAutoEdit:
-		args = append(args, "--ask-for-approval", "unless-allow-listed")
+		args = append(args, "--ask-for-approval", "on-request")
 	case ApprovalModeFullAuto:
 		args = append(args, "--ask-for-approval", "never")
 	case ApprovalModeDanger:

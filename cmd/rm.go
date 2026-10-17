@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/pacificbelt30/codex-dock/internal/network"
@@ -20,7 +21,9 @@ var rmCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("creating network manager: %w", err)
 		}
-		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Network: netMgr, Verbose: verbose})
+		cfg := managementConfig()
+		cfg.Network = netMgr
+		mgr, err := sandbox.NewManager(cfg)
 		if err != nil {
 			return err
 		}
@@ -31,6 +34,7 @@ var rmCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			var failures error
 			for _, w := range workers {
 				if w.Status == "running" && !rmForce {
 					fmt.Printf("Skipping running container %s (use --force to remove)\n", w.Name)
@@ -38,19 +42,20 @@ var rmCmd = &cobra.Command{
 				}
 				fmt.Printf("Removing %s...\n", w.Name)
 				if err := mgr.Remove(w.ID, rmForce); err != nil {
-					fmt.Printf("  error: %v\n", err)
+					failures = errors.Join(failures, fmt.Errorf("removing %s: %w", w.Name, err))
 				}
 			}
-			return nil
+			return errors.Join(failures, mgr.RetryCleanup(rmForce))
 		}
 
+		var failures error
 		for _, name := range args {
 			fmt.Printf("Removing %s...\n", name)
 			if err := mgr.RemoveByName(name, rmForce); err != nil {
-				fmt.Printf("  error: %v\n", err)
+				failures = errors.Join(failures, fmt.Errorf("removing %s: %w", name, err))
 			}
 		}
-		return nil
+		return failures
 	},
 }
 

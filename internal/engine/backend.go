@@ -1,0 +1,866 @@
+//go:build linux
+
+package engine
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/containerd/containerd/api/types/runc/options"
+	runtimeoptions "github.com/containerd/containerd/api/types/runtimeoptions/v1"
+	cd "github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/contrib/seccomp"
+	"github.com/containerd/containerd/v2/core/containers"
+	"github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/pkg/namespaces"
+	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/containerd/errdefs"
+	"github.com/distribution/reference"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
+	dn "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/system"
+	dockerimage "github.com/moby/docker-image-spec/specs-go/v1"
+	"github.com/moby/sys/signal"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/opencontainers/runtime-spec/specs-go"
+)
+
+const owned = "codex-dock.engine"
+
+var hexID = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var validName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
+
+type Options struct {
+	Address, State, Runtime, KataConfig, Snapshotter string
+	Logger                                           string
+	DNS                                              []string
+	// Retire moves an attested, exited Dragonball shim to a sibling leaf
+	// inside the same bounded envelope before its self-owned cgroup is deleted.
+	Retire      func(context.Context, string, string) error
+	AbortCreate func(context.Context, string, string) error
+	Tools       map[string]string
+}
+type Backend struct {
+	client *cd.Client
+	opts   Options
+	mu     sync.Mutex
+	hubs   map[string]*hub
+	execs  map[string]*execution
+	ports  map[string][]net.Listener
+	closed bool
+}
+type record struct {
+	ID, Name                string
+	Created                 time.Time
+	Config                  container.Config
+	Host                    container.HostConfig
+	Spec                    specs.Spec
+	Networks                map[string]*dn.EndpointSettings
+	ExitCode                int
+	FinishedAt              string
+	NetNSDevice, NetNSInode uint64
+	FailedCreate            bool
+}
+type execution struct {
+	Container string
+	Config    container.ExecOptions
+	Running   bool
+	ExitCode  int
+}
+
+func Open(o Options) (*Backend, error) {
+	if os.Geteuid() != 0 {
+		return nil, fmt.Errorf("containerd node backend requires root")
+	}
+	if o.Address == "" || !filepath.IsAbs(o.Address) || o.State == "" || !filepath.IsAbs(o.State) {
+		return nil, fmt.Errorf("absolute containerd socket and state paths required")
+	}
+	for _, name := range []string{"ip", "nft", "sysctl", "runc", "runc-shim"} {
+		if !filepath.IsAbs(o.Tools[name]) {
+			return nil, fmt.Errorf("missing pinned node tool: %s", name)
+		}
+	}
+	if o.Snapshotter == "" {
+		o.Snapshotter = "overlayfs"
+	}
+	if err := os.MkdirAll(filepath.Join(o.State, "tasks"), 0700); err != nil {
+		return nil, err
+	}
+	c, err := cd.New(o.Address)
+	if err != nil {
+		return nil, err
+	}
+	b := &Backend{client: c, opts: o, hubs: map[string]*hub{}, execs: map[string]*execution{}, ports: map[string][]net.Listener{}}
+	ctx, cancel := context.WithTimeout(namespaces.WithNamespace(context.Background(), Namespace), 30*time.Second)
+	defer cancel()
+	if _, err = c.Version(ctx); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
+	if err = b.recover(ctx); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
+	return b, nil
+}
+func (b *Backend) Close() error {
+	b.mu.Lock()
+	b.closed = true
+	for cid, h := range b.hubs {
+		b.closePorts(cid)
+		if h.io != nil {
+			h.io.Cancel()
+		}
+		_ = h.Close()
+	}
+	b.mu.Unlock()
+	return b.client.Close()
+}
+func id() (string, error) {
+	var data [32]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(data[:]), nil
+}
+func (b *Backend) path(cid string) string { return filepath.Join(b.opts.State, "tasks", cid) }
+func (b *Backend) save(r *record) error {
+	dir := b.path(r.ID)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".record-")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	defer func() { _ = os.Remove(name) }()
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	err = errors.Join(err, f.Close())
+	if err != nil {
+		return err
+	}
+	if err = os.Rename(name, filepath.Join(dir, "record.json")); err != nil {
+		return err
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return d.Sync()
+}
+func (b *Backend) load(ctx context.Context, value string) (*record, cd.Container, error) {
+	all, err := b.client.Containers(ctx, `labels."`+owned+`"=="true"`)
+	if err != nil {
+		return nil, nil, err
+	}
+	var found cd.Container
+	for _, c := range all {
+		l, e := c.Labels(ctx)
+		if e != nil {
+			return nil, nil, e
+		}
+		if l["codex-dock.name"] == value || len(value) >= 12 && strings.HasPrefix(c.ID(), value) {
+			if found != nil {
+				return nil, nil, fmt.Errorf("ambiguous container identity")
+			}
+			found = c
+		}
+	}
+	if found == nil && hexID.MatchString(value) {
+		if _, err := b.client.LoadContainer(ctx, value); err == nil {
+			return nil, nil, fmt.Errorf("container exists with changed ownership: %w", errdefs.ErrFailedPrecondition)
+		} else if !errdefs.IsNotFound(err) {
+			return nil, nil, err
+		}
+	}
+	if found == nil {
+		return nil, nil, fmt.Errorf("container %s: %w", value, errdefs.ErrNotFound)
+	}
+	data, err := os.ReadFile(filepath.Join(b.path(found.ID()), "record.json"))
+	if err != nil {
+		return nil, nil, err
+	}
+	var r record
+	if err = json.Unmarshal(data, &r); err != nil {
+		return nil, nil, err
+	}
+	if r.ID != found.ID() || !hexID.MatchString(r.ID) {
+		return nil, nil, fmt.Errorf("invalid engine record")
+	}
+	info, err := found.Info(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for key, value := range r.Config.Labels {
+		if len(value) <= 4096 && info.Labels[key] != value {
+			return nil, nil, fmt.Errorf("native container labels changed")
+		}
+	}
+	expectedRuntime := b.opts.Runtime
+	if r.Host.Runtime == "runc" {
+		expectedRuntime = b.opts.Tools["runc-shim"]
+	}
+	if info.Labels["codex-dock.name"] != r.Name || info.Runtime.Name != expectedRuntime || info.SnapshotKey != r.ID || info.Snapshotter != b.opts.Snapshotter {
+		return nil, nil, fmt.Errorf("native container identity/runtime/snapshot drift")
+	}
+	actual, err := found.Spec(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	want, _ := json.Marshal(&r.Spec)
+	got, _ := json.Marshal(actual)
+	if string(want) != string(got) {
+		return nil, nil, fmt.Errorf("container OCI specification drift")
+	}
+	return &r, found, nil
+}
+func imageName(name string) (string, error) {
+	ref, err := reference.ParseNormalizedNamed(name)
+	if err != nil {
+		return "", err
+	}
+	return reference.TagNameOnly(ref).String(), nil
+}
+func (b *Backend) image(ctx context.Context, name string) (cd.Image, v1.Image, error) {
+	var config v1.Image
+	n, err := imageName(name)
+	if err != nil {
+		return nil, config, err
+	}
+	img, err := b.client.GetImage(ctx, n)
+	if err != nil {
+		return nil, config, err
+	}
+	desc, err := img.Config(ctx)
+	if err != nil {
+		return nil, config, err
+	}
+	data, err := content.ReadBlob(ctx, b.client.ContentStore(), desc)
+	if err != nil {
+		return nil, config, err
+	}
+	err = json.Unmarshal(data, &config)
+	return img, config, err
+}
+
+func (b *Backend) create(ctx context.Context, c container.Config, h container.HostConfig, name string) (result string, resultErr error) {
+	if !validName.MatchString(name) {
+		return "", fmt.Errorf("invalid container name")
+	}
+	if _, _, err := b.load(ctx, name); err == nil {
+		return "", fmt.Errorf("container name already exists: %w", errdefs.ErrAlreadyExists)
+	} else if !errdefs.IsNotFound(err) {
+		return "", err
+	}
+	if h.Privileged || len(h.CapAdd) > 0 || h.PidMode != "" || h.IpcMode != "" || h.NetworkMode == "host" || h.NetworkMode == "none" || h.PublishAllPorts || len(h.Binds) > 0 {
+		return "", fmt.Errorf("unsupported or unsafe node container configuration")
+	}
+	if h.Runtime != "" && h.Runtime != "runc" && h.Runtime != "io.containerd.kata.v2" {
+		return "", fmt.Errorf("unknown runtime; no fallback")
+	}
+	img, ic, err := b.image(ctx, c.Image)
+	if err != nil {
+		return "", err
+	}
+	if err = img.Unpack(ctx, b.opts.Snapshotter); err != nil {
+		return "", err
+	}
+	cid, err := id()
+	if err != nil {
+		return "", err
+	}
+	if c.StopSignal == "" {
+		c.StopSignal = ic.Config.StopSignal
+	}
+	r := &record{ID: cid, Name: name, Created: time.Now().UTC(), Config: c, Host: h, Networks: map[string]*dn.EndpointSettings{}}
+	if r.Host.Runtime == "" {
+		r.Host.Runtime = "runc"
+	}
+	if err = b.save(r); err != nil {
+		return "", err
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if err := b.cancelCreation(cleanupCtx, r); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("creation intent retained for retry: %w", err))
+			}
+		}
+	}()
+	if err = b.newNamespace(ctx, r); err != nil {
+		return "", err
+	}
+	if err = b.connect(ctx, string(h.NetworkMode), r); err != nil {
+		return "", err
+	}
+	if err = b.resolverFiles(r); err != nil {
+		return "", err
+	}
+	args := append([]string{}, c.Entrypoint...)
+	if len(args) == 0 {
+		args = append(args, ic.Config.Entrypoint...)
+	}
+	if len(c.Cmd) > 0 {
+		args = append(args, c.Cmd...)
+	} else if len(c.Entrypoint) == 0 {
+		args = append(args, ic.Config.Cmd...)
+	}
+	user := c.User
+	if user == "" {
+		user = ic.Config.User
+	}
+	if user == "" {
+		user = "0:0"
+	}
+	cwd := c.WorkingDir
+	if cwd == "" {
+		cwd = ic.Config.WorkingDir
+	}
+	if cwd == "" {
+		cwd = "/"
+	}
+	labels := map[string]string{owned: "true", "codex-dock.name": name}
+	for k, v := range c.Labels {
+		if len(v) <= 4096 {
+			labels[k] = v
+		}
+	}
+	runtime := b.opts.Runtime
+	var runtimeOptions any = &runtimeoptions.Options{ConfigPath: b.opts.KataConfig}
+	if r.Host.Runtime == "runc" {
+		runtime = b.opts.Tools["runc-shim"]
+		runtimeOptions = &options.Options{BinaryName: b.opts.Tools["runc"]}
+	}
+	opts := []oci.SpecOpts{oci.WithImageConfig(img), oci.WithProcessArgs(args...), oci.WithEnv(c.Env), oci.WithProcessCwd(cwd), oci.WithUser(user), oci.WithHostname(name), oci.WithLinuxNamespace(specs.LinuxNamespace{Type: specs.NetworkNamespace, Path: b.nsPath(cid)}), oci.WithLinuxNamespace(specs.LinuxNamespace{Type: specs.CgroupNamespace}), oci.WithNoNewPrivileges, seccomp.WithDefaultProfile()}
+	if c.Tty {
+		opts = append(opts, oci.WithTTY)
+	}
+	if len(h.CapDrop) > 0 {
+		if len(h.CapDrop) != 1 || h.CapDrop[0] != "ALL" {
+			return "", fmt.Errorf("only dropping ALL capabilities is supported")
+		}
+		opts = append(opts, oci.WithCapabilities([]string{}))
+	}
+	if h.Memory > 0 {
+		opts = append(opts, oci.WithMemoryLimit(uint64(h.Memory)))
+	}
+	if h.PidsLimit != nil {
+		opts = append(opts, oci.WithPidsLimit(*h.PidsLimit))
+	}
+	opts = append(opts, func(_ context.Context, _ oci.Client, _ *containers.Container, s *oci.Spec) error {
+		s.Mounts = append(s.Mounts, specs.Mount{Destination: "/sys/fs/cgroup", Type: "cgroup", Source: "cgroup", Options: []string{"nosuid", "noexec", "nodev", "relatime", "ro"}})
+		s.Linux.CgroupsPath = filepath.Join(h.CgroupParent, cid)
+		if h.CgroupParent == "" {
+			s.Linux.CgroupsPath = "/codex-dock-services/" + cid
+		}
+		if h.NanoCPUs > 0 {
+			period := uint64(100000)
+			quota := h.NanoCPUs / 10000
+			s.Linux.Resources.CPU = &specs.LinuxCPU{Period: &period, Quota: &quota}
+		}
+		if h.MemorySwap > 0 {
+			swap := h.MemorySwap
+			s.Linux.Resources.Memory.Swap = &swap
+		}
+		for _, m := range h.Mounts {
+			if m.Type != mount.TypeBind {
+				return fmt.Errorf("only bind mounts are supported")
+			}
+			options := []string{"rbind", "rprivate"}
+			if m.ReadOnly {
+				options = append(options, "ro")
+			}
+			s.Mounts = append(s.Mounts, specs.Mount{Type: "bind", Source: m.Source, Destination: m.Target, Options: options})
+		}
+		for target, options := range h.Tmpfs {
+			s.Mounts = append(s.Mounts, specs.Mount{Type: "tmpfs", Source: "tmpfs", Destination: target, Options: strings.Split(options, ",")})
+		}
+		for _, file := range []string{"hosts", "resolv.conf", "hostname"} {
+			s.Mounts = append(s.Mounts, specs.Mount{Type: "bind", Source: filepath.Join(b.path(cid), file), Destination: "/etc/" + file, Options: []string{"bind", "ro"}})
+		}
+		r.Spec = *s
+		return b.save(r)
+	})
+	native, err := b.client.NewContainer(ctx, cid, cd.WithImage(img), cd.WithSnapshotter(b.opts.Snapshotter), cd.WithNewSnapshot(cid, img), cd.WithNewSpec(opts...), cd.WithRuntime(runtime, runtimeOptions), cd.WithContainerLabels(labels))
+	if err != nil {
+		return "", err
+	}
+	s, err := native.Spec(ctx)
+	if err != nil {
+		return "", err
+	}
+	r.Spec = *s
+	if err = b.save(r); err != nil {
+		_ = native.Delete(ctx, cd.WithSnapshotCleanup)
+		return "", err
+	}
+	cleanup = false
+	return cid, nil
+}
+
+func (b *Backend) state(ctx context.Context, c cd.Container, r *record) (*container.State, error) {
+	s := &container.State{Status: "created", ExitCode: r.ExitCode, FinishedAt: r.FinishedAt}
+	t, err := c.Task(ctx, nil)
+	if errdefs.IsNotFound(err) {
+		if r.FinishedAt != "" {
+			s.Status = "exited"
+		}
+		return s, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	status, err := t.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.Status = string(status.Status)
+	if status.Status == cd.Stopped {
+		s.Status = "exited"
+	}
+	s.Running = status.Status == cd.Running
+	s.Paused = status.Status == cd.Paused
+	s.Pid = int(t.Pid())
+	s.ExitCode = int(status.ExitStatus)
+	return s, nil
+}
+func (b *Backend) inspect(ctx context.Context, value string) (container.InspectResponse, error) {
+	r, c, err := b.load(ctx, value)
+	if err != nil {
+		return container.InspectResponse{}, err
+	}
+	state, err := b.state(ctx, c, r)
+	if err != nil {
+		return container.InspectResponse{}, err
+	}
+	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil
+}
+
+func (b *Backend) start(ctx context.Context, r *record, c cd.Container) error {
+	if t, err := c.Task(ctx, nil); err == nil {
+		status, e := t.Status(ctx)
+		if e != nil {
+			return e
+		}
+		if status.Status == cd.Running {
+			return nil
+		}
+		if err = b.deleteTask(ctx, r, t); err != nil {
+			return err
+		}
+	} else if !errdefs.IsNotFound(err) {
+		return err
+	}
+	if r.Host.Runtime != "runc" {
+		if err := b.refreshWorkerNamespace(ctx, r); err != nil {
+			return err
+		}
+	}
+	if old := b.hubs[r.ID]; old != nil {
+		if old.io != nil {
+			old.io.Cancel()
+		}
+		_ = old.Close()
+		delete(b.hubs, r.ID)
+	}
+	h, err := newHub()
+	if err != nil {
+		return err
+	}
+	creator, err := b.logIO(r)
+	if err != nil {
+		_ = h.Close()
+		return err
+	}
+	t, err := c.NewTask(ctx, creator)
+	if err != nil {
+		_ = h.Close()
+		return b.failedStart(ctx, r, c, err)
+	}
+	wait, err := t.Wait(namespaces.WithNamespace(context.Background(), Namespace))
+	if err != nil {
+		_ = h.Close()
+		return b.failedStart(ctx, r, c, err)
+	}
+	b.hubs[r.ID] = h
+	h.io = t.IO()
+	if err = b.openPorts(ctx, r); err != nil {
+		delete(b.hubs, r.ID)
+		_ = h.Close()
+		return b.failedStart(ctx, r, c, err)
+	}
+	if err = t.Start(ctx); err != nil {
+		b.closePorts(r.ID)
+		delete(b.hubs, r.ID)
+		_ = h.Close()
+		return b.failedStart(ctx, r, c, err)
+	}
+	r.FailedCreate = false
+	r.FinishedAt = ""
+	r.ExitCode = 0
+	if err = b.save(r); err != nil {
+		return b.failedStart(ctx, r, c, err)
+	}
+
+	go b.watch(r.ID, h, t, wait)
+	return nil
+}
+func (b *Backend) deleteTask(ctx context.Context, r *record, t cd.Task) error {
+	s, err := t.Status(ctx)
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if s.Status != cd.Stopped {
+		return fmt.Errorf("task must exit before deletion")
+	}
+	if r.Host.Runtime != "runc" {
+		if b.opts.Retire == nil {
+			return fmt.Errorf("Dragonball retirement verifier missing")
+		}
+		if err = b.opts.Retire(ctx, r.Config.Labels["codex-dock.allocation"], r.ID); err != nil {
+			return err
+		}
+	}
+	_, err = t.Delete(ctx)
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout int) error {
+	if r.FailedCreate {
+		return b.abortTask(ctx, r, c)
+	}
+	t, err := c.Task(ctx, nil)
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	wait, err := t.Wait(ctx)
+	if err != nil {
+		return err
+	}
+	status, err := t.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if status.Status != cd.Stopped {
+		stopSignal := syscall.SIGTERM
+		if r.Config.StopSignal != "" {
+			parsed, e := signal.ParseSignal(r.Config.StopSignal)
+			if e != nil {
+				return e
+			}
+			stopSignal = parsed
+		}
+		if err = t.Kill(ctx, stopSignal); err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+		timer := time.NewTimer(time.Duration(max(timeout, 0)) * time.Second)
+		defer timer.Stop()
+		var deadline <-chan time.Time = timer.C
+		if timeout < 0 {
+			timer.Stop()
+			deadline = nil
+		}
+		select {
+		case <-wait:
+		case <-deadline:
+			if err = t.Kill(ctx, syscall.SIGKILL, cd.WithKillAll); err != nil && !errdefs.IsNotFound(err) {
+				return err
+			}
+			select {
+			case <-wait:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	status, err = t.Status(ctx)
+	if err != nil {
+		return err
+	}
+	r.ExitCode = int(status.ExitStatus)
+	r.FinishedAt = status.ExitTime.Format(time.RFC3339Nano)
+	if err = b.save(r); err != nil {
+		return err
+	}
+	b.closePorts(r.ID)
+	if h := b.hubs[r.ID]; h != nil {
+		if h.io != nil {
+			h.io.Cancel()
+		}
+		_ = h.Close()
+		delete(b.hubs, r.ID)
+	}
+	return b.deleteTask(ctx, r, t)
+}
+
+func reply(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(value)
+}
+func failure(w http.ResponseWriter, err error) {
+	code := 500
+	if errdefs.IsNotFound(err) {
+		code = 404
+	}
+	if errdefs.IsAlreadyExists(err) {
+		code = 409
+	}
+	w.WriteHeader(code)
+	reply(w, map[string]string{"message": err.Error()})
+}
+func decode(r *http.Request, v any) error {
+	return json.NewDecoder(http.MaxBytesReader(nil, r.Body, 4<<20)).Decode(v)
+}
+
+// ServeHTTP deliberately implements only the operations used by this product.
+// All objects are confined to one containerd namespace and an ownership label.
+func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := namespaces.WithNamespace(r.Context(), Namespace)
+	path := r.URL.Path
+	if strings.HasPrefix(path, "/v1.") {
+		i := strings.Index(path[1:], "/")
+		if i >= 0 {
+			path = path[i+1:]
+		}
+	}
+	if path == "/_ping" {
+		w.Header().Set("API-Version", "1.51")
+		_, _ = io.WriteString(w, "OK")
+		return
+	}
+	if path == "/version" {
+		reply(w, map[string]string{"ApiVersion": "1.51", "Version": "containerd"})
+		return
+	}
+	if path == "/info" {
+		if _, err := b.client.Version(ctx); err != nil {
+			failure(w, err)
+			return
+		}
+		reply(w, system.Info{OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
+		return
+	}
+	if path == "/images/load" && r.Method == "POST" {
+		b.importImages(w, r, ctx)
+		return
+	}
+	if strings.HasPrefix(path, "/images/") && strings.HasSuffix(path, "/json") {
+		name := strings.TrimSuffix(strings.TrimPrefix(path, "/images/"), "/json")
+		_, ic, err := b.image(ctx, name)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		created := ""
+		if ic.Created != nil {
+			created = ic.Created.Format(time.RFC3339Nano)
+		}
+		reply(w, image.InspectResponse{Created: created, Config: &dockerimage.DockerOCIImageConfig{ImageConfig: ic.Config}})
+		return
+	}
+	if strings.HasPrefix(path, "/networks") {
+		b.networkHTTP(w, r, ctx, path)
+		return
+	}
+	if strings.HasPrefix(path, "/exec/") {
+		b.execHTTP(w, r, ctx, path)
+		return
+	}
+	if path == "/containers/create" && r.Method == "POST" {
+		var req struct {
+			container.Config
+			HostConfig container.HostConfig
+		}
+		if err := decode(r, &req); err != nil {
+			failure(w, err)
+			return
+		}
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		cid, err := b.create(ctx, req.Config, req.HostConfig, r.URL.Query().Get("name"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		w.WriteHeader(201)
+		reply(w, container.CreateResponse{ID: cid})
+		return
+	}
+	if path == "/containers/json" {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		all, err := b.client.Containers(ctx, `labels."`+owned+`"=="true"`)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		rows := []container.Summary{}
+		f, err := filters.FromJSON(r.URL.Query().Get("filters"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		for _, c := range all {
+			v, err := b.inspect(ctx, c.ID())
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			if r.URL.Query().Get("all") != "1" && !v.State.Running {
+				continue
+			}
+			matched := true
+			for _, label := range f.Get("label") {
+				k, val, has := strings.Cut(label, "=")
+				if got, ok := v.Config.Labels[k]; !ok || has && got != val {
+					matched = false
+				}
+			}
+			if matched {
+				t, _ := time.Parse(time.RFC3339Nano, v.Created)
+				rows = append(rows, container.Summary{ID: v.ID, Names: []string{v.Name}, Image: v.Config.Image, Labels: v.Config.Labels, State: v.State.Status, Status: v.State.Status, Created: t.Unix()})
+			}
+		}
+		reply(w, rows)
+		return
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/containers/"), "/")
+	if len(parts) == 0 || parts[0] == path {
+		http.NotFound(w, r)
+		return
+	}
+	value := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+	if action == "attach" || action == "logs" || action == "wait" || action == "exec" {
+		b.streamHTTP(w, r, ctx, value, action)
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	rec, c, err := b.load(ctx, value)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	switch action {
+	case "json":
+		var v container.InspectResponse
+		v, err = b.inspect(ctx, rec.ID)
+		if err == nil {
+			reply(w, v)
+			return
+		}
+	case "start":
+		err = b.start(ctx, rec, c)
+	case "stop":
+		seconds := 10
+		if v := r.URL.Query().Get("t"); v != "" {
+			seconds, _ = strconv.Atoi(v)
+		}
+
+		err = b.stop(ctx, rec, c, seconds)
+	case "resize":
+		var task cd.Task
+		task, err = c.Task(ctx, nil)
+		if err == nil {
+			width, _ := strconv.Atoi(r.URL.Query().Get("w"))
+			height, _ := strconv.Atoi(r.URL.Query().Get("h"))
+			err = task.Resize(ctx, uint32(width), uint32(height))
+		}
+	case "":
+		if r.Method != "DELETE" {
+			http.NotFound(w, r)
+			return
+		}
+		s, e := b.state(ctx, c, rec)
+		err = e
+		if err == nil && s.Running && r.URL.Query().Get("force") != "1" {
+			err = fmt.Errorf("container is running")
+		}
+		if err == nil {
+			err = b.stop(ctx, rec, c, 0)
+		}
+		if err == nil {
+			err = b.removeNamespace(ctx, rec)
+		}
+		if err == nil {
+			err = c.Delete(ctx, cd.WithSnapshotCleanup)
+		}
+		if err == nil {
+			err = os.RemoveAll(b.path(rec.ID))
+		}
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (b *Backend) importImages(w http.ResponseWriter, r *http.Request, ctx context.Context) {
+	// Import is streamed, never buffered or logged: archives may contain custom
+	// source code. containerd owns the resulting content and snapshot store.
+	imgs, err := b.client.Import(ctx, r.Body)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for _, img := range imgs {
+		im := cd.NewImage(b.client, img)
+		if err = im.Unpack(ctx, b.opts.Snapshotter); err != nil {
+			failure(w, err)
+			return
+		}
+	}
+	reply(w, map[string]string{"stream": "Imported into containerd namespace " + Namespace + "\n"})
+}
+
+// These DTO dependencies are wire compatibility only. Execution uses the
+// containerd SDK and OCI specifications exclusively.
+var _ types.HijackedResponse

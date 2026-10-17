@@ -10,12 +10,11 @@ type ApprovalMode string
 
 const (
 	// ApprovalModeSuggest is the default interactive mode: Codex asks for
-	// approval before every action.
+	// approval according to the CLI default on-request policy.
 	ApprovalModeSuggest ApprovalMode = "suggest"
 
-	// ApprovalModeAutoEdit lets Codex apply file edits automatically but still
-	// asks for approval before running shell commands
-	// (maps to --ask-for-approval unless-allow-listed).
+	// ApprovalModeAutoEdit maps to modern Codex on-request: the model decides
+	// when to ask. Claude maps this mode to acceptEdits.
 	ApprovalModeAutoEdit ApprovalMode = "auto-edit"
 
 	// ApprovalModeFullAuto never asks for approval
@@ -24,7 +23,7 @@ const (
 
 	// ApprovalModeDanger bypasses all approval prompts and Codex sandbox
 	// restrictions (maps to --dangerously-bypass-approvals-and-sandbox).
-	// Docker container isolation provides the safety boundary in this mode.
+	// The selected worker runtime provides the safety boundary in this mode.
 	ApprovalModeDanger ApprovalMode = "danger"
 )
 
@@ -97,6 +96,11 @@ type MountSpec struct {
 
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
+	pendingPlaceholder string
+	// Runtime selects the isolation boundary, not the container management API.
+	// Empty means Kata. Runc requires an explicit compatibility opt-in.
+	Runtime       string
+	KataRuntime   string
 	Image         string
 	Packages      []string
 	PkgFile       string

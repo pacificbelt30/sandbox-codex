@@ -17,8 +17,9 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "codex-dock",
 	Short: "AI Sandbox Container Manager for Codex CLI",
-	Long: `codex-dock runs Codex CLI inside isolated Docker containers,
-providing security separation, auth proxy, and parallel worker support.`,
+	Long: `codex-dock runs Codex CLI and Claude Code in Kata VM-isolated workers
+managed through containerd and Dragonball, with auth proxy, network separation and parallel workers.
+Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,
 }
 
 func Execute() {

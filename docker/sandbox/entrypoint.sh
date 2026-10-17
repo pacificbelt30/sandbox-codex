@@ -22,6 +22,15 @@ log() {
 
 DOCK_AGENT="${DOCK_AGENT:-}"
 
+# Only the pinned bootstrap sets this after host and guest verification. Keep
+# approvals independent of the inner namespace sandbox (which Docker/Kata's
+# seccomp/capability policy may prevent from starting).
+codex_sandbox_config() {
+    if [[ "${CODEX_DOCK_VERIFIED_KATA:-}" == 1 ]]; then
+        echo 'sandbox_mode = "danger-full-access"'
+    fi
+}
+
 resolve_codex_home() {
     local candidate
     for candidate in "${HOME:-}" "/var/tmp/codex-home" "/tmp/codex-home"; do
@@ -105,6 +114,7 @@ print(json.dumps(out))
         # model requests, so it is insufficient on its own.
         cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
 openai_base_url = "${CODEX_AUTH_PROXY_URL}/v1"
+$(codex_sandbox_config)
 chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 
 [features]
@@ -133,6 +143,7 @@ EOF
         mkdir -p "${CODEX_HOME}/.codex"
         cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
 openai_base_url = "${CODEX_AUTH_PROXY_URL}/v1"
+$(codex_sandbox_config)
 
 [features]
 apps = false
@@ -171,11 +182,14 @@ fi
 build_codex_args() {
     CODEX_ARGS=()
     case "${CODEX_APPROVAL_MODE:-suggest}" in
-        auto-edit) CODEX_ARGS+=("--ask-for-approval" "unless-allow-listed") ;;
+        auto-edit) CODEX_ARGS+=("--ask-for-approval" "on-request") ;;
         full-auto) CODEX_ARGS+=("--ask-for-approval" "never") ;;
         danger)    CODEX_ARGS+=("--dangerously-bypass-approvals-and-sandbox") ;;
         suggest|*) ;;
     esac
+    if [[ "${CODEX_DOCK_VERIFIED_KATA:-}" == 1 && "${CODEX_APPROVAL_MODE:-suggest}" != danger ]]; then
+        CODEX_ARGS+=("--sandbox" "danger-full-access")
+    fi
     if [[ -n "${CODEX_MODEL:-}" ]]; then
         CODEX_ARGS+=("--model" "$CODEX_MODEL")
     fi

@@ -3,14 +3,17 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/containerd/errdefs"
+	"github.com/docker/docker/api/types/container"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
+	"strconv"
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
+	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -66,15 +69,16 @@ var proxyServeCmd = &cobra.Command{
 	Short:  "Run auth proxy server (in-process)",
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		applyForwardPolicyDefaults(cmd)
 		p, err := authproxy.NewProxy(authproxy.Config{
-			TokenTTL:            3600,
-			Verbose:             verbose,
-			Role:                proxyRole,
-			ListenAddr:          proxyListenAddr,
-			AdminListenAddr:     proxyAdminListenAddr,
-			AdminSecret:         proxyAdminSecret,
-			ForwardAllowDomains: proxyForwardAllow,
-			BlockPrivate:        proxyBlockPrivate,
+			TokenTTL:        3600,
+			Verbose:         verbose,
+			Role:            proxyRole,
+			ListenAddr:      proxyListenAddr,
+			AdminListenAddr: proxyAdminListenAddr,
+			AdminSecret:     proxyAdminSecret,
+			ForwardPolicy:   forwardPolicyRules(),
+			BlockPrivate:    proxyBlockPrivate,
 		})
 		if err != nil {
 			return err
@@ -91,7 +95,7 @@ var proxyServeCmd = &cobra.Command{
 
 var proxyBuildCmd = &cobra.Command{
 	Use:   "build",
-	Short: "Build the auth proxy Docker image",
+	Short: "Build the auth proxy OCI image with BuildKit",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dockerfile, buildCtx, err := resolveProxyDockerfile(proxyBuildDockerfile)
 		if err != nil {
@@ -109,8 +113,8 @@ var proxyBuildCmd = &cobra.Command{
 
 var proxyRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run the auth proxy as a Docker container",
-	Long: `Run the auth proxy as a detached Docker container.
+	Short: "Run the auth proxy on containerd",
+	Long: `Run the auth proxy as a detached containerd task.
 
 Credentials are automatically bound from the host into the container:
   - OPENAI_API_KEY env var  → injected as -e OPENAI_API_KEY=<value>
@@ -119,32 +123,27 @@ Credentials are automatically bound from the host into the container:
 
 At least one credential source must be configured before running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !cmd.Flags().Changed("forward-allow-domain") && viper.IsSet("proxy.forward_allow_domains") {
-			proxyForwardAllow = viper.GetStringSlice("proxy.forward_allow_domains")
-		}
+		applyForwardPolicyDefaults(cmd)
 		return startProxyContainer(cmd.Context())
 	},
 }
 
-// proxyContainerInfo returns the Docker status and the codex-dock proxy layout
+// proxyContainerInfo returns the containerd task status and the codex-dock proxy layout
 // version of the named container. Empty values mean the container does not
 // exist. Containers created before layout versioning have an empty version and
 // must be recreated: in particular, the old single-proxy layout publishes
 // port 18080 while current clients connect to the split admin port at 18081.
 func proxyContainerInfo(ctx context.Context, name string) (state, layout string) {
-	format := fmt.Sprintf("{{.State.Status}} {{index .Config.Labels %q}}", proxyLayoutLabel)
-	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", format, name).Output()
+	c, err := engine.NewClient()
 	if err != nil {
 		return "", ""
 	}
-	fields := strings.Fields(string(out))
-	if len(fields) == 0 {
+	defer func() { _ = c.Close() }()
+	v, err := c.ContainerInspect(ctx, name)
+	if err != nil || v.State == nil || v.Config == nil {
 		return "", ""
 	}
-	if len(fields) > 1 {
-		return fields[0], fields[1]
-	}
-	return fields[0], ""
+	return v.State.Status, v.Config.Labels[proxyLayoutLabel]
 }
 
 // startProxyContainer ensures BOTH proxy containers are running:
@@ -156,15 +155,17 @@ func proxyContainerInfo(ctx context.Context, name string) (state, layout string)
 // It builds the proxy image / egress network when missing and restarts existing
 // (stopped) containers. Shared by `proxy run` and `codex-dock run`'s auto-start.
 func startProxyContainer(ctx context.Context) error {
+	rules := forwardPolicyRules()
+	rules.BlockPrivate = true
+	if _, err := networkpolicy.Compile(rules); err != nil {
+		return fmt.Errorf("invalid egress policy: %w", err)
+	}
 	image := viper.GetString("proxy_image")
 	if err := ensureBridgeNetwork(ctx, proxyRunNetwork, network.ProxyBridgeName); err != nil {
 		return err
 	}
 	if err := ensureProxyImage(ctx, image); err != nil {
 		return err
-	}
-	if len(proxyForwardAllow) == 0 && viper.IsSet("proxy.forward_allow_domains") {
-		proxyForwardAllow = viper.GetStringSlice("proxy.forward_allow_domains")
 	}
 
 	home, err := os.UserHomeDir()
@@ -197,20 +198,26 @@ func startProxyContainer(ctx context.Context) error {
 
 	// 2) Egress proxy: forward-only, no credentials, LAN blocked.
 	egress := proxyRunArgs{
-		name:         proxyRunHTTPName,
-		role:         authproxy.RoleEgress,
-		networkName:  proxyRunNetwork,
-		image:        image,
-		listenAddr:   fmt.Sprintf("0.0.0.0:%d", proxyRunHTTPPort),
-		blockPrivate: true,
-		forwardAllow: proxyForwardAllow,
+		name:          proxyRunHTTPName,
+		role:          authproxy.RoleEgress,
+		networkName:   proxyRunNetwork,
+		image:         image,
+		listenAddr:    fmt.Sprintf("0.0.0.0:%d", proxyRunHTTPPort),
+		blockPrivate:  true,
+		forwardAllow:  proxyForwardAllow,
+		forwardPolicy: proxyForwardRules,
 	}
 	return ensureProxyContainer(ctx, egress)
 }
 
 // ensureProxyImage builds the proxy image when it is not present locally.
 func ensureProxyImage(ctx context.Context, image string) error {
-	if exec.CommandContext(ctx, "docker", "image", "inspect", image).Run() == nil {
+	c, err := engine.NewClient()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = c.Close() }()
+	if _, err := c.ImageInspect(ctx, image); err == nil {
 		return nil
 	}
 	fmt.Printf("Proxy image %s not found locally, building...\n", image)
@@ -224,40 +231,44 @@ func ensureProxyImage(ctx context.Context, image string) error {
 // ensureProxyContainer (re)starts one proxy container from its spec: a running
 // container is left alone, a stopped one is started, and a missing one is created.
 func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) error {
-	state, layout := proxyContainerInfo(ctx, spec.name)
-	if state != "" && layout != proxyLayoutVersion {
-		fmt.Printf("Recreating incompatible proxy container %q (layout: %q, required: %q)...\n",
-			spec.name, layout, proxyLayoutVersion)
-		c := exec.CommandContext(ctx, "docker", "rm", "--force", spec.name)
-		c.Stdout, c.Stderr = os.Stdout, os.Stderr
-		if err := c.Run(); err != nil {
-			return fmt.Errorf("removing incompatible proxy container %q: %w", spec.name, err)
+	c, err := engine.NewClient()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = c.Close() }()
+	v, err := c.ContainerInspect(ctx, spec.name)
+	if err != nil && !errdefs.IsNotFound(err) {
+		return err
+	}
+	if err == nil {
+		if v.Config == nil || v.State == nil {
+			return fmt.Errorf("incomplete proxy record")
 		}
-		state = ""
+		if v.Config.Labels[proxyLayoutLabel] != proxyLayoutVersion {
+			if err = c.ContainerRemove(ctx, spec.name, container.RemoveOptions{Force: true}); err != nil {
+				return err
+			}
+		} else {
+			if spec.role == authproxy.RoleEgress {
+				if err = checkProxyPolicy(v.Config.Labels[proxyPolicyLabel], spec); err != nil {
+					return err
+				}
+			}
+			if v.State.Running {
+				return nil
+			}
+			return c.ContainerStart(ctx, spec.name, container.StartOptions{})
+		}
 	}
-
-	switch state {
-	case "running":
-		fmt.Printf("Proxy container %q is already running.\n", spec.name)
-		return nil
-	case "":
-		// Not found — create below.
-	default:
-		fmt.Printf("Starting existing proxy container %q...\n", spec.name)
-		c := exec.CommandContext(ctx, "docker", "start", spec.name)
-		c.Stdout, c.Stderr = os.Stdout, os.Stderr
-		return c.Run()
+	cfg, host, err := proxyConfiguration(spec)
+	if err != nil {
+		return err
 	}
-
-	fmt.Printf("Starting proxy container %q (role: %s, image: %s, network: %s)...\n",
-		spec.name, spec.role, spec.image, spec.networkName)
-	c := exec.CommandContext(ctx, "docker", buildProxyRunArgs(spec)...)
-	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("docker run %q failed: %w", spec.name, err)
+	created, err := c.ContainerCreate(ctx, cfg, host, nil, nil, spec.name)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("Proxy container %q started.\n", spec.name)
-	return nil
+	return c.ContainerStart(ctx, created.ID, container.StartOptions{})
 }
 
 // proxy stop ----------------------------------------------------------------
@@ -272,9 +283,7 @@ var proxyStopCmd = &cobra.Command{
 		}
 		for _, name := range names {
 			fmt.Printf("Stopping proxy container %q...\n", name)
-			c := exec.CommandContext(cmd.Context(), "docker", "stop", name)
-			c.Stdout, c.Stderr = os.Stdout, os.Stderr
-			if err := c.Run(); err != nil {
+			if err := stopProxy(cmd.Context(), name); err != nil {
 				fmt.Printf("  error: %v\n", err)
 			}
 		}
@@ -293,15 +302,9 @@ var proxyRmCmd = &cobra.Command{
 			names = []string{proxyRmName}
 		}
 		for _, name := range names {
-			dockerArgs := []string{"rm"}
-			if proxyRmForce {
-				dockerArgs = append(dockerArgs, "--force")
-			}
-			dockerArgs = append(dockerArgs, name)
 			fmt.Printf("Removing proxy container %q...\n", name)
-			c := exec.CommandContext(cmd.Context(), "docker", dockerArgs...)
-			c.Stdout, c.Stderr = os.Stdout, os.Stderr
-			if err := c.Run(); err != nil {
+
+			if err := removeProxy(cmd.Context(), name, proxyRmForce); err != nil {
 				fmt.Printf("  error: %v\n", err)
 			}
 		}
@@ -324,7 +327,7 @@ func init() {
 	proxyServeCmd.Flags().StringVar(&proxyListenAddr, "listen", "0.0.0.0:18080", "worker-facing listen address")
 	proxyServeCmd.Flags().StringVar(&proxyAdminListenAddr, "admin-listen", "", "separate listen address for /admin/* endpoints (auth role). Use host \"egress\" (e.g. egress:18081) to bind the container's egress IP so workers cannot reach it")
 	proxyServeCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
-	proxyServeCmd.Flags().StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Restrict the forward proxy (egress role) to these domains and subdomains (repeatable; default: allow all)")
+	bindForwardPolicyFlags(proxyServeCmd)
 	proxyServeCmd.Flags().BoolVar(&proxyBlockPrivate, "block-private", false, "Refuse outbound connections to private/LAN/link-local addresses (RFC1918, 127/8, 169.254/16, ULA, CGNAT)")
 
 	// build flags
@@ -337,9 +340,9 @@ func init() {
 	proxyRunCmd.Flags().IntVar(&proxyRunAdminPort, "admin-port", defaultAuthAdminPort, "Host-published admin port (bound to 127.0.0.1) for /admin/* endpoints")
 	proxyRunCmd.Flags().StringVar(&proxyRunHTTPName, "http-name", defaultHTTPProxyContainerName, "Egress (http) proxy container name")
 	proxyRunCmd.Flags().IntVar(&proxyRunHTTPPort, "http-port", defaultHTTPProxyPort, "Egress (http) proxy internal forward port (not host-published)")
-	proxyRunCmd.Flags().StringVar(&proxyRunNetwork, "network", network.ProxyNetworkName, "Docker egress network to attach the proxy containers to")
+	proxyRunCmd.Flags().StringVar(&proxyRunNetwork, "network", network.ProxyNetworkName, "Node egress network to attach the proxy containers to")
 	proxyRunCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
-	proxyRunCmd.Flags().StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Restrict the egress forward proxy to these domains and subdomains (repeatable; default: allow all)")
+	bindForwardPolicyFlags(proxyRunCmd)
 
 	// stop flags
 	proxyStopCmd.Flags().StringVar(&proxyStopName, "name", defaultProxyContainerName, "Container name")
@@ -361,6 +364,7 @@ type proxyRunArgs struct {
 	adminListenAddr string // "" disables the admin listener (egress)
 	adminSecret     string
 	forwardAllow    []string
+	forwardPolicy   networkpolicy.Rules
 	blockPrivate    bool
 	mountCreds      bool // bind host credentials (auth only)
 
@@ -385,6 +389,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 		"run", "-d", "--name", a.name,
 		"--label", proxyLayoutLabel + "=" + proxyLayoutVersion,
 		"--network", a.networkName,
+	}
+	if a.role == authproxy.RoleEgress {
+		args = append(args, "--label", proxyPolicyLabel+"="+forwardPolicyID(a))
 	}
 	if a.adminPort > 0 {
 		args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", a.adminPort, a.adminPort))
@@ -424,32 +431,39 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	if a.blockPrivate {
 		args = append(args, "--block-private")
 	}
-	for _, d := range a.forwardAllow {
+	rules := effectiveForwardRules(a)
+	for _, d := range rules.AllowDomains {
 		args = append(args, "--forward-allow-domain", d)
+	}
+	for _, setting := range []struct {
+		flag   string
+		values []string
+	}{
+		{"--forward-deny-domain", rules.DenyDomains},
+		{"--forward-allow-cidr", rules.AllowCIDRs},
+		{"--forward-deny-cidr", rules.DenyCIDRs},
+	} {
+		for _, value := range setting.values {
+			args = append(args, setting.flag, value)
+		}
+	}
+	for _, setting := range []struct {
+		flag   string
+		values []int
+	}{
+		{"--forward-allow-port", rules.AllowPorts},
+		{"--forward-deny-port", rules.DenyPorts},
+	} {
+		for _, value := range setting.values {
+			args = append(args, setting.flag, strconv.Itoa(value))
+		}
 	}
 
 	return args
 }
 
 func ensureBridgeNetwork(ctx context.Context, networkName, bridgeName string) error {
-	inspect := exec.CommandContext(ctx, "docker", "network", "inspect", networkName)
-	if err := inspect.Run(); err == nil {
-		return nil
-	}
-
-	args := []string{"network", "create", "--driver", "bridge"}
-	if bridgeName != "" {
-		args = append(args, "--opt", "com.docker.network.bridge.name="+bridgeName)
-	}
-	args = append(args, networkName)
-
-	create := exec.CommandContext(ctx, "docker", args...)
-	create.Stdout = os.Stdout
-	create.Stderr = os.Stderr
-	if err := create.Run(); err != nil {
-		return fmt.Errorf("ensuring docker network %q: %w", networkName, err)
-	}
-	return nil
+	return ensureNodeBridge(ctx, networkName)
 }
 
 // resolveProxyDockerfile returns the auth-proxy Dockerfile path and build
@@ -503,13 +517,5 @@ func ensureProxyDockerfile(dir string) error {
 // instead of collapsing it into a live-updating TTY view, so an auto-build
 // triggered by `run` never looks stalled while it's actually still working.
 func executeProxyBuild(ctx context.Context, tag, dockerfile, buildCtx string) error {
-	fmt.Printf("Building proxy image %s from %s...\n", tag, dockerfile)
-	c := exec.CommandContext(ctx, "docker", "build", "--progress=plain", "-t", tag, "-f", dockerfile, buildCtx)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("docker build failed: %w", err)
-	}
-	fmt.Printf("Proxy image %s built successfully.\n", tag)
-	return nil
+	return executeBuild(ctx, tag, dockerfile, buildCtx)
 }

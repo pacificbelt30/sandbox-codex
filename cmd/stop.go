@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
@@ -14,7 +15,7 @@ var stopCmd = &cobra.Command{
 	Use:   "stop [NAME|ID...]",
 	Short: "Stop one or more worker containers",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Verbose: verbose})
+		mgr, err := sandbox.NewManager(managementConfig())
 		if err != nil {
 			return err
 		}
@@ -24,26 +25,28 @@ var stopCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			var failures error
 			for _, w := range workers {
 				fmt.Printf("Stopping %s...\n", w.Name)
 				if err := mgr.Stop(w.ID, stopTimeout); err != nil {
-					fmt.Printf("  error: %v\n", err)
+					failures = errors.Join(failures, fmt.Errorf("stopping %s: %w", w.Name, err))
 				}
 			}
-			return nil
+			return failures
 		}
 
 		if len(args) == 0 {
 			return fmt.Errorf("specify container names/IDs or use --all")
 		}
 
+		var failures error
 		for _, name := range args {
 			fmt.Printf("Stopping %s...\n", name)
 			if err := mgr.StopByName(name, stopTimeout); err != nil {
-				fmt.Printf("  error: %v\n", err)
+				failures = errors.Join(failures, fmt.Errorf("stopping %s: %w", name, err))
 			}
 		}
-		return nil
+		return failures
 	},
 }
 

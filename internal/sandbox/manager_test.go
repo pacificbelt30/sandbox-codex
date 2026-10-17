@@ -53,7 +53,7 @@ func TestBuildCodexArgs_ApprovalMode_Suggest(t *testing.T) {
 func TestBuildCodexArgs_ApprovalMode_AutoEdit(t *testing.T) {
 	opts := RunOptions{ApprovalMode: ApprovalModeAutoEdit}
 	args := buildCodexArgs(opts)
-	if !containsSequence(args, "--ask-for-approval", "unless-allow-listed") {
+	if !containsSequence(args, "--ask-for-approval", "on-request") {
 		t.Errorf("buildCodexArgs(auto-edit) = %v; missing --ask-for-approval unless-allow-listed", args)
 	}
 }

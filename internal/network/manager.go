@@ -7,6 +7,7 @@ import (
 
 	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
 )
 
 const (
@@ -48,9 +49,9 @@ type Manager struct {
 
 // NewManager creates a new network Manager.
 func NewManager() (*Manager, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := engine.NewClient()
 	if err != nil {
-		return nil, fmt.Errorf("connecting to Docker: %w", err)
+		return nil, fmt.Errorf("connecting to containerd node: %w", err)
 	}
 	return &Manager{cli: cli}, nil
 }

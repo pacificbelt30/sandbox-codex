@@ -1,0 +1,271 @@
+package kataguard
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+)
+
+type NodeInfo struct {
+	Profile, Endpoint, Stamp, Launcher, Root string
+	Protected                                []string
+}
+type nodeRequest struct {
+	Action, Runtime, Allocation, Worker, Endpoint string
+	Force                                         bool
+}
+type nodeReply struct {
+	Error, Parent string
+	Info          NodeInfo
+	Inventory     Inventory
+}
+
+// Serve hosts the containerd engine and fixed Kata verification profile.
+// The socket must be owned by root and accessible only to trusted operators.
+// Engine access is root-equivalent: operators choose images, commands and host
+// bind mounts. Guests never receive this socket. Orphan recovery remains scoped
+// to attested envelopes; there is no TCP management endpoint.
+func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("Kata node service must run as root")
+	}
+	if !cleanPath(socket) {
+		return fmt.Errorf("invalid node socket path")
+	}
+	if err := trustedPath(filepath.Dir(socket), true); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(socket); err == nil {
+		if info.Mode()&os.ModeSocket == 0 || !rootOwner(info) {
+			return fmt.Errorf("untrusted existing node socket")
+		}
+		conn, dialErr := net.DialTimeout("unix", socket, time.Second)
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
+			return fmt.Errorf("node socket is active or cannot be safely replaced")
+		}
+		current, statErr := os.Lstat(socket)
+		if statErr != nil || !os.SameFile(info, current) {
+			return fmt.Errorf("node socket changed during recovery")
+		}
+		if err := os.Remove(socket); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	g, err := New(cfg)
+	if err != nil {
+		return err
+	}
+	if err = g.Validate(ctx, g.manifest.Runtime); err != nil {
+		return err
+	}
+	_, daemon, err := readConfig(g.manifest.Assets["config"].Path, g.manifest.Assets["daemon"].Path, g.manifest.Runtime)
+	if err != nil {
+		return err
+	}
+	tools := map[string]string{}
+	for _, name := range []string{"ip", "nft", "sysctl", "runc", "runc-shim"} {
+		tools[name] = g.manifest.Assets[name].Path
+	}
+	backend, err := engine.Open(engine.Options{Address: daemon.GRPC.Address, State: filepath.Join(cfg.StateDir, "engine"), Runtime: g.manifest.Assets["runtime"].Path, KataConfig: g.manifest.Assets["config"].Path, Retire: g.Retire, AbortCreate: g.AbortCreate, Tools: tools, Logger: g.manifest.Assets["logger"].Path, DNS: cfg.DNS})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = backend.Close() }()
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = listener.Close(); _ = os.Remove(socket) }()
+	if err = os.Chown(socket, 0, gid); err != nil {
+		return err
+	}
+	if err = os.Chmod(socket, 0660); err != nil {
+		return err
+	}
+	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/node" {
+			backend.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/node" {
+			http.NotFound(w, r)
+			return
+		}
+		var req nodeRequest
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			http.Error(w, "invalid node request", 400)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(w, "trailing node request", 400)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		var reply nodeReply
+		var err error
+		if req.Endpoint != cfg.Endpoint {
+			err = fmt.Errorf("node serves another containerd endpoint")
+		} else {
+			switch req.Action {
+			case "validate":
+				err = g.Validate(ctx, req.Runtime)
+				reply.Info = NodeInfo{Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, Protected: append(g.ProtectedPaths(), socket)}
+			case "inventory":
+				reply.Inventory, err = g.Inventory(ctx)
+			case "recover-orphan":
+				err = g.RecoverOrphan(ctx, req.Allocation, req.Force)
+			case "reserve":
+				reply.Parent, err = g.Reserve(ctx, req.Allocation)
+			case "verify":
+				err = g.Verify(ctx, req.Allocation, req.Worker)
+			case "release":
+				err = g.Release(ctx, req.Allocation, req.Worker)
+			default:
+				err = fmt.Errorf("unknown node action")
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			reply.Error = err.Error()
+			w.WriteHeader(http.StatusConflict)
+		}
+		_ = json.NewEncoder(w).Encode(reply)
+	})
+	stop := context.AfterFunc(ctx, func() { _ = server.Close() })
+	defer stop()
+	err = server.Serve(listener)
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
+}
+
+type Client struct {
+	client           *http.Client
+	endpoint, socket string
+	mu               sync.RWMutex
+	info             NodeInfo
+}
+
+func Connect(socket, endpoint string) (*Client, error) {
+	canonical, err := filepath.EvalSymlinks(socket)
+	if err != nil {
+		return nil, fmt.Errorf("Kata node service is unavailable: %w", err)
+	}
+	if err = trustedPath(filepath.Dir(canonical), true); err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(canonical)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSocket == 0 || info.Mode().Perm()&0007 != 0 || !rootOwner(info) {
+		return nil, fmt.Errorf("untrusted Kata node socket")
+	}
+	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", canonical)
+	}}
+	return &Client{endpoint: endpoint, socket: canonical, client: &http.Client{Transport: transport, Timeout: 35 * time.Second}}, nil
+}
+
+func (c *Client) call(ctx context.Context, req nodeRequest) (nodeReply, error) {
+	var result nodeReply
+	req.Endpoint = c.endpoint
+	b, err := json.Marshal(req)
+	if err != nil {
+		return result, err
+	}
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://kata-node/v1/node", bytes.NewReader(b))
+	if err != nil {
+		return result, err
+	}
+	r.Header.Set("Content-Type", "application/json")
+	resp, err := c.client.Do(r)
+	if err != nil {
+		return result, fmt.Errorf("Kata node service: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err = json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&result); err != nil {
+		return result, err
+	}
+	if resp.StatusCode != 200 || result.Error != "" {
+		return result, fmt.Errorf("Kata node: %s", result.Error)
+	}
+	return result, nil
+}
+
+func (c *Client) Validate(ctx context.Context, runtime string) error {
+	r, err := c.call(ctx, nodeRequest{Action: "validate", Runtime: runtime})
+	if err != nil {
+		return err
+	}
+	if r.Info.Profile != Profile || r.Info.Endpoint != c.endpoint || len(r.Info.Stamp) != 64 || !cleanPath(r.Info.Root) || !cleanPath(r.Info.Launcher) {
+		return fmt.Errorf("Kata node returned another profile")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.info.Stamp != "" && r.Info.Stamp != c.info.Stamp {
+		return fmt.Errorf("Kata node profile changed; recreate manager/workers")
+	}
+	c.info = r.Info
+	return nil
+}
+func (c *Client) Reserve(ctx context.Context, id string) (string, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "reserve", Allocation: id})
+	return r.Parent, err
+}
+func (c *Client) Verify(ctx context.Context, id, worker string) error {
+	_, err := c.call(ctx, nodeRequest{Action: "verify", Allocation: id, Worker: worker})
+	return err
+}
+func (c *Client) Release(ctx context.Context, id, worker string) error {
+	_, err := c.call(ctx, nodeRequest{Action: "release", Allocation: id, Worker: worker})
+	return err
+}
+func (c *Client) Parent(id string) (string, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(id) != 32 || strings.Trim(id, "0123456789abcdef") != "" {
+		return "", fmt.Errorf("invalid Kata allocation id")
+	}
+	return strings.TrimPrefix(filepath.Join(c.info.Root, "cdx-"+id), "/sys/fs/cgroup"), nil
+}
+func (c *Client) ProtectedPaths() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append(append([]string(nil), c.info.Protected...), c.socket)
+}
+func (c *Client) Launcher() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.info.Launcher }
+func (c *Client) Stamp() string    { c.mu.RLock(); defer c.mu.RUnlock(); return c.info.Stamp }
+func (c *Client) Close() error     { c.client.CloseIdleConnections(); return nil }
+
+func (c *Client) Inventory(ctx context.Context) (Inventory, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "inventory"})
+	return r.Inventory, err
+}
+func (c *Client) RecoverOrphan(ctx context.Context, id string, force bool) error {
+	_, err := c.call(ctx, nodeRequest{Action: "recover-orphan", Allocation: id, Force: force})
+	return err
+}

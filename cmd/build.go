@@ -3,9 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -152,11 +152,8 @@ func ensureDefaultDockerfile(dir string) error {
 // `run`'s auto-build never looks stalled while it's actually still working.
 func executeBuild(ctx context.Context, tag, dockerfile, buildCtx string) error {
 	fmt.Printf("Building image %s from %s...\n", tag, dockerfile)
-	c := exec.CommandContext(ctx, "docker", "build", "--progress=plain", "-t", tag, "-f", dockerfile, buildCtx)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("docker build failed: %w", err)
+	if err := engine.Build(ctx, tag, dockerfile, buildCtx, os.Stderr); err != nil {
+		return err
 	}
 	fmt.Printf("Image %s built successfully.\n", tag)
 	return nil
@@ -210,8 +207,12 @@ func buildFromTemplate(ctx context.Context, name, customTag string) error {
 }
 
 func ensureBaseImage(ctx context.Context, baseImage string) error {
-	c := exec.CommandContext(ctx, "docker", "image", "inspect", baseImage)
-	if err := c.Run(); err == nil {
+	c, err := engine.NewClient()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = c.Close() }()
+	if _, err := c.ImageInspect(ctx, baseImage); err == nil {
 		return nil
 	}
 
