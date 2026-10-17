@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 )
 
 func TestResolveAdminListenAddr(t *testing.T) {
@@ -56,7 +58,15 @@ func TestForwardAllowed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &Proxy{cfg: Config{ForwardAllowDomains: tt.allow}}
-			if got := p.forwardAllowed(tt.hostport); got != tt.want {
+			policy, err := p.forwardPolicy()
+			if err != nil {
+				t.Fatal(err)
+			}
+			dst, err := networkpolicy.ParseDestination(tt.hostport, "80")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := policy.CheckDestination(context.Background(), dst) == nil; got != tt.want {
 				t.Errorf("forwardAllowed(%q) = %v; want %v", tt.hostport, got, tt.want)
 			}
 		})
@@ -167,36 +177,6 @@ func TestWorkerFacingHandler_AuthRejectsForward(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/responses", nil))
 	if !muxHit {
 		t.Error("origin-form should reach the mux on the auth proxy")
-	}
-}
-
-func TestIsBlockedIP(t *testing.T) {
-	blocked := []string{
-		"127.0.0.1", "::1", "10.1.2.3", "172.16.5.5", "192.168.1.1",
-		"169.254.169.254", "100.64.0.1", "0.0.0.0", "fd00::1", "fe80::1",
-	}
-	allowed := []string{"1.1.1.1", "8.8.8.8", "140.82.121.4", "2606:4700:4700::1111"}
-	for _, s := range blocked {
-		if !isBlockedIP(net.ParseIP(s)) {
-			t.Errorf("isBlockedIP(%s) = false; want true (private/LAN)", s)
-		}
-	}
-	for _, s := range allowed {
-		if isBlockedIP(net.ParseIP(s)) {
-			t.Errorf("isBlockedIP(%s) = true; want false (public)", s)
-		}
-	}
-}
-
-func TestScreenDest_BlocksPrivateLiteral(t *testing.T) {
-	// IP literals resolve without DNS, so this needs no network.
-	for _, s := range []string{"10.0.0.1", "127.0.0.1", "169.254.169.254", "192.168.0.5"} {
-		if _, err := screenDest(context.Background(), s); !isBlockedDestErr(err) {
-			t.Errorf("screenDest(%s) err = %v; want blockedDestErr", s, err)
-		}
-	}
-	if ips, err := screenDest(context.Background(), "1.1.1.1"); err != nil || len(ips) != 1 {
-		t.Errorf("screenDest(public literal) = %v, %v; want one IP and no error", ips, err)
 	}
 }
 

@@ -21,6 +21,7 @@ Full HTTP endpoint specifications for the Auth Proxy.
 | [`/health`](#get-health--health-check) | GET | Health check |
 | [`/revoke`](#post-revoke--token-revocation) | POST | Token revocation |
 | [`/admin/issue`](#post-adminissue--token-issuance-admin) | POST | Issue token (admin) |
+| `/admin/restore` | POST | Reauthorize a retained worker placeholder on explicit restart (admin) |
 | [`/admin/revoke`](#post-adminrevoke--token-revocation-admin) | POST | Revoke token (admin) |
 | [`/admin/mode`](#get-adminmode--mode-check) | GET | Check operating mode |
 

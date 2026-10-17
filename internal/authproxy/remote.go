@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // RemoteProxy talks to an externally running auth proxy service.
@@ -29,7 +30,7 @@ func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, e
 		adminURL:          adminURL,
 		containerURL:      containerURL,
 		adminSecret:       adminSecret,
-		httpClient:        http.DefaultClient,
+		httpClient:        &http.Client{Timeout: 10 * time.Second},
 		adminSecretHeader: "X-Proxy-Admin-Secret",
 	}
 	mode, err := r.fetchMode()
@@ -72,22 +73,29 @@ func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, erro
 	return out["token"], nil
 }
 
-func (r *RemoteProxy) RevokeToken(containerName string) {
+func (r *RemoteProxy) RevokeToken(containerName string) { _ = r.RevokeTokenChecked(containerName) }
+
+func (r *RemoteProxy) RevokeTokenChecked(containerName string) error {
 	u, _ := url.Parse(r.adminURL + "/admin/revoke")
 	q := u.Query()
 	q.Set("container", containerName)
 	u.RawQuery = q.Encode()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, u.String(), nil)
 	if err != nil {
-		return
+		return err
 	}
 	if r.adminSecret != "" {
 		req.Header.Set(r.adminSecretHeader, r.adminSecret)
 	}
 	resp, err := r.httpClient.Do(req)
-	if err == nil && resp != nil {
-		_ = resp.Body.Close()
+	if err != nil {
+		return err
 	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("proxy token revocation failed: HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (r *RemoteProxy) fetchMode() (map[string]bool, error) {

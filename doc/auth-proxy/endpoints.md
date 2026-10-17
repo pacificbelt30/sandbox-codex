@@ -21,6 +21,7 @@ Auth Proxy が公開する全 HTTP エンドポイントの詳細仕様です。
 | [`/health`](#get-health--ヘルスチェック) | GET | ヘルスチェック |
 | [`/revoke`](#post-revoke--トークン失効) | POST | トークン失効 |
 | [`/admin/issue`](#post-adminissue--トークン発行管理) | POST | トークン発行（管理用） |
+| `/admin/restore` | POST | 停止済みワーカーのプレースホルダー再有効化（管理用） |
 | [`/admin/revoke`](#post-adminrevoke--トークン失効管理) | POST | トークン失効（管理用） |
 | [`/admin/mode`](#get-adminmode--動作モード確認) | GET | 動作モード確認 |
 
@@ -249,6 +250,10 @@ Content-Type: application/json
 | `405 Method Not Allowed` | POST 以外のメソッド |
 
 ---
+
+### `POST /admin/restore` — 再起動時のトークン再有効化（管理用）
+
+再起動には `POST /admin/restore` を使います。`X-Proxy-Admin-Secret` を通常の管理APIと同じように検証し、JSONの `container` / `token` / `ttl` を受け取ります。tokenは保存済みの `cdx-` + 64桁hexプレースホルダーに限り、実APIキーは受け付けません。成功は204。他の稼働ワーカーに割り当て済みのtokenは拒否します。停止中は失効したままで、管理者の明示的な再起動時に同じtokenを再有効化します。分離admin listenerを使う構成ではワーカー側にこのAPIは公開しません。
 
 ### `POST /admin/revoke` — トークン失効（管理用）
 

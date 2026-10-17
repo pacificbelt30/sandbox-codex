@@ -11,3 +11,15 @@ type Service interface {
 	IsAnthropicMode() bool
 	ContainerEndpoint() string
 }
+
+// TokenRestorer is an admin-only capability for restarting a retained worker.
+// Docker cannot replace a saved container's environment. The same placeholder
+// is reauthorized explicitly on restart, and remains revoked while stopped.
+type TokenRestorer interface {
+	RestoreToken(containerName, token string, ttlSec int) error
+}
+
+// TokenRevoker reports revocation failures so cleanup can retain its journal.
+type TokenRevoker interface {
+	RevokeTokenChecked(containerName string) error
+}
