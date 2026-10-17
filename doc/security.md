@@ -1,127 +1,44 @@
 # セキュリティ設計
 
-> **日本語** | [English](en/security.md)
+既定はKata runtime-rs / DragonballのVM境界。containerdとroot管理サービスが実行・資源・networkを管理する。[配置と実機検証](kata.md)、[ネットワーク](network.md)、[プロキシポリシー](proxy-policy.md)を参照。
 
-codex-dock のセキュリティ設計の原則・コンテナ設定・既知の制限をまとめています。
+## 資格情報
 
----
+OpenAI / AnthropicのAPIキー、API用access token、OAuth refresh tokenはauth proxyが保持する。workerには短命のplaceholderだけを渡し、固定API経路を中継する際に実資格情報へ差し替える。Codex loginの互換性のため、ID tokenなどのaccount metadataは返す場合がある。egress proxyには実資格情報をmount・注入しない。
 
-## 基本原則：コンテナに秘密情報を渡さない
+admin listenerはauth proxyのprimary egress IPにbindし、hostでは127.0.0.1へ公開する。workerから見えるdata listenerにはadmin操作を公開しない。placeholderの失効・再起動時の復元はhostのManagerだけが行う。
 
-codex-dock のセキュリティは **「コンテナに秘密情報を直接渡さない」** という原則に基づいています。
+## ワーカーの制限と起動ゲート
 
-```
-                    NG (従来のアプローチ)
-┌────────────┐                           ┌──────────────────┐
-│   ホスト   │  OPENAI_API_KEY=sk-xxx   │    コンテナ      │
-│            │─────────────────────────▶│  (危険: 漏洩リスク)│
-└────────────┘                           └──────────────────┘
+| 項目 | 条件 |
+|---|---|
+| kernel | workerごとに別のDragonball VM |
+| UID/GID | 解決済みの非root ID。既定はhostのcurrent user |
+| capabilities | bounding / effective / permitted / inheritable / ambientをすべて0 |
+| NNP・seccomp | `NoNewPrivs=1`、guest `Seccomp=2` |
+| guest資源 | CPU 1、memory 2 GiB、PID 512 |
+| host VM全体 | CPU 1、memory 3 GiB、swap 0、PID 512、OOM group |
+| network | 専用bridge・namespace、静的proxy hosts、直接外向き・host・peer通信を遮断 |
+| management | containerd/node/BuildKit socket・資産・台帳・host kernel操作用パスをguestへ渡さない |
 
-                    OK (codex-dock のアプローチ)
-┌────────────────────────────────────────────────────────────┐
-│   ホスト                                                    │
-│                                                             │
-│  API Key ──▶ Auth Proxy ──▶ プレースホルダー ──▶ コンテナ │
-│  (保護)                       (cdx-xxxx, TTL付き)           │
-│               │                                             │
-│               │ API リクエスト中継時に                       │
-│               │ Authorization を本物に差し替え              │
-│               ▼                                             │
-│          api.openai.com / chatgpt.com                       │
-│                                                             │
-│  ・実際の API Key / access_token はコンテナに渡らない       │
-│  ・コンテナが保持するのはプレースホルダー (cdx-xxxx) のみ   │
-│  ・プレースホルダーは OpenAI への直接アクセスに使えない     │
-│  ・OAuth の refresh_token はホストのみが保持する            │
-└────────────────────────────────────────────────────────────┘
-```
+固定bootstrapをPID 1として起動し、元のimage entrypointは待機させる。hostのshim/logger実体・worker ID・cgroup所属・上限、guestの別boot IDと実権限・制限を検証したあとで、placeholderを有効にしてnonceで解放する。Kataや資源検証に失敗した場合はエラーになり、runc/QEMUへ自動fallbackしない。
 
----
+Kata外側の隔離を検証したworkerでは、Codexの内側sandboxを `danger-full-access` に設定する。VMの中でさらにnamespaceを作ることによるseccompとの不整合を防ぐためであり、CLIの承認設定は独立して維持する。Codexの非対話execはCLI自身がapprovalを選ぶ場合がある。
 
-## コンテナのセキュリティ設定
+## ホスト側の信頼境界
 
-各サンドボックスコンテナには以下のセキュリティ設定が適用されます。
+nodeのoperator groupとBuildKit利用者はroot相当で、image・command・host bind mountを選べる信頼済み利用者である。guestにはoperator socketを公開しない。プロキシはrunc、workerは既定でKata。`--runtime runc` は同じcontainerd上で明示選択する互換モードで、独立kernelを提供しない。
 
-| 設定項目 | 値 | 効果 |
-|---|---|---|
-| `--cap-drop ALL` | すべての Linux ケーパビリティを削除 | 権限昇格・特権操作を防止 |
-| `--security-opt no-new-privileges` | 新しい権限の取得を禁止 | setuid/setgid バイナリの悪用防止 |
-| `USER codex (uid:1000)` | 非 root ユーザーで実行 | root 権限でのホスト操作を防止 |
-| `--pids-limit 512` | 最大プロセス数を 512 に制限 | fork bomb 等の防止 |
-| ネットワーク: per-worker `Internal` ネット | ワーカーごとに専用の隔離ネットワーク | ワーカー間・ホスト・インターネットへの直接通信をブロック（egress はプロキシ経由のみ） |
+manifestでroot所有・一般ユーザーから書き換え不可のruntime、kernel、guest image、bootstrap、IO logger、containerd設定と本体、network操作ツールを固定する。実プロセスはinode、cmdlineのworker ID、start ticks、実cgroup所属で照合する。manifestはchecksum記録であり、配布物の署名・出所の確認の代わりではない。
 
----
+Dragonball終了時のcgroup回収は同じ上限内のsibling leafへ移す。起動失敗の回収と孤児の強制停止は、専用予約の全占有プロセスを確認した場合だけ `cgroup.kill` を使う。他サービスのgroup・任意PID・不明なnamespaceを採用しない。管理層に接続できない場合はunknownとし、孤児として削除しない。
 
-## 多層防御の構造
+## workspace・Git・削除
 
-```
-【レイヤー 1: 認証情報の保護】
-  API Key / OAuth トークン → Auth Proxy が保持
-  コンテナには短命プレースホルダーのみ渡す
-        │
-        ▼
-【レイヤー 2: プロセス権限の制限】
-  --cap-drop ALL + no-new-privileges + 非 root 実行
-  コンテナ内の悪意ある動作がホストに影響を与えにくい構造
-        │
-        ▼
-【レイヤー 3: ネットワーク隔離（Docker ネイティブ）】
-  ワーカーごとに専用 Internal ネットワーク（NAT/ホストルート無し）
-  ワーカー間は別 L2 セグメントで遮断、egress はプロキシ（ルータ）経由のみ
-  iptables/sudo 不要・macOS / Windows でも同等
-        │
-        ▼
-【レイヤー 4: リソース制限】
-  --pids-limit 512 で fork bomb 等を防止
-```
+workspaceと追加mountのreadonly指定を保つ。worktreeでのcommit互換性を維持するため、共通Git metadataは同じ絶対パスで共有し、必要な場合は書き込み可能にする。VM隔離は、明示的に共有したファイルやGit設定を不変にする仕組みではない。元の `.git` pointerは書き換えない。
 
----
+削除journalは実オブジェクト削除前に永続化する。network、token失効、cgroup、worktreeの回収が不確実な場合はintentを残し、worktreeを先に消さない。rootのVM予約・network情報・OCI spec・ログはprivateな状態ディレクトリへ保存する。VM inventoryにはAPIキー・環境変数・タスク本文を出さない。
 
-## 実装済みの保護
+## 確認範囲
 
-| 保護 | 実装 | 詳細 |
-|---|---|---|
-| API キーの隔離 | ✅ | コンテナにはプレースホルダーのみ。本物のキーはプロキシがインジェクト |
-| access_token の隔離 | ✅ | OAuth モードでも本物の access_token はコンテナに渡らない |
-| refresh_token の保護 | ✅ | コンテナに渡さない。リフレッシュは `/oauth/token` 中継で実現 |
-| 短命トークン | ✅ | TTL 付き、コンテナ停止時に即時失効 |
-| API トラフィックの中継 | ✅ | `/v1/` と `/chatgpt/` のリバースプロキシで外部 API への直接通信を排除 |
-| クレデンシャルのログ出力禁止 | ✅ | 認証情報を stdout/stderr に出力しない |
-| `auth.json` の bind mount 禁止 | ✅ | コンテナ内の auth.json は access_token がプレースホルダーの安全なコピー |
-| ワーカー間通信ブロック | ✅ | ワーカーごとに専用 `Internal` ネット（別 L2 セグメント）。iptables 不要 |
-| ワーカー→ホスト/インターネット遮断 | ✅ | `Internal: true`（NAT/ホストルート無し）。egress はプロキシ経由のみ。macOS / Windows でも同等 |
-| 権限昇格防止 | ✅ | `--cap-drop ALL` + `--security-opt no-new-privileges` |
-| 非 root 実行 | ✅ | `USER codex (uid:1000)` |
-| リソース制限 | ✅ | `--pids-limit 512` |
-
----
-
-## 既知の問題・制限
-
-| ID | 問題 | 影響度 | 詳細 |
-|---|---|---|---|
-| NF-SEC-01 | Auth Proxy が平文 HTTP 通信 | 高 | TLS または UNIX ソケットが未実装。同一ホスト上の Docker 内部通信のみで使用することを想定 |
-| ~~F-NET-02~~ | （解消）コンテナ→ホスト遮断の Linux 依存 | — | Docker `Internal` ネットワークに移行し、全プラットフォームで Docker が遮断を担保（iptables 不要）。 |
-| F-AUTH-06 | コンテナ ID による照合なし | 中 | トークンはコンテナ名と紐付けられているが、コンテナ ID との照合なし |
-
----
-
-## 実装状況サマリー
-
-| カテゴリ | 実装済み | 部分実装 | 未実装 |
-|---|---|---|---|
-| 認証 (AUTH) | F-AUTH-01〜05, 07 | F-AUTH-06 | F-AUTH-08 |
-| ネットワーク (NET) | F-NET-01, 03, 04, 05, 06 | F-NET-02 | — |
-| パッケージ (PKG) | F-PKG-01〜04, 06 | F-PKG-05 | — |
-| Worktree (WT) | F-WT-01〜04 | — | F-WT-05 |
-| UI (UI) | F-UI-01 | F-UI-02, 03 | F-UI-04, 05 |
-| セキュリティ (SEC) | NF-SEC-02, 03, 04 | NF-SEC-05 | NF-SEC-01, 06 |
-
----
-
-## 関連ドキュメント
-
-- [Auth Proxy 技術仕様](auth-proxy.md) — クレデンシャル保護の実装詳細
-- [Auth Proxy トークン仕様](auth-proxy/tokens.md) — セキュリティ考慮事項
-- [ネットワーク仕様](network.md) — プロキシルータ + per-worker Internal ネットワークのセキュリティポリシー
-- [アーキテクチャ概要](architecture.md) — 全体構成
+実機受入ではguest kernel、権限・資源、Git、mount、PTY、通信遮断、認証復元、ライフサイクル、custom image、管理サービス再起動中の連続ログ、実Codexのローカルfixtureツール実行を確認する。外部AI推論、実OAuthの長時間更新、対話キーボード操作、任意のcustom imageの安全性は別途評価する。隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。

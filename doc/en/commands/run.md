@@ -69,7 +69,7 @@ Controls how Codex CLI requests approval for actions. Designed with Docker conta
 | Value | Codex CLI Flag | Behavior |
 |---|---|---|
 | `suggest` (default) | none | Prompt for every action (safest) |
-| `auto-edit` | `--ask-for-approval unless-allow-listed` | Auto-apply file edits; prompt for command execution |
+| `auto-edit` | `--ask-for-approval on-request` | The model decides when to ask for approval |
 | `full-auto` | `--ask-for-approval never` | Never prompt for approval |
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | Bypass all approvals and sandbox restrictions |
 

@@ -1,0 +1,13 @@
+root = "/var/lib/codex-dock-buildkit"
+[grpc]
+address = ["unix:///run/codex-dock-buildkit/buildkitd.sock"]
+uid = 0
+# Set this to the numeric GID of the trusted codex-dock operator group.
+gid = 0
+[worker.oci]
+enabled = false
+[worker.containerd]
+enabled = true
+address = "/run/codex-dock-containerd/containerd.sock"
+namespace = "codex-dock"
+snapshotter = "overlayfs"

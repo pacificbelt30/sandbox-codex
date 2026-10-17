@@ -71,6 +71,12 @@ debug = false
 # -----------------------------------------------------------------------------
 [run]
 
+# Worker isolation. Kata is the default; missing Kata/KVM is an error.
+# Explicit compatibility mode: runtime = "runc" (no VM isolation).
+# Environment overrides: CODEX_DOCK_RUNTIME / CODEX_DOCK_KATA_RUNTIME.
+runtime = "kata"
+kata_runtime = "io.containerd.kata.v2"
+
 # Image for `run` only. If unset, the global `default_image` is used.
 image = "codex-dock:latest"
 
@@ -136,8 +142,28 @@ approval_mode = "suggest"
 # The legacy key `firewall.proxy_container_url` is still honored for now.
 container_url = "http://codex-auth-proxy:18080"
 
+# Host-only admin connection for run / ui / stop / rm. Keep credentials out of
+# URLs and worker labels. Environment: CODEX_DOCK_PROXY_ADMIN_SECRET.
+admin_url = "http://127.0.0.1:18081"
+# admin_secret = "your-admin-secret"
+
 # Optionally restrict the forward proxy to a domain allowlist (and subdomains).
 # An empty/omitted list allows all destinations.       flag: --forward-allow-domain
 #
 # Example: only allow common package registries and source hosts.
 # forward_allow_domains = ["github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
+
+# Denials override allowances. Domain entries include all subdomains.
+# Nonempty domain/CIDR/port allowlists must ALL match. Empty = no extra limit.
+# The managed egress proxy always blocks private/LAN/metadata destinations.
+# forward_deny_domains = ["blocked.example.com"]
+# forward_allow_cidrs = []
+# forward_deny_cidrs = ["203.0.113.0/24"]
+# forward_allow_ports = [80, 443]
+# forward_deny_ports = [25]
+# Changes require proxy recreation; `proxy run` rejects an existing policy
+# mismatch. Drain workers first: Kata workers pin the current proxy IPs.
+
+# Local trusted Kata verification service.
+[kata]
+node_socket = "/run/codex-dock-node.sock"

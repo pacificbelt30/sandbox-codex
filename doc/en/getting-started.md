@@ -1,5 +1,7 @@
 # Quick Start
 
+> The current runtime uses containerd + Kata/Dragonball without Docker Engine or CLI. Follow the [current deployment and migration guide](../kata.md); Docker-specific setup below describes the previous backend.
+
 > [日本語](../getting-started.md) | **English**
 
 This guide walks you through installing codex-dock and launching your first container.

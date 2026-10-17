@@ -1,5 +1,7 @@
 # Network Specification (Proxy Router + Per-Worker Networks)
 
+> The current runtime uses containerd + Kata/Dragonball without Docker Engine or CLI. Follow the [current deployment and migration guide](../kata.md); Docker-specific setup below describes the previous backend.
+
 > [日本語](../network.md) | **English**
 
 codex-dock enforces network isolation using **Docker-native primitives only** — no `iptables`, no `sudo`. The isolation rules are managed by the Docker daemon (already root).

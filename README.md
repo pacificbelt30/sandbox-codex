@@ -1,13 +1,15 @@
 # codex-dock
 
-**AI Sandbox Container Manager** — Runs AI coding agents ([Codex CLI](https://github.com/openai/codex) and [Claude Code](https://github.com/anthropics/claude-code)) inside isolated Docker containers with auth proxy, network separation, and parallel worker support.
+**AI Sandbox Container Manager** — Runs AI coding agents ([Codex CLI](https://github.com/openai/codex) and [Claude Code](https://github.com/anthropics/claude-code)) inside Kata VM-isolated workers managed through containerd and Dragonball, with auth proxy, network separation, and parallel worker support.
+
+ワーカーの既定は **Kata** です。Linux/KVM、cgroup v2、固定資産の検証を行う管理サービスと専用containerdが必要です。既存の runc 環境からは[移行手順](doc/kata.md)に従ってください。Kata が使えない場合はエラーになり、自動で弱い隔離へ切り替えません。従来環境を明示的に使う場合は `--runtime runc` を指定します。
 
 ## Features
 
 - **Multiple agents**: choose per worker with `--agent codex|claude`; omit `--agent` for an auth-configured shell where both CLIs are available
-- **Security isolation**: agents run in a Docker container, not on your host
+- **Security isolation**: Kata gives each worker a separate guest kernel; containerd manages OCI images, snapshots and tasks; Dragonball is the embedded VMM. Runc compatibility is explicitly selectable.
 - **Auth Proxy**: OpenAI and Anthropic API keys / OAuth tokens never touch the container; short-lived tokens are injected instead
-- **Two-proxy router + per-worker networks**: each worker runs on its own Docker `Internal` network; worker↔worker, worker→host, and worker→internet are all blocked by Docker itself — no iptables, no sudo. Egress is split by role: `codex-auth-proxy` injects real credentials on the API reverse routes (and forwards nothing else), while `codex-http-proxy` forwards general traffic (git/npm/pip) with no credentials and blocks private/LAN destinations
+- **Two-proxy router + per-worker networks**: each worker has a dedicated bridge and namespace; the trusted node enforces host/peer/internet restrictions with its own nftables tables. Egress is split by role: `codex-auth-proxy` injects real credentials on the API reverse routes (and forwards nothing else), while `codex-http-proxy` forwards general traffic (git/npm/pip) with no credentials and blocks private/LAN destinations
 - **git worktree**: Parallel development branches, each in their own container
 - **dock-ui**: Terminal UI for managing all workers at a glance
 - **Package management**: `apt`, `pip`, `npm` packages via `--pkg` or `packages.dock`
@@ -18,8 +20,10 @@
 
 | 項目 | 要件 | 備考 |
 |------|------|------|
-| OS | Linux (amd64 / arm64) または macOS (amd64 / arm64) | Windows は未サポート |
-| Docker Engine | 20.10 以上 | Docker Desktop でも可 |
+| Kata実行ホスト | Linux + 利用可能なKVM、対応するKata v2資産 | 初回は実行ホスト上でCLIを利用。実行ノードはLinux x86_64 |
+| 実行管理 | containerd 2.x / Kata runtime-rs 4.2.0 / Dragonball | Docker Engine・CLIは不要 |
+| イメージ作成 | 独立BuildKit + buildctl | Dockerfile・カスタムimage・テンプレートを利用可能 |
+| runc互換 | 同じLinux containerdノード | `--runtime runc` を明示。VM隔離なし |
 | git | 任意 | `--worktree` 機能を使う場合に必要 |
 
 ### ビルド要件
@@ -61,7 +65,8 @@ go install github.com/pacificbelt30/codex-dock@latest
 git clone https://github.com/pacificbelt30/codex-dock.git
 cd codex-dock
 
-# バイナリ + 設定ファイル + Docker イメージをまとめてセットアップ
+# 実行ホストは doc/kata.md に従い先にcontainerd・Kata・BuildKitを配置する。
+# その後、バイナリ + 設定ファイル + OCI イメージをセットアップ
 make all               # バイナリをビルドし codex-dock:latest イメージを作成
 sudo make install      # /usr/local/bin にバイナリを配置
 make install-config    # ~/.config/codex-dock/config.toml を配置（既存の場合はスキップ）
@@ -89,8 +94,8 @@ sudo make install PREFIX=/opt/codex-dock
 | `make install-config` | `~/.config/codex-dock/config.toml` にデフォルト設定を配置 |
 | `make install-templates` | 組み込みテンプレート（`plain`, `pwn` 等）を `~/.config/codex-dock/templates/` にコピー（既存ファイルはスキップ） |
 | `make install-all` | `install` + `install-config` + `install-templates` を一括実行 |
-| `make docker` | `codex-dock:latest` Docker イメージをビルド |
-| `make all` | `build` + `docker`（デフォルトターゲット） |
+| `make docker` | `codex-dock:latest` OCI イメージをビルド |
+| `make all` | `build` + `image` + `proxy-image`（デフォルトターゲット） |
 | `make build-all` | darwin/arm64・darwin/amd64・linux/arm64 のクロスコンパイル |
 | `make test` | テストスイートを実行（race detector + coverage） |
 | `make lint` | golangci-lint を実行 |
@@ -112,6 +117,8 @@ sudo mv codex-dock /usr/local/bin/
 
 ## Quick Start
 
+初回は[Kata配置手順](doc/kata.md)に従って実行ホストを用意し、`codex-dock runtime-check` で固定資産・daemon・管理サービスを確認してください。以下の既存操作・イメージ・認証プロキシはそのまま利用します。
+
 ```bash
 # 0. Auth Proxy（ルータ）を起動（必須）
 #    egress ネットワークを作成し、プロキシをそこに接続。
@@ -122,7 +129,7 @@ codex-dock proxy build
 codex-dock proxy run        # 2つのプロキシを起動:
                             #   codex-auth-proxy (API・admin:18081のみ127.0.0.1公開)
                             #   codex-http-proxy (一般通信用フォワード:18082, LAN遮断)
-                            # データプレーンは非公開で、ワーカーは Docker DNS 経由で到達。
+                            # データプレーンは非公開で、ワーカーは 固定hosts 経由で到達。
 
 # 認証情報は proxy run が自動でホストからバインドします
 #   OPENAI_API_KEY / ANTHROPIC_API_KEY 環境変数、~/.codex/auth.json、~/.claude/.credentials.json など
@@ -146,15 +153,15 @@ codex-dock run --agent claude --approval-mode full-auto --task "Write unit tests
 # git worktree を使ってブランチを切り離して作業
 codex-dock run --approval-mode full-auto --worktree --branch feature-auth --new-branch
 
-# 3 つのワーカーを並列実行
-codex-dock run --approval-mode full-auto --parallel 3 --worktree --detach
+# 2 つのワーカーを並列実行（ノードの既定上限）
+codex-dock run --approval-mode full-auto --parallel 2 --worktree --detach
 
 # TUI でワーカーを管理（↑↓選択・Enter でログ・S 停止・R 再起動・D 削除）
 codex-dock ui
 ```
 
 `codex-dock run` は外部 Auth Proxy の admin エンドポイント（デフォルト `http://127.0.0.1:18081`）へ接続してトークンを払い出します。
-ワーカーコンテナ自身はデータプレーン（`http://codex-auth-proxy:18080`）へ Docker DNS 経由で到達します。
+ワーカーコンテナ自身はデータプレーン（`http://codex-auth-proxy:18080`）へ 固定hosts 経由で到達します。
 必要に応じて `--proxy-admin-url` / `--proxy-container-url` / `--proxy-admin-secret` を指定してください。
 
 `connecting external auth proxy: connecting remote auth proxy ... connect: connection refused`
@@ -167,7 +174,9 @@ codex-dock ui
 | Command | Description |
 |---------|-------------|
 | `codex-dock run` | Start a sandboxed Codex worker |
+| `codex-dock runtime-check` | Verify node assets and daemon; each worker passes a guest bootstrap gate before execution |
 | `codex-dock ps` | List workers |
+| `codex-dock vm` | Reconcile, inspect and manage Kata VMs, including orphan allocations ([guide](doc/vm.md)) |
 | `codex-dock stop` | Stop containers |
 | `codex-dock rm` | Remove stopped containers |
 | `codex-dock logs` | View container logs |
@@ -181,6 +190,7 @@ codex-dock ui
 | ドキュメント | 内容 |
 |-------------|------|
 | [Getting Started](doc/getting-started.md) | インストールから最初のコンテナ起動まで |
+| [Kataへの移行](doc/kata.md) | 実行ホスト、既存機能の維持、互換モード、実機受け入れ |
 | [Architecture](doc/architecture.md) | システム構成・コンポーネント・起動フロー |
 | [Auth Proxy](doc/auth-proxy.md) | 認証プロキシの技術仕様・エンドポイント |
 | [Network](doc/network.md) | プロキシルータ・per-worker Internal ネットワークの構成とセキュリティポリシー |
@@ -215,7 +225,7 @@ SRS v1.0.0 との実装差分を記録する。凡例: ✅ 実装済 / ⚠️ �
 | F-AUTH-04 | コンテナ停止時にトークンを即時失効 | ✅ | `Manager.Stop()` / `StopByName()` でトークンを失効。コンテナ自然終了時も `Manager.RevokeToken()` で失効。 |
 | F-AUTH-05 | トークンに TTL を設ける | ✅ | |
 | F-NET-01 | ワーカー間通信の遮断 | ✅ | 各ワーカーは専用の `Internal` ネットワーク (`dock-net-w-<name>`) に隔離。別々の L2 セグメントのためワーカー間は疎通不可。iptables 不要。 |
-| F-NET-02 | コンテナ→ホスト通信の遮断 | ✅ | `Internal` ネットワークはホストルートを持たない。Docker デーモンが遮断ルールを管理するため codex-dock は iptables/sudo を一切呼ばない。macOS / Windows でも同等。 |
+| F-NET-02 | コンテナ→ホスト通信の遮断 | ✅ | 専用bridgeはhost IPv4・default routeを持たず、root管理サービスが専用nftables tableを検証する。 |
 | F-NET-03 | コンテナ→インターネット通信を許可（プロキシ経由） | ✅ | ワーカーは直接インターネットへ出られず、プロキシのフォワードプロキシ (HTTP CONNECT) と API リバースルート経由でのみ到達。 |
 | F-NET-04 | Auth Proxy への通信のみ許可 | ✅ | プロキシを各ワーカー専用ネットへマルチホーム接続。ワーカーは Docker DNS (`codex-auth-proxy`) でデータプレーンポートにのみ到達。admin は別リスナー (別ポート) に分離。 |
 | F-NET-05 | `--no-internet` 対応 | ✅ | `HTTP(S)_PROXY` を注入せず、一般 egress を無効化（API リバースルートのみ到達可能）。 |
@@ -249,7 +259,7 @@ SRS v1.0.0 との実装差分を記録する。凡例: ✅ 実装済 / ⚠️ �
 | F-UI-04 | dock-net / Auth Proxy 状態をヘッダーに表示 | ❌ | ヘッダーにコンテナ数のみ表示。dock-net の有無・Auth Proxy の稼働状態は未表示（UI は Manager のみ持ち、proxy/network にアクセスできないため）。 |
 | F-UI-05 | コンテナ詳細表示 (イメージ・マウント・TTL) | ❌ | 未実装 |
 | NF-SEC-05 | `/proc`, `/sys`, `/dev` の最小マウント | ⚠️ | Docker デフォルトのマウントが適用される。明示的な制限は未設定。 |
-| NF-SEC-06 | Seccomp プロファイル適用 | ❌ | `SecurityOpt` に Seccomp プロファイルを指定していない。`default` プロファイルは Docker デーモン設定依存。 |
+| NF-SEC-06 | Seccomp プロファイル適用 | ✅ | OCI specにdefault seccompを明示し、Kata起動時にguestのSeccomp=2を確認する。 |
 | NF-OPS-04 | クラッシュ時のコンテナ残存防止 | ⚠️ | SIGINT / SIGTERM のシグナルハンドラは実装済み。プロセス強制終了時のクリーンアップ（`defer` 以外）は未実装。 |
 | NF-OPS-05 | `--verbose` / `--debug` | ✅ | |
 

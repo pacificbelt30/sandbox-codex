@@ -1,0 +1,17 @@
+[Unit]
+Description=containerd execution and Dragonball verification service
+Requires=codex-dock-containerd.service
+After=codex-dock-containerd.service
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/usr/local/libexec/codex-dock/prepare-node.sh
+ExecStart=/usr/local/bin/codex-dock node serve
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

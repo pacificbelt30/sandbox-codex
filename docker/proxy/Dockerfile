@@ -1,9 +1,13 @@
 FROM golang:1.24 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -r /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
+    go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/codex-dock .
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -r /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/codex-dock .
 
 FROM gcr.io/distroless/base-debian12
 COPY --from=build /out/codex-dock /codex-dock

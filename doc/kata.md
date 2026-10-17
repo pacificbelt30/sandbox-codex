@@ -1,0 +1,120 @@
+# Kata / Dragonball と containerd
+
+ワーカーは **containerd → Kata runtime-rs → Dragonball** で起動する。Docker Engine・Docker CLI・QEMUは実行時に使わない。CLIはroot管理サービスのUnixソケットを使い、管理サービスが公式containerd Go SDKで専用namespace `codex-dock` を操作する。既存のCLI/TUI、認証プロキシ、イメージ・テンプレート、worktreeの操作は維持する。
+
+```text
+codex-dock CLI / TUI
+  └─ /run/codex-dock-node.sock (root:codex-dock, 0660)
+       ├─ containerd (専用socket / namespace / snapshot)
+       │    ├─ Kata runtime-rs + 組み込みDragonball → ワーカーVM
+       │    └─ runc → auth / egress プロキシ
+       ├─ root所有のVM予約台帳・資源検証
+       └─ 専用bridge / network namespace / nftables
+buildctl → 独立BuildKit → OCI archive → 同じcontainerd namespace
+```
+
+Goの互換DTOとHTTPクライアントにはDockerライブラリを利用するが、接続先は本製品の管理サービスである。`DOCKER_HOST`・Docker context・Docker daemonの探索や自動fallbackはしない。接続先を変える場合は `CODEX_DOCK_KATA_NODE_SOCKET` を指定する。
+
+## 必要なホスト
+
+Linux x86_64、KVM、cgroup v2、`cpu memory pids` controller、pidfdと`cgroup.kill`、iproute2・nftables・runc、containerd 2.xの設定v3が必要。検証版はKata 4.2.0 / containerd 2.4.2 / BuildKit 0.34.0。KataのDragonball用kernelには公式配布物上でexperimentalの名称が付く。更新時は資産を検証して受入試験を再実行する。
+
+ワーカー1台につきguestのCPU 1・メモリ2 GiB・PID 512、ホスト側のVM全体にCPU 1・メモリ3 GiB・swap 0・PID 512を設定する。既定の同時予約は2台。ホストにはVM合計とcontainerd・BuildKit・プロキシ用の余裕が必要で、2台構成は8 GiB以上を目安にする。`node serve --max-workers` は1〜64。
+
+管理サービスとBuildKitの利用者は、ホストmountとイメージの選択ができる信頼済み管理者であり、root相当の権限を持つ。専用グループ `codex-dock` を使う。通常CLIへroot/CAP_SYS_PTRACEを付与せず、管理socket・状態・ランタイム資産をguestへ渡さない。
+
+## 固定資産の準備
+
+公式リリースの配布物とSHA256を確認し、新しい作業ディレクトリへ展開する。必要なツールはPython 3.11以上、zstd、debugfs（e2fsprogs）、静的リンク可能なCコンパイラー。
+
+```bash
+curl -fL -o kata-static-4.2.0-amd64.tar.zst \
+  https://github.com/kata-containers/kata-containers/releases/download/4.2.0/kata-static-4.2.0-amd64.tar.zst
+echo 'b828904fa3f1e49ddd7dc799c72cb1503cd1e772d354c3987c8d4189b2a623a8  kata-static-4.2.0-amd64.tar.zst' | sha256sum -c -
+mkdir kata-staging
+tar --zstd -xf kata-static-4.2.0-amd64.tar.zst -C kata-staging \
+  ./opt/kata/runtime-rs/bin/containerd-shim-kata-v2 \
+  ./opt/kata/share/kata-containers/vmlinux-6.18.35-202-dragonball-experimental \
+  ./opt/kata/share/kata-containers/kata-ubuntu-resolute.image \
+  ./opt/kata/share/defaults/kata-containers/runtime-rs/configuration-dragonball.toml
+gcc -static -Os -Wall -Wextra -Werror deploy/kata/pids_hook.c -o pids-hook
+python3 deploy/kata/prepare_guest.py build \
+  --source-image kata-staging/opt/kata/share/kata-containers/kata-ubuntu-resolute.image \
+  --hook-binary pids-hook --output guest-assets
+python3 deploy/kata/prepare_guest.py verify guest-assets/assets.lock.json
+python3 deploy/kata/configure.py \
+  --source kata-staging/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-dragonball.toml \
+  --output kata.toml
+make build
+```
+
+`prepare_guest.py` は固定した元imageのSHA256と構造を確認し、新しいコピーへPID hookを入れる。元imageは書き換えない。`configure.py` はguest seccomp、annotation無効化、hook、sandbox cgroup、静的資源割当を明示する。guest VMはworkload 2 GiB + overhead 512 MiBで起動する。
+
+配置先が既存の場合はdrainして旧資産を確認し、上書きで移行しない。以下は新規配置例。
+
+```bash
+sudo groupadd --system codex-dock
+sudo usermod -aG codex-dock "$USER"
+sudo cp -a kata-staging/opt/kata /opt/kata
+sudo cp -a guest-assets /opt/codex-dock-kata
+sudo chown -R root:root /opt/kata /opt/codex-dock-kata
+sudo chmod -R go-w /opt/kata /opt/codex-dock-kata
+sudo install -d -m 0755 /etc/codex-dock /opt/codex-dock /usr/local/libexec/codex-dock
+sudo install -m 0755 codex-dock codex-dock-io-logger /usr/local/bin/
+sudo install -m 0755 codex-dock-worker-guard /opt/codex-dock/worker-guard
+sudo install -m 0755 deploy/kata/prepare-node.sh /usr/local/libexec/codex-dock/
+sudo install -m 0644 kata.toml /etc/codex-dock/kata.toml
+sudo install -m 0644 deploy/kata/containerd.toml deploy/kata/buildkit.toml /etc/codex-dock/
+sudo install -m 0644 deploy/kata/codex-dock-containerd.service \
+  deploy/kata/codex-dock-node.service deploy/kata/codex-dock-buildkit.service /etc/systemd/system/
+```
+
+containerdとruncは公式配布物または対応ディストリビューションから配置する。サービス例のcontainerdパスは `/usr/bin/containerd`。BuildKitの `buildctl` と `buildkitd` も公式配布物を検証して `/usr/local/bin` へ配置する。BuildKit 0.34.0のlinux-amd64 tar.gzのSHA256は `14813b1fb2a40082114e6d386c6fc5e7dd5298176ce7ee1a18bc33e73e109ac3`。`buildkit.toml` の `grpc.gid` を `getent group codex-dock` の数値GIDへ設定する。
+
+プロキシのegress NATにはホストのIPv4 forwardingが必要。既存firewallのforward方針も管理者が確認する。本製品は自身のnftables tableだけを作り、他サービスのtableを削除・flushしない。ネットワークは10.253.0.0/16から/24を予約し、既存アドレスとの重複を避ける。VPNなどの経路と競合するホストでは割当を確認する。
+
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo systemctl daemon-reload
+sudo systemctl enable --now codex-dock-containerd
+sudo /usr/local/bin/codex-dock runtime-lock
+sudo systemctl enable --now codex-dock-node codex-dock-buildkit
+# 新しいグループが反映されたログインセッションで実行する。
+codex-dock runtime-check
+codex-dock proxy build
+codex-dock proxy run
+codex-dock build
+codex-dock run
+```
+
+`runtime-lock` は既存manifestを上書きせず、Kata config・shim・kernel・guest image・bootstrap・IO logger・containerd本体と設定・ip/nft/sysctl/runcを固定する。署名の代わりではないため、公式配布物の検証とroot所有・書き換え不可の配置を先に行う。更新はworkerのdrain、サービス停止、資産検証、新manifestの順で行う。
+
+プロキシnamespaceから使えるDNSが必要。systemd-resolvedの上流設定があれば利用し、それ以外はhost resolv.confを参照する。hostのloopback専用resolverは別namespaceから使えないため、`node serve --proxy-dns ADDRESS` で到達可能な上流を指定する。workerは静的hostsと127.0.0.1のDNSを使い、外部名解決はegressプロキシに任せる。
+
+ビルド用のHTTP_PROXY / HTTPS_PROXY / NO_PROXY等はBuildKitのbuild argsへ渡す。`CODEX_PROXY_CERT` がある場合は `proxy_ca` secretとして渡し、組み込みDockerfileはそのRUN中だけ信頼する。CAをimageへコピーせずTLS検証を維持する。BuildKit daemonのregistry通信にも必要なproxy/CA設定をサービス側で用意する。
+
+## 維持する操作と状態
+
+`run / start / stop / rm / ps / logs / ui / vm` は同じ操作で利用する。イメージは同じOCI/Dockerfile形式を使い、`build -f`、テンプレート、自動ビルドは独立BuildKitへ接続する。`BUILDKIT_HOST` でbuilderを指定できる。BuildKitのcontainerd workerは同じsocket・namespaceを使い、ローカルのベースimageを再利用する。
+
+停止中のコンテナと書き込み可能なsnapshotはcontainerdに残る。再起動で同じID・workspaceを利用し、静的proxy IP・認証placeholderを復元する。削除intentは従来どおりユーザーのprivate状態へ永続化し、container・network・token・worktree・host cgroupのいずれかに失敗したら再試行情報を残す。
+
+管理サービスの状態は `/var/lib/codex-dock-node`、VM予約は `allocations`、実行仕様・network・ログは `engine` 配下。containerdは `/var/lib/codex-dock-containerd`、runtime stateは `/run/codex-dock-containerd`。実行時のguest kernel・host PID・cgroupは[VM管理](vm.md)で照合する。管理サービス再起動でVMを再作成しない。ログプロセスはshimが所有し、stdinの接続維持も担当する。
+
+## Dragonball 4.2 の回収対応
+
+組み込みVMMのshim自身がsandbox cgroupに入るため、終了時に自身のcgroupを削除するとEBUSYになる。task終了後に、固定したshimとログプロセスのinode・worker ID・所属・資源上限を確認し、同じ資源上限内の `supervisor` leafへ移してからShutdownする。資源上限の外へは移さない。
+
+network namespaceを保持したまま再起動すると、残ったtcfilter設定と衝突する場合がある。そのため停止済みworker側のnamespace/vethだけを所有確認して再生成し、同じbridge・IP・proxy接続を維持する。複数workerで使うproxy側namespaceは保持する。
+
+## 既存Docker環境からの切り替え
+
+移行前の版で既存workerを停止し、必要なログと成果を保存して削除する。DockerのコンテナID・snapshot・networkを新しいcontainerd namespaceへ自動移植しない。workspace・worktree・Dockerfile・設定・認証ファイルは再利用する。旧imageは必要なら `docker save` のarchiveを専用namespaceへimportするか、Dockerfileから再ビルドする。Dockerは移行元の処理にだけ使う。
+
+`DOCKER_HOST` の設定で新旧を混在させず、新workerを `runtime-check` 後に作成する。旧QEMU/DockerプロファイルのmanifestとVM予約は採用しない。`--runtime runc` は同じcontainerdノード上で明示選択する互換モードであり、VM隔離は提供しない。
+
+## 検証
+
+2026-10-17、Docker daemonを動かさない専用ノード内のcontainerd 2.4.2 / Kata 4.2.0 runtime-rs / Dragonball / BuildKit 0.34.0で、全受入試験がPASS（213.83秒）。起動失敗注入からの回収、停止workerのnamespace欠落からの復元、カスタムDockerfileのRUN・OCI import、2台の別kernel、guest seccomp/NNP/capability/PID制限、ホストの資源制限、認証復元、Git commit、readonly/追加mount、PTY、worker間・host/adminへの通信遮断、no-internet、同じIDでの停止・再起動・削除・孤児回収、管理サービス再起動中の同じguest boot IDと連続ログ、実Codex 0.163.0のローカルResponses fixtureによるツール実行と正常終了を確認した。
+
+検証用の外側の使い捨て環境にはDockerを利用したが、内部ではdockerd/Docker CLIを起動しない。本番ホストのdaemon設定は変更していない。外部AI APIの推論、実OAuthの長時間更新、対話キーボード操作はこの試験に含まない。`CODEX_DOCK_KATA_E2E=1 go test ./internal/sandbox -run TestKataAcceptance -v` で構成済みLinuxノード上でも実行できる。

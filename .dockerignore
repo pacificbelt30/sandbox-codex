@@ -1,0 +1,11 @@
+.git
+.kata-verification
+codex-dock-worker-guard
+site
+codex-dock
+codex-dock-*
+*.test
+*.out
+coverage.*
+**/__pycache__
+**/*.pyc

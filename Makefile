@@ -1,6 +1,8 @@
 # codex-dock Makefile
 
 BINARY      := codex-dock
+WORKER_GUARD := codex-dock-worker-guard
+IO_LOGGER := codex-dock-io-logger
 MODULE      := github.com/pacificbelt30/codex-dock
 IMAGE       := codex-dock:latest
 PROXY_IMAGE := codex-dock-proxy:latest
@@ -15,19 +17,28 @@ TEMPLATES_DIR := $(CONFIG_DIR)/templates
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build install install-config install-templates install-all docker proxy-docker uninstall clean test lint vet tidy help
+.PHONY: all build worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e lint vet tidy help
 
-## all: build binary and Docker images
-all: build docker proxy-docker
+## all: build binary and OCI images
+all: build image proxy-image
 
 ## build: compile the binary for the current platform
-build:
+build: worker-guard io-logger
 	go build $(LDFLAGS) -o $(BINARY) .
+
+## worker-guard: build the static Linux x86_64 Kata bootstrap
+worker-guard:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(WORKER_GUARD) ./cmd/worker-guard
+
+## io-logger: build the shim-owned static Linux console logger
+io-logger:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(IO_LOGGER) ./cmd/io-logger
 
 ## install: install the binary to $(BINDIR) (default: /usr/local/bin)
 install: build
 	install -d $(BINDIR)
 	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
+	install -m 0755 $(IO_LOGGER) $(BINDIR)/$(IO_LOGGER)
 	@echo "Installed $(BINDIR)/$(BINARY)"
 
 ## install-config: place the default config file (skips if already exists)
@@ -63,15 +74,17 @@ install-templates:
 ## install-all: install binary + default config + built-in template copies
 install-all: install install-config install-templates
 
-## docker: build the sandbox Docker image
-docker:
-	docker build -t $(IMAGE) -f docker/sandbox/Dockerfile docker/sandbox/
-	@echo "Docker image built: $(IMAGE)"
+## image: build the worker OCI image with standalone BuildKit
+image: build
+	./$(BINARY) build -t $(IMAGE) -f docker/sandbox/Dockerfile
 
-## proxy-docker: build the auth proxy Docker image
-proxy-docker:
-	docker build -t $(PROXY_IMAGE) -f docker/proxy/Dockerfile .
-	@echo "Proxy image built: $(PROXY_IMAGE)"
+docker: image
+
+## proxy-image: build the proxy OCI image with standalone BuildKit
+proxy-image: build
+	./$(BINARY) proxy build -t $(PROXY_IMAGE) -f docker/proxy/Dockerfile
+
+proxy-docker: proxy-image
 
 ## uninstall: remove the installed binary
 uninstall:
@@ -92,9 +105,16 @@ test:
 		./internal/sandbox/... \
 		./internal/authproxy/... \
 		./internal/network/... \
+		./internal/networkpolicy/... \
+		./internal/kataguard/... \
+		./internal/engine/... \
 		./internal/worktree/... \
 		./internal/config/... \
 		./internal/template/...
+
+## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
+kata-e2e:
+	CODEX_DOCK_KATA_E2E=1 go test ./internal/sandbox -run '^TestKataAcceptance$$' -count=1 -v -timeout=15m
 
 ## lint: run golangci-lint
 lint:

@@ -1,0 +1,19 @@
+[Unit]
+Description=Dedicated containerd for codex-dock Dragonball workers
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/containerd --config /etc/codex-dock/containerd.toml
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=0
+TimeoutStopSec=120
+LimitNOFILE=1048576
+TasksMax=infinity
+Delegate=yes
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

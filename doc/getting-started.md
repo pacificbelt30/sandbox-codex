@@ -1,8 +1,12 @@
 # クイックスタート
 
+実行ホストは最初に[containerd・Kata/Dragonballの配置](kata.md)を完了してください。Docker Engine・Docker CLIは不要です。以降の通常操作はoperator groupで行います。
+
 > **日本語** | [English](en/getting-started.md)
 
 codex-dock のインストールから最初のコンテナ起動までの手順を説明します。
+
+ワーカーの既定はKataです。最初に[Kata実行ホストの準備](kata.md)を実施してください。既存のrunc環境で以下の手順を使う場合は、`run` に `--runtime runc` を明示します。
 
 ---
 
@@ -11,7 +15,7 @@ codex-dock のインストールから最初のコンテナ起動までの手順
 | 要件 | バージョン | 確認方法 |
 |---|---|---|
 | Go | 1.24 以上 | `go version` |
-| Docker Engine | 20.10 以上 | `docker version` |
+| 実行管理 | containerd 2.x / Kata runtime-rs / Dragonball / BuildKit | `codex-dock runtime-check` |
 | git | 任意 | worktree 機能を使う場合に必要 |
 
 ---
@@ -20,7 +24,7 @@ codex-dock のインストールから最初のコンテナ起動までの手順
 
 ### Makefile を使う（推奨）
 
-Makefile を使うと、バイナリのビルド・インストール・デフォルト設定ファイルの配置・Docker イメージの作成をまとめて行えます。
+Makefile を使うと、バイナリのビルド・インストール・デフォルト設定ファイルの配置・OCI イメージの作成をまとめて行えます。
 
 ```bash
 # リポジトリをクローン
@@ -40,8 +44,8 @@ sudo make install-all
 |---|---|
 | バイナリ配置 | `/usr/local/bin/codex-dock` |
 | デフォルト設定 | `~/.config/codex-dock/config.toml` |
-| サンドボックスイメージ | `codex-dock:latest`（Docker） |
-| Auth Proxy イメージ | `codex-dock-proxy:latest`（Docker） |
+| サンドボックスイメージ | `codex-dock:latest`（OCI） |
+| Auth Proxy イメージ | `codex-dock-proxy:latest`（OCI） |
 
 > **注意**: `sudo make install-all` は `$SUDO_USER` を参照して実行ユーザーのホームディレクトリを特定するため、config は `/root/.config/` ではなく `~/config/codex-dock/` に配置されます。
 
@@ -55,7 +59,7 @@ sudo make install PREFIX=/opt/codex-dock
 
 ```bash
 make build          # バイナリのみビルド
-make docker         # Docker イメージのみビルド
+make image          # BuildKitでOCI イメージをビルド
 make install-config # 設定ファイルのみ配置（既存ならスキップ）
 make uninstall      # バイナリをアンインストール
 make clean          # ビルド成果物を削除
@@ -79,11 +83,11 @@ sudo mv codex-dock /usr/local/bin/
 
 ## Step 0: Auth Proxy を起動する（必須）
 
-`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ Docker DNS 経由で到達します。
+`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ 固定hosts 経由で到達します。
 
 > **補足**: プロキシ未起動のまま `codex-dock run` を実行すると、対話端末（TTY）かつ既定の proxy URL の場合に「Build/start the auth proxy container now? [y/N]」と確認が出ます。`y` を選ぶと（必要ならイメージをビルドして）プロキシコンテナを起動し、そのまま続行します。非対話環境や proxy URL をカスタムした場合は従来どおりエラーになるので、先に手動で起動してください。
 
-### Docker で起動（推奨）
+### containerdノードで起動
 
 ```bash
 # 1) egress ネットワークを作成（初回のみ）
@@ -97,7 +101,7 @@ codex-dock proxy run
 ```
 
 
-> ネットワーク隔離は Docker のみで完結します（`iptables`/`sudo` 不要）。各ワーカー起動時に専用 `Internal` ネットワークが作られ、プロキシが接続され、ワーカーはプロキシ経由でのみ外部へ到達します。詳細は [ネットワーク仕様](network.md) を参照してください。
+> ネットワーク隔離はroot管理サービスが専用bridge・namespace・nftablesで行います。各ワーカー起動時に専用 `Internal` ネットワークが作られ、プロキシが接続され、ワーカーはプロキシ経由でのみ外部へ到達します。詳細は [ネットワーク仕様](network.md) を参照してください。
 
 `codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
 
@@ -334,7 +338,7 @@ codex-dock run --verbose --debug
 ```
 
 よくある原因：
-- Docker が起動していない → `docker ps` で確認
+- node/containerd が起動していない → `codex-dock runtime-check` とsystemdの状態を確認
 - イメージのビルドに失敗した → `codex-dock build --verbose` で確認
 - API キーが未設定 → `codex-dock auth show` で確認
 

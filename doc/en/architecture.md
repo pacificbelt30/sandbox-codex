@@ -1,5 +1,7 @@
 # Architecture Overview
 
+> The current runtime uses containerd + Kata/Dragonball without Docker Engine or CLI. Follow the [current deployment and migration guide](../kata.md); Docker-specific setup below describes the previous backend.
+
 > [日本語](../architecture.md) | **English**
 
 codex-dock is composed of **4 main components**.

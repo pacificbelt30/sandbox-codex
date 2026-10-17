@@ -1,0 +1,16 @@
+[Unit]
+Description=Standalone BuildKit for codex-dock OCI image builds
+Requires=codex-dock-containerd.service
+After=codex-dock-containerd.service network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/buildkitd --config /etc/codex-dock/buildkit.toml
+Restart=on-failure
+RestartSec=2
+Delegate=yes
+KillMode=process
+UMask=0007
+
+[Install]
+WantedBy=multi-user.target

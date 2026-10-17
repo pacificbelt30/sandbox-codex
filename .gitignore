@@ -28,14 +28,20 @@ go.work.sum
 .env
 
 # codex-dock binary
-codex-dock
-codex-dock-*
+/codex-dock
+/codex-dock-*
 
 # Config with secrets
 ~/.config/codex-dock/apikey
 
 # MkDocs build output
 site/
+
+# Local Kata assets, image archives, build cache and acceptance evidence
+.kata-verification/
+codex-dock-worker-guard
+__pycache__/
+*.pyc
 
 # Editor/IDE
 # .idea/

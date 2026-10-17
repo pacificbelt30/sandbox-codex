@@ -1,5 +1,7 @@
 # Security Design
 
+> The current runtime uses containerd + Kata/Dragonball without Docker Engine or CLI. Follow the [current deployment and migration guide](../kata.md); Docker-specific setup below describes the previous backend.
+
 > [日本語](../security.md) | **English**
 
 Security principles, container configuration, and known limitations of codex-dock.

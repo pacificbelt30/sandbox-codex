@@ -43,7 +43,10 @@ jobs:
           cache: true
 
       - name: Build binary
-        run: go build -v -o codex-dock .
+        run: |
+          go build -v -o codex-dock .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o codex-dock-worker-guard ./cmd/worker-guard
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o codex-dock-io-logger ./cmd/io-logger
 
       - name: Verify binary runs
         run: ./codex-dock --help
@@ -80,6 +83,9 @@ jobs:
             ./internal/sandbox/... \
             ./internal/authproxy/... \
             ./internal/network/... \
+            ./internal/networkpolicy/... \
+            ./internal/kataguard/... \
+            ./internal/engine/... \
             ./internal/worktree/... \
             ./internal/config/... \
             ./internal/template/...

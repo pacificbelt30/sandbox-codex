@@ -38,9 +38,12 @@ plugins:
 nav:
   - ホーム: index.md
   - はじめに: getting-started.md
+  - Kataへの移行: kata.md
+  - Kata VMの管理: vm.md
   - アーキテクチャ: architecture.md
   - Auth Proxy: auth-proxy.md
   - ネットワーク: network.md
+  - プロキシの通信ポリシー: proxy-policy.md
   - firewall: firewall.md
   - コマンド: commands.md
   - 設定: configuration.md

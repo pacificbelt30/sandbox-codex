@@ -167,7 +167,7 @@ Docker コンテナによるサンドボックス隔離を前提に設計され�
 | 値 | Codex CLI フラグ | Claude Code フラグ | 動作 |
 |---|---|---|---|
 | `suggest`（デフォルト） | なし | なし | すべてのアクションで承認を求める（最も安全） |
-| `auto-edit` | `--ask-for-approval unless-allow-listed` | `--permission-mode acceptEdits` | ファイル編集は自動適用、コマンド実行は承認を求める |
+| `auto-edit` | `--ask-for-approval on-request` | `--permission-mode acceptEdits` | Codexはモデル判断で承認要求、Claudeは編集を自動許可 |
 | `full-auto` | `--ask-for-approval never` | `--dangerously-skip-permissions` | 承認を一切求めない |
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | すべての承認・サンドボックス制限をバイパスする |
 
