@@ -28,6 +28,16 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
+## `codex-dock vm start` — ワーカーの再起動
+
+```bash
+codex-dock vm start NAME_OR_ID
+```
+
+停止済みワーカーを同じID・workspaceで再起動します。
+Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
+プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
+
 ## `codex-dock stop` — コンテナの停止
 
 実行中のコンテナを停止します。
@@ -116,3 +126,5 @@ codex-dock logs codex-brave-atlas --tail 50
 - [TUI ダッシュボード](ui.md) — コンテナの一元管理
 - [`codex-dock run`](run.md) — コンテナの起動
 - [クイックスタート](../getting-started.md) — 後片付けの手順
+
+VMの実プロセス・cgroupと台帳の照合は[VM管理](../vm.md)を参照してください。

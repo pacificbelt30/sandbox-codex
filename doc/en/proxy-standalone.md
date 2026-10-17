@@ -1,299 +1,110 @@
-# Using Auth Proxy Standalone — Codex Configuration Guide
+# Standalone proxy
 
-> [日本語](../proxy-standalone.md) | **English**
+[日本語](../proxy-standalone.md) | **English**
 
-This guide explains how to use only the Auth Proxy component of codex-dock to run Codex CLI directly (outside a Docker container).
+This developer guide runs a local client without `codex-dock run`.
+It does not create Kata isolation or worker networks. For normal use, follow the [quick start](getting-started.md).
 
----
+## 1. Start a local proxy
 
-## Who This Guide Is For
-
-Use this guide if you want to:
-
-- Run Codex CLI directly on the host (without Docker containers)
-- Run Codex CLI in your own container or CI environment
-- Protect your API keys or OAuth tokens without exposing them to processes
-- Use only the Auth Proxy security feature without `codex-dock run`'s container management
-
-**If you're using `codex-dock run` normally, you don't need this guide.**
-→ See [Quick Start](getting-started.md) instead.
-
----
-
-## Prerequisites
-
-| Requirement | Verification |
-|---|---|
-| codex-dock installed | `codex-dock --version` |
-| Codex CLI installed | `codex --version` |
-| Credentials configured | `codex-dock auth show` |
-
-### Usage Patterns (Important)
-
-There are two common standalone Auth Proxy patterns.
-
-| Pattern | Typical Use | Recommended Setup |
-|---|---|---|
-| A. Run `codex` directly on host | Local development | Run proxy on `localhost:18080` |
-| B. Use proxy from `codex-dock run` / custom containers | Dockerized workloads | Attach proxy to `dock-net-proxy` (egress); `codex-dock run` connects it to each per-worker network automatically |
-
-> For pattern B, keep proxy container name as `codex-auth-proxy` so it matches the default `codex-dock run --proxy-container-url` (`http://codex-auth-proxy:18080`).
-
-> This setup will be configurable with Docker Compose in a future update.
-
----
-
-## Step 1: Start the Auth Proxy
-
-### Option A: Run as a Docker Container (Recommended)
-
-#### Executor: Host
+Prepare host [credentials](auth-proxy.md#credential-sources).
+Run these examples in one bash session. Both listeners bind to loopback.
 
 ```bash
-# Build the Auth Proxy image (first time only)
-codex-dock proxy build
+read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
+printf '\n'
+export PROXY_ADMIN_SECRET
 
-# Create the egress network and start the proxy (router)
-codex-dock network create
-codex-dock proxy run \
-  --name codex-auth-proxy \
-  --network dock-net-proxy \
-  --admin-secret YOUR_SECRET
+codex-dock proxy serve --role auth \
+  --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
+  --admin-secret "$PROXY_ADMIN_SECRET" &
+PROXY_PID=$!
+
+export PROXY_DATA_URL=http://127.0.0.1:18080
+export PROXY_ADMIN_URL=http://127.0.0.1:18081
 ```
 
-`proxy run` publishes only the admin port (default 18081) to host loopback. The
-data-plane port (18080) is not published; workers reach it from their own
-`Internal` network via Docker DNS (`codex-auth-proxy`). The management API is
-accessible from the host at `http://127.0.0.1:18081`.
+Use `serve` for this local example: `proxy run` does not publish the data port to the host.
+Do not expose plain HTTP admin APIs or bearer tokens to other machines.
 
-> Network isolation is fully handled by Docker (no `iptables`/`sudo`).
-> `codex-dock run` creates a dedicated `Internal` network per worker and connects the proxy to it automatically.
-
-> **Security**: Without `--admin-secret`, the admin API has no authentication.
-> Always set it to restrict who can issue tokens.
-
-### Option B: Run as a Local Process
-
-#### Executor: Host
+## 2. Issue a token
 
 ```bash
-codex-dock proxy serve --listen 127.0.0.1:18080 --admin-secret YOUR_SECRET
+export SESSION_NAME=my-session
+TOKEN=$(curl --retry 5 --retry-connrefused --retry-delay 1 -fsS \
+  -X POST "$PROXY_ADMIN_URL/admin/issue" \
+  -H 'Content-Type: application/json' \
+  -H "X-Proxy-Admin-Secret: $PROXY_ADMIN_SECRET" \
+  -d "{\"container\":\"$SESSION_NAME\",\"ttl\":3600}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+export TOKEN
 ```
 
-This works when running Codex CLI on the same host.
+Do not print tokens to logs. `/health` checks the proxy process, not this token or upstream AI connectivity.
 
----
+## 3. Use a separate client directory
 
-## Step 2: Issue a Short-Lived Token
-
-Use the admin API to issue a token for your session.
-
-```bash
-PROXY_URL="http://localhost:18080"
-ADMIN_SECRET="YOUR_SECRET"
-SESSION_NAME="my-codex-session"
-
-TOKEN=$(curl -sf -X POST "$PROXY_URL/admin/issue" \
-  -H "Content-Type: application/json" \
-  -H "X-Proxy-Admin-Secret: $ADMIN_SECRET" \
-  -d "{\"container\": \"$SESSION_NAME\", \"ttl\": 3600}" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-
-echo "Token: $TOKEN"
-# → Token: cdx-a1b2c3d4e5f6...
-```
-
-| Parameter | Description |
-|---|---|
-| `container` | Session identifier (any string) |
-| `ttl` | Token TTL in seconds (defaults to proxy's `default_token_ttl` = 3600 s) |
-
----
-
-## Step 3: Configure Codex CLI
-
-Set the token and proxy URL for Codex CLI.
-
-### API Key Mode
-
-#### Executor: Host/container running Codex CLI
+Create a separate Codex home so the original login file is not overwritten.
+Parse the token response as JSON rather than inserting it into executable code.
 
 ```bash
-PROXY_URL="http://localhost:18080"
+export CODEX_HOME=$(mktemp -d)
+chmod 700 "$CODEX_HOME"
 
-export OPENAI_API_KEY="$TOKEN"         # placeholder token (not the real key)
-export OPENAI_BASE_URL="$PROXY_URL/v1" # route API requests through proxy
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+from urllib.request import Request, urlopen
 
-# Start Codex CLI
+base = os.environ['PROXY_DATA_URL']
+request = Request(base + '/token', headers={'X-Codex-Token': os.environ['TOKEN']})
+with urlopen(request, timeout=10) as response:
+    data = json.load(response)
+home = Path(os.environ['CODEX_HOME'])
+config = 'openai_base_url = ' + json.dumps(base + '/v1') + '\n'
+if 'oauth_access_token' in data:
+    auth = {
+        'auth_mode': 'chatgpt',
+        'OPENAI_API_KEY': None,
+        'tokens': {
+            'access_token': data['oauth_access_token'],
+            'refresh_token': '',
+            'id_token': data.get('oauth_id_token', ''),
+            'account_id': data.get('oauth_account_id', ''),
+        },
+        'last_refresh': data.get('oauth_last_refresh', ''),
+    }
+    path = home / 'auth.json'
+    with path.open('x', opener=lambda p, flags: os.open(p, flags, 0o600)) as out:
+        json.dump(auth, out)
+    config += 'chatgpt_base_url = ' + json.dumps(base + '/chatgpt/') + '\n'
+(home / 'config.toml').write_text(config)
+PY
+
+if [ -f "$CODEX_HOME/auth.json" ]; then
+  unset OPENAI_API_KEY
+  export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_DATA_URL/oauth/token?cdx=$TOKEN"
+else
+  export OPENAI_API_KEY="$TOKEN"
+  unset CODEX_REFRESH_TOKEN_URL_OVERRIDE
+fi
 codex
 ```
 
-**Environment variables explained:**
+OAuth uses the new auth.json; API-key mode uses the placeholder environment value.
+The API destination is explicit in config.toml. See [verified client versions](../testing.md) (Japanese).
+This host process is not isolated from the original home or other host secrets.
 
-| Variable | Value | Description |
-|---|---|---|
-| `OPENAI_API_KEY` | `cdx-xxxx...` | Placeholder token. Proxy injects real API key on outbound requests |
-| `OPENAI_BASE_URL` | `http://localhost:18080/v1` | Routes Codex CLI requests through the proxy |
-
-### OAuth Mode (ChatGPT Subscription)
-
-OAuth mode requires additional file configuration.
+## 4. Revoke and stop
 
 ```bash
-PROXY_URL="http://localhost:18080"
-
-# Retrieve credentials from proxy using the token from Step 2
-RESPONSE=$(curl -sf "$PROXY_URL/token" -H "X-Codex-Token: $TOKEN")
-
-# Write auth.json for Codex CLI
-mkdir -p ~/.codex
-python3 -c "
-import sys, json
-d = json.loads('''$RESPONSE''')
-out = {
-    'auth_mode': 'chatgpt',
-    'OPENAI_API_KEY': None,
-    'tokens': {
-        'id_token':      d.get('oauth_id_token', ''),
-        'access_token':  d.get('oauth_access_token', ''),
-        'refresh_token': '',
-        'account_id':    d.get('oauth_account_id', ''),
-    },
-    'last_refresh': d.get('oauth_last_refresh', ''),
-}
-print(json.dumps(out, indent=2))
-" > ~/.codex/auth.json
-chmod 600 ~/.codex/auth.json
-
-# Write Codex CLI config.toml to route the Responses API (model requests) AND the
-# ChatGPT backend-api through the proxy. openai_base_url is the key that actually
-# redirects model traffic — Codex CLI ignores the OPENAI_BASE_URL env var
-# (openai/codex#16719). chatgpt_base_url alone only covers the login/backend-api flow.
-mkdir -p ~/.codex
-cat > ~/.codex/config.toml <<EOF
-openai_base_url = "$PROXY_URL/v1"
-chatgpt_base_url = "$PROXY_URL/chatgpt/"
-EOF
-
-# Route OAuth token refresh through proxy
-export CODEX_REFRESH_TOKEN_URL_OVERRIDE="$PROXY_URL/oauth/token?cdx=$TOKEN"
-
-# Start Codex CLI
-codex
+curl -fsS -X POST \
+  "$PROXY_ADMIN_URL/admin/revoke?container=$SESSION_NAME" \
+  -H "X-Proxy-Admin-Secret: $PROXY_ADMIN_SECRET"
+kill "$PROXY_PID"
 ```
 
-**Configuration explained:**
-
-| Setting | Value | Description |
-|---|---|---|
-| `~/.codex/auth.json` `tokens.access_token` | `cdx-xxxx...` | Placeholder; real token injected by proxy |
-| `~/.codex/auth.json` `tokens.refresh_token` | `""` (empty) | Proxy handles refresh; container never holds it |
-| `~/.codex/auth.json` `tokens.id_token` | Real JWT | Codex CLI uses for claims extraction only (not auth credential) |
-| `~/.codex/config.toml` `openai_base_url` | `http://localhost:18080/v1` | Routes the Responses API (model requests) through proxy — required |
-| `~/.codex/config.toml` `chatgpt_base_url` | `http://localhost:18080/chatgpt/` | Routes ChatGPT login/backend-api calls through proxy |
-| `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` | Routes token refresh through proxy |
-
-> **Security**: The `access_token` in `auth.json` is not real.
-> It acts as a dummy Bearer token for Codex CLI API requests, which the proxy replaces with the real access_token.
-> The `refresh_token` is held only by the proxy and never sent to the process.
-
----
-
-## Step 4: Verify the Setup
-
-```bash
-# Check health (active_tokens should be >= 1)
-curl -s http://localhost:18080/health
-# → {"active_tokens":1,"status":"ok"}
-
-# Verify API requests are proxied correctly
-curl -s "$PROXY_URL/v1/models" \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -m json.tool | head -20
-```
-
----
-
-## Step 5: Revoke the Token When Done
-
-```bash
-curl -sf -X POST \
-  "http://localhost:18080/admin/revoke?container=$SESSION_NAME" \
-  -H "X-Proxy-Admin-Secret: $ADMIN_SECRET"
-```
-
-Tokens expire automatically after TTL, but it's good practice to revoke them explicitly when a session ends.
-
----
-
-## Configuration Summary
-
-### API Key Mode
-
-| Setting | Value |
-|---|---|
-| `OPENAI_API_KEY` | `cdx-xxxx...` (placeholder token from Step 2) |
-| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"` (Codex CLI ignores the `OPENAI_BASE_URL` env var) |
-
-### OAuth Mode
-
-| Setting | Value |
-|---|---|
-| `~/.codex/auth.json` | `access_token`: placeholder, `refresh_token`: empty, `id_token`: real JWT |
-| `~/.codex/config.toml` | `openai_base_url = "http://localhost:18080/v1"` (required) + `chatgpt_base_url = "http://localhost:18080/chatgpt/"` |
-| `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://localhost:18080/oauth/token?cdx=<token>` |
-
----
-
-## Check Operating Mode
-
-```bash
-curl -sf http://localhost:18080/admin/mode \
-  -H "X-Proxy-Admin-Secret: $ADMIN_SECRET"
-# → {"oauth_mode": false}   # API key mode
-# → {"oauth_mode": true}    # OAuth mode
-```
-
----
-
-## Troubleshooting
-
-### `401 Unauthorized` response
-
-- Token may have expired → re-issue a token in Step 2
-- Check that `$TOKEN` variable is set correctly
-
-### `curl: Connection refused`
-
-- Auth Proxy is not running → start it with `codex-dock proxy run` or `codex-dock proxy serve`
-- Check that `PROXY_URL` port number is correct
-
-### `codex-dock run` cannot reach `codex-auth-proxy:18080`
-
-Check the following in order:
-
-```bash
-# 1) Verify proxy container network attachment
-docker inspect codex-auth-proxy --format '{{json .NetworkSettings.Networks}}'
-
-# 2) Verify the proxy is connected to the worker's network
-docker network inspect dock-net-w-<worker> --format '{{json .Containers}}'
-```
-
-- If you changed `proxy run --name`, also update `run --proxy-container-url` to match.
-- If a worker cannot reach the proxy, confirm the proxy container is running and appears in `docker network inspect dock-net-w-<worker>` (`codex-dock run` connects it automatically).
-
-### API key mode expected but OAuth mode needed
-
-- Run `codex-dock auth show` to verify the active auth mode
-- If `~/.codex/auth.json` contains `refresh_token`, OAuth mode is activated
-
----
-
-## Related Documentation
-
-- [Auth Proxy Specification](auth-proxy.md) — Proxy architecture and flow diagrams
-- [API Endpoint Reference](auth-proxy/endpoints.md) — Admin API specification
-- [Token Lifecycle & Security](auth-proxy/tokens.md) — Token lifecycle details
-- [`codex-dock proxy` command](commands/proxy.md) — How to start the proxy
-- [Quick Start](getting-started.md) — Normal workflow using `codex-dock run`
+Revocation and expiry also end active HTTP/WS streams.
+Remove the temporary `CODEX_HOME` after checking its path.
+See the [API reference](auth-proxy/endpoints.md).

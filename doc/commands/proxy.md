@@ -1,142 +1,77 @@
-# `codex-dock proxy` — Auth Proxy の管理
+# プロキシ管理
 
-> **日本語** | [English](../en/commands/proxy.md)
->
-> [← コマンドリファレンス一覧](../commands.md)
+**日本語** | [English](../en/commands/proxy.md)
 
-Auth Proxy コンテナのビルド・起動・停止・削除を行います。
+`codex-dock proxy` は、認証用と一般通信用の2つのプロキシを管理します。
+仕組みは[認証プロキシ](../auth-proxy.md)、更新は[運用手順](../operations.md#cliプロキシを更新する)を参照してください。
 
----
-
-## サブコマンド一覧
-
-| サブコマンド | 説明 |
-|---|---|
-| [`proxy build`](#proxy-build--auth-proxy-イメージのビルド) | Auth Proxy イメージをビルド |
-| [`proxy run`](#proxy-run--auth-proxy-コンテナの起動) | Auth Proxy コンテナを起動 |
-| [`proxy serve`](#proxy-serve--ローカルプロセスとして起動) | ローカルプロセスとして起動 |
-| [`proxy stop`](#proxy-stop--auth-proxy-コンテナの停止) | Auth Proxy コンテナを停止 |
-| [`proxy rm`](#proxy-rm--auth-proxy-コンテナの削除) | Auth Proxy コンテナを削除 |
-
----
-
-## `proxy build` — Auth Proxy イメージのビルド
+## ビルドする
 
 ```bash
-codex-dock proxy build [OPTIONS]
-```
-
-| オプション | 省略形 | デフォルト | 説明 |
-|---|---|---|---|
-| `--tag` | `-t` | `proxy_image`（config） | イメージのタグ |
-| `--dockerfile` | `-f` | （自動検出） | auth-proxy.Dockerfile のパス |
-
-### Dockerfile の検索順序
-
-`-f` を省略した場合、以下の順序で自動検出します：
-
-1. カレントディレクトリの `docker/proxy/Dockerfile`
-2. カレントディレクトリの `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`（旧レイアウトの後方互換）
-3. `~/.config/codex-dock/auth-proxy.Dockerfile`（存在しない場合は組み込みデフォルトを自動書き出し）
-
-> ビルドコンテキストは常にカレントディレクトリ（`.`）です。Auth Proxy イメージは Go ソースから
-> バイナリをコンパイルするため、リポジトリルートで実行してください。
-
-**使用例：**
-
-```bash
-# デフォルト設定でビルド
 codex-dock proxy build
-
-# カスタムタグでビルド
-codex-dock proxy build --tag my-proxy:v1
+codex-dock proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
----
+| フラグ | 内容 |
+|---|---|
+| `--tag`, `-t` | タグ。既定は設定の `proxy_image` |
+| `--dockerfile`, `-f` | Dockerfileのパス |
 
-## `proxy run` — Auth Proxy コンテナの起動
+BuildKitを使い、OCI出力を専用containerdへ取り込みます。
+ビルドコンテキストはカレントディレクトリです。Goソースが必要なため、リポジトリのルートで実行してください。
+Dockerfileは `docker/proxy/Dockerfile`、旧配置の `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`、設定ディレクトリの順に探します。
 
-```bash
-codex-dock proxy run [OPTIONS]
-```
-
-| オプション | 省略形 | デフォルト | 説明 |
-|---|---|---|---|
-| `--name` | | `codex-auth-proxy` | コンテナ名 |
-| `--port` | `-p` | `18080` | ホスト側のポート番号 |
-| `--network` | | `dock-net-proxy` | 接続先 Docker ネットワーク（存在しない場合は自動作成） |
-| `--admin-secret` | | | `/admin/*` エンドポイントの認証シークレット |
-
-### 認証情報の自動バインド
-
-`proxy run` は以下のすべての認証ソースを自動的に検出してコンテナへバインドします：
-
-| 認証方式 | ホスト側のソース | コンテナへの渡し方 |
-|---|---|---|
-| API キー（環境変数） | `OPENAI_API_KEY` | `-e OPENAI_API_KEY=<値>` |
-| API キー（保存済み） | `~/.config/codex-dock/apikey` | bind-mount（読み取り専用） |
-| OAuth / ChatGPT | `~/.codex/auth.json` | bind-mount（読み取り専用） |
-
-存在するすべてのソースが同時にバインドされます。優先順位は `OPENAI_API_KEY` 環境変数 → 保存済みキーファイル → OAuth の順です。
-
-**使用例：**
+## 起動する
 
 ```bash
-# デフォルト設定で起動（認証情報は自動検出）
 codex-dock proxy run
-
-# ポートとシークレットを指定
-codex-dock proxy run --port 9090 --admin-secret mysecret
 ```
 
----
-
-## `proxy serve` — ローカルプロセスとして起動
-
-Auth Proxy をローカルプロセス（Docker コンテナではなく）として起動します。
-
-```bash
-codex-dock proxy serve --listen 0.0.0.0:18080 [OPTIONS]
-```
-
-| オプション | デフォルト | 説明 |
+| フラグ | 既定値 | 内容 |
 |---|---|---|
-| `--listen` | `127.0.0.1:18080` | リッスンアドレス |
-| `--admin-secret` | | `/admin/*` エンドポイントの認証シークレット |
+| `--name` | `codex-auth-proxy` | 認証プロキシ名 |
+| `--http-name` | `codex-http-proxy` | 一般通信用プロキシ名 |
+| `--port`, `-p` | `18080` | 認証用dataポート。ホストへ公開しない |
+| `--admin-port` | `18081` | ホストの127.0.0.1に公開する管理ポート |
+| `--http-port` | `18082` | 一般通信ポート。ホストへ公開しない |
+| `--network` | `dock-net-proxy` | 共通egressネットワーク。未作成なら作成 |
+| `--admin-secret` | 未設定 | 管理APIのsecret。ホストCLI側にも同じ値を設定 |
 
-> この場合、ワーカーコンテナから到達できる URL を `--proxy-container-url` で指定してください。
-> Auth Proxy のみを使う場合の詳細は [Auth Proxy のみを使う](../proxy-standalone.md) を参照してください。
+通信ルールには `--forward-allow-domain` / `--forward-deny-domain`、`--forward-allow-cidr` / `--forward-deny-cidr`、`--forward-allow-port` / `--forward-deny-port` を使います。
+ドメインとCIDRは繰り返し、ポートは繰り返しまたはカンマ区切りで指定できます。
+例と判定順は[通信ポリシー](../proxy-policy.md)を参照してください。
 
----
+認証ファイルは呼出元のUID/GIDと専用HOMEで読み取り専用マウントします。
+認証ソースは[認証プロキシ](../auth-proxy.md#認証ソース)に記載しています。
+既存のlayout・通信ルール・認証API能力が対応しない場合はエラーになり、既存プロキシを自動削除しません。
 
-## `proxy stop` — Auth Proxy コンテナの停止
-
-```bash
-codex-dock proxy stop [OPTIONS]
-```
-
-| オプション | 省略形 | デフォルト | 説明 |
-|---|---|---|---|
-| `--name` | | `codex-auth-proxy` | コンテナ名 |
-
----
-
-## `proxy rm` — Auth Proxy コンテナの削除
+## 停止・削除する
 
 ```bash
-codex-dock proxy rm [OPTIONS]
+# 名前を省略すると既定の2つが対象
+codex-dock proxy stop
+codex-dock proxy rm
+
+# 個別に指定
+codex-dock proxy stop --name codex-http-proxy
+codex-dock proxy rm --name codex-http-proxy
 ```
 
-| オプション | 省略形 | デフォルト | 説明 |
-|---|---|---|---|
-| `--name` | | `codex-auth-proxy` | コンテナ名 |
-| `--force` | `-f` | `false` | 実行中のコンテナも強制削除 |
+`proxy rm --force` は実行中でも削除します。
+共有するワーカーの認証・通信に影響するため、先にワーカーの作業を終えてください。
+独自名で作成した場合は `--name` で個別に操作します。
 
----
+## ローカルプロセスとして起動する
 
-## 関連ドキュメント
+開発や単体利用には、内部コマンドの `proxy serve` を使えます。
 
-- [Auth Proxy 技術仕様](../auth-proxy.md) — 認証の仕組みと構成図
-- [Auth Proxy エンドポイント仕様](../auth-proxy/endpoints.md) — 管理 API の詳細
-- [Auth Proxy のみを使う](../proxy-standalone.md) — codex-dock run を使わない設定方法
-- [クイックスタート](../getting-started.md) — Auth Proxy の初回セットアップ手順
+```bash
+codex-dock proxy serve --role auth \
+  --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
+  --admin-secret "$PROXY_ADMIN_SECRET"
+```
+
+`--role auth` は認証用、`--role egress` は一般通信用です。
+`serve` のdataリスナー既定は `0.0.0.0:18080` なので、単体利用では上のように明示してください。
+KataワーカーのネットワークやVM隔離は、このコマンドでは用意しません。
+詳しくは[単体利用](../proxy-standalone.md)を参照してください。

@@ -4,13 +4,14 @@
 >
 > [← コマンドリファレンス一覧](../commands.md)
 
-Codex CLI を Docker コンテナ内で実行します。Auth Proxy とネットワーク隔離が自動的に設定されます。
+Codex CLI、Claude Code、シェルをKata VMで実行します。
+containerdが管理し、DragonballでVMを起動します。既定は `--runtime kata` です。
+専用bridge・namespace・nftablesで直接通信を遮断し、必要なプロキシだけを接続します。
+実行ホストはLinux x86_64です。[導入](../getting-started.md)と[ネットワーク](../network.md)を参照してください。
 
-> **ネットワーク隔離**: 起動時に各ワーカー専用の Docker `Internal` ネットワーク（`dock-net-w-<name>`）を作成し、Auth Proxy をそこへ接続します。ワーカー間・ホスト・インターネットへの直接通信は Docker により遮断されます（`iptables`/`sudo` 不要、macOS / Windows でも同等）。
-
-> **イメージの自動ビルド**: `--image`（または `--template`）で指定したイメージがローカルに存在しない場合、自動的にビルドしてからコンテナを起動します。テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合はテンプレートからビルドされ、それ以外は `codex-dock build` と同じロジックでビルドされます。`~/.config/codex-dock/templates/` に置いたユーザーテンプレートも同様に自動ビルド対象です（[`codex-dock build` のテンプレート節](build.md#ユーザーテンプレート)を参照）。
->
-> さらに、テンプレートの Dockerfile がディスク上のファイルとして存在する場合（ユーザーテンプレート、または `make install-templates` で配置した組み込みテンプレートのコピー）、そのファイルの更新日時とビルド済みイメージの作成日時を比較し、**ファイルの方が新しければ自動的に再ビルド**してから起動します。この挙動は `auto_build`（グローバル）/ `run.auto_build`（`run` のみ）の設定でオン・オフできます（デフォルトは有効）。詳細は [設定リファレンス](../configuration.md#auto_build) を参照してください。バイナリに埋め込まれたままの組み込みテンプレートには比較対象のファイルが無いため、この機能は働きません。
+イメージがなければ自動ビルドします。テンプレートに対応するタグはそのテンプレートを使います。
+ディスク上のDockerfileが更新された場合の再ビルドは[auto_build](../configuration.md#auto_build)で設定します。
+独自タグやテンプレートは[build](build.md)を参照してください。
 
 ```bash
 codex-dock run [OPTIONS] [-- command...]
@@ -26,7 +27,9 @@ codex-dock run [OPTIONS] [-- command...]
 
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
-| `--image` | `-i` | `codex-dock:latest` | サンドボックスに使用する Docker イメージ |
+| `--runtime` | | `kata` | ワーカーの隔離方式。`runc` は明示的な互換モード |
+| `--kata-runtime` | | `io.containerd.kata.v2` | 専用containerdのKata登録名 |
+| `--image` | `-i` | `codex-dock:latest` | サンドボックスに使用するOCIイメージ |
 | `--template` | `-T` | | サンドボックスイメージテンプレート（`plain`, `pwn` 等）。指定したテンプレートのタグに解決される。`--image` を明示指定した場合はそちらが優先。存在しなければ自動ビルドされる |
 | `--pkg` | `-p` | | 追加パッケージ（繰り返し指定可）`apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | パッケージ定義ファイルのパス (`packages.dock`) |
@@ -43,7 +46,7 @@ codex-dock run [OPTIONS] [-- command...]
 | `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
 | `--mount` | | | 追加のホストディレクトリをマウント（繰り返し指定可）`<host-path>:<container-path>[:ro\|rw]`（[詳細](#--mount--任意ディレクトリの追加マウント)） |
-| `--no-internet` | | `false` | 一般 egress を無効化（`HTTP(S)_PROXY` を注入せず、プロキシの API リバースルートのみ到達可能に） |
+| `--no-internet` | | `false` | 一般egressプロキシを接続せず、AI API経路だけを維持 |
 | `--keep` | | `false` | フォアグラウンド実行の終了時にコンテナと専用ネットワークを削除しない（既定では削除し、ネットワークの蓄積を防ぐ） |
 | `--force-recreate-proxy` | | `false` | ホストとAuth Proxyの認証状態が異なる場合、稼働中ワーカーがあってもAuth Proxyを再作成する（既存ワーカーの認証は失効） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
@@ -52,7 +55,7 @@ codex-dock run [OPTIONS] [-- command...]
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
 | `--shell` | `-s` | `false` | `entrypoint.sh` をバイパスした素の（未認証の）シェルを起動（デバッグ用） |
 | `--shell-type` | | `$SHELL` から自動判定、それ以外は `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
-| `--user` | | `""` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
+| `--user` | | `current` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
 
 ---
 
@@ -71,7 +74,7 @@ codex-dock run [OPTIONS] [-- command...]
   （Proxy の `/admin/mode` を参照）。
 - ホストと Auth Proxy の認証状態が異なる場合、稼働中ワーカーがなければ Auth Proxy を自動再作成します。
   稼働中ワーカーがある場合は、それらの認証を失効させないようエラーで停止します。意図的に再作成する場合は
-  `--force-recreate-proxy` を指定し、既存ワーカーも再起動してください。
+  `--force-recreate-proxy` を指定し、プロキシIPが変わった既存ワーカーは新規作成してください。
 - `--shell` は `entrypoint.sh` を完全にバイパスして**認証なし**の素のシェルを起動します（デバッグ用）。
   認証済みシェルが欲しい場合は `--agent` を省略してください。
 
@@ -129,7 +132,7 @@ codex-dock run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 デバッグモードはこの自動判定の対象外**で、フラグ未指定なら常に `bash` になります。`--shell`
 はコンテナの `Entrypoint` を直接シェルバイナリに置き換えて `entrypoint.sh` 自体をバイパス
 するため、そのバイナリがイメージに無かった場合に `entrypoint.sh` 側でフォールバックする
-手段が無く、Docker がコンテナの起動自体に失敗してしまうためです。`--shell --shell-type zsh`
+手段が無く、実行エンジンがコンテナの起動自体に失敗してしまうためです。`--shell --shell-type zsh`
 のように明示すれば、`--shell` でも zsh を使えます。
 
 組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため
@@ -161,32 +164,33 @@ codex-dock run --shell --shell-type zsh
 ## `--approval-mode` — 承認モードの指定
 
 `--approval-mode` フラグでエージェントがアクションを実行する際の承認動作を制御します。
-Docker コンテナによるサンドボックス隔離を前提に設計されています。値は両エージェントに対応する
+外側の隔離は選択したワーカーランタイムが担当します。値は両エージェントに対応する
 フラグへマッピングされます。
 
 | 値 | Codex CLI フラグ | Claude Code フラグ | 動作 |
 |---|---|---|---|
-| `suggest`（デフォルト） | なし | なし | すべてのアクションで承認を求める（最も安全） |
+| `suggest`（デフォルト） | 承認フラグを追加しない | 承認フラグを追加しない | エージェント自身の既定設定に従う |
 | `auto-edit` | `--ask-for-approval on-request` | `--permission-mode acceptEdits` | Codexはモデル判断で承認要求、Claudeは編集を自動許可 |
 | `full-auto` | `--ask-for-approval never` | `--dangerously-skip-permissions` | 承認を一切求めない |
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | すべての承認・サンドボックス制限をバイパスする |
 
-> **`danger` モードについて**: Codex CLI 組み込みのサンドボックスを無効化しますが、
-> Docker コンテナ自体が隔離境界を提供します（`--cap-drop ALL`、専用ネットワーク、
-> pids-limit など）。Docker を使用しているため、ホスト環境への影響はありません。
+Kata検証済みワーカーでは、Codexの内側sandboxを `danger-full-access` に設定します。
+VM内の入れ子namespaceとseccompの不整合を避けるためです。承認モードは独立した設定です。
+非対話execではエージェント自身が承認動作を選ぶ場合もあります。
+共有workspaceや追加mountは、指定した権限で変更できます。[保護の範囲](../security.md)を参照してください。
 
 ```bash
-# デフォルト（対話的に承認を求める）
-codex-dock run --task "テストを書いて"
+# エージェント既定の承認設定
+codex-dock run --agent codex --task "テストを書いて"
 
-# ファイル編集は自動、コマンドは確認
-codex-dock run --approval-mode auto-edit --task "リファクタリング"
+# Codexはモデル判断で承認要求、Claudeは編集を自動許可
+codex-dock run --agent codex --approval-mode auto-edit --task "リファクタリング"
 
 # 完全自動実行（承認なし）
-codex-dock run --approval-mode full-auto --task "バグ修正"
+codex-dock run --agent codex --approval-mode full-auto --task "バグ修正"
 
-# Docker 隔離を活用して全制限をバイパス
-codex-dock run --approval-mode danger --task "ビルドスクリプトを実行"
+# エージェントの承認・内側sandboxを無効化
+codex-dock run --agent codex --approval-mode danger --task "ビルドスクリプトを実行"
 ```
 
 ---
@@ -276,15 +280,15 @@ npm:typescript
 `--parallel N` を指定すると、N 個のコンテナが同時に起動します。
 
 ```bash
-codex-dock run --parallel 3 --worktree --branch myfeature
+codex-dock run --parallel 2 --worktree --branch myfeature
 ```
 
-自動的に以下のブランチが作成されます：
+ノードの既定上限は同時2台です。自動的に以下のブランチが作成されます：
+
 - `myfeature-1`（worker 1）
 - `myfeature-2`（worker 2）
-- `myfeature-3`（worker 3）
 
-`--branch` を指定しない場合は `worker-1`, `worker-2`, `worker-3` が使用されます。
+`--branch` を指定しない場合は `worker-1`, `worker-2` が使用されます。
 
 ---
 
@@ -295,13 +299,13 @@ codex-dock run --parallel 3 --worktree --branch myfeature
 codex-dock run
 
 # タスクを指定して完全自動実行
-codex-dock run --task "ユニットテストを書いて" --approval-mode full-auto
+codex-dock run --agent codex --task "ユニットテストを書いて" --approval-mode full-auto
 
 # git worktree を使って feature ブランチで作業
 codex-dock run --worktree --branch feature-auth --new-branch
 
-# 並列ワーカー 3 つを起動（各ワーカーに別ブランチ）
-codex-dock run --parallel 3 --worktree
+# 並列ワーカー2つを起動（各ワーカーに別ブランチ）
+codex-dock run --parallel 2 --worktree
 
 # 追加パッケージをインストールして実行
 codex-dock run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
@@ -310,12 +314,12 @@ codex-dock run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
 codex-dock run --pkg-file ./packages.dock
 
 # バックグラウンドで完全自動実行
-codex-dock run --task "リファクタリング" --approval-mode full-auto --detach
+codex-dock run --agent codex --task "リファクタリング" --approval-mode full-auto --detach
 
 # 読み取り専用・インターネットなしでセキュアに実行
-codex-dock run --read-only --no-internet --task "コードレビュー"
+codex-dock run --agent codex --read-only --no-internet --task "コードレビュー"
 
-# 特定の Docker イメージを使用
+# 特定のOCIイメージを使用
 codex-dock run --image my-custom-codex:v2
 
 # テンプレートイメージを使用（未ビルドなら自動ビルド）
@@ -356,5 +360,5 @@ codex-dock run --user 1000:1000
 - [クイックスタート](../getting-started.md) — 初回実行の手順
 - [アーキテクチャ概要](../architecture.md) — 起動シーケンスの詳細
 - [Auth Proxy 技術仕様](../auth-proxy.md) — 認証の仕組み
-- [ネットワーク仕様](../network.md) — プロキシルータ + per-worker Internal ネットワークの構成
+- [ネットワーク仕様](../network.md) — 専用ワーカーネットワークと2種類のプロキシの構成
 - [設定リファレンス](../configuration.md) — config.toml の設定項目

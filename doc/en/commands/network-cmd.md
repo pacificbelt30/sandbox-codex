@@ -6,7 +6,7 @@
 
 Manages the egress network (`dock-net-proxy`, used for the proxy's internet reachability). Per-worker `Internal` networks are created and removed automatically with each worker, so no manual management is needed.
 
-> The old `codex-dock firewall` (iptables) command has been removed; isolation is handled by Docker networks.
+> The old `codex-dock firewall` (iptables) command has been removed; isolation is enforced by the root node service with Linux bridges, namespaces and nftables.
 
 ---
 
@@ -41,7 +41,7 @@ Egress network:  dock-net-proxy
   ID:            a1b2c3d4e5f6
   Driver:        bridge
   Internal:      false
-  Subnet:        172.20.0.0/16
+  Subnet:        10.253.0.0/24
 Worker networks: 2 (Internal, one per worker)
   - dock-net-w-codex-brave-otter
   - dock-net-w-codex-calm-finch

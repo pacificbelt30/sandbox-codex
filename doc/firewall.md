@@ -1,24 +1,14 @@
-# firewall（廃止 / ルータモデルへ移行）
+# firewall機能の廃止
 
-> **日本語** | [English](en/firewall.md)
+旧 `codex-dock firewall` と `--allow-host` / `--block-host` / `--no-firewall` / `--sudo` は廃止しました。
 
-> **このコマンドは廃止されました。** 旧 `codex-dock firewall`（Linux `iptables` の `DOCKER-USER` / `CODEX-DOCK` チェーン制御）と、関連フラグ `--allow-host` / `--block-host` / `--no-firewall` / `--sudo` は削除されました。
+現在はroot管理サービスが専用bridge・namespace・nftablesで隔離します。
+ホストの準備には管理者権限が必要です。通常のCLI操作はoperator groupで行います。
 
-## 何が変わったか
-
-ネットワーク隔離は **Docker のネイティブ機能のみ** で実現するようになり、`iptables` も `sudo` も不要になりました。
-
-- 各ワーカーは専用の `Internal` ネットワーク（`dock-net-w-<name>`）に隔離され、ワーカー間は別 L2 セグメントのため疎通しません。
-- `Internal: true` によりワーカーはホストにもインターネットにも直接到達できません。
-- プロキシコンテナがルータとして唯一の egress 経路になります（HTTP CONNECT フォワードプロキシ + API リバースルート）。
-
-詳細は [ネットワーク仕様](network.md) を参照してください。
-
-## 旧機能の対応
-
-| 旧（iptables） | 新（Docker ネイティブ） |
+| 目的 | 現行の方法 |
 |---|---|
-| `firewall create` で private/link-local を遮断 | `Internal` ネットワークで自動的にホスト/プライベート到達を遮断 |
-| `--allow-host` で許可先追加 | 不要（egress はプロキシ経由のみ） |
-| `--block-host` で遮断先追加 | `proxy run --forward-allow-domain` でドメイン allowlist を指定 |
-| `--sudo` で root 権限実行 | 不要（Docker デーモンが処理） |
+| ワーカー間・ホストへの直接通信を遮断 | [専用ネットワーク](network.md)で管理 |
+| 一般通信の許可・拒否 | [プロキシポリシー](proxy-policy.md)で設定 |
+| 一般通信を無効化 | `run --no-internet`。AI API経路は維持 |
+
+旧環境からの切り替えは[移行手順](migration.md)を参照してください。

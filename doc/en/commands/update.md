@@ -34,3 +34,8 @@ go install github.com/pacificbelt30/codex-dock@latest
 ## Related Documentation
 
 - [Quick Start](../getting-started.md) — Installation via `go install`
+
+## Host services and images
+
+This command does not update the node, guard, IO logger, pinned assets or proxy images.
+See [host setup](../../kata.md) and [operations](../../operations.md) (Japanese).

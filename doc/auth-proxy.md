@@ -1,171 +1,104 @@
-# Auth Proxy 技術仕様
+# 認証プロキシ
 
-> **日本語** | [English](en/auth-proxy.md)
+**日本語** | [English](en/auth-proxy.md)
 
-- **概要・デプロイ** ← 本ページ
-- [API エンドポイント仕様](auth-proxy/endpoints.md)
-- [トークンの仕組みとセキュリティ](auth-proxy/tokens.md)
+認証プロキシは、ワーカーの短命トークンを検証し、AI APIへ送るときだけ本物の認証情報に差し替えます。
+OpenAIとAnthropicの認証を別々に読み込み、同時に提供できます。
 
----
+## 2つのプロキシの違い
 
-Auth Proxy は codex-dock のセキュリティの核となるコンポーネントです。
-コンテナに実際の API キーや OAuth クレデンシャルを渡さず、短命トークンを介して安全に認証情報を提供します。
-**OpenAI（Codex）と Anthropic（Claude Code）の両方**に対応し、エージェントが呼ぶすべての API トラフィックをプロキシして、**コンテナが保持するのはプレースホルダートークンのみ**とすることで、本物のクレデンシャルがコンテナに届かない構造を実現します。1 つのプロキシで両プロバイダの認証情報を独立に読み込み、両エージェントに同時にサービスできます。
+| 名前 | 役割 | 本物の認証情報 |
+|---|---|---|
+| `codex-auth-proxy` | AI API、トークン取得、管理API | 保持する |
+| `codex-http-proxy` | Git・npm・pipなどのHTTP/CONNECT通信 | 保持しない |
 
----
+一般通信の許可・拒否は[通信ポリシー](proxy-policy.md)で設定します。
+AI APIの固定経路には、そのルールを適用しません。
 
-## デプロイ方式
+## 起動する
 
-Auth Proxy は `codex-dock proxy run` で Docker コンテナとして起動するか、`codex-dock proxy serve` でローカルプロセスとして起動します。
+[Kata実行ホスト](kata.md)を用意し、認証を設定してから実行します。
+ビルドはGoソースがあるリポジトリのルートで行ってください。
 
 ```bash
-# Docker コンテナとして起動（推奨）
-codex-dock proxy run --admin-secret <シークレット>
-
-# ローカルプロセスとして起動（admin を別ポートに分離する例）
-codex-dock proxy serve --listen 0.0.0.0:18080 --admin-listen 0.0.0.0:18081 --admin-secret <シークレット>
+codex-dock proxy build
+codex-dock proxy run
 ```
 
-| 接続先 | URL |
-|---|---|
-| ホスト側管理 API（admin リスナー） | `http://127.0.0.1:18081` |
-| コンテナからの到達先（データプレーン） | `http://codex-auth-proxy:18080`（各ワーカー専用 Internal ネットワーク上の Docker DNS 経由） |
+`proxy run` はcontainerd上で2つのruncコンテナを起動します。
+ワーカーはKata VMで動作します。
 
-> `proxy run` は admin ポート（既定 18081）のみをホスト loopback に公開し、データプレーン（18080）は非公開です。ワーカーは Docker DNS（`codex-auth-proxy`）でデータプレーンにのみ到達します。`/admin/*` はワーカーから到達できません。
-
----
-
-## 構成図
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  ホスト環境                                                            │
-│                                                                        │
-│  ~/.codex/auth.json         ~/.config/codex-dock/apikey               │
-│  (OAuth クレデンシャル)      (API キー)                                │
-│          │                           │                                 │
-│          └───────────┬───────────────┘                                 │
-│                      ▼                                                 │
-│  ┌──────────────────────────────────────────────────────────────────┐ │
-│  │  Auth Proxy (0.0.0.0:PORT)                                       │ │
-│  │                                                                  │ │
-│  │  GET  /token        トークン検証 → クレデンシャル返却            │ │
-│  │  POST /oauth/token  OAuthトークンリフレッシュ中継                │ │
-│  │  ANY  /v1/*         OpenAI Responses API リバースプロキシ        │ │
-│  │  ANY  /chatgpt/*    ChatGPT backend-api プロキシ                 │ │
-│  │  ANY  /anthropic/*  Anthropic Messages API リバースプロキシ      │ │
-│  │  GET  /health       ヘルスチェック                               │ │
-│  │  POST /revoke       トークン失効                                 │ │
-│  │  POST /admin/issue  トークン発行（管理用）                       │ │
-│  └──────────────────────────────────────────────────────────────────┘ │
-│                      │ 短命トークン (cdx-xxxx)                         │
-│                      ▼                                                 │
-│  ┌──────────────────────────────────────────────────────────────────┐ │
-│  │  サンドボックスコンテナ                                           │ │
-│  │  CODEX_TOKEN, OPENAI_BASE_URL, CODEX_REFRESH_TOKEN_URL_OVERRIDE  │ │
-│  └──────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 認証モード
-
-### API キーモード
-
-`OPENAI_API_KEY` 環境変数または `~/.config/codex-dock/apikey` ファイルから API キーを読み込みます。
-
-```
-ホスト (Auth Proxy)                          コンテナ (entrypoint.sh)
-  │                                                │
-  │  短命トークン発行: CODEX_TOKEN=cdx-<hex64>    │
-  │  env: OPENAI_BASE_URL=http://proxy/v1         │
-  │ ───────────────────────────────────────────▶  │
-  │                                                │ 起動時
-  │  GET /token (X-Codex-Token: cdx-<hex64>)      │
-  │  ◀─────────────────────────────────────────── │
-  │                                                │
-  │  200 OK {"api_key": "cdx-<hex64>"}  ← プレースホルダー
-  │ ───────────────────────────────────────────▶  │
-  │                                                │ export OPENAI_API_KEY=cdx-<hex64>
-  │                                                │ exec codex
-  │                                                │
-  │  POST /v1/responses (Authorization: Bearer cdx-<hex64>)
-  │  ◀─────────────────────────────────────────── │
-  │  Authorization を差し替え: Bearer sk-...      │ ← プロキシがインジェクト
-  │  転送先: https://api.openai.com/v1/responses  │
-```
-
-### OAuth モード（ChatGPT サブスクリプション）
-
-`~/.codex/auth.json` に `refresh_token` フィールドがある、または `auth_mode: "chatgpt"` が設定されている場合に自動的に OAuth モードで動作します。
-
-```
-ホスト (Auth Proxy)                          コンテナ (entrypoint.sh)
-  │                                                │
-  │  短命トークン発行: CODEX_TOKEN=cdx-<hex64>    │
-  │  env: OPENAI_BASE_URL=http://proxy/v1         │
-  │  env: CODEX_REFRESH_TOKEN_URL_OVERRIDE=        │
-  │       http://proxy/oauth/token?cdx=<token>    │
-  │ ───────────────────────────────────────────▶  │
-  │                                                │ GET /token
-  │  200 OK                                        │
-  │  {"oauth_access_token": "cdx-<hex64>",        │ ← プレースホルダー
-  │   "oauth_id_token":     "ey...",              │ ← 本物 (claims 抽出用)
-  │   "oauth_account_id":   "..."}                │
-  │ ───────────────────────────────────────────▶  │
-  │                                                │ ~/.codex/auth.json 生成
-  │                                                │   access_token: "cdx-<hex64>"
-  │                                                │   refresh_token: ""
-  │                                                │ ~/.codex/config.toml
-  │                                                │   openai_base_url=http://proxy/v1
-  │                                                │   chatgpt_base_url=http://proxy/chatgpt/
-  │                                                │ exec codex
-  │                                                │
-  │  POST /v1/responses (Authorization: Bearer cdx-<hex64>)
-  │  ◀─────────────────────────────────────────── │
-  │  Authorization を本物の access_token に差し替え
-  │  転送先: https://chatgpt.com/backend-api/codex/responses
-```
-
-> **セキュリティ**: `refresh_token` および本物の `access_token` はコンテナに渡されません。
-> コンテナが保持するのは CODEX_TOKEN と同一のプレースホルダーのみで、プロキシがすべての送信リクエストの Authorization ヘッダーを本物の access_token で差し替えます。
-
-### Anthropic モード（Claude Code）
-
-Claude Code は完全に環境変数駆動です。`codex-dock run --agent claude` でコンテナに以下を注入します。
-
-- `ANTHROPIC_BASE_URL=http://<proxy>/anthropic`
-- `ANTHROPIC_API_KEY=cdx-<hex64>`（プレースホルダー、CODEX_TOKEN と同一）
-
-プロキシは `/anthropic/*` への全リクエストでホストの本物のクレデンシャルを注入します。
-認証情報は OpenAI とは独立に読み込まれます（優先順位: 環境変数 > 保存ファイル > OAuth）。
-
-| ホストの認証種別 | 認証情報ソース | プロキシが注入するヘッダー |
+| 接続元 | 既定の接続先 | 用途 |
 |---|---|---|
-| API キー | `ANTHROPIC_API_KEY` 環境変数 / `~/.config/codex-dock/anthropic-apikey` | `x-api-key: sk-ant-…`（`Authorization` は削除） |
-| OAuth サブスクリプション | `~/.claude/.credentials.json`（`claudeAiOauth`） | `Authorization: Bearer …` + `anthropic-beta: oauth-2025-04-20`（`x-api-key` は削除） |
+| ホストCLI | `http://127.0.0.1:18081` | トークン発行・失効・状態確認 |
+| ワーカー | `http://codex-auth-proxy:18080` | トークン取得・AI API |
+| ワーカー | `http://codex-http-proxy:18082` | 一般通信 |
 
-```
-コンテナ (claude)                          ホスト (Auth Proxy)
-  │  POST /anthropic/v1/messages                  │
-  │  x-api-key: cdx-<hex64>  ← プレースホルダー    │
-  │ ────────────────────────────────────────────▶ │
-  │                          x-api-key を本物に差し替え（API キーモード）
-  │                          または Authorization: Bearer + anthropic-beta（OAuth モード）
-  │                          転送先: https://api.anthropic.com/v1/messages
-```
+ワーカーは専用ネットワークの静的hosts経由でプロキシへ到達します。
+管理APIは別リスナーに分離し、ワーカーには公開しません。
 
-> **OAuth トークンのリフレッシュ**: アクセストークンの有効期限が近い場合、プロキシが
-> `refresh_token` を使って自前でリフレッシュします（`refreshAnthropicOAuthIfNeeded`）。
-> `refresh_token` はホストに留まり、コンテナには一切渡りません。Codex の OAuth フローと同じ原則です。
+## 認証ソース
 
----
+各プロバイダーについて、表の上から順に利用します。
 
-## 関連ドキュメント
+| 優先順位 | OpenAI | Anthropic |
+|---|---|---|
+| 1 | `OPENAI_API_KEY` | `ANTHROPIC_API_KEY` |
+| 2 | `~/.config/codex-dock/apikey` | `~/.config/codex-dock/anthropic-apikey` |
+| 3 | `~/.codex/auth.json` | `~/.claude/.credentials.json` |
 
-- [API エンドポイント仕様](auth-proxy/endpoints.md) — 全エンドポイントの詳細
-- [トークンの仕組みとセキュリティ](auth-proxy/tokens.md) — トークンライフサイクル・セキュリティ考慮事項
-- [Auth Proxy のみを使う](proxy-standalone.md) — codex-dock run を使わずに Codex CLI を設定する方法
-- [ネットワーク仕様](network.md) — プロキシルータと per-worker Internal ネットワーク
-- [コマンドリファレンス: proxy](commands/proxy.md) — `codex-dock proxy` コマンドの詳細
+APIキーを設定している場合は、同じプロバイダーのOAuthより優先します。
+保存キーの設定は[authコマンド](commands/auth.md)を参照してください。
+
+認証プロキシは呼出元のUID/GIDで動き、専用HOME `/var/lib/codex-dock-proxy` に認証ファイルを読み取り専用でマウントします。
+元ファイルが所有者だけに読み取りを許した `0600` でも利用できます。
+元ファイルの権限は変更せず、capabilityも追加しません。
+別の利用者でしか読めないファイルやディレクトリは、起動前に拒否します。
+
+## リクエストの流れ
+
+1. ホストCLIがワーカー用の短命トークンを発行する。
+2. 起動スクリプトが `/token` からプレースホルダーとクライアント設定用の情報を取得する。
+3. エージェントがそのプレースホルダーを付けてAI APIを呼ぶ。
+4. プロキシが有効な発行済みトークンかを検証する。
+5. 認証ヘッダーを本物に差し替え、固定の上流へ転送する。
+
+実APIキーとOAuthのaccess token・refresh tokenはワーカーに渡しません。
+ChatGPT認証では、Codexのアカウント情報読み取りに必要なID tokenを返すことがあります。
+ワーカー用auth.jsonのaccess tokenはプレースホルダー、refresh tokenは空文字です。
+
+## 認証と接続の有効期限
+
+| 経路 | ワーカーが送る認証 |
+|---|---|
+| `/v1/*`、`/chatgpt/*` | `Authorization: Bearer <短命トークン>` |
+| `/anthropic/*` | `x-api-key: <短命トークン>` または同じBearer認証 |
+
+HTTPとWebSocketの両方で検証します。
+欠落・未発行・期限切れ・失効済み・重複・矛盾する認証は、上流に接続する前に401で拒否します。
+失効・期限切れ・トークン置換時は、接続中のHTTP streamとWebSocketも終了します。
+
+TTLの既定値は3600秒です。停止時に失効し、正規の再起動時に復元します。
+詳しくは[短命トークン](auth-proxy/tokens.md)を参照してください。
+
+## APIキーとOAuthの転送先
+
+| 認証 | 上流 | 注入する認証 |
+|---|---|---|
+| OpenAI APIキー | `api.openai.com/v1/` | Bearer APIキー |
+| ChatGPT OAuth | `chatgpt.com/backend-api/codex/` | Bearer access token、正しいaccount ID |
+| Anthropic APIキー | `api.anthropic.com/` | `x-api-key` |
+| Anthropic OAuth | `api.anthropic.com/` | Bearer access token、OAuth用betaヘッダー |
+
+OpenAIの更新要求は `/oauth/token` で中継します。
+Anthropicはプロキシが必要に応じて更新します。
+いずれも本物のrefresh tokenはプロキシ側で扱います。
+実OAuthの長期更新については[検証範囲](testing.md)を確認してください。
+
+## 更新と単体利用
+
+CLIを更新したら、プロキシも[停止・削除・再ビルド・再作成](operations.md#cliプロキシを更新する)してください。
+古いプロキシが `worker_token_auth: true` を返さない場合、新しいCLIは接続を拒否します。
+
+ホスト上のローカルプロセスとして使う場合は[プロキシの単体利用](proxy-standalone.md)を参照してください。
+APIの仕様は[認証API](auth-proxy/endpoints.md)、実装を拡張する場合は[コードの境界](proxy-policy.md#コードの境界)を参照してください。

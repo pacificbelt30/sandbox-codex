@@ -4,13 +4,13 @@
 >
 > [← Command Reference](../commands.md)
 
-Runs Codex CLI inside a Docker container with Auth Proxy and network isolation configured automatically.
+Runs Codex CLI, Claude Code or a shell in a Kata VM, managed by containerd with Dragonball.
+The default is `--runtime kata`. Dedicated Linux bridges, namespaces and nftables block direct access; selected proxies provide outbound routes.
+The execution host is Linux x86_64. See [quick start](../getting-started.md) and [network](../network.md).
 
-> **Network isolation**: on start, a per-worker Docker `Internal` network (`dock-net-w-<name>`) is created and the Auth Proxy is connected to it. Worker↔worker, worker→host, and worker→internet traffic is blocked by Docker (no `iptables`/`sudo`; same on macOS / Windows).
-
-> **Automatic image build**: If the image specified by `--image` (or `--template`) does not exist locally, it is built automatically. When the tag matches a known template (e.g. `codex-dock:pwn`), the template is used; otherwise it falls back to the same logic as `codex-dock build`. This also applies to user templates under `~/.config/codex-dock/templates/` — see the [User Templates section of `codex-dock build`](build.md#user-templates).
->
-> On top of that, when a template's Dockerfile exists as a real file on disk (a user template, or a built-in one copied there via `make install-templates`), its modification time is compared against the built image's creation timestamp — **if the file is newer, the image is rebuilt automatically** before the container starts. This is controlled by the `auto_build` (global) / `run.auto_build` (`run`-only) config keys, enabled by default; see the [Configuration Reference](../configuration.md#auto_build). Built-in templates that remain purely embedded in the binary have no file to compare against, so this doesn't apply to them.
+Missing images are built automatically from the matching template or default Dockerfile.
+On-disk template rebuilds are controlled by [auto_build](../configuration.md#auto_build).
+See [build](build.md) for custom tags and templates.
 
 ```bash
 codex-dock run [OPTIONS] [-- command...]
@@ -26,7 +26,9 @@ to quote the whole command as one string ([details](#--exec)).
 
 | Option | Short | Default | Description |
 |---|---|---|---|
-| `--image` | `-i` | `codex-dock:latest` | Docker image for the sandbox |
+| `--runtime` | | `kata` | Worker isolation; `runc` is explicit compatibility mode |
+| `--kata-runtime` | | `io.containerd.kata.v2` | Kata registration on dedicated containerd |
+| `--image` | `-i` | `codex-dock:latest` | OCI image for the sandbox |
 | `--template` | `-T` | | Sandbox image template (`plain`, `pwn`, etc.). Resolved to the template's image tag; an explicit `--image` always takes precedence. Auto-built if not present locally |
 | `--pkg` | `-p` | | Additional packages (repeatable): `apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | Path to a package definition file (`packages.dock`) |
@@ -43,7 +45,7 @@ to quote the whole command as one string ([details](#--exec)).
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
 | `--mount` | | | Additional host directory to mount (repeatable): `<host-path>:<container-path>[:ro\|rw]` ([details](#--mount)) |
-| `--no-internet` | | `false` | Disable general egress (omit `HTTP(S)_PROXY`; only the proxy's API reverse routes remain reachable) |
+| `--no-internet` | | `false` | Disconnect general egress; keep fixed AI API routes |
 | `--keep` | | `false` | Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate) |
 | `--force-recreate-proxy` | | `false` | Recreate the Auth Proxy when its credential state differs from the host even if workers are running (existing workers lose authentication) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
@@ -52,28 +54,29 @@ to quote the whole command as one string ([details](#--exec)).
 | `--parallel` | `-P` | `1` | Number of parallel workers |
 | `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
 | `--shell-type` | | auto-detected from `$SHELL`, else `bash` | Interactive shell to launch ([details](#--shell-type)) |
-| `--user` | | `""` | Container execution user ([details](#--user)) |
+| `--user` | | `current` | Container execution user ([details](#--user)) |
 
 When the host and Auth Proxy credential modes differ, `run` automatically
 recreates the Auth Proxy if no workers are running. If workers are running it
 stops with an error so their in-memory tokens are not invalidated. Pass
-`--force-recreate-proxy` to recreate it anyway, then restart the existing
-workers.
+`--force-recreate-proxy` to recreate it anyway, then create new workers if their pinned proxy IP changed.
 
 ---
 
 ## `--approval-mode`
 
-Controls how Codex CLI requests approval for actions. Designed with Docker container isolation in mind.
+Controls how Codex CLI requests approval for actions. The selected worker runtime provides the outer isolation boundary.
 
 | Value | Codex CLI Flag | Behavior |
 |---|---|---|
-| `suggest` (default) | none | Prompt for every action (safest) |
+| `suggest` (default) | No approval flag | Use the agent's defaults |
 | `auto-edit` | `--ask-for-approval on-request` | The model decides when to ask for approval |
 | `full-auto` | `--ask-for-approval never` | Never prompt for approval |
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | Bypass all approvals and sandbox restrictions |
 
-> **About `danger` mode**: Disables Codex CLI's built-in sandbox, but the Docker container itself provides the isolation boundary (`--cap-drop ALL`, dedicated network, pids-limit, etc.). Host environment is not affected.
+In a verified Kata worker, Codex's inner sandbox is set to `danger-full-access` to avoid nested namespace/seccomp conflicts.
+Approval settings are separate; noninteractive exec may choose its own approval behavior.
+Shared files remain writable according to mount permissions. See [security](../security.md).
 
 ---
 
@@ -127,7 +130,7 @@ auto-detection does not apply to `--shell` debug mode**, which always
 defaults to `bash` when the flag is omitted: `--shell` overrides the
 container's `Entrypoint` directly with the shell binary, bypassing
 `entrypoint.sh` entirely, so there's no way for it to fall back if that
-binary isn't present in the image — Docker just fails to start the
+binary isn't present in the image — the engine fails to start the
 container. Pass `--shell --shell-type zsh` explicitly if you want zsh there.
 
 The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM
@@ -223,10 +226,10 @@ libssl-dev              # no prefix → treated as apt (default)
 ## Parallel Workers
 
 ```bash
-codex-dock run --parallel 3 --worktree --branch myfeature
+codex-dock run --parallel 2 --worktree --branch myfeature
 ```
 
-Automatically creates branches: `myfeature-1`, `myfeature-2`, `myfeature-3`.
+The default node limit is 2 simultaneous workers. Creates branches: `myfeature-1`, `myfeature-2`.
 
 ---
 
@@ -237,22 +240,22 @@ Automatically creates branches: `myfeature-1`, `myfeature-2`, `myfeature-3`.
 codex-dock run
 
 # Run with task in full-auto mode
-codex-dock run --task "Write unit tests" --approval-mode full-auto
+codex-dock run --agent codex --task "Write unit tests" --approval-mode full-auto
 
 # Use git worktree on a feature branch
 codex-dock run --worktree --branch feature-auth --new-branch
 
-# Run 3 parallel workers
-codex-dock run --parallel 3 --worktree
+# Run 2 parallel workers
+codex-dock run --parallel 2 --worktree
 
 # Install additional packages
 codex-dock run --pkg "apt:libssl-dev" --pkg "pip:requests"
 
 # Run in background
-codex-dock run --task "Refactor" --approval-mode full-auto --detach
+codex-dock run --agent codex --task "Refactor" --approval-mode full-auto --detach
 
 # Secure run: read-only, no internet
-codex-dock run --read-only --no-internet --task "Code review"
+codex-dock run --agent codex --read-only --no-internet --task "Code review"
 
 # Use a template image (auto-built if not present)
 codex-dock run --image codex-dock:pwn

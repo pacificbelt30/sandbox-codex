@@ -34,3 +34,8 @@ go install github.com/pacificbelt30/codex-dock@latest
 ## 関連ドキュメント
 
 - [クイックスタート](../getting-started.md) — `go install` によるインストール手順
+
+## ホストサービスとイメージの更新
+
+このコマンドはnode・guard・IO logger・固定資産・プロキシイメージを更新しません。
+[Kataの配置](../kata.md)と[運用時の更新](../operations.md#cliプロキシを更新する)を参照してください。

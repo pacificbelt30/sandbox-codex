@@ -1,328 +1,97 @@
-# Quick Start
+# Quick start
 
-> The current runtime uses containerd + Kata/Dragonball without Docker Engine or CLI. Follow the [current deployment and migration guide](../kata.md); Docker-specific setup below describes the previous backend.
+[日本語](../getting-started.md) | **English**
 
-> [日本語](../getting-started.md) | **English**
+This guide assumes an administrator has completed the [Kata / Dragonball host setup](../kata.md) (Japanese).
+The host needs Linux x86_64, KVM, cgroup v2, dedicated containerd, Kata runtime-rs, Dragonball, BuildKit and `buildctl`.
 
-This guide walks you through installing codex-dock and launching your first container.
+## 1. Check the host
 
----
-
-## Prerequisites
-
-| Requirement | Version | How to Check |
-|---|---|---|
-| Go | 1.24 or later | `go version` |
-| Docker Engine | 20.10 or later | `docker version` |
-| git | any | required for worktree feature |
-
----
-
-## Installation
-
-### Using Makefile (Recommended)
-
-The Makefile lets you build the binary, install it, place the default config file, and build the Docker image all at once.
+Run as a member of the operator group. Use the same account for credentials and normal CLI operations.
 
 ```bash
-# Clone the repository
-git clone https://github.com/pacificbelt30/codex-dock.git
-cd codex-dock
-
-# Build the binary and the codex-dock:latest image
-make all
-
-# Install the binary to /usr/local/bin and place the default config
-sudo make install-all
+codex-dock runtime-check
 ```
 
-The above steps complete the following:
+To build from a source checkout, use Go 1.24.7 or later:
 
-| What | Where |
+```bash
+make build
+make install-config
+make install-templates
+```
+
+This builds the CLI and helper binaries. Host service installation is a separate administrator task.
+
+## 2. Prepare credentials
+
+Configure credentials before starting the proxy.
+
+| Agent | Host credential sources |
 |---|---|
-| Binary | `/usr/local/bin/codex-dock` |
-| Default config | `~/.config/codex-dock/config.toml` |
-| Sandbox image | `codex-dock:latest` (Docker) |
+| Codex | `OPENAI_API_KEY`, saved API key, `~/.codex/auth.json` |
+| Claude Code | `ANTHROPIC_API_KEY`, saved API key, `~/.claude/.credentials.json` |
 
-> **Note**: `sudo make install-all` detects the invoking user's home directory via `$SUDO_USER`, so the config is placed under your home (`~/.config/codex-dock/`), not `/root/.config/`.
+Use an existing login file under the caller's home, or set an API key in the environment.
+See [credential precedence](auth-proxy.md#credential-sources).
+The auth proxy runs as the caller's UID/GID and reads files through read-only binds.
+Owner-only `0600` files work without changing their permissions.
+Real API keys and OAuth access/refresh tokens are not passed to workers.
 
-To install to a custom location:
+## 3. Build images and start the proxies
 
-```bash
-sudo make install PREFIX=/opt/codex-dock
-```
-
-You can also run targets individually:
-
-```bash
-make build          # build binary only
-make docker         # build Docker image only
-make install-config # place config only (skipped if already exists)
-make uninstall      # remove installed binary
-make clean          # remove build artifacts
-```
-
-### Build from Source (Manual)
+Build the proxy from the repository root: it needs the Go source.
 
 ```bash
-# Clone the repository
-git clone https://github.com/pacificbelt30/codex-dock.git
-cd codex-dock
-
-# Build binary
-go build -o codex-dock .
-
-# Add to PATH (optional)
-sudo mv codex-dock /usr/local/bin/
-```
-
----
-
-## Step 1: Build the Sandbox Image
-
-Build the image for running Codex CLI inside containers.
-
-```bash
+codex-dock proxy build
+codex-dock proxy run
 codex-dock build
 ```
 
-**What happens internally:**
-- Auto-detects Dockerfile (current directory → `~/.config/codex-dock/`)
-- Node.js 22 base + Codex CLI (`@openai/codex`) installed
-- Creates non-root user `codex` (uid:1001)
-- Default tag: `codex-dock:latest`
+`proxy run` creates the network and starts two proxies:
+`codex-auth-proxy` for authenticated AI requests, and `codex-http-proxy` for general HTTP/CONNECT traffic.
+Only the admin port is published to host loopback (`127.0.0.1:18081`).
 
-> **Optional**: If the image doesn't exist when you run `codex-dock run`, it will be built automatically.
-> On first use, `codex-dock run` alone is enough.
+## 4. Start a worker
 
-To use a custom Dockerfile, specify it with `-f`:
+Run from the project directory, which is shared at `/workspace`.
 
 ```bash
-codex-dock build -f ./my/Dockerfile --tag my-codex:v1
-```
+codex-dock run --agent codex
+# Or:
+codex-dock run --agent claude
 
----
-
-## Step 2: Configure Authentication
-
-### Using an API Key
-
-```bash
-export OPENAI_API_KEY=sk-...
-codex-dock auth set
-```
-
-Or simply set the environment variable each time you run:
-
-```bash
-export OPENAI_API_KEY=sk-...
+# Omit --agent for a shell with proxy authentication configured.
 codex-dock run
+codex-dock run -- ls -la
 ```
 
-### Using ChatGPT Subscription (OAuth)
+The default runtime is Kata. A failed isolation check stops startup; it never falls back to runc automatically.
 
-First, log in with the standard Codex CLI:
+## 5. Run in the background
 
 ```bash
-codex login
+codex-dock run --agent codex --name add-tests \
+  --task "Add unit tests" --approval-mode full-auto \
+  --worktree --branch add-tests --new-branch --detach
+
+codex-dock ps -a
+codex-dock logs add-tests --follow
 ```
 
-Once `~/.codex/auth.json` is generated, codex-dock will detect it automatically.
+`full-auto` disables agent approval prompts. Shared files remain writable according to their mount permissions.
+
+## 6. Stop, restart and remove
 
 ```bash
-# Check auth status
-codex-dock auth show
-# Auth source: ~/.codex/auth.json (OAuth/ChatGPT subscription)
+codex-dock stop add-tests
+codex-dock vm start add-tests
+codex-dock rm add-tests --force
 ```
 
----
+Stop revokes the worker token and keeps the container and snapshot for restart.
+Restart rechecks isolation and restores authentication for the same worker ID and workspace.
+Save required results before removal, which also cleans up managed worktrees and networks.
 
-## Step 3: Launch Your First Container
-
-```bash
-# Mount current directory to /workspace and start Codex
-codex-dock run --user current --approval-mode full-auto
-```
-
-`--user current` keeps file ownership aligned with the host user, so it should be the default choice for typical local development.
-
-`--approval-mode full-auto` is the recommended replacement for the deprecated `--full-auto` flag.
-
-**What happens automatically:**
-
-```
-1. Create the per-worker Internal network (dock-net-w-<name>)
-   and connect the proxy
-       │
-       ▼
-2. Connect to the Auth Proxy admin endpoint
-   (default: http://127.0.0.1:18081)
-       │
-       ▼
-3. Issue short-lived token
-       │
-       ▼
-4. Create and start container
-   - Network: dock-net-w-<name> (Internal)
-   - Mount:   ./  →  /workspace
-   - env:     CODEX_TOKEN=cdx-xxxx, HTTP(S)_PROXY=proxy
-       │
-       ▼
-5. entrypoint.sh runs inside container
-   → Fetches credentials from Auth Proxy
-   → Launches Codex CLI
-```
-
----
-
-## Common Patterns
-
-### Run a Task Automatically
-
-```bash
-codex-dock run \
-  --user current \
-  --approval-mode full-auto \
-  --task "Add unit tests to src/auth.go" \
-  --detach
-```
-
-Check logs when complete:
-
-```bash
-codex-dock ps --all
-codex-dock logs codex-brave-atlas --tail 50
-```
-
-### Safe Branch Work with git worktree
-
-Work on a new branch without modifying the original repository.
-
-```bash
-codex-dock run \
-  --user current \
-  --approval-mode full-auto \
-  --worktree \
-  --branch feature-auth \
-  --new-branch \
-  --task "Refactor the auth module"
-```
-
-The worktree is automatically deleted when the container exits.
-
-### Run Multiple Tasks in Parallel
-
-```bash
-# Run on 3 branches in parallel
-codex-dock run --user current --approval-mode full-auto --parallel 3 --worktree --detach
-```
-
-Monitor all workers with TUI:
-
-```bash
-codex-dock ui
-```
-
-### Run with Additional Packages
-
-```bash
-codex-dock run --pkg "apt:libssl-dev" --pkg "pip:cryptography"
-```
-
-Or manage via a `packages.dock` file:
-
-```bash
-# Create packages.dock
-cat > packages.dock << 'EOF'
-apt:libssl-dev
-pip:cryptography
-pip:pytest
-npm:typescript
-EOF
-
-# Auto-detected and installed
-codex-dock run
-```
-
----
-
-## Check Network Status
-
-```bash
-# Check the egress network and per-worker networks
-codex-dock network status
-
-# Check running workers
-codex-dock ps
-```
-
----
-
-## Cleanup
-
-```bash
-# Stop all containers
-codex-dock stop --all
-
-# Remove stopped containers (the per-worker network is disconnected and removed too)
-codex-dock rm <container-name>
-
-# Remove the egress network (if needed)
-codex-dock network rm
-```
-
----
-
-## Troubleshooting
-
-### Container Fails to Start
-
-```bash
-# Run with detailed logging
-codex-dock run --verbose --debug
-```
-
-Common causes:
-- Docker is not running → check with `docker ps`
-- Image build failed → check with `codex-dock build --verbose`
-- API key not set → check with `codex-dock auth show`
-- Auth Proxy not running → on a terminal with the default proxy URLs, `codex-dock run` prompts `Build/start the auth proxy container now? [y/N]`; answer `y` to build (if needed) and start it automatically. In non-interactive shells, or with custom proxy URLs, start it yourself with `codex-dock proxy run`.
-
-### Authentication Error
-
-```bash
-# Check auth status
-codex-dock auth show
-
-# Reset API key
-export OPENAI_API_KEY=sk-...
-codex-dock auth set
-```
-
-### Network Error
-
-```bash
-# Recreate the egress network
-codex-dock network rm
-codex-dock network create
-```
-
-### View Logs
-
-```bash
-# Real-time container logs
-codex-dock logs <container-name> --follow
-
-# Check all worker status
-codex-dock ps --all
-```
-
----
-
-## Next Steps
-
-- [Architecture Overview](architecture.md) — Understand the system as a whole
-- [Auth Proxy Specification](auth-proxy.md) — Learn how authentication works
-- [Network Specification](network.md) — Details of network isolation
-- [Command Reference](commands.md) — All commands and options
-- [Configuration Reference](configuration.md) — config.toml settings
+Foreground workers are removed when they finish unless `--keep` is set.
+Shared proxies keep running. See [operations](../operations.md) and [troubleshooting](../troubleshooting.md) (Japanese).

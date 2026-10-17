@@ -1,6 +1,6 @@
 # プロキシの通信ポリシーと拡張
 
-ワーカーの一般通信は認証情報を持たないegress proxyが扱う。OpenAI/Anthropicの固定認証経路とは別で、下記ルールによってAI APIの固定経路を許可・拒否するものではない。ワーカーからの直接通信や他ワーカーへの通信は専用Docker networkで遮断する。
+ワーカーの一般通信は認証情報を持たないegress proxyが扱う。OpenAI/Anthropicの固定認証経路とは別で、下記ルールによってAI APIの固定経路を許可・拒否するものではない。ワーカーからの直接通信や他ワーカーへの通信は専用bridge・namespace・nftablesで遮断する。
 
 ## 設定
 
@@ -50,13 +50,13 @@ codex-dock proxy run \
 4. `codex-dock proxy run` で新しい設定の一般通信用proxyを作成する。
 5. ワーカーを新規作成する。KataワーカーはproxyのIPを固定しており、IP変更時は保存済みワーカーの再起動を拒否する。
 
-改造版proxyではトークンと既存認証protocolを維持する。今回の認証コード分割を反映するためauth proxyも更新する場合は、同じdrain期間に更新する。
+改造版proxyではトークンと既存認証protocolを維持する。auth proxyも更新する場合は、同じ停止期間に[更新手順](operations.md#cliプロキシを更新する)を適用する。
 
 ## コードの境界
 
 | モジュール | 責任 |
 |---|---|
-| `internal/networkpolicy` | HTTP/Docker/認証から独立した宛先判定、設定検証、DNS応答検証とIP固定dialer |
+| `internal/networkpolicy` | HTTP/実行エンジン/認証から独立した宛先判定、設定検証、DNS応答検証とIP固定dialer |
 | `authproxy/forward.go` | 一般通信のHTTP/CONNECT処理 |
 | `authproxy/transport.go` | ポリシーとHTTP transportの接続、HTTPリダイレクトの再検証 |
 | `authproxy/openai.go`, `anthropic.go` | 各プロバイダーの認証注入とOAuth更新 |
@@ -70,8 +70,7 @@ codex-dock proxy run \
 
 将来、ワーカー別認可を追加する場合は、認証済みワーカーidentityをポリシーへ渡す経路と接続プール/CONNECTの寿命を合わせて設計する。未検証のHTTPヘッダーや申告されたワーカー名を認可根拠にしない。
 
-## 検証記録
+## 動作確認
 
-2026-10-17に全Goテスト・全パッケージのrace検査・`go vet`・Linux CLIとmacOS arm64 CLIのビルド・配布用proxyイメージのビルドが成功した。新規回帰試験で拒否優先、許可条件の積集合、IPv4/IPv6・mapped IP、DNS応答全体の検査とIP固定、HTTPリダイレクト・Hostヘッダーによる迂回拒否、HTTP/CONNECTで同じCIDR/ポート制限、許可したTLS CONNECT、CLI/config優先順位と設定不一致の検出を確認した。実イメージのCLIでも不正CIDRによる起動拒否を確認した。
-
-新proxyとKata 4.2.0 Go/QEMUを独立ノードで組み合わせ、既存の実Kata受け入れ試験も67.12秒でPASS。認証placeholder・Git/worktree・PTY・guest制限・並列network隔離・host/admin遮断・no-internet・停止再起動・削除を確認した。実AI/OAuth更新と手動の対話操作はこのfixture試験の対象外。
+宛先判定・DNS・redirect・CONNECTは自動テスト、VMを含めた通信分離は実Kata受入試験で確認しています。
+詳細は[テストと動作確認](testing.md)を参照してください。

@@ -1,183 +1,105 @@
-# `codex-dock build` — Build Sandbox Image
+# Build images
 
-> [日本語](../../commands/build.md) | **English**
->
-> [← Command Reference](../commands.md)
+[日本語](../../commands/build.md) | **English**
 
-```bash
-codex-dock build [OPTIONS]
-```
+`codex-dock build` uses standalone BuildKit and imports OCI output into the worker's containerd namespace.
+Dockerfile format is supported without Docker Engine or Docker CLI.
 
-| Option | Short | Default | Description |
-|---|---|---|---|
-| `--tag` | `-t` | `codex-dock:latest` | Image tag |
-| `--dockerfile` | `-f` | (auto-detected) | Dockerfile path |
-| `--template` | `-T` | | Template name (`plain`, `pwn`, etc.). Use `--template list` to see available templates |
-| `--print-entrypoint` | | `false` | Print the embedded `entrypoint.sh` to stdout and exit, without building anything ([details](#--print-entrypoint--vendoring-entrypointsh-into-a-custom-dockerfile)) |
-
-> **Note**: `--template` and `--dockerfile` (`-f`) are mutually exclusive.
-
-Dockerfile search order (when `--template` is not used): current dir → `docker/` subdir → `~/.config/codex-dock/` (auto-written if missing).
-
-> **Optional**: `codex-dock run` auto-builds the image if it doesn't exist.
-
----
-
-## Templates
-
-Use `--template` to build specialized images for specific workflows. Template Dockerfiles are embedded in the binary, so no source checkout is required.
-
-### Available Templates
-
-| Template | Tag | Description |
-|---|---|---|
-| `plain` | `codex-dock:latest` | Minimal setup (Codex CLI + Claude Code + basic tools). Same as the default Dockerfile |
-| `pwn` | `codex-dock:pwn` | CTF / binary exploitation. Includes pwntools, ptrlib, ropper, pwndbg, radare2, gdb, nasm, strace, ltrace, binwalk, etc. |
-
-Derived templates (e.g. `pwn`) extend the base image (`codex-dock:latest`) via `FROM`. If the base image hasn't been built yet, it is built automatically first.
-
-### User Templates
-
-Besides the templates built into the binary under `docker/templates/`, you can keep
-**your own templates under `~/.config/codex-dock/templates/`.** No rebuild of
-codex-dock is required — just drop in a Dockerfile and it becomes available via
-`--template`. This is a good place for private or team-internal templates you don't
-want to commit to the repo.
-
-#### Where to put them
-
-```
-~/.config/codex-dock/templates/
-└── <template-name>/
-    └── Dockerfile
-```
-
-For example, to add a template named `mytool`:
+## Commands
 
 ```bash
-mkdir -p ~/.config/codex-dock/templates/mytool
-cp path/to/Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
-
-# verify it shows up (marked with [user])
+codex-dock build
 codex-dock build --template list
-#   Available templates:
-#     plain        codex-dock:latest
-#     pwn          codex-dock:pwn (extends codex-dock:latest)
-#     mytool       codex-dock:mytool [user]
-#
-#   User templates directory: /home/you/.config/codex-dock/templates
-#   Add <dir>/<name>/Dockerfile to add a template or override a built-in one.
-
-# build it
-codex-dock build --template mytool
-```
-
-#### Precedence (overriding a built-in template)
-
-Placing a directory under `~/.config/codex-dock/templates/<name>/` with the same
-name as a built-in template (e.g. `pwn`) makes the user version take precedence.
-This lets you try out or customize a built-in template locally without editing
-files in the repo.
-
-| Precedence | Location |
-|---|---|
-| 1 (highest) | `~/.config/codex-dock/templates/<name>/Dockerfile` (user template) |
-| 2 | `docker/templates/<name>/Dockerfile` (built-in, embedded in the binary) |
-
-#### Validation
-
-User templates go through **exactly the same static checks** (`template.Validate()`)
-described in "Template Validation" below as built-in ones. A derived template
-(`FROM codex-dock:*`) skips those checks just like a built-in derived template does.
-So verifying and managing a user template is no different from a built-in one.
-
-#### Seeding built-in templates at install time
-
-Built-in templates (`plain`, `pwn`, etc.) only live embedded in the binary — by
-default no file for them exists under `~/.config/codex-dock/templates/`. Running
-`make install-templates` (or `make install-all`) copies `docker/sandbox/Dockerfile`
-(`plain`) and each `docker/templates/<name>/Dockerfile` into that directory, so you
-can view and edit them as regular files afterwards. Templates that already have a
-file there are skipped and never overwritten.
-
-```bash
-make install-templates
-#   Default template 'plain' installed at ~/.config/codex-dock/templates/plain/Dockerfile
-#   Default template 'pwn'   installed at ~/.config/codex-dock/templates/pwn/Dockerfile
-```
-
-Once seeded, these are treated as user templates (`codex-dock build --template list`
-marks them `[user]`) and take precedence over the binary-embedded originals, so
-editing the file directly changes what gets built.
-
-### Template Validation
-
-Before building, templates are statically validated to ensure they include essential tools:
-
-- `@openai/codex` (Codex CLI) installation
-- `@anthropic-ai/claude-code` (Claude Code) installation
-- Basic tools (`git`, `curl`)
-- Non-root user creation and `USER` switch
-- `entrypoint.sh` copy
-
-Derived templates (`FROM codex-dock:*`) trust the base image and skip these checks.
-
-### Examples
-
-```bash
-# List available templates
-codex-dock build --template list
-
-# Build the plain template (same as default)
-codex-dock build --template plain
-
-# Build the pwn template (tagged codex-dock:pwn)
 codex-dock build --template pwn
-
-# Build pwn template with a custom tag
-codex-dock build --template pwn --tag my-pwn:v1
-
-# Use a template image with codex-dock run
-codex-dock run --image codex-dock:pwn
+codex-dock build -f ./Dockerfile --tag my-codex:v1
+codex-dock run --image my-codex:v1
 ```
 
----
+| Option | Purpose |
+|---|---|
+| `--tag`, `-t` | Image tag; normally `codex-dock:latest`, or the selected template's tag |
+| `--dockerfile`, `-f` | Dockerfile path |
+| `--template`, `-T` | Template name, or `list` |
+| `--print-entrypoint` | Print embedded entrypoint.sh and exit without building |
 
-## `--print-entrypoint` — vendoring entrypoint.sh into a custom Dockerfile
+`--template` and `-f` are mutually exclusive.
+Missing images are built from the corresponding template or default Dockerfile.
+Build arbitrary custom tags explicitly before using them.
 
-A Dockerfile that does **not** `FROM codex-dock:*` (i.e. it isn't a template
-derived from the built-in sandbox image) still needs `docker/sandbox/entrypoint.sh`
-copied in and set as its `ENTRYPOINT` — that script is what fetches the
-placeholder token from the Auth Proxy and dispatches to `--agent`/`--exec`.
-Until now the only way to get it was to copy it out of a checkout of this
-repository by hand, which risks drifting from the Auth Proxy protocol as it
-changes.
+## Custom image
 
-`--print-entrypoint` writes the exact `entrypoint.sh` embedded in the
-`codex-dock` binary to stdout and exits without building anything, so you can
-fetch the canonical copy from the binary you already have installed:
+First build the base image with `codex-dock build`.
+Create this Dockerfile in a new working directory:
+
+```dockerfile
+FROM codex-dock:latest
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends jq \
+    && rm -rf /var/lib/apt/lists/*
+USER codex
+```
+
+Then build and run it from that directory:
+
+```bash
+codex-dock build -f ./Dockerfile --tag my-codex:jq
+codex-dock run --image my-codex:jq -- jq --version
+```
+
+The image inherits the agents and auth entrypoint.
+Root is used for the build step; the Kata worker runs with a resolved non-root UID and verified restrictions.
+Do not include credentials or management sockets in images.
+
+## Independent base image
+
+Install the selected agent and entrypoint dependencies, using `docker/sandbox/Dockerfile` as the reference.
+Get the matching entrypoint from your CLI:
 
 ```bash
 codex-dock build --print-entrypoint > entrypoint.sh
-chmod +x entrypoint.sh
 ```
 
-Then reference it from your own Dockerfile, mirroring what
-`docker/sandbox/Dockerfile` does:
+After creating the non-root user and installing dependencies, include:
 
 ```dockerfile
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 USER codex
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+WORKDIR /workspace
+ENTRYPOINT ["/entrypoint.sh"]
 ```
 
-Re-run the command whenever you upgrade `codex-dock` to pick up any changes to
-the Auth Proxy protocol.
+Refresh the entrypoint when updating the CLI. Custom images pass the same Kata startup gate and need their own compatibility checks.
 
----
+## User templates
 
-## Related Documentation
+Place a Dockerfile at `~/.config/codex-dock/templates/<name>/Dockerfile`.
+User templates override built-ins with the same name.
 
-- [`codex-dock run`](run.md)
-- [Quick Start](../getting-started.md)
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytool
+cp Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
+codex-dock build --template mytool
+codex-dock run --template mytool
+```
+
+`plain` uses `codex-dock:latest`; other names use `codex-dock:<name>`.
+`make install-templates` copies built-ins without overwriting existing files.
+See [auto_build](../configuration.md#auto_build).
+
+## Build context
+
+With explicit `-f`, the context is the current directory.
+Otherwise the search order is `./Dockerfile`, `./docker/sandbox/Dockerfile`, `./docker/Dockerfile`, then `~/.config/codex-dock/Dockerfile`.
+The selected Dockerfile directory becomes the context. Missing config defaults are generated.
+Template builds create a temporary context with required entrypoint files.
+Proxy images use [proxy build](proxy.md).
+
+## Builder connection
+
+The default address is `unix:///run/codex-dock-buildkit/buildkitd.sock`; override with `BUILDKIT_HOST`.
+Use the dedicated containerd socket and namespace for BuildKit's containerd worker.
+Proxy environment variables are passed as build args.
+`CODEX_PROXY_CERT` is supplied as the `proxy_ca` secret, used only during RUN in built-in Dockerfiles.
+Configure BuildKit daemon registry proxy/CA access separately.

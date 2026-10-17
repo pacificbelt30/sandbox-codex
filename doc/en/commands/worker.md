@@ -22,6 +22,16 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
+## `codex-dock vm start`
+
+```bash
+codex-dock vm start NAME_OR_ID
+```
+
+Restart a retained worker with the same ID and workspace.
+Kata checks run again and the saved placeholder is restored before user code is released.
+If a pinned proxy IP changed, create a new worker instead.
+
 ## `codex-dock stop`
 
 ```bash
@@ -54,3 +64,5 @@ codex-dock logs NAME|ID [--tail 100] [--follow]
 - [TUI Dashboard](ui.md)
 - [`codex-dock run`](run.md)
 - [Quick Start](../getting-started.md)
+
+See [VM management](../../vm.md) (Japanese) for host process and allocation reconciliation.

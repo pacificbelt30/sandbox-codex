@@ -1,382 +1,126 @@
 # クイックスタート
 
-実行ホストは最初に[containerd・Kata/Dragonballの配置](kata.md)を完了してください。Docker Engine・Docker CLIは不要です。以降の通常操作はoperator groupで行います。
+**日本語** | [English](en/getting-started.md)
 
-> **日本語** | [English](en/getting-started.md)
+準備済みの実行ホストで、最初のワーカーを起動する手順です。
+ホストをまだ用意していない場合は、管理者が先に[Kata / Dragonballを配置](kata.md)してください。
 
-codex-dock のインストールから最初のコンテナ起動までの手順を説明します。
+## 1. 実行ホストを確認する
 
-ワーカーの既定はKataです。最初に[Kata実行ホストの準備](kata.md)を実施してください。既存のrunc環境で以下の手順を使う場合は、`run` に `--runtime runc` を明示します。
-
----
-
-## 前提条件
-
-| 要件 | バージョン | 確認方法 |
-|---|---|---|
-| Go | 1.24 以上 | `go version` |
-| 実行管理 | containerd 2.x / Kata runtime-rs / Dragonball / BuildKit | `codex-dock runtime-check` |
-| git | 任意 | worktree 機能を使う場合に必要 |
-
----
-
-## インストール
-
-### Makefile を使う（推奨）
-
-Makefile を使うと、バイナリのビルド・インストール・デフォルト設定ファイルの配置・OCI イメージの作成をまとめて行えます。
+operator groupに属する利用者で実行します。通常の `run` や `proxy run` に `sudo` は使いません。
 
 ```bash
-# リポジトリをクローン
-git clone https://github.com/pacificbelt30/codex-dock.git
-cd codex-dock
-
-# バイナリをビルドし、codex-dock:latest イメージを作成
-make all
-
-# バイナリを /usr/local/bin に配置し、デフォルト設定を ~/.config/codex-dock/config.toml に配置
-sudo make install-all
+codex-dock runtime-check
 ```
 
-上記 3 ステップで以下がすべて完了します：
+Linux x86_64、KVM、cgroup v2、専用containerd、Kata runtime-rs、Dragonballが必要です。
+イメージの作成にはBuildKitと `buildctl` も必要です。
+エラーが出た場合は[トラブルシューティング](troubleshooting.md)を参照してください。
 
-| 完了する内容 | 場所 |
+ソースからCLIを用意する場合は、リポジトリで次を実行します。
+Go 1.24.7以上が必要です。管理サービスや固定資産の配置は別途必要です。
+
+```bash
+make build
+make install-config
+make install-templates
+```
+
+設定とテンプレートが既にある場合は上書きしません。
+
+## 2. ホストの認証を用意する
+
+使用するエージェントの認証を、プロキシ起動前に用意します。
+
+| エージェント | 利用できるホスト側の認証 |
 |---|---|
-| バイナリ配置 | `/usr/local/bin/codex-dock` |
-| デフォルト設定 | `~/.config/codex-dock/config.toml` |
-| サンドボックスイメージ | `codex-dock:latest`（OCI） |
-| Auth Proxy イメージ | `codex-dock-proxy:latest`（OCI） |
+| Codex | `OPENAI_API_KEY`、保存済みAPIキー、`~/.codex/auth.json` |
+| Claude Code | `ANTHROPIC_API_KEY`、保存済みAPIキー、`~/.claude/.credentials.json` |
 
-> **注意**: `sudo make install-all` は `$SUDO_USER` を参照して実行ユーザーのホームディレクトリを特定するため、config は `/root/.config/` ではなく `~/config/codex-dock/` に配置されます。
+既存のログインファイルは、`codex-dock` を実行する利用者のホームに置きます。
+APIキーを使う場合は環境変数を設定します。OpenAIのキーは `codex-dock auth set` で保存することもできます。
+[認証の優先順位](auth-proxy.md#認証ソース)も確認してください。
 
-インストール先を変更したい場合：
+認証プロキシは同じ利用者のUID/GIDでファイルを読み取ります。
+所有者だけが読める `0600` のまま利用でき、元ファイルの権限を広げる必要はありません。
+実APIキーやOAuthのaccess token・refresh tokenはワーカーに渡しません。
 
-```bash
-sudo make install PREFIX=/opt/codex-dock
-```
+## 3. プロキシとイメージを用意する
 
-ステップごとに個別実行することもできます：
-
-```bash
-make build          # バイナリのみビルド
-make image          # BuildKitでOCI イメージをビルド
-make install-config # 設定ファイルのみ配置（既存ならスキップ）
-make uninstall      # バイナリをアンインストール
-make clean          # ビルド成果物を削除
-```
-
-### ソースからビルド（手動）
+プロキシのビルドは、このリポジトリのルートで実行してください。
+プロキシイメージはGoソースから作成します。
 
 ```bash
-# リポジトリをクローン
-git clone https://github.com/pacificbelt30/codex-dock.git
-cd codex-dock
-
-# バイナリをビルド
-go build -o codex-dock .
-
-# パスに追加（任意）
-sudo mv codex-dock /usr/local/bin/
-```
-
----
-
-## Step 0: Auth Proxy を起動する（必須）
-
-`codex-dock run` は外部 Auth Proxy の admin エンドポイント（既定: `http://127.0.0.1:18081`）へ接続してトークンを発行します。ワーカー自身はデータプレーン（`http://codex-auth-proxy:18080`）へ 固定hosts 経由で到達します。
-
-> **補足**: プロキシ未起動のまま `codex-dock run` を実行すると、対話端末（TTY）かつ既定の proxy URL の場合に「Build/start the auth proxy container now? [y/N]」と確認が出ます。`y` を選ぶと（必要ならイメージをビルドして）プロキシコンテナを起動し、そのまま続行します。非対話環境や proxy URL をカスタムした場合は従来どおりエラーになるので、先に手動で起動してください。
-
-### containerdノードで起動
-
-```bash
-# 1) egress ネットワークを作成（初回のみ）
-codex-dock network create
-
-# 2) Auth Proxy イメージをビルド
 codex-dock proxy build
-
-# 3) Auth Proxy（ルータ）コンテナを起動（認証情報は自動検出）
 codex-dock proxy run
-```
-
-
-> ネットワーク隔離はroot管理サービスが専用bridge・namespace・nftablesで行います。各ワーカー起動時に専用 `Internal` ネットワークが作られ、プロキシが接続され、ワーカーはプロキシ経由でのみ外部へ到達します。詳細は [ネットワーク仕様](network.md) を参照してください。
-
-`codex-dock proxy run` は以下の認証情報を自動的にコンテナへバインドします：
-
-| 認証方式 | ホスト側のソース | コンテナへの渡し方 |
-|---|---|---|
-| API キー（環境変数） | `OPENAI_API_KEY` | `-e OPENAI_API_KEY=<値>` |
-| API キー（保存済み） | `~/.config/codex-dock/apikey` | bind-mount（読み取り専用） |
-| OAuth / ChatGPT | `~/.codex/auth.json` | bind-mount（読み取り専用） |
-
-存在するすべてのソースが同時にバインドされます。プロキシ起動時の優先順位は `OPENAI_API_KEY` 環境変数 → 保存済みキーファイル → OAuth の順です。
-
-#### コンテナの停止・削除
-
-```bash
-codex-dock proxy stop   # コンテナを停止
-codex-dock proxy rm     # コンテナを削除
-```
-
-### ローカルプロセスとして起動
-
-```bash
-codex-dock proxy serve --listen 0.0.0.0:18080
-```
-
-この場合、ワーカーコンテナから到達できる URL を `--proxy-container-url` で指定してください。
-
-> `connecting external auth proxy: connecting remote auth proxy ... connect: connection refused` が出る場合は、Auth Proxy が未起動です。上記のどちらかの方法で起動後に `codex-dock run` を再実行してください。
-
----
-
-## Step 1: サンドボックスイメージのビルド
-
-コンテナ内で Codex CLI を実行するためのイメージをビルドします。
-
-```bash
 codex-dock build
 ```
 
-**内部で行われること：**
-- Dockerfile を自動検出（カレントディレクトリ → `~/.config/codex-dock/`）
-- Node.js 22 ベース + Codex CLI (`@openai/codex`) をインストール
-- 非 root ユーザー `codex` (uid:1001) を作成
-- デフォルトタグ: `codex-dock:latest`
+`proxy run` はネットワークを自動作成し、次の2つを起動します。
 
-> **省略可能**: `codex-dock run` 実行時にイメージが存在しない場合は自動的にビルドされます。
-> 初回は `codex-dock run` だけで完結します。
+| プロキシ | 役割 |
+|---|---|
+| `codex-auth-proxy` | AI APIへの認証付き通信 |
+| `codex-http-proxy` | Git、npm、pipなどの一般通信。実認証情報は持たない |
 
-カスタム Dockerfile を使いたい場合は `-f` で指定できます：
+管理APIはホストの `127.0.0.1:18081` に公開します。
+ワーカー側のAPIポートはホストへ公開しません。
+詳しくは[認証プロキシ](auth-proxy.md)を参照してください。
+
+## 4. ワーカーを起動する
+
+作業するプロジェクトのディレクトリで実行します。
+カレントディレクトリをVM内の `/workspace` に共有します。
 
 ```bash
-codex-dock build -f ./my/Dockerfile --tag my-codex:v1
+codex-dock run --agent codex
+# または
+codex-dock run --agent claude
 ```
 
----
-
-## Step 2: 認証の設定
-
-### API キーを使う場合
+`--agent` を省略すると、利用可能な認証を設定したシェルが開きます。
+コマンドを1回だけ実行することもできます。
 
 ```bash
-export OPENAI_API_KEY=sk-...
-codex-dock auth set
-```
-
-または、実行のたびに環境変数を設定するだけでも動作します：
-
-```bash
-export OPENAI_API_KEY=sk-...
 codex-dock run
+codex-dock run -- ls -la
 ```
 
-### ChatGPT サブスクリプション（OAuth）を使う場合
+Kataでは、独立したカーネルと権限・資源の制限を確認してから処理を始めます。
+確認に失敗した場合は起動を中止します。
 
-まず通常の Codex CLI でログインします：
+## 5. バックグラウンドで実行する
 
 ```bash
-codex login
+codex-dock run --agent codex --name add-tests \
+  --task "ユニットテストを追加して" --approval-mode full-auto \
+  --worktree --branch add-tests --new-branch --detach
+
+codex-dock ps -a
+codex-dock logs add-tests --follow
 ```
 
-`~/.codex/auth.json` が生成されれば、codex-dock が自動的に検出します。
+`--approval-mode full-auto` はエージェントの承認確認を省略します。
+共有ファイルへの書き込み範囲は、[マウントと承認設定](commands/run.md)で確認してください。
+
+## 6. 停止・再起動・削除する
 
 ```bash
-# 認証状態を確認
-codex-dock auth show
-# Auth source: ~/.codex/auth.json (OAuth/ChatGPT subscription)
+codex-dock stop add-tests
+codex-dock vm start add-tests
+codex-dock rm add-tests --force
 ```
 
----
+停止すると短命トークンが失効します。再起動では同じワーカーIDとworkspaceを使い、認証を復元します。
+削除すると、管理対象のネットワークやworktreeも回収します。必要な成果は先に保存してください。
 
-## Step 3: 最初のコンテナを起動する
+前面で実行したワーカーは、既定では終了時に削除します。
+残す場合は `--keep` を指定します。
+プロキシは共有サービスなので、ワーカー終了後も動き続けます。
 
-```bash
-# カレントディレクトリを /workspace にマウントして Codex を起動
-codex-dock run --user current --approval-mode full-auto
-```
+## 次に読む
 
-`--user current` を付けると、ホスト側の現在ユーザーと同じ uid:gid でコンテナを起動できます。
-生成されるファイルの所有者がずれにくいため、通常はこの指定を推奨します。
-
-`--approval-mode full-auto` は現在の推奨設定です。旧 `--full-auto` フラグは非推奨です。
-
-**実行時に行われること：**
-
-```
-1. ワーカー専用 Internal ネットワーク（dock-net-w-<name>）を作成し
-   プロキシを接続
-       │
-       ▼
-2. 外部 Auth Proxy の admin へ接続確認
-   (既定: http://127.0.0.1:18081)
-       │
-       ▼
-3. 短命トークンを発行
-       │
-       ▼
-4. コンテナを作成・起動
-   - Network: dock-net-w-<name>（Internal）
-   - Mount:   ./  →  /workspace
-   - env:     CODEX_TOKEN=cdx-xxxx, HTTP(S)_PROXY=proxy
-       │
-       ▼
-5. コンテナ内で entrypoint.sh が実行
-   → Auth Proxy から認証情報を取得
-   → Codex CLI を起動
-```
-
----
-
-## よく使うパターン
-
-### タスクを指定して自動実行
-
-```bash
-codex-dock run \
-  --user current \
-  --approval-mode full-auto \
-  --task "src/auth.go のユニットテストを追加してください" \
-  --detach
-```
-
-完了後にログを確認：
-
-```bash
-codex-dock ps --all
-codex-dock logs codex-brave-atlas --tail 50
-```
-
-### git worktree で安全にブランチ作業
-
-元のリポジトリを汚さずに新しいブランチで作業できます。
-
-```bash
-codex-dock run \
-  --user current \
-  --approval-mode full-auto \
-  --worktree \
-  --branch feature-auth \
-  --new-branch \
-  --task "認証モジュールをリファクタリングして"
-```
-
-コンテナが終了すると worktree は自動的に削除されます。
-
-### 並列ワーカーで複数タスクを同時実行
-
-```bash
-# 3 つのブランチで並列実行
-codex-dock run --user current --approval-mode full-auto --parallel 3 --worktree --detach
-```
-
-TUI で全ワーカーを監視：
-
-```bash
-codex-dock ui
-```
-
-### パッケージをインストールして実行
-
-```bash
-codex-dock run --pkg "apt:libssl-dev" --pkg "pip:cryptography"
-```
-
-または `packages.dock` ファイルで管理：
-
-```bash
-# packages.dock を作成
-cat > packages.dock << 'EOF'
-apt:libssl-dev
-pip:cryptography
-pip:pytest
-npm:typescript
-EOF
-
-# 自動検出してインストール
-codex-dock run
-```
-
----
-
-## ネットワークの確認
-
-```bash
-# egress ネットワークと per-worker ネットワークの状態を確認
-codex-dock network status
-
-# 実行中のワーカーを確認
-codex-dock ps
-```
-
----
-
-## コンテナの後片付け
-
-```bash
-# 全コンテナを停止
-codex-dock stop --all
-
-# 停止済みコンテナを削除（ワーカー専用ネットワークも自動で切断・削除されます）
-codex-dock rm <コンテナ名>
-
-# egress ネットワークを削除（必要な場合）
-codex-dock network rm
-```
-
----
-
-## トラブルシューティング
-
-### コンテナが起動しない
-
-```bash
-# 詳細ログで実行
-codex-dock run --verbose --debug
-```
-
-よくある原因：
-- node/containerd が起動していない → `codex-dock runtime-check` とsystemdの状態を確認
-- イメージのビルドに失敗した → `codex-dock build --verbose` で確認
-- API キーが未設定 → `codex-dock auth show` で確認
-
-### 認証エラー
-
-```bash
-# 認証状態を確認
-codex-dock auth show
-
-# API キーを再設定
-export OPENAI_API_KEY=sk-...
-codex-dock auth set
-```
-
-### ネットワークエラー
-
-```bash
-# egress ネットワークを作り直す
-codex-dock network rm
-codex-dock network create
-```
-
-### ログを確認する
-
-```bash
-# コンテナのログをリアルタイム確認
-codex-dock logs <コンテナ名> --follow
-
-# 全ワーカーの状態確認
-codex-dock ps --all
-```
-
----
-
-## 次のステップ
-
-- [アーキテクチャ概要](architecture.md) — システムの全体像を理解する
-- [Auth Proxy 技術仕様](auth-proxy.md) — 認証の仕組みを詳しく学ぶ
-- [ネットワーク仕様](network.md) — ネットワーク隔離の詳細
-- [コマンドリファレンス](commands.md) — 全コマンドとオプションの一覧
-- [設定リファレンス](configuration.md) — config.toml の設定項目
+- [日常の運用](operations.md)：VM一覧、並列実行、更新、後片付け
+- [カスタムイメージ](commands/build.md)：Dockerfileとテンプレート
+- [通信ポリシー](proxy-policy.md)：許可リスト、拒否リスト、`--no-internet`
+- [トラブルシューティング](troubleshooting.md)：起動・認証・通信の確認

@@ -6,6 +6,10 @@
 
 OpenAI / AnthropicのAPIキー、API用access token、OAuth refresh tokenはauth proxyが保持する。workerには短命のplaceholderだけを渡し、固定API経路を中継する際に実資格情報へ差し替える。Codex loginの互換性のため、ID tokenなどのaccount metadataは返す場合がある。egress proxyには実資格情報をmount・注入しない。
 
+認証プロキシは呼出元のUID/GIDと専用HOMEで、所有者の0600認証ファイルを読み取り専用で開く。capability全削除を維持し、元ファイルの権限は変更しない。
+
+AI APIのHTTP・WebSocketは、発行済みで有効な短命トークンを上流接続前に検証する。未発行・失効・期限切れ・重複・矛盾する認証は401で拒否する。失効・期限切れ・置換時は既存のHTTP streamとWebSocketも終了する。
+
 admin listenerはauth proxyのprimary egress IPにbindし、hostでは127.0.0.1へ公開する。workerから見えるdata listenerにはadmin操作を公開しない。placeholderの失効・再起動時の復元はhostのManagerだけが行う。
 
 ## ワーカーの制限と起動ゲート
@@ -39,6 +43,12 @@ workspaceと追加mountのreadonly指定を保つ。worktreeでのcommit互換�
 
 削除journalは実オブジェクト削除前に永続化する。network、token失効、cgroup、worktreeの回収が不確実な場合はintentを残し、worktreeを先に消さない。rootのVM予約・network情報・OCI spec・ログはprivateな状態ディレクトリへ保存する。VM inventoryにはAPIキー・環境変数・タスク本文を出さない。
 
-## 確認範囲
+## 制限と確認範囲
 
-実機受入ではguest kernel、権限・資源、Git、mount、PTY、通信遮断、認証復元、ライフサイクル、custom image、管理サービス再起動中の連続ログ、実Codexのローカルfixtureツール実行を確認する。外部AI推論、実OAuthの長時間更新、対話キーボード操作、任意のcustom imageの安全性は別途評価する。隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。
+ワーカーとプロキシ間は専用ネットワーク上の平文HTTPであり、TLSは提供しない。管理APIやデータポートを公開ネットワークへ直接公開しない。
+短命トークンはBearer認証で、送信元コンテナIDとの照合は行わない。盗まれた有効トークンは失効まで利用され得る。
+一般通信のルールは共有egressプロキシ単位であり、ワーカー別のルールやホットリロードは提供しない。
+
+[実機試験と実AI試験](testing.md)では、隔離・権限・資源・機能と、既存auth.jsonによるWebSocket/HTTP SSE推論を確認した。
+長期間の実OAuth更新、対話キーボード操作、任意のカスタムイメージは別途確認が必要。
+隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。

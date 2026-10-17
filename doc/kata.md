@@ -1,4 +1,4 @@
-# Kata / Dragonball と containerd
+# Kata実行ホストの準備
 
 ワーカーは **containerd → Kata runtime-rs → Dragonball** で起動する。Docker Engine・Docker CLI・QEMUは実行時に使わない。CLIはroot管理サービスのUnixソケットを使い、管理サービスが公式containerd Go SDKで専用namespace `codex-dock` を操作する。既存のCLI/TUI、認証プロキシ、イメージ・テンプレート、worktreeの操作は維持する。
 
@@ -23,7 +23,14 @@ Linux x86_64、KVM、cgroup v2、`cpu memory pids` controller、pidfdと`cgroup.
 
 管理サービスとBuildKitの利用者は、ホストmountとイメージの選択ができる信頼済み管理者であり、root相当の権限を持つ。専用グループ `codex-dock` を使う。通常CLIへroot/CAP_SYS_PTRACEを付与せず、管理socket・状態・ランタイム資産をguestへ渡さない。
 
-## 固定資産の準備
+## 1. 配布物を検証して準備する
+
+まずリポジトリを取得します。以降の配置例は、このルートから実行してください。
+
+```bash
+git clone git@github.com:pacificbelt30/sandbox-codex.git
+cd sandbox-codex
+```
 
 公式リリースの配布物とSHA256を確認し、新しい作業ディレクトリへ展開する。必要なツールはPython 3.11以上、zstd、debugfs（e2fsprogs）、静的リンク可能なCコンパイラー。
 
@@ -50,7 +57,10 @@ make build
 
 `prepare_guest.py` は固定した元imageのSHA256と構造を確認し、新しいコピーへPID hookを入れる。元imageは書き換えない。`configure.py` はguest seccomp、annotation無効化、hook、sandbox cgroup、静的資源割当を明示する。guest VMはworkload 2 GiB + overhead 512 MiBで起動する。
 
-配置先が既存の場合はdrainして旧資産を確認し、上書きで移行しない。以下は新規配置例。
+## 2. ホストへ配置する
+
+配置先が既存の場合は、[固定資産の更新](#固定資産の更新)を参照してください。以下は新規配置の例です。
+`make build` はGo 1.24.7以上で実行します。
 
 ```bash
 sudo groupadd --system codex-dock
@@ -71,6 +81,8 @@ sudo install -m 0644 deploy/kata/codex-dock-containerd.service \
 
 containerdとruncは公式配布物または対応ディストリビューションから配置する。サービス例のcontainerdパスは `/usr/bin/containerd`。BuildKitの `buildctl` と `buildkitd` も公式配布物を検証して `/usr/local/bin` へ配置する。BuildKit 0.34.0のlinux-amd64 tar.gzのSHA256は `14813b1fb2a40082114e6d386c6fc5e7dd5298176ce7ee1a18bc33e73e109ac3`。`buildkit.toml` の `grpc.gid` を `getent group codex-dock` の数値GIDへ設定する。
 
+## 3. ネットワークとサービスを有効にする
+
 プロキシのegress NATにはホストのIPv4 forwardingが必要。既存firewallのforward方針も管理者が確認する。本製品は自身のnftables tableだけを作り、他サービスのtableを削除・flushしない。ネットワークは10.253.0.0/16から/24を予約し、既存アドレスとの重複を避ける。VPNなどの経路と競合するホストでは割当を確認する。
 
 ```bash
@@ -81,10 +93,6 @@ sudo /usr/local/bin/codex-dock runtime-lock
 sudo systemctl enable --now codex-dock-node codex-dock-buildkit
 # 新しいグループが反映されたログインセッションで実行する。
 codex-dock runtime-check
-codex-dock proxy build
-codex-dock proxy run
-codex-dock build
-codex-dock run
 ```
 
 `runtime-lock` は既存manifestを上書きせず、Kata config・shim・kernel・guest image・bootstrap・IO logger・containerd本体と設定・ip/nft/sysctl/runcを固定する。署名の代わりではないため、公式配布物の検証とroot所有・書き換え不可の配置を先に行う。更新はworkerのdrain、サービス停止、資産検証、新manifestの順で行う。
@@ -93,15 +101,12 @@ codex-dock run
 
 ビルド用のHTTP_PROXY / HTTPS_PROXY / NO_PROXY等はBuildKitのbuild argsへ渡す。`CODEX_PROXY_CERT` がある場合は `proxy_ca` secretとして渡し、組み込みDockerfileはそのRUN中だけ信頼する。CAをimageへコピーせずTLS検証を維持する。BuildKit daemonのregistry通信にも必要なproxy/CA設定をサービス側で用意する。
 
-## 維持する操作と状態
+## 配置後の操作と保存先
 
-認証プロキシは起動したCLIのUID/GIDと専用HOMEで、所有者だけが読める資格情報ファイルをread-only mountする。元の`0600`権限とcapability全削除を維持する。別のUID/GIDでしか読めない資格情報は起動前に拒否する。CLI更新時はworkerをdrainし、`proxy build`でイメージを再ビルドしてproxyを再作成する。旧バイナリのキャッシュはlayoutラベルだけで採用せず、admin APIのworker認証対応を確認してからworkerを起動する。
+認証を用意し、[クイックスタート](getting-started.md)で最初のワーカーを起動してください。
 
-AI reverse proxyはOpenAIのBearer、Anthropicの`x-api-key`またはBearerに、発行済みで有効なworker placeholderを要求する。未発行・期限切れ・失効済みtokenと曖昧な認証headerを上流接続前に拒否する。失効・期限切れ・置換時には、そのtokenを利用中のHTTP streamとWebSocketも閉じる。
-
-`run / start / stop / rm / ps / logs / ui / vm` は同じ操作で利用する。イメージは同じOCI/Dockerfile形式を使い、`build -f`、テンプレート、自動ビルドは独立BuildKitへ接続する。`BUILDKIT_HOST` でbuilderを指定できる。BuildKitのcontainerd workerは同じsocket・namespaceを使い、ローカルのベースimageを再利用する。
-
-停止中のコンテナと書き込み可能なsnapshotはcontainerdに残る。再起動で同じID・workspaceを利用し、静的proxy IP・認証placeholderを復元する。削除intentは従来どおりユーザーのprivate状態へ永続化し、container・network・token・worktree・host cgroupのいずれかに失敗したら再試行情報を残す。
+通常の起動・停止・再起動・更新は[日常の運用](operations.md)を参照してください。
+認証ファイルの権限と短命トークンの検証は[認証プロキシ](auth-proxy.md)、イメージは[build](commands/build.md)で説明します。
 
 管理サービスの状態は `/var/lib/codex-dock-node`、VM予約は `allocations`、実行仕様・network・ログは `engine` 配下。containerdは `/var/lib/codex-dock-containerd`、runtime stateは `/run/codex-dock-containerd`。実行時のguest kernel・host PID・cgroupは[VM管理](vm.md)で照合する。管理サービス再起動でVMを再作成しない。ログプロセスはshimが所有し、stdinの接続維持も担当する。
 
@@ -111,14 +116,25 @@ AI reverse proxyはOpenAIのBearer、Anthropicの`x-api-key`またはBearerに�
 
 network namespaceを保持したまま再起動すると、残ったtcfilter設定と衝突する場合がある。そのため停止済みworker側のnamespace/vethだけを所有確認して再生成し、同じbridge・IP・proxy接続を維持する。複数workerで使うproxy側namespaceは保持する。
 
-## 既存Docker環境からの切り替え
+## 固定資産の更新
 
-移行前の版で既存workerを停止し、必要なログと成果を保存して削除する。DockerのコンテナID・snapshot・networkを新しいcontainerd namespaceへ自動移植しない。workspace・worktree・Dockerfile・設定・認証ファイルは再利用する。旧imageは必要なら `docker save` のarchiveを専用namespaceへimportするか、Dockerfileから再ビルドする。Dockerは移行元の処理にだけ使う。
+1. 作業中ワーカーの成果を保存し、旧版で停止・削除する。
+2. ノードとBuildKit、専用containerdを停止する。
+3. 新しい配布物を別の作業ディレクトリで検証する。shim・kernel・guest image・guard・IO logger・設定を対応する版へそろえる。
+4. root所有・一般利用者が書き換えできない状態で配置する。
+5. 新しいmanifestを作成し、管理サービスがそのmanifestを参照するようにする。既存manifestはruntime-lockで上書きできないため、別パスで作成して配置する。
+6. 専用containerd、ノード、BuildKitを起動し、runtime-checkと受入試験を実行する。
 
-`DOCKER_HOST` の設定で新旧を混在させず、新workerを `runtime-check` 後に作成する。旧QEMU/DockerプロファイルのmanifestとVM予約は採用しない。`--runtime runc` は同じcontainerdノード上で明示選択する互換モードであり、VM隔離は提供しない。
+manifestは配布元の署名やchecksum検証の代わりにはなりません。
+CLI・プロキシだけの更新は[運用手順](operations.md#cliプロキシを更新する)、旧Docker環境からは[移行手順](migration.md)を参照してください。
 
-## 検証
+## 動作確認
 
-2026-10-17、Docker daemonを動かさない専用ノード内のcontainerd 2.4.2 / Kata 4.2.0 runtime-rs / Dragonball / BuildKit 0.34.0で、全受入試験がPASS（213.83秒）。起動失敗注入からの回収、停止workerのnamespace欠落からの復元、カスタムDockerfileのRUN・OCI import、2台の別kernel、guest seccomp/NNP/capability/PID制限、ホストの資源制限、認証復元、Git commit、readonly/追加mount、PTY、worker間・host/adminへの通信遮断、no-internet、同じIDでの停止・再起動・削除・孤児回収、管理サービス再起動中の同じguest boot IDと連続ログ、実Codex 0.163.0のローカルResponses fixtureによるツール実行と正常終了を確認した。
+配置後は通常利用者で次を実行します。
 
-検証用の外側の使い捨て環境にはDockerを利用したが、内部ではdockerd/Docker CLIを起動しない。本番ホストのdaemon設定は変更していない。外部AI APIの推論、実OAuthの長時間更新、対話キーボード操作はこの試験に含まない。`CODEX_DOCK_KATA_E2E=1 go test ./internal/sandbox -run TestKataAcceptance -v` で構成済みLinuxノード上でも実行できる。
+```bash
+codex-dock runtime-check
+make kata-e2e
+```
+
+確認項目と実機・実AIの検証結果は[テストと動作確認](testing.md)にまとめています。

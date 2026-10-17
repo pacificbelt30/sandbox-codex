@@ -1,110 +1,66 @@
-# Network Specification (Proxy Router + Per-Worker Networks)
+# Network
 
-> The current runtime uses containerd + Kata/Dragonball without Docker Engine or CLI. Follow the [current deployment and migration guide](../kata.md); Docker-specific setup below describes the previous backend.
+[日本語](../network.md) | **English**
 
-> [日本語](../network.md) | **English**
+The root node service manages Linux bridges, namespaces, veth links and dedicated nftables tables.
+It does not depend on Docker network APIs or a CNI daemon.
 
-codex-dock enforces network isolation using **Docker-native primitives only** — no `iptables`, no `sudo`. The isolation rules are managed by the Docker daemon (already root).
+## Connections
 
----
+| Network or proxy | Purpose |
+|---|---|
+| `dock-net-proxy` | Primary proxy network, host gateway and outbound NAT |
+| `dock-net-w-<name>` | Private worker L2 network, without a host IPv4 address, default route or NAT |
+| `codex-auth-proxy` | Fixed AI reverse routes and token API on connected worker networks |
+| `codex-http-proxy` | General HTTP/CONNECT forwarding, attached only when allowed |
 
-## Topology (two proxies)
+Each worker has one private network and static proxy hosts entries.
+The worker uses loopback DNS; external resolution and dialing happen in the proxies.
+Proxy namespaces do not forward IP packets between interfaces.
 
-Egress is split into **two containers by role**. The **credential-holding auth proxy never forwards general traffic**; general traffic is handled only by the credentials-free egress proxy (least privilege).
+Dedicated nftables rules block worker-to-host and worker-to-other-interface traffic.
+Host IPv4 forwarding and existing firewall rules must allow the proxy egress path.
+The product does not flush other services' tables.
 
-```
-                       ┌──────────── internet (public only)
-        dock-net-proxy ─┤  ← egress bridge for BOTH proxies
-                        │
-        ┌───────────────┴───────────────┐
- ┌──────▼───────┐                ┌───────▼───────┐
- │ codex-auth-  │                │ codex-http-   │
- │ proxy        │                │ proxy         │
- │ :18080 reverse(/v1,/anthropic)│ :18082 forward(CONNECT/HTTP)
- │ :18081 admin                  │  + LAN block + allowlist
- │ ★fixed 3 upstreams only       │  ★no credentials
- └──┬─────────┬─┘                └──┬─────────┬──┘
-    │  (both multi-homed onto each worker net)│
- dock-net-w-A …                   dock-net-w-A …
-        │                               │
-     worker A:  OPENAI_BASE_URL→auth / HTTP_PROXY→http
-```
+## Ports
 
-| Network | Type | Role |
-|---|---|---|
-| `dock-net-proxy` | bridge (NAT enabled) | Egress for **both** proxies. Workers never attach |
-| `dock-net-w-<name>` | bridge `Internal` (no NAT) | Per-worker; **both** proxies are additionally connected |
+| Listener | Exposure |
+|---|---|
+| Auth data `18080` | Worker networks only |
+| Auth admin `18081` | Primary egress IP, relayed to host `127.0.0.1` |
+| General forward `18082` | Selected worker networks only |
 
-Proxy roles:
+Workers cannot reach the admin listener or management sockets.
+Only the auth proxy receives real credentials.
 
-| Container | Role | Ports | Responsibility |
-|---|---|---|---|
-| `codex-auth-proxy` | `auth` | data 18080 / admin 18081 | Reverse routes (`/v1`, `/anthropic`, `/chatgpt`) that **inject the real credentials**; token issuance; admin. **Does NOT forward general traffic (CONNECT/absolute-URI → 405).** |
-| `codex-http-proxy` | `egress` | 18082 | **Forward proxy only** (git/npm/pip). No credentials. Private/LAN block + domain allowlist. |
+## Outbound policy
 
-- **Worker↔worker blocked**: each worker is on its own `Internal` network (separate L2 segment).
-- **Worker→host/internet blocked**: `Internal: true` means no host route and no NAT; the only reachable peers are the proxies.
-- **Worker→proxy**: via Docker embedded DNS to `codex-auth-proxy:18080` (API) and `codex-http-proxy:18082` (general). The auth `/admin/*` lives on a separate listener **bound to the egress-network IP**, unreachable from worker networks (host-only via `127.0.0.1:18081`).
-- **Egress split**: API (`OPENAI_/ANTHROPIC_BASE_URL`) → auth reverse routes (credential injection); general (`HTTP(S)_PROXY`) → http forward proxy. `NO_PROXY=codex-auth-proxy,…` keeps API/token traffic direct.
-- **LAN block**: `codex-http-proxy` with `--block-private` refuses private/loopback/link-local destinations (RFC1918, 127/8, **169.254/16 = cloud metadata**, ULA, CGNAT) with 403. Enabled by default in `proxy run`; also applied to the auth proxy's upstream dials (defense in depth).
-- **Direct (non-proxy) outbound traffic times out — by design.** `codex-dock run` injects `HTTP(S)_PROXY`; `--no-internet` omits it (only the auth API routes remain).
-
----
-
-## Network Management Commands
-
-### `codex-dock network create`
-Creates the egress network (`dock-net-proxy`). `proxy run` also auto-creates it if missing.
-
-### `codex-dock network status`
-Shows the egress network state plus the list of per-worker networks currently present.
-
-### `codex-dock network rm`
-Removes the egress network. Per-worker networks are disconnected and removed automatically when a worker is removed.
-
-### Per-worker network lifecycle
-- **Foreground `codex-dock run`** (no `--detach`): the container and its dedicated network are removed automatically on exit, so networks don't accumulate. Pass `--keep` to retain them.
-- **`codex-dock stop`**: only stops the container; the network is **kept on purpose** (needed to restart it). Removal happens on `rm`.
-- **`codex-dock rm <name>` / TUI delete (D)**: removes the container, then force-disconnects every remaining endpoint on the dedicated network (including the proxy) and removes the network — reliably, even if the proxy isn't running.
-- **`--detach` (background)**: the container persists; its network is removed when you `codex-dock rm`.
-- Auto-generated worker names avoid colliding with existing containers/networks (the random-suffix fallback is re-checked too), so two workers never share one Internal network. With `--name`, Docker's container-name uniqueness rejects duplicates.
-
----
-
-## Egress Control (Forward-Proxy Allowlist)
-
-Use `codex-dock proxy run --forward-allow-domain <domain>` (repeatable) to restrict the forward proxy to specific domains (and their subdomains); everything else returns 403. Omitting it allows all destinations.
+General egress supports domain, IP/CIDR and port allow/deny rules.
+Denials win. All nonempty allowlists must match.
+Private, loopback, link-local and metadata addresses remain blocked.
+DNS answers and redirects are checked, and the dialer uses a verified address.
 
 ```bash
 codex-dock proxy run \
   --forward-allow-domain github.com \
   --forward-allow-domain registry.npmjs.org \
-  --forward-allow-domain pypi.org
+  --forward-deny-domain blocked.github.com
 ```
 
-`codex-dock run --no-internet` not only omits the `HTTP(S)_PROXY` vars for that worker, it also **leaves the egress proxy (`codex-http-proxy`) off that worker's Internal network entirely**. Because the worker has no network path to the egress proxy at all — not just a missing env var — manually pointing at it (e.g. `-x codex-http-proxy:18082`) still cannot reach the internet. Only the auth proxy's API reverse routes remain reachable.
+These rules control general egress, not fixed AI authentication routes.
+`run --no-internet` disconnects the general egress proxy and keeps AI routes available.
+See [policy rules](../proxy-policy.md) (Japanese).
 
----
+## Lifecycle
 
-## Notes
-
-- Because no iptables are involved, **macOS / Windows (Docker Desktop) get the same isolation as Linux** (Docker Desktop manages the `Internal` network blocking rules).
-- The old `codex-dock firewall` command and the `--allow-host`/`--block-host`/`--no-firewall`/`--sudo` flags have been removed.
-
-## Verification
-
-A Docker-free smoke test exercises the core proxy/router behaviour (requires `go` / `python3` / `curl`):
+Stop keeps networks for restart. Remove detaches the selected proxies and reclaims owned resources.
+Network IDs, addresses, namespace identity and firewall state are recorded privately and verified before reuse.
+Subnets are selected from `10.253.0.0/16`; existing addresses and routes are checked for conflicts.
 
 ```bash
-bash scripts/smoke-proxy.sh
+codex-dock network create
+codex-dock network status
+codex-dock network rm
 ```
 
-It checks: auth `/health`, `/admin/*` on the admin listener, `/admin/*` NOT on the data-plane port (split), **auth refusing to forward general traffic (405)**, the egress forward proxy (HTTP + CONNECT), and **`--block-private` blocking a LAN/loopback destination (403)**.
-
-Container-level isolation (worker↔worker, Internal-network egress blocking) needs a Docker daemon. A Docker-gated E2E is included (it skips cleanly when Docker is unavailable):
-
-```bash
-bash scripts/e2e-docker.sh
-```
-
-It verifies that `proxy run` brings up both proxies with only the admin port host-published, and that a worker on its per-worker Internal network can reach the auth/http proxies but **not** the admin port, the internet directly, or another worker — and that the http proxy refuses private/LAN destinations (403).
+See [host setup](../kata.md) and [troubleshooting](../troubleshooting.md) (Japanese).

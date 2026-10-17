@@ -1,172 +1,60 @@
-# Auth Proxy — トークンの仕組みとセキュリティ
+# 短命トークン
 
-> **日本語** | [English](../en/auth-proxy/tokens.md)
+**日本語** | [English](../en/auth-proxy/tokens.md)
 
-- [概要・デプロイ](../auth-proxy.md)
-- [API エンドポイント仕様](endpoints.md)
-- **トークンの仕組みとセキュリティ** ← 本ページ
+ワーカーが持つ `cdx-...` は、本物のAPIキーの代わりにプロキシへ提示するBearerトークンです。
+この値を持つ相手は、有効期限内にプロキシのAI経路を使えます。
 
----
+## 形式と有効期限
 
-## トークン形式
+`crypto/rand` で生成した32バイトを16進表記にし、`cdx-` を付けます。
+形式は `cdx-` + 64桁の16進数、合計68文字です。
 
-```
-cdx-<64桁の16進数>
-
-例: cdx-a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234
+```bash
+codex-dock run --agent codex --token-ttl 7200
 ```
 
-- `crypto/rand` を使って 32 バイトの乱数を生成
-- 16 進エンコードして `cdx-` プレフィックスを付与
-- 合計 68 文字
+TTLの既定は3600秒です。
+期限を過ぎると新しいリクエストを拒否し、接続中のHTTP stream・WebSocketも終了します。
+内部の期限切れレコード整理は30秒ごとですが、認証と接続の期限判定はその整理を待ちません。
 
----
+## ライフサイクル
 
-## トークンライフサイクル
-
-```
-                 IssueToken()
-                      │
-                      ▼
-              ┌───────────────┐
-              │ tokenRecord    │
-              │ Token: "cdx-" │
-              │ ContainerName │
-              │ IssuedAt      │
-              │ ExpiresAt     │  ← IssuedAt + TTL (デフォルト 3600 秒)
-              └───────┬───────┘
-                      │ メモリ上に保管
-                      ▼
-              ┌───────────────┐
-              │ tokens map    │◀─── RevokeToken() で即時削除
-              │ [name -> rec] │
-              └───────┬───────┘
-                      │
-               30秒ごとにスキャン
-                      │
-                      ▼
-              期限切れトークンを削除 (expireLoop)
-```
-
-### 発行タイミング
-
-| タイミング | 発行方法 |
+| 操作 | トークンの扱い |
 |---|---|
-| `codex-dock run` 実行時 | `proxy.IssueToken()` をコンテナ起動前に呼び出す |
-| 外部からの発行 | `POST /admin/issue` エンドポイント経由 |
+| 新規ワーカー起動 | 実行を解放する前に発行・有効化する |
+| 停止 | 失効させ、使用中の接続を取り消す |
+| 再起動 | 保存済みplaceholderを管理APIで復元し、Kata検証後に処理を解放する |
+| 同じ名前へ再発行・restore | 古いリースと接続を取り消す |
+| 削除 | 失効と資源回収を行う。失敗は再試行記録に残す |
+| プロキシ停止 | 全トークンと接続を取り消す。発行台帳はメモリ上にある |
 
-### 失効タイミング
+停止済みワーカーは `codex-dock vm start NAME` で再起動してください。
+管理APIのrestoreは、保存済みplaceholderを再有効化するための操作です。
+実APIキーや、別の稼働ワーカーに割り当て済みのトークンは受け付けません。
 
-| タイミング | 失効方法 |
+## ワーカーに渡す情報
+
+| 情報 | 内容 |
 |---|---|
-| コンテナ停止時 | `sandbox.Manager.Stop()` が `proxy.RevokeToken()` を呼び出す |
-| TTL 超過時 | `expireLoop` が 30 秒ごとに期限切れトークンを削除 |
-| 明示的な失効 | `POST /revoke` または `POST /admin/revoke` |
-| プロキシ停止時 | `proxy.Stop()` がすべてのトークンをクリア |
+| `CODEX_TOKEN` | `/token` 取得用の短命トークン。起動スクリプトが使用後にunset |
+| `CODEX_AUTH_PROXY_URL` | 認証プロキシのURL。起動スクリプトが使用後にunset |
+| APIキー用の環境変数 | 実キーではなくplaceholder |
+| OAuth用auth.json | access tokenはplaceholder、refresh tokenは空文字 |
+| OAuth ID token | Codexのアカウント情報読み取り用に返す場合がある |
+| Codex設定 | `openai_base_url`、OAuth時の `chatgpt_base_url` をプロキシへ向ける |
+| `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | OAuth時の更新要求をプロキシへ向ける。短命トークンを含む |
 
-### TTL 設定
+`HOME` は実行ユーザーに応じて変わります。`/home/codex` に固定して扱わないでください。
+起動後もクライアント用ファイルにはplaceholderが残るため、環境変数をunsetすることだけで秘密を隠す設計ではありません。
 
-| 設定 | デフォルト値 | 変更方法 |
-|---|---|---|
-| TTL | 3600 秒 (1 時間) | `--token-ttl <秒数>` または `config.toml` の `default_token_ttl` |
+## 検証と制限
 
----
+全AI経路のHTTP/WSで、発行済み・有効期限内のトークンを検証します。
+重複ヘッダーやAnthropicの矛盾したBearer／APIキーヘッダーも拒否します。
 
-## コンテナへの環境変数
+トークンを送信元のコンテナIDへ結び付ける検証はありません。
+ワーカーとプロキシ間の通信は専用ネットワーク上のHTTPです。
+TTLを作業時間に合わせ、不要なトークンは停止・削除で失効させてください。
 
-`codex-dock run` がコンテナに注入する環境変数：
-
-| 変数名 | 内容 | 使用後の処理 |
-|---|---|---|
-| `CODEX_AUTH_PROXY_URL` | `http://<proxy>:<PORT>` | `unset`（entrypoint.sh が削除） |
-| `CODEX_TOKEN` | `cdx-<hex64>` — `/token` 取得用 | `unset`（entrypoint.sh が削除） |
-| `OPENAI_BASE_URL` | `http://<proxy>:<PORT>/v1` | 常時有効（Codex CLI が参照） |
-| `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | `http://<proxy>:<PORT>/oauth/token?cdx=<token>` | OAuth モード時のみ設定 |
-
-OAuth モードでは `entrypoint.sh` が以下のファイルを生成します：
-
-| ファイル | 内容 |
-|---|---|
-| `/home/codex/.codex/auth.json` | `access_token`：プレースホルダー、`id_token`：本物、`refresh_token`：空文字 |
-| `/home/codex/.codex/config.toml` | `openai_base_url = "http://<proxy>:<PORT>/v1"`（モデルリクエストをプロキシ経由に。必須 — Codex CLI は `OPENAI_BASE_URL` を読まない） + `chatgpt_base_url = "http://<proxy>:<PORT>/chatgpt/"` |
-
----
-
-## クレデンシャルの優先順位（API キーモード）
-
-```
-1. OPENAI_API_KEY 環境変数
-2. ~/.config/codex-dock/apikey  (codex-dock auth set で保存)
-3. ~/.codex/auth.json
-```
-
-OAuth モードは `~/.codex/auth.json` に `refresh_token` または `auth_mode: "chatgpt"` がある場合に有効になります。
-
----
-
-## セキュリティ考慮事項
-
-### 実装済みの保護
-
-| 保護 | 実装 | 詳細 |
-|---|---|---|
-| API キーの隔離 | ✅ | コンテナには `CODEX_TOKEN` と同じプレースホルダーのみ渡す。本物のキーはプロキシがインジェクト |
-| access_token の隔離 | ✅ | OAuth モードでも本物の access_token はコンテナに渡らない。プレースホルダーをプロキシが差し替え |
-| refresh_token の保護 | ✅ | コンテナに渡さない。リフレッシュは `/oauth/token` 中継で実現 |
-| 短命トークン | ✅ | TTL 付き、コンテナ停止時に即時失効 |
-| API トラフィックの中継 | ✅ | `/v1/` と `/chatgpt/` のリバースプロキシで外部 API への直接通信を排除 |
-| クレデンシャルのログ出力禁止 | ✅ | 認証情報を stdout/stderr に出力しない |
-| `auth.json` の bind mount 禁止 | ✅ | コンテナ内の auth.json は access_token がプレースホルダーの安全なコピー |
-
-### 既知の問題・制限
-
-| ID | 問題 | 影響度 | 詳細 |
-|---|---|---|---|
-| NF-SEC-01 | 平文 HTTP 通信 | 高 | TLS または UNIX ソケットが未実装。Docker 内部通信のみで使用することを想定 |
-| F-AUTH-06 | コンテナ ID による照合なし | 中 | トークンはコンテナ名と紐付けられているが、コンテナ ID との照合なし |
-
----
-
-## 実装コード早見表
-
-```go
-// Auth Proxy の作成
-proxy, _ := authproxy.NewProxy(authproxy.Config{
-    TokenTTL:    3600,
-    Verbose:     true,
-    ListenAddr:  "0.0.0.0:0",
-    AdminSecret: "my-secret",
-})
-
-// 起動
-proxy.Start()
-
-// トークン発行（コンテナ起動前に呼ぶ）
-token, _ := proxy.IssueToken("my-container", 3600)
-
-// エンドポイント確認
-fmt.Println(proxy.Endpoint())           // "http://127.0.0.1:XXXXX"
-// ルータ構成の実デプロイでは RemoteProxy が使われ、ワーカーは Docker DNS 経由で
-// "http://codex-auth-proxy:18080" に到達します（in-process Proxy はホスト用途）。
-fmt.Println(proxy.ContainerEndpoint())
-
-// OAuth モード判定
-if proxy.IsOAuthMode() {
-    // CODEX_REFRESH_TOKEN_URL_OVERRIDE を設定する
-}
-
-// トークン失効（コンテナ停止時に呼ぶ）
-proxy.RevokeToken("my-container")
-
-// プロキシ停止（全トークンをクリア）
-defer proxy.Stop()
-```
-
----
-
-## 関連ドキュメント
-
-- [Auth Proxy 概要・デプロイ](../auth-proxy.md)
-- [API エンドポイント仕様](endpoints.md)
-- [セキュリティ設計](../security.md)
-- [Auth Proxy のみを使う（Codex 設定ガイド）](../proxy-standalone.md)
+APIの詳細は[認証API](endpoints.md)、境界は[セキュリティ](../security.md)を参照してください。

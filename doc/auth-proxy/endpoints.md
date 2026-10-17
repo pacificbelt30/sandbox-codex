@@ -1,291 +1,170 @@
-# Auth Proxy — API エンドポイント仕様
+# 認証API
 
-> **日本語** | [English](../en/auth-proxy/endpoints.md)
+**日本語** | [English](../en/auth-proxy/endpoints.md)
 
-Auth Proxy が公開する全 HTTP エンドポイントの詳細仕様です。
+[認証プロキシの概要](../auth-proxy.md)と[短命トークン](tokens.md)も参照してください。
+以下はauthロールのAPIです。egressロールは一般通信とhealthだけを提供します。
 
-- [概要・デプロイ](../auth-proxy.md)
-- **API エンドポイント仕様** ← 本ページ
-- [トークンの仕組みとセキュリティ](tokens.md)
+## 接続先
 
----
-
-## エンドポイント一覧
-
-| エンドポイント | メソッド | 用途 |
+| リスナー | 既定URL | 接続元 |
 |---|---|---|
-| [`/token`](#get-token--クレデンシャル取得) | GET | コンテナがクレデンシャルを取得 |
-| [`/oauth/token`](#post-oauthtoken--oauth-トークンリフレッシュ中継) | POST | OAuth トークンリフレッシュ中継 |
-| [`/v1/*`](#any-v1--responses-api-リバースプロキシ) | ANY | Responses API リバースプロキシ |
-| [`/chatgpt/*`](#any-chatgpt--chatgpt-backend-api-プロキシ) | ANY | ChatGPT backend-api プロキシ |
-| [`/health`](#get-health--ヘルスチェック) | GET | ヘルスチェック |
-| [`/revoke`](#post-revoke--トークン失効) | POST | トークン失効 |
-| [`/admin/issue`](#post-adminissue--トークン発行管理) | POST | トークン発行（管理用） |
-| `/admin/restore` | POST | 停止済みワーカーのプレースホルダー再有効化（管理用） |
-| [`/admin/revoke`](#post-adminrevoke--トークン失効管理) | POST | トークン失効（管理用） |
-| [`/admin/mode`](#get-adminmode--動作モード確認) | GET | 動作モード確認 |
+| data | `http://codex-auth-proxy:18080` | ワーカー |
+| admin | `http://127.0.0.1:18081` | ホストCLI |
 
----
+`proxy run` は管理APIを別リスナーへ分離します。
+`proxy serve` を独自配置する場合は、`--admin-listen` も明示してください。
+管理secretを設定した場合、管理APIは `X-Proxy-Admin-Secret` ヘッダーを要求します。
 
-## `GET /token` — クレデンシャル取得
+## API一覧
 
-コンテナが短命トークンを使って認証情報を取得するエンドポイントです。
-`entrypoint.sh` が起動時に呼び出します。
+| メソッド | パス | 用途・認証 |
+|---|---|---|
+| GET | `/token` | placeholder取得。`X-Codex-Token` |
+| POST | `/oauth/token` | OpenAI OAuth更新。`?cdx=<短命トークン>` |
+| ANY / WS | `/v1/*` | OpenAI API。Bearer |
+| ANY / WS | `/chatgpt/*` | ChatGPT backend API。Bearer |
+| ANY / WS | `/anthropic/*` | Anthropic API。`x-api-key` またはBearer |
+| GET | `/health` | プロセスのhealth。認証不要 |
+| POST | `/revoke` | 旧互換の失効API。通常の管理には `/admin/revoke` を使う |
+| POST | `/admin/issue` | トークン発行 |
+| POST | `/admin/restore` | 保存済みplaceholderの復元 |
+| POST | `/admin/revoke` | トークン失効 |
+| GET | `/admin/mode` | 認証モードと対応能力 |
 
-**リクエスト**
+## `GET /token`
 
-```
+```http
 GET /token HTTP/1.1
 X-Codex-Token: cdx-<64桁の16進数>
 ```
 
-**レスポンス（API キーモード）**
+200のJSON本文を返します。APIキーモードの例です。
 
 ```json
-HTTP/1.1 200 OK
-Content-Type: application/json
+{"api_key": "cdx-<64桁の16進数>", "container_name": "worker-name"}
+```
 
+OAuthモードでは次の情報を返します。
+
+```json
 {
-  "api_key": "cdx-a1b2c3d4...",
-  "container_name": "codex-brave-atlas"
+  "oauth_access_token": "cdx-<64桁の16進数>",
+  "oauth_id_token": "<ID token>",
+  "oauth_account_id": "<account ID>",
+  "oauth_last_refresh": "<timestamp>",
+  "container_name": "worker-name"
 }
 ```
 
-> `api_key` は本物の API キーではなく、`CODEX_TOKEN` と同じプレースホルダー値です。
-> 本物の API キーはプロキシが送信時に `Authorization` ヘッダーへインジェクトします。
+`api_key` と `oauth_access_token` は提示した短命トークンと同じplaceholderです。
+実access tokenとrefresh tokenは返しません。
+ID tokenはクライアントがアカウント情報を読むために返します。
+無効・欠落・期限切れのトークンは401、GET以外は405です。
 
-**レスポンス（OAuth モード）**
+## `POST /oauth/token`
+
+`CODEX_REFRESH_TOKEN_URL_OVERRIDE` から使うOpenAI OAuth更新の中継です。
+クライアントがカスタム認証ヘッダーを付けないため、短命トークンは `?cdx=...` に指定します。
 
 ```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
 {
-  "oauth_access_token": "cdx-a1b2c3d4...",
-  "oauth_id_token":     "eyJhbGci...",
-  "oauth_account_id":   "user_xxx",
-  "oauth_last_refresh": "2026-03-08T00:00:00Z",
-  "container_name":     "codex-calm-beacon"
-}
-```
-
-> - `oauth_access_token` は本物のアクセストークンではなく、`CODEX_TOKEN` と同じプレースホルダー値です。本物のアクセストークンはプロキシが送信時にインジェクトします。
-> - `oauth_id_token` は本物の JWT です。Codex CLI が `chatgpt_account_id` や `chatgpt_plan_type` などの claims をローカルで読み取るために必要です（署名検証は行われません）。
-> - `oauth_refresh_token` は返しません（セキュリティ上の設計）。
-
-**エラーレスポンス**
-
-| ステータス | 条件 |
-|---|---|
-| `401 Unauthorized` | `X-Codex-Token` ヘッダーが欠如、無効、または期限切れ |
-| `405 Method Not Allowed` | GET 以外のメソッド |
-
----
-
-## `POST /oauth/token` — OAuth トークンリフレッシュ中継
-
-Codex CLI が `CODEX_REFRESH_TOKEN_URL_OVERRIDE` 経由でトークンリフレッシュを要求するエンドポイントです。
-プロキシは `refresh_token` をホストのものに差し替えて `https://auth.openai.com/oauth/token` に転送します。
-
-**認証**: クエリパラメーター `?cdx=<短命トークン>` で行います（Codex CLI はリフレッシュリクエストにカスタムヘッダーを付けないため）。
-
-**Codex CLI からのリクエスト形式**
-
-```
-POST /oauth/token?cdx=<cdx-xxxx> HTTP/1.1
-Content-Type: application/json
-
-{
-  "client_id":    "app_EMoamEEZ73f0CkXaXp7hrann",
-  "grant_type":   "refresh_token",
+  "client_id": "<client ID>",
+  "grant_type": "refresh_token",
   "refresh_token": ""
 }
 ```
 
-**プロキシが OpenAI に送る形式**
-
-プロキシは `refresh_token` フィールドのみをホストの本物の値に差し替え、他のフィールドはそのまま転送します。
-
-```
-POST https://auth.openai.com/oauth/token HTTP/1.1
-Content-Type: application/json
-
-{
-  "client_id":    "app_EMoamEEZ73f0CkXaXp7hrann",
-  "grant_type":   "refresh_token",
-  "refresh_token": "<ホストの本物の refresh_token>"
-}
-```
-
-**監視・変更フィールド一覧**
-
-| フィールド | 処理 | 理由 |
-|---|---|---|
-| `refresh_token` (リクエスト) | **ホストの値に差し替え** | コンテナの `refresh_token` は空文字のため |
-| `client_id` | そのまま通過 | Codex CLI が自身でハードコード済み |
-| `grant_type` | そのまま通過 | 変更不要 |
-| その他フィールド | そのまま通過 | 変更不要 |
-| `refresh_token` (レスポンス) | **レスポンスから除外** | コンテナに新しい refresh_token を渡さない |
-| `access_token` (レスポンス) | **プレースホルダーに差し替え** | 本物の新 access_token をコンテナに渡さない |
-| `id_token` (レスポンス) | そのまま通過 | claims 抽出用（認証 credential ではない） |
-| その他レスポンスフィールド | そのまま通過 | — |
-
-**エラーレスポンス**
+リクエストのrefresh tokenをホストの本物に差し替え、OpenAIのOAuth endpointへ送ります。
+レスポンスのaccess tokenはplaceholderへ差し替え、refresh tokenは除去します。
+更新後の本物の認証情報はプロキシ側で扱います。
 
 | ステータス | 条件 |
 |---|---|
-| `400 Bad Request` | OAuth モードでない |
-| `401 Unauthorized` | `cdx` パラメーターが欠如・無効・期限切れ |
-| `405 Method Not Allowed` | POST 以外のメソッド |
-| `502 Bad Gateway` | OpenAI への転送失敗 |
+| 400 | OAuthモードではない、または不正なリクエスト |
+| 401 | 短命トークンが無効・欠落・期限切れ |
+| 405 | POST以外 |
+| 502 | 上流への転送失敗 |
 
----
+## AI APIのHTTP・WebSocket
 
-## `ANY /v1/*` — Responses API リバースプロキシ
+`/v1/*` と `/chatgpt/*` は `Authorization: Bearer <短命トークン>` を要求します。
+`/anthropic/*` は `x-api-key` またはBearerで受け付けます。
+両方を指定する場合は同じ値が必要です。
 
-Codex CLI は `~/.codex/config.toml` の `openai_base_url=http://proxy/v1` を参照し、Responses API リクエストをプロキシ経由で送ります。
+未発行・失効・期限切れ・重複・矛盾する認証を、上流へ接続する前に401で拒否します。
+HTTPとWebSocket upgradeに同じ検証を行います。
+失効・期限切れ・置換時には、そのトークンの既存stream/tunnelも終了します。
 
-`/v1/*`と`/chatgpt/*`は`Authorization: Bearer <有効なworker placeholder>`を要求します。`/anthropic/*`は同じplaceholderを`x-api-key`またはBearerで受け付けます。未発行・失効・期限切れ・重複・矛盾する認証は上流接続前に401で拒否します。WebSocket upgradeにも同じ検証を行い、tokenが失効・期限切れ・置換された場合は接続中のstream/tunnelも終了します。
-
-| 認証モード | 転送先 |
+| 経路・認証 | 上流 |
 |---|---|
-| API キー | `https://api.openai.com/v1/<path>` |
-| OAuth / ChatGPT | `https://chatgpt.com/backend-api/codex/<path>` |
+| `/v1/*`、OpenAI APIキー | `https://api.openai.com/v1/*` |
+| `/v1/*`、ChatGPT OAuth | `https://chatgpt.com/backend-api/codex/*` |
+| `/chatgpt/*` | `https://chatgpt.com/backend-api/*` |
+| `/anthropic/*` | `https://api.anthropic.com/*` |
 
-- `Authorization` ヘッダーはコンテナのプレースホルダー値を**ホストの本物のクレデンシャルで上書き**します
-- OAuth モードでは `ChatGPT-Account-Id` ヘッダーも `oauthCreds.AccountID` の正しい値で上書きします
-- hop-by-hop ヘッダー（`Connection`・`Transfer-Encoding` 等）は除去します
-- レスポンスのステータス・ヘッダー・ボディをそのままコンテナに返します
-- WebSocket アップグレードリクエストも同様に `Authorization` と `ChatGPT-Account-Id` を差し替えてトンネリングします
+ワーカー用の認証ヘッダーを除去し、プロバイダーに対応する実認証を注入します。
+ChatGPTではaccount IDも正しい値に上書きします。
+HTTPのhop-by-hopヘッダーを除去し、上流のstatus・bodyと必要なヘッダーを返します。
+SSEは逐次転送し、WebSocketは検証済み接続をトンネルします。
 
-**上流への実際のヘッダー（プロキシが差し替え後）**
-
-```
-Authorization: Bearer <本物の access_token または api_key>  ← プロキシがインジェクト
-Content-Type: application/json
-chatgpt-account-id: <account_id>   ← OAuth時: プロキシが正値で上書き
-```
-
----
-
-## `ANY /chatgpt/*` — ChatGPT backend-api プロキシ
-
-`/chatgpt/` 以下を `https://chatgpt.com/backend-api/` に転送します。
-OAuth モードのコンテナは `~/.codex/config.toml` の `chatgpt_base_url=http://proxy/chatgpt/` 経由でレート制限情報・アカウント情報取得リクエストをここへ送ります。
-
----
-
-## `GET /health` — ヘルスチェック
+## `GET /health`
 
 ```json
-HTTP/1.1 200 OK
-Content-Type: application/json
+{"status": "ok", "active_tokens": 3}
+```
 
+プロキシプロセスの応答とメモリ上の登録数です。
+期限切れレコードの整理には間隔があるため、有効トークン数の厳密な保証や上流AIの疎通確認には使えません。
+
+## 管理API
+
+管理secretを設定した場合は、すべての `/admin/*` に次のヘッダーを付けます。
+
+```http
+X-Proxy-Admin-Secret: <管理secret>
+```
+
+不一致は401、指定メソッド以外は405です。
+
+### `POST /admin/issue`
+
+```json
+{"container": "worker-name", "ttl": 3600}
+```
+
+`container` は必須です。`ttl` の省略または0以下はプロキシの既定値を使います。
+成功は200で `{"token": "cdx-..."}` を返します。不正なJSONや空の名前は400です。
+同じ名前へ再発行すると、前のリースとその接続を取り消します。
+
+### `POST /admin/restore`
+
+```json
+{"container": "worker-name", "token": "cdx-<64桁の16進数>", "ttl": 3600}
+```
+
+停止ワーカーの保存済みplaceholderを再有効化します。成功は204です。
+不正な名前・形式・TTL、別ワーカーに割り当て済みのトークンは400です。
+実APIキーは受け付けません。通常は `codex-dock vm start` が行います。
+
+### `POST /admin/revoke`
+
+`?container=worker-name` で対象を指定します。
+成功は200、名前の欠落は400です。対象のリースと接続を取り消します。
+旧data APIの `POST /revoke` も同じquery形式ですが、管理secretの検証はありません。
+外部管理ツールは分離した `/admin/revoke` を使ってください。
+
+### `GET /admin/mode`
+
+```json
 {
-  "status": "ok",
-  "active_tokens": 3
+  "oauth_mode": true,
+  "anthropic_available": false,
+  "anthropic_oauth_mode": false,
+  "worker_token_auth": true
 }
 ```
 
----
-
-## `POST /revoke` — トークン失効
-
-コンテナ停止時に `sandbox.Manager.Stop()` が呼び出します。
-
-```
-POST /revoke?container=<コンテナ名> HTTP/1.1
-```
-
-| ステータス | 条件 |
-|---|---|
-| `200 OK` | 失効成功 |
-| `400 Bad Request` | `container` パラメーターが欠如 |
-| `405 Method Not Allowed` | POST 以外のメソッド |
-
----
-
-## 管理用エンドポイント（`/admin/*`）
-
-管理用エンドポイントは `X-Proxy-Admin-Secret` ヘッダーによる認証が必要です（`--admin-secret` が設定されている場合）。
-`codex-dock proxy run --admin-secret <シークレット>` で起動した場合に利用できます。
-
-### `POST /admin/issue` — トークン発行（管理用）
-
-任意のコンテナ名で短命トークンを発行します。
-`codex-dock run` を使わずに Auth Proxy を利用する際に使用します。
-→ 詳細は [Auth Proxy のみを使う](../proxy-standalone.md) を参照してください。
-
-**リクエスト**
-
-```
-POST /admin/issue HTTP/1.1
-Content-Type: application/json
-X-Proxy-Admin-Secret: <シークレット>
-
-{
-  "container": "my-session",
-  "ttl": 3600
-}
-```
-
-| フィールド | 必須 | 説明 |
-|---|---|---|
-| `container` | ✅ | コンテナ（セッション）名 |
-| `ttl` | | TTL（秒）。省略時はプロキシの `default_token_ttl` を使用 |
-
-**レスポンス**
-
-```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"token": "cdx-a1b2c3d4..."}
-```
-
-**エラーレスポンス**
-
-| ステータス | 条件 |
-|---|---|
-| `400 Bad Request` | `container` が空、または JSON が不正 |
-| `401 Unauthorized` | `X-Proxy-Admin-Secret` が不正 |
-| `405 Method Not Allowed` | POST 以外のメソッド |
-
----
-
-### `POST /admin/restore` — 再起動時のトークン再有効化（管理用）
-
-再起動には `POST /admin/restore` を使います。`X-Proxy-Admin-Secret` を通常の管理APIと同じように検証し、JSONの `container` / `token` / `ttl` を受け取ります。tokenは保存済みの `cdx-` + 64桁hexプレースホルダーに限り、実APIキーは受け付けません。成功は204。他の稼働ワーカーに割り当て済みのtokenは拒否します。停止中は失効したままで、管理者の明示的な再起動時に同じtokenを再有効化します。分離admin listenerを使う構成ではワーカー側にこのAPIは公開しません。
-
-### `POST /admin/revoke` — トークン失効（管理用）
-
-指定コンテナのトークンを即時失効させます。
-
-```
-POST /admin/revoke?container=<コンテナ名> HTTP/1.1
-X-Proxy-Admin-Secret: <シークレット>
-```
-
----
-
-### `GET /admin/mode` — 動作モード確認
-
-現在の認証モードを確認します。
-
-```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"oauth_mode": false, "worker_token_auth": true}
-```
-
-`worker_token_auth`がtrueでない旧proxyには新しいCLIは接続しません。workerをdrainし、proxy imageを再ビルドしてproxyを再作成してください。
-
----
-
-## 関連ドキュメント
-
-- [Auth Proxy 概要・デプロイ](../auth-proxy.md)
-- [トークンの仕組みとセキュリティ](tokens.md)
-- [Auth Proxy のみを使う（Codex 設定ガイド）](../proxy-standalone.md)
-- [ネットワーク仕様](../network.md)
+`worker_token_auth` はワーカーのAI経路認証を実装していることを示します。
+現行CLIはtrueでない旧プロキシを拒否します。
+[プロキシを更新・再作成](../operations.md#cliプロキシを更新する)してからワーカーを作成してください。

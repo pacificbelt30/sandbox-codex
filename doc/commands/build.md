@@ -1,214 +1,121 @@
-# `codex-dock build` — サンドボックスイメージのビルド
+# イメージの作成
 
-> **日本語** | [English](../en/commands/build.md)
->
-> [← コマンドリファレンス一覧](../commands.md)
+**日本語** | [English](../en/commands/build.md)
 
-サンドボックス用の Docker イメージをビルドします。
+`codex-dock build` はBuildKitでOCIイメージを作り、ワーカーと同じcontainerd namespaceへ取り込みます。
+Dockerfile形式を使いますが、Docker EngineとDocker CLIは不要です。
 
-```bash
-codex-dock build [OPTIONS]
-```
-
----
-
-## オプション
-
-| オプション | 省略形 | デフォルト | 説明 |
-|---|---|---|---|
-| `--tag` | `-t` | `codex-dock:latest` | イメージのタグ |
-| `--dockerfile` | `-f` | （自動検出） | Dockerfile のパス |
-| `--template` | `-T` | | テンプレート名（`plain`, `pwn` 等）。`--template list` で一覧表示 |
-| `--print-entrypoint` | | `false` | 組み込みの `entrypoint.sh` を stdout に出力して終了する（ビルドは行わない）（[詳細](#--print-entrypoint--entrypointsh-を独自-dockerfile-に取り込む)） |
-
-> **注意**: `--template` と `--dockerfile` (`-f`) は同時に指定できません。
-
----
-
-## Dockerfile の検索順序
-
-`-f` を省略した場合、以下の順序で Dockerfile を自動検出します：
-
-1. カレントディレクトリの `Dockerfile`
-2. カレントディレクトリの `docker/sandbox/Dockerfile`（旧 `docker/Dockerfile` も後方互換で検出）
-3. `~/.config/codex-dock/Dockerfile`（存在しない場合は組み込みデフォルトを自動書き出し）
-
-> サンドボックスイメージには Codex CLI と Claude Code の両方が同梱されます。
-
-> **補足**: `~/.config/codex-dock/` へのフォールバック時は `entrypoint.sh` も同ディレクトリに書き出されます。
-> ユーザーが同ファイルを編集済みの場合は上書きされません。
-
----
-
-## テンプレート
-
-`--template` フラグを使うと、用途に応じた専用イメージをビルドできます。
-テンプレートの Dockerfile はバイナリに組み込まれているため、ソースコードのチェックアウトは不要です。
-
-### 利用可能なテンプレート
-
-| テンプレート | タグ | 説明 |
-|---|---|---|
-| `plain` | `codex-dock:latest` | 必要最低限の構成（Codex CLI + Claude Code + 基本ツール）。デフォルトの Dockerfile と同等 |
-| `pwn` | `codex-dock:pwn` | CTF / バイナリ解析向け。pwntools, ptrlib, ropper, pwndbg, radare2, gdb, nasm, strace, ltrace, binwalk 等を含む |
-
-`pwn` などの派生テンプレートはベースイメージ (`codex-dock:latest`) を `FROM` として拡張します。
-ベースイメージが未ビルドの場合は自動的に先にビルドされます。
-
-### ユーザーテンプレート
-
-`pwn` のように `docker/templates/` 以下に組み込まれたテンプレートとは別に、
-**`~/.config/codex-dock/templates/` 以下に自分専用のテンプレートを置くことができます。**
-codex-dock のバイナリを再ビルドする必要はなく、Dockerfile を1つ配置するだけで
-`--template` から参照できるようになります。私的な用途のテンプレートや、社内限定のテンプレートなど、
-リポジトリにコミットしたくないものの置き場所として使えます。
-
-#### 配置場所
-
-```
-~/.config/codex-dock/templates/
-└── <テンプレート名>/
-    └── Dockerfile
-```
-
-例えば `mytool` という名前のテンプレートを追加する場合：
+## 基本操作
 
 ```bash
-mkdir -p ~/.config/codex-dock/templates/mytool
-cp path/to/Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
-
-# 動作確認（一覧に [user] 付きで表示される）
-codex-dock build --template list
-#   Available templates:
-#     plain        codex-dock:latest
-#     pwn          codex-dock:pwn (extends codex-dock:latest)
-#     mytool       codex-dock:mytool [user]
-#
-#   User templates directory: /home/you/.config/codex-dock/templates
-#   Add <dir>/<name>/Dockerfile to add a template or override a built-in one.
-
-# ビルド
-codex-dock build --template mytool
-```
-
-#### 優先順位（上書き）
-
-`~/.config/codex-dock/templates/<name>/` に組み込みテンプレートと同じ名前（例: `pwn`）の
-ディレクトリを置くと、そちらが優先して使われます。手元で組み込みテンプレートの内容を
-一時的に試したい・カスタマイズしたい場合に、リポジトリ側のファイルを直接編集する必要はありません。
-
-| 優先度 | 配置場所 |
-|---|---|
-| 1（優先） | `~/.config/codex-dock/templates/<name>/Dockerfile`（ユーザーテンプレート） |
-| 2 | `docker/templates/<name>/Dockerfile`（組み込みテンプレート、バイナリに埋め込み） |
-
-#### バリデーション
-
-ユーザーテンプレートも、次の「テンプレートのバリデーション」節にある組み込みテンプレートと
-**まったく同じ静的チェック**（`template.Validate()`）を通ります。`FROM codex-dock:*` で
-既存イメージを拡張する派生テンプレートであれば、そのチェックはスキップされます。
-そのため、動作確認（verify）や管理のしやすさは組み込みテンプレートと変わりません。
-
-#### 組み込みテンプレートをインストール時に配置する
-
-組み込みテンプレート（`plain`, `pwn` 等）はバイナリに埋め込まれているだけで、
-デフォルトでは `~/.config/codex-dock/templates/` にファイルとして存在しません。
-`make install-templates`（または `make install-all`）を実行すると、リポジトリの
-`docker/sandbox/Dockerfile`（`plain`）と `docker/templates/<name>/Dockerfile` の
-コピーがこのディレクトリに書き出され、以後は通常のファイルとして直接閲覧・編集
-できるようになります。既にファイルが存在するテンプレートはスキップされ、上書きされません。
-
-```bash
-make install-templates
-#   Default template 'plain' installed at ~/.config/codex-dock/templates/plain/Dockerfile
-#   Default template 'pwn'   installed at ~/.config/codex-dock/templates/pwn/Dockerfile
-```
-
-配置後は、これらのテンプレートは「ユーザーテンプレート」として扱われます
-（`codex-dock build --template list` に `[user]` と表示されます）。バイナリ埋め込みの
-オリジナルより優先して読み込まれるため、このファイルを直接編集すればそのままビルド内容に反映されます。
-
-### テンプレートのバリデーション
-
-ビルド時に、テンプレートが必要最低限のツールを含んでいるか静的に検証されます：
-
-- `@openai/codex`（Codex CLI）のインストール
-- `@anthropic-ai/claude-code`（Claude Code）のインストール
-- `git`, `curl` などの基本ツール
-- 非 root ユーザーの作成と切り替え
-- `entrypoint.sh` のコピー
-
-派生テンプレート（`FROM codex-dock:*`）の場合はベースイメージを信頼し、これらのチェックはスキップされます。
-
----
-
-## 使用例
-
-```bash
-# デフォルト設定でビルド（Dockerfile を自動検出）
 codex-dock build
-
-# テンプレートの一覧を表示
 codex-dock build --template list
-
-# plain テンプレートでビルド（デフォルトと同等）
-codex-dock build --template plain
-
-# pwn テンプレートでビルド（codex-dock:pwn タグ）
 codex-dock build --template pwn
-
-# pwn テンプレートをカスタムタグでビルド
-codex-dock build --template pwn --tag my-pwn:v1
-
-# カスタムタグでビルド
-codex-dock build --tag my-codex:v1
-
-# Dockerfile を明示指定
-codex-dock build -f /path/to/Dockerfile
-
-# カスタムイメージをビルドして run で使用
-codex-dock build -f ./custom/Dockerfile --tag my-codex:v2
-codex-dock run --image my-codex:v2
+codex-dock build -f ./Dockerfile --tag my-codex:v1
+codex-dock run --image my-codex:v1
 ```
 
-> **省略可能**: `codex-dock run` 実行時にイメージが存在しない場合は自動的にビルドされます。
-> テンプレートに対応するタグ（例: `codex-dock:pwn`）の場合は自動的にテンプレートからビルドされます。
+| オプション | 内容 |
+|---|---|
+| `--tag`, `-t` | 出力タグ。通常は `codex-dock:latest`、テンプレート指定時はそのタグ |
+| `--dockerfile`, `-f` | Dockerfileを指定 |
+| `--template`, `-T` | テンプレート名。`list` で一覧表示 |
+| `--print-entrypoint` | 組み込みentrypoint.shを出力し、ビルドせず終了 |
 
----
+`--template` と `-f` は同時に指定できません。
+`run` 時にイメージがない場合は、対応するテンプレートまたは既定Dockerfileから自動ビルドします。
+任意のイメージ名を指定する場合は、先にそのタグをビルドしてください。
 
-## `--print-entrypoint` — entrypoint.sh を独自 Dockerfile に取り込む
+## カスタムイメージを作る
 
-`FROM codex-dock:*` **しない**独自 Dockerfile（組み込みサンドボックスイメージから
-派生していないテンプレート）でも、`docker/sandbox/entrypoint.sh` をコピーして
-`ENTRYPOINT` に設定する必要があります。このスクリプトが Auth Proxy からプレースホルダ
-トークンを取得し、`--agent`/`--exec` へディスパッチする役割を担っているためです。
-これまでは本リポジトリのチェックアウトから手動でコピーする以外に入手方法がなく、
-Auth Proxy 側のプロトコルが変わった際に追従漏れが起きるリスクがありました。
+組み込みイメージから派生すると、エージェントと認証用entrypointを引き継げます。
 
-`--print-entrypoint` は、`codex-dock` バイナリに組み込まれている `entrypoint.sh` を
-そのまま stdout に出力してビルドは行わずに終了します。手元にインストール済みの
-バイナリから、正規のコピーをそのまま取得できます。
+```bash
+codex-dock build
+```
+
+新しい作業ディレクトリに `Dockerfile` を作成します。
+
+```dockerfile
+FROM codex-dock:latest
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends jq \
+    && rm -rf /var/lib/apt/lists/*
+USER codex
+```
+
+そのディレクトリでビルドします。
+
+```bash
+codex-dock build -f ./Dockerfile --tag my-codex:jq
+codex-dock run --image my-codex:jq -- jq --version
+```
+
+ビルド時の `USER root` はパッケージ追加用です。
+Kataワーカーの実行ユーザーは非rootに解決し、capability・seccomp・資源制限を検証します。
+イメージに認証情報や管理ソケットを含めないでください。
+
+## 独自ベースイメージを使う
+
+組み込みイメージを継承しない場合は、使用するエージェントとentrypointの依存ツールを用意します。
+`docker/sandbox/Dockerfile` を基準にしてください。
+通常の認証付き起動には、対応するentrypointが必要です。
 
 ```bash
 codex-dock build --print-entrypoint > entrypoint.sh
-chmod +x entrypoint.sh
 ```
 
-あとは `docker/sandbox/Dockerfile` と同様に、自分の Dockerfile から参照します：
+Dockerfileに組み込みます。
 
 ```dockerfile
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 USER codex
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+WORKDIR /workspace
+ENTRYPOINT ["/entrypoint.sh"]
 ```
 
-`codex-dock` をアップグレードした際は、このコマンドを再実行して Auth Proxy
-プロトコルの変更を取り込んでください。
+上の例は、必要なツールと非rootユーザーを用意した後の設定です。
+CLI更新時にはentrypointも再取得してください。
+カスタムイメージも通常と同じKata起動検証を通ります。イメージごとの互換性は実行して確認します。
 
----
+## ユーザーテンプレート
 
-## 関連ドキュメント
+`~/.config/codex-dock/templates/<名前>/Dockerfile` に配置すると、`--template <名前>` で使えます。
+同名の組み込みテンプレートより優先します。
 
-- [`codex-dock run`](run.md) — ビルドしたイメージを使ってコンテナを起動
-- [クイックスタート](../getting-started.md) — 初回セットアップの手順
+```bash
+mkdir -p ~/.config/codex-dock/templates/mytool
+cp Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
+codex-dock build --template mytool
+codex-dock run --template mytool
+```
+
+`plain` のタグは `codex-dock:latest`、他は `codex-dock:<名前>` です。
+`make install-templates` は組み込みテンプレートを利用者のディレクトリへ配置します。既存ファイルは上書きしません。
+ディスク上のDockerfile更新時の自動ビルドは[auto_build](../configuration.md#auto_build)で設定します。
+
+## Dockerfileとビルドコンテキスト
+
+`-f` を指定した場合、コンテキストはカレントディレクトリです。
+省略した場合は次の順に探し、選んだDockerfileのディレクトリを使います。
+
+1. `./Dockerfile`
+2. `./docker/sandbox/Dockerfile`
+3. `./docker/Dockerfile`（旧配置）
+4. `~/.config/codex-dock/Dockerfile`（未配置なら組み込み版を配置）
+
+テンプレートのビルドでは、必要なentrypointなどを含む一時コンテキストを作成します。
+プロキシイメージのビルドは別の[proxy build](proxy.md)です。
+
+## BuildKitの接続と通信
+
+既定のbuilderは `unix:///run/codex-dock-buildkit/buildkitd.sock` です。
+変更する場合は `BUILDKIT_HOST` を指定します。
+BuildKitのcontainerd workerは、製品の専用socket・namespaceとそろえます。
+
+HTTP/HTTPS/NO/ALL proxy環境変数と小文字版をbuild argsとして渡します。
+`CODEX_PROXY_CERT` は `proxy_ca` secretとして渡し、組み込みDockerfileはRUN中だけ使います。
+独自Dockerfileで必要な場合もsecretとして参照し、イメージへコピーしないでください。
+BuildKit daemonのregistry通信は、管理者が別途proxyとCAを設定します。

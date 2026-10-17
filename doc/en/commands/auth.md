@@ -33,7 +33,8 @@ Saves `OPENAI_API_KEY` to `~/.config/codex-dock/apikey` with permissions `0600`.
 codex-dock auth rotate
 ```
 
-Immediately revokes all currently active tokens.
+The current implementation only writes a local `.rotate` marker. It does not immediately revoke tokens in a running proxy.
+Stop the worker or use `/admin/revoke` for immediate revocation. See [operations](../../operations.md) (Japanese) for proxy updates.
 
 ---
 

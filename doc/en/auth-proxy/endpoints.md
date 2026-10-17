@@ -1,238 +1,144 @@
-# Auth Proxy — API Endpoint Reference
+# Auth API
 
-> [日本語](../../auth-proxy/endpoints.md) | **English**
+[日本語](../../auth-proxy/endpoints.md) | **English**
 
-Full HTTP endpoint specifications for the Auth Proxy.
+See [overview](../auth-proxy.md) and [tokens](tokens.md).
+These routes belong to the auth role. The egress role provides forwarding and health only.
 
-- [Overview & Deployment](../auth-proxy.md)
-- **API Endpoint Reference** ← this page
-- [Token Lifecycle & Security](tokens.md)
+## Listeners
 
----
-
-## Endpoint Summary
-
-| Endpoint | Method | Purpose |
+| Listener | Default URL | Caller |
 |---|---|---|
-| [`/token`](#get-token--credential-retrieval) | GET | Container retrieves credentials |
-| [`/oauth/token`](#post-oauthtoken--oauth-token-refresh-relay) | POST | OAuth token refresh relay |
-| [`/v1/*`](#any-v1--responses-api-reverse-proxy) | ANY | Responses API reverse proxy |
-| [`/chatgpt/*`](#any-chatgpt--chatgpt-backend-api-proxy) | ANY | ChatGPT backend-api proxy |
-| [`/health`](#get-health--health-check) | GET | Health check |
-| [`/revoke`](#post-revoke--token-revocation) | POST | Token revocation |
-| [`/admin/issue`](#post-adminissue--token-issuance-admin) | POST | Issue token (admin) |
-| `/admin/restore` | POST | Reauthorize a retained worker placeholder on explicit restart (admin) |
-| [`/admin/revoke`](#post-adminrevoke--token-revocation-admin) | POST | Revoke token (admin) |
-| [`/admin/mode`](#get-adminmode--mode-check) | GET | Check operating mode |
+| Data | `http://codex-auth-proxy:18080` | Workers |
+| Admin | `http://127.0.0.1:18081` | Host CLI |
 
----
+`proxy run` separates admin from data. For a custom `proxy serve`, specify `--admin-listen`.
+If an admin secret is configured, `/admin/*` requires `X-Proxy-Admin-Secret`.
 
-## `GET /token` — Credential Retrieval
+## Routes
 
-Called by `entrypoint.sh` at container startup to exchange the short-lived token for credentials.
-
-**Request**
-
-```
-GET /token HTTP/1.1
-X-Codex-Token: cdx-<64 hex chars>
-```
-
-**Response (API key mode)**
-
-```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-  "api_key": "cdx-a1b2c3d4...",
-  "container_name": "codex-brave-atlas"
-}
-```
-
-> `api_key` is **not** the real API key — it is the same placeholder as `CODEX_TOKEN`.
-> The proxy injects the real key into `Authorization` on every outbound request.
-
-**Response (OAuth mode)**
-
-```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-  "oauth_access_token": "cdx-a1b2c3d4...",
-  "oauth_id_token":     "eyJhbGci...",
-  "oauth_account_id":   "user_xxx",
-  "oauth_last_refresh": "2026-03-08T00:00:00Z",
-  "container_name":     "codex-calm-beacon"
-}
-```
-
-> - `oauth_access_token` is a placeholder (same as `CODEX_TOKEN`). The real access token is injected by the proxy.
-> - `oauth_id_token` is the real JWT. Codex CLI uses it locally to extract `chatgpt_account_id` and `chatgpt_plan_type` claims (no signature verification).
-> - `oauth_refresh_token` is intentionally omitted (security design).
-
-**Error Responses**
-
-| Status | Condition |
-|---|---|
-| `401 Unauthorized` | Missing, invalid, or expired `X-Codex-Token` header |
-| `405 Method Not Allowed` | Non-GET method |
-
----
-
-## `POST /oauth/token` — OAuth Token Refresh Relay
-
-Codex CLI calls this endpoint via `CODEX_REFRESH_TOKEN_URL_OVERRIDE` to refresh its OAuth token.
-The proxy substitutes the host's real `refresh_token` and forwards to `https://auth.openai.com/oauth/token`.
-
-**Authentication**: Query parameter `?cdx=<short-lived-token>` (Codex CLI does not add custom headers on refresh requests).
-
-**Request from Codex CLI**
-
-```
-POST /oauth/token?cdx=<cdx-xxxx> HTTP/1.1
-Content-Type: application/json
-
-{
-  "client_id":    "app_EMoamEEZ73f0CkXaXp7hrann",
-  "grant_type":   "refresh_token",
-  "refresh_token": ""
-}
-```
-
-**Field Processing**
-
-| Field | Action | Reason |
+| Method | Path | Authentication / purpose |
 |---|---|---|
-| `refresh_token` (request) | **Replaced with host value** | Container's `refresh_token` is empty |
-| `client_id` | Passed through | Hardcoded by Codex CLI |
-| `grant_type` | Passed through | No change needed |
-| `refresh_token` (response) | **Stripped** | Prevents container from receiving new refresh token |
-| `access_token` (response) | **Replaced with placeholder** | Real access token never reaches container |
-| `id_token` (response) | Passed through | For claims extraction only |
+| GET | `/token` | `X-Codex-Token`; obtain placeholders |
+| POST | `/oauth/token` | `?cdx=<worker token>`; OpenAI refresh |
+| ANY / WS | `/v1/*`, `/chatgpt/*` | Bearer worker token |
+| ANY / WS | `/anthropic/*` | `x-api-key` or Bearer worker token |
+| GET | `/health` | No authentication; process health |
+| POST | `/revoke` | Legacy data-plane revocation; prefer `/admin/revoke` |
+| POST | `/admin/issue` | Issue token |
+| POST | `/admin/restore` | Restore saved placeholder |
+| POST | `/admin/revoke` | Revoke token |
+| GET | `/admin/mode` | Authentication modes and capability |
 
-**Error Responses**
+## `GET /token`
 
-| Status | Condition |
-|---|---|
-| `400 Bad Request` | Not in OAuth mode |
-| `401 Unauthorized` | Missing, invalid, or expired `cdx` parameter |
-| `405 Method Not Allowed` | Non-POST method |
-| `502 Bad Gateway` | Failed to reach OpenAI |
-
----
-
-## `ANY /v1/*` — Responses API Reverse Proxy
-
-Containers set `OPENAI_BASE_URL=http://proxy/v1` so all Responses API requests flow through the proxy.
-
-| Auth Mode | Upstream |
-|---|---|
-| API key | `https://api.openai.com/v1/<path>` |
-| OAuth / ChatGPT | `https://chatgpt.com/backend-api/codex/<path>` |
-
-- `Authorization` header is **overwritten** with the real host credentials
-- In OAuth mode, `ChatGPT-Account-Id` is also overwritten with the correct `AccountID`
-- Hop-by-hop headers (`Connection`, `Transfer-Encoding`, etc.) are stripped
-- WebSocket upgrades are tunneled with the same credential injection
-
----
-
-## `ANY /chatgpt/*` — ChatGPT backend-api Proxy
-
-Forwards `/chatgpt/` to `https://chatgpt.com/backend-api/`.
-OAuth-mode containers set `chatgpt_base_url=http://proxy/chatgpt/` in Codex CLI config to route rate-limit and account-info requests here.
-
----
-
-## `GET /health` — Health Check
+Send `X-Codex-Token: cdx-<64 hexadecimal digits>`.
+Returns 200 JSON in API-key mode:
 
 ```json
-HTTP/1.1 200 OK
-Content-Type: application/json
+{"api_key": "cdx-<64 hexadecimal digits>", "container_name": "worker-name"}
+```
 
+OAuth mode returns:
+
+```json
 {
-  "status": "ok",
-  "active_tokens": 3
+  "oauth_access_token": "cdx-<64 hexadecimal digits>",
+  "oauth_id_token": "<ID token>",
+  "oauth_account_id": "<account ID>",
+  "oauth_last_refresh": "<timestamp>",
+  "container_name": "worker-name"
 }
 ```
 
----
+The API/access token is the submitted placeholder. Real access/refresh tokens are not returned.
+An ID token may be returned for account metadata.
+Invalid, missing or expired tokens return 401; wrong methods return 405.
 
-## `POST /revoke` — Token Revocation
+## `POST /oauth/token`
 
-Called by `sandbox.Manager.Stop()` when a container is stopped.
+OpenAI refresh relay used by `CODEX_REFRESH_TOKEN_URL_OVERRIDE`.
+Authenticate with `?cdx=<worker token>` because the client does not attach custom refresh headers.
 
+```json
+{"client_id": "<client ID>", "grant_type": "refresh_token", "refresh_token": ""}
 ```
-POST /revoke?container=<container-name> HTTP/1.1
-```
 
-| Status | Condition |
+The proxy substitutes the real host refresh token before forwarding to OpenAI.
+In the response it replaces the access token with the placeholder and removes the refresh token.
+Real updated credentials remain on the proxy side.
+
+Errors: 400 for wrong mode or malformed request, 401 for invalid worker token, 405 for wrong method, 502 for upstream connection failure.
+
+## AI HTTP and WebSocket routes
+
+`/v1/*` and `/chatgpt/*` require `Authorization: Bearer <worker token>`.
+`/anthropic/*` accepts `x-api-key` or Bearer. If both are present they must match.
+Missing, unissued, expired, revoked, duplicate or conflicting credentials return 401 before an upstream connection.
+Expiry, revocation and replacement cancel existing HTTP streams and WS tunnels.
+
+| Route / mode | Upstream |
 |---|---|
-| `200 OK` | Token revoked |
-| `400 Bad Request` | Missing `container` parameter |
-| `405 Method Not Allowed` | Non-POST method |
+| `/v1/*`, API key | `https://api.openai.com/v1/*` |
+| `/v1/*`, ChatGPT OAuth | `https://chatgpt.com/backend-api/codex/*` |
+| `/chatgpt/*` | `https://chatgpt.com/backend-api/*` |
+| `/anthropic/*` | `https://api.anthropic.com/*` |
 
----
+Worker authentication is removed and real provider credentials are injected.
+ChatGPT account ID is overwritten with the correct value.
+HTTP hop-by-hop headers are removed; upstream status/body and relevant headers are returned.
+SSE is streamed and validated WebSockets are tunneled.
 
-## Admin Endpoints (`/admin/*`)
+## `GET /health`
 
-Admin endpoints require the `X-Proxy-Admin-Secret` header (when `--admin-secret` is configured).
-
-### `POST /admin/issue` — Token Issuance (Admin)
-
-Issues a short-lived token for a named session.
-Used when running Codex CLI without `codex-dock run`.
-→ See [Using Auth Proxy Standalone](../proxy-standalone.md).
-
-**Request**
-
+```json
+{"status": "ok", "active_tokens": 3}
 ```
-POST /admin/issue HTTP/1.1
-Content-Type: application/json
-X-Proxy-Admin-Secret: <secret>
 
+The count is in-memory records, which can include expired records awaiting cleanup.
+This is not a proof of token validity or upstream AI connectivity.
+
+## Admin API
+
+If configured, supply `X-Proxy-Admin-Secret: <secret>` on all admin calls.
+Wrong secrets return 401 and wrong methods return 405.
+
+### `POST /admin/issue`
+
+```json
+{"container": "worker-name", "ttl": 3600}
+```
+
+`container` is required. An omitted or nonpositive TTL uses the proxy default.
+Returns 200 with `{"token": "cdx-..."}`. Invalid JSON or an empty name returns 400.
+Issuing for the same name cancels the previous lease and connections.
+
+### `POST /admin/restore`
+
+```json
+{"container": "worker-name", "token": "cdx-<64 hexadecimal digits>", "ttl": 3600}
+```
+
+Reactivates a saved placeholder; success is 204.
+Invalid name/format/TTL or a token assigned to another worker returns 400.
+Real API keys are not accepted. Managed restart handles this automatically.
+
+### `POST /admin/revoke`
+
+Specify `?container=worker-name`. Success is 200; missing name is 400.
+Cancels the lease and its connections.
+Legacy `POST /revoke` uses the same query but does not validate an admin secret; use the separated admin route for management tools.
+
+### `GET /admin/mode`
+
+```json
 {
-  "container": "my-session",
-  "ttl": 3600
+  "oauth_mode": true,
+  "anthropic_available": false,
+  "anthropic_oauth_mode": false,
+  "worker_token_auth": true
 }
 ```
 
-**Response**
-
-```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"token": "cdx-a1b2c3d4..."}
-```
-
----
-
-### `POST /admin/revoke` — Token Revocation (Admin)
-
-```
-POST /admin/revoke?container=<name> HTTP/1.1
-X-Proxy-Admin-Secret: <secret>
-```
-
----
-
-### `GET /admin/mode` — Mode Check
-
-```json
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"oauth_mode": false}
-```
-
----
-
-## Related Documentation
-
-- [Auth Proxy Overview & Deployment](../auth-proxy.md)
-- [Token Lifecycle & Security](tokens.md)
-- [Using Auth Proxy Standalone](../proxy-standalone.md)
-- [Network Specification](../network.md)
+Current clients reject proxies without `worker_token_auth: true`.
+Rebuild and recreate old proxies before creating workers. See [operations](../../operations.md#cliプロキシを更新する) (Japanese).

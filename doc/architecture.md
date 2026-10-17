@@ -1,20 +1,24 @@
-# アーキテクチャ概要
+# アーキテクチャ
 
-既定構成はcontainerd・Kata runtime-rs・Dragonball。Docker daemonとDocker CLIを実行時依存から外し、既存の操作画面と認証・worktreeの機能を維持する。[配置と移行](kata.md)、[ネットワーク](network.md)、[VM管理](vm.md)も参照。
+**日本語** | [English](en/architecture.md)
+
+実行経路は **containerd → Kata runtime-rs → Dragonball** です。
+CLIとTUIはroot管理サービスへ接続し、サービスが専用containerdを操作します。
+イメージの作成には独立したBuildKitを使います。
 
 ```mermaid
 flowchart LR
-  CLI[CLI / TUI] --> Node[root管理サービス Unix socket]
+  CLI[CLI / TUI] --> Node[管理サービス / Unix socket]
   Node --> CD[専用containerd / codex-dock namespace]
-  CD --> Kata[Kata shim + Dragonball]
-  Kata --> VM[guest agent / bootstrap / worker]
-  Kata --> Log[固定IO logger]
-  CD --> Auth[auth proxy / runc]
-  CD --> Forward[egress proxy / runc]
+  CD --> Kata[Kata shim / 組み込みDragonball]
+  Kata --> VM[guest bootstrap / worker]
+  Kata --> Log[IO logger]
+  CD --> Auth[認証プロキシ / runc]
+  CD --> Egress[一般通信プロキシ / runc]
   VM --> Auth
-  VM --> Forward
-  Node --> Net[専用bridge・namespace・nftables]
-  Build[buildctl / BuildKit] --> OCI[OCI image import]
+  VM --> Egress
+  Node --> Net[bridge / namespace / nftables]
+  Build[BuildKit] --> OCI[OCI import]
   OCI --> CD
 ```
 
@@ -22,31 +26,46 @@ flowchart LR
 
 | 場所 | 責務 |
 |---|---|
-| `cmd/`、`internal/ui` | 既存CLI、VM管理、TUI |
-| `internal/sandbox` | ワーカー作成、起動ゲート、認証復元、workspace/worktree、削除journal |
-| `internal/engine/backend.go` | 公式containerd SDKによるimage・snapshot・task管理。既存DTO用の限定HTTP互換層 |
-| `internal/engine/network*.go` | ホストの専用bridge・namespace・IP予約・nftables検証と復元 |
-| `internal/engine/io.go`、`cmd/io-logger` | shim所有のログ収集とstdin維持。node再起動でguest I/Oを切断しない |
-| `internal/kataguard` | root予約台帳、固定資産と実プロセス検証、ホスト資源制限、孤児回収 |
-| `internal/authproxy` | OpenAI/Anthropic reverse、token/admin、egress forward、WebSocket等を分離したモジュール |
-| `internal/networkpolicy` | 宛先domain/IP/CIDR/portの許可・拒否、DNS応答検査とdial固定 |
-| `internal/template`、`internal/worktree` | imageテンプレート、Git worktree管理 |
-| `docker/` | 既存Dockerfile形式のimage資産。ビルドは独立BuildKit |
+| `cmd/`、`internal/ui` | CLI、VM管理、TUI |
+| `internal/sandbox` | ワーカー起動、検証ゲート、認証復元、mount、worktree、削除記録 |
+| `internal/engine` | containerd SDKによるimage・snapshot・task管理、ネットワーク、継続するconsole I/O |
+| `internal/kataguard` | 固定資産、予約台帳、ホストプロセス・資源制限の検証、孤児回収 |
+| `internal/authproxy` | AI認証、トークン・管理API、HTTP/SSE/WS、一般通信の転送 |
+| `internal/networkpolicy` | 宛先ルール、DNS応答の検査、検証済みIPへの接続 |
+| `internal/template`、`internal/worktree` | イメージテンプレート、Git worktree |
+| `docker/` | Dockerfile形式のイメージ資産。ビルドはBuildKit |
+| `deploy/kata/` | ホスト配置、サービス設定、guest準備 |
 
-## ワーカーの起動
+CLIの既定接続先は `/run/codex-dock-node.sock` です。
+Docker SDKの型とHTTPクライアントを内部互換層で利用しますが、Docker daemonには接続しません。
+接続先は `CODEX_DOCK_KATA_NODE_SOCKET` で変更します。
 
-1. 固定したKata資産、実containerdプロセス、cgroup v2を検証する。
-2. ワーカー専用networkを予約し、必要なproxyだけを追加接続する。既存nameを新しいworkerとして採用しない。
-3. CPU・メモリ・PIDのホスト上限を予約し、private台帳へ永続化する。
-4. image設定と利用者の選択からOCI specを作り、snapshotと生成前specを保存する。UID/GID、capability削除、seccomp、NNP、read-only cgroup mountを明示する。
-5. Dragonball VMで固定bootstrapをPID 1として起動する。imageのentrypointや利用者コードはまだ動かさない。
-6. ホストの実shim/logger inode・worker ID・所属・資源上限と、guestの別kernel、UID/GID、capability、seccomp、NNP、資源制限を確認する。
-7. 認証placeholderをproxyへ復元し、nonceによって元のentrypointを解放する。guestはproxyからplaceholderだけを取得する。
+## ワーカーを起動する流れ
 
-APIリクエストの実資格情報への置換はauth proxyだけが行う。一般通信は資格情報を持たないegress proxyが担当する。`--no-internet` はegress proxyを接続しない。
+1. 固定資産、containerd、cgroup v2を検証する。
+2. 専用ネットワークとCPU・メモリ・PIDの上限を予約する。
+3. OCI実行仕様を保存し、snapshotを用意する。
+4. 信頼済みbootstrapをPID 1としてVMを起動し、利用者の処理は待機させる。
+5. ホストのshim/loggerとcgroup、guestの別kernel・実行ユーザー・権限・資源制限を照合する。
+6. 短命トークンを有効にし、nonceで元のentrypointを解放する。
 
-## 停止・再起動・削除
+認証プロキシだけが実認証情報を注入します。
+一般通信プロキシは実認証情報を持ちません。
+`--no-internet` は一般通信プロキシを接続せず、固定AI経路だけを維持します。
 
-コンテナとsnapshotはcontainerdに保持し、再起動時も同じIDを使う。Dragonballの自己cgroup削除と残存tcfilterには[Kata固有の回収処理](kata.md)を適用する。tokenの失効・復元、Gitメタデータの同一絶対パス共有、readonly mount、worktreeの回収は既存Managerが担当する。
+## 状態を保存する場所
 
-削除のintentは実オブジェクトを消す前にfsyncする。失敗時はnetwork・token・cgroup・worktreeを再試行できる。nodeは自身のnamespace・所有ID・専用資源だけを扱い、不明状態を孤児として削除しない。root管理socketを利用するhost operatorはroot相当であり、guestには公開しない。
+| 保存先 | 内容 |
+|---|---|
+| `/var/lib/codex-dock-node/allocations` | root所有のVM予約台帳 |
+| `/var/lib/codex-dock-node/engine` | 実行仕様、network、ログ |
+| `/var/lib/codex-dock-containerd` | containerdの永続状態 |
+| `/run/codex-dock-containerd` | containerdの実行時状態 |
+
+停止したコンテナとsnapshotは保持し、再起動には同じIDを使います。
+ログ収集とstdinの維持はshim側のloggerが担当するため、管理サービスを再起動してもVMとI/Oを維持します。
+
+削除予定を先に永続化し、network・token・cgroup・worktreeの回収に失敗した場合は再試行できるようにします。
+所有関係を確認できる資源だけを扱い、管理層に接続できない状態を孤児として削除しません。
+
+配置は[Kataの準備](kata.md)、境界は[セキュリティ](security.md)、照合は[VM管理](vm.md)を参照してください。

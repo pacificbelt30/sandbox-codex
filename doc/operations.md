@@ -1,0 +1,86 @@
+# 日常の運用
+
+準備と初回起動は[クイックスタート](getting-started.md)、ホストの配置は[Kataの手順](kata.md)を参照してください。
+
+## 状態とログを見る
+
+```bash
+codex-dock ps -a
+codex-dock vm ps -a
+codex-dock vm inspect WORKER
+codex-dock logs WORKER --follow
+codex-dock ui
+```
+
+`ps` はワーカー、`vm ps` はcontainerd・予約台帳・ホストプロセスを照合したVMを表示します。
+VMが動いていてもアプリケーションの正常応答までは保証しません。
+状態の意味は[VM管理](vm.md)を参照してください。
+
+## 停止・再起動・削除する
+
+```bash
+codex-dock stop WORKER
+codex-dock vm start WORKER
+codex-dock stop WORKER
+codex-dock rm WORKER
+```
+
+停止中は認証が失効し、コンテナとsnapshotは再起動用に残ります。
+再起動時はKataの検証をやり直し、同じID・workspace・プレースホルダートークンを復元します。
+
+実行中のワーカーを削除する場合は `rm --force WORKER` を使います。
+削除に失敗した場合は同じコマンドで回収を再試行できます。
+必要な成果を保存してから削除してください。
+
+## 並列で実行する
+
+```bash
+codex-dock run --agent codex --parallel 2 --worktree \
+  --task "テストを追加して" --approval-mode full-auto --detach
+```
+
+各ワーカーに別のVMとworktreeを用意します。
+ノードの既定上限は同時2台です。残存資源は `vm ps -a` で確認します。
+上限の変更は管理者が `node serve --max-workers` で行います。
+CPUとメモリの要件は[Kataの手順](kata.md#必要なホスト)を参照してください。
+
+## CLI・プロキシを更新する
+
+認証方式や通信ポリシーを変える場合も、この順序で更新します。
+プロキシは複数ワーカーで共有しているため、先にワーカーの作業を終えます。
+
+1. `ps -a` で対象を確認し、ログと成果を保存する。
+2. 旧版でワーカーを停止・削除する。プロキシIPが変わると保存済みワーカーを再起動できないため、更新後は新規作成する。
+3. CLIと管理サービスを同じ版に更新する。ソース配置の場合は `make build` の後、[配置手順](kata.md)のバイナリを更新する。
+4. リポジトリのルートで、次を実行する。
+
+```bash
+codex-dock proxy stop
+codex-dock proxy rm
+codex-dock proxy build
+codex-dock proxy run
+codex-dock runtime-check
+```
+
+名前を省略した `proxy stop` と `proxy rm` は、既定の2つのプロキシが対象です。
+独自名を使った場合は、それぞれ `--name NAME` で指定します。
+
+`proxy build` だけでは既存コンテナは更新されません。
+新しいCLIは `worker_token_auth: true` を返さない旧プロキシを拒否します。
+新しいイメージからプロキシを作り直してからワーカーを起動してください。
+
+Kataのshim・kernel・guest imageなどの固定資産を更新する場合は、別途[Kataの資産更新](kata.md#固定資産の更新)が必要です。
+`codex-dock update` はGoのインストール先にCLIを置く操作だけで、ホストサービスやイメージを更新しません。
+
+## 後片付けする
+
+ワーカーを削除した後、プロキシと共通egressネットワークを止める場合は次を実行します。
+
+```bash
+codex-dock proxy stop
+codex-dock proxy rm
+codex-dock network rm
+```
+
+孤立したVM予約は[VM管理の回収手順](vm.md#孤立した資源の回収)で確認します。
+`vm prune` は空の孤立予約を対象とし、停止済みワーカーは削除しません。

@@ -8,7 +8,7 @@
 #
 # Precedence (highest first):
 #   1. command-line flag        (e.g. --image)
-#   2. environment variable     (CODEX_DOCK_*)
+#   2. documented environment override (runtime / admin client settings)
 #   3. this config file
 #   4. built-in default
 #
@@ -21,22 +21,19 @@
 # Global defaults
 # -----------------------------------------------------------------------------
 
-# Docker image used for sandbox (worker) containers.   flag: --image / -i
+# OCI image used for sandbox (worker) containers.   flag: --image / -i
 default_image = "codex-dock:latest"
 
-# Docker image used for the auth proxy container.      (proxy build / run)
+# OCI image used for the auth proxy container.      (proxy build / run)
 proxy_image = "codex-dock-proxy:latest"
 
 # Auth-proxy token lifetime, in seconds.               flag: --token-ttl
 # Shorter = safer if a token leaks. 1800 = 30 min, 3600 = 1 h.
 default_token_ttl = 3600
 
-# Name of the Docker egress network the auth proxy attaches to.
-#                                                      env: CODEX_DOCK_NETWORK_NAME
-# Workers no longer share a single network: each worker gets its own Internal
-# network (dock-net-w-<name>) shared only with the proxy, so worker↔worker,
-# worker→host, and worker→internet are all blocked by Docker (no iptables/sudo).
-network_name = "dock-net-proxy"
+# Current network commands use dock-net-proxy. The legacy network_name key
+# does not change that default. Use proxy run --network for a custom proxy
+# network and keep worker/proxy endpoint configuration consistent.
 
 # Default sandbox image template.                      flag: --template / -T
 # If set, `codex-dock build` and `codex-dock run` use this template unless
@@ -128,27 +125,26 @@ approval_mode = "suggest"
 # -----------------------------------------------------------------------------
 # [proxy] — defaults for the auth proxy / router
 #
-# Isolation is enforced by Docker networks, not iptables — there is no host
-# firewall to configure and `codex-dock` never calls sudo. The proxy container
-# is the only egress path: workers reach it over their per-worker Internal
-# network and route all general traffic (git/npm/pip/curl) through its built-in
-# HTTP CONNECT forward proxy, while OpenAI/Anthropic API calls use its
-# credential-injecting reverse-proxy routes.
+# The node service enforces worker network isolation. The auth proxy handles
+# fixed AI routes with real credentials; a separate credential-free egress
+# proxy handles general HTTP/CONNECT traffic. Host setup requires root;
+# normal CLI operations use the trusted operator group.
 # -----------------------------------------------------------------------------
 [proxy]
 
-# Auth Proxy URL reachable from worker containers (Docker DNS name + data-plane
+# Auth Proxy URL reachable from workers (static hosts entry + data-plane
 # port).                                               flag: --proxy-container-url
 # The legacy key `firewall.proxy_container_url` is still honored for now.
 container_url = "http://codex-auth-proxy:18080"
 
 # Host-only admin connection for run / ui / stop / rm. Keep credentials out of
 # URLs and worker labels. Environment: CODEX_DOCK_PROXY_ADMIN_SECRET.
+# This is a CLIENT setting; configure the server with proxy run --admin-secret.
 admin_url = "http://127.0.0.1:18081"
 # admin_secret = "your-admin-secret"
 
 # Optionally restrict the forward proxy to a domain allowlist (and subdomains).
-# An empty/omitted list allows all destinations.       flag: --forward-allow-domain
+# An empty/omitted list adds no domain restriction; private IPs remain blocked.       flag: --forward-allow-domain
 #
 # Example: only allow common package registries and source hosts.
 # forward_allow_domains = ["github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]

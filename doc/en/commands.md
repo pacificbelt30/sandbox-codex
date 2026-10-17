@@ -11,6 +11,9 @@ Full command reference for codex-dock. See the individual pages below for detail
 | Command | Description | Details |
 |---|---|---|
 | [`codex-dock run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
+| [`codex-dock runtime-check`](../kata.md) | Verify execution host | Pinned assets, containerd and node |
+| [`codex-dock vm`](../vm.md) | Reconcile and manage Kata VMs | ps / inspect / start / stop / rm / prune |
+| [`codex-dock vm start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
 | [`codex-dock proxy`](commands/proxy.md) | Manage Auth Proxy | build / run / serve / stop / rm |
 | [`codex-dock ps`](commands/worker.md#codex-dock-ps) | List workers | Show running containers |
 | [`codex-dock stop`](commands/worker.md#codex-dock-stop) | Stop containers | Single or all |
@@ -42,3 +45,5 @@ Available on all commands.
 - [Quick Start](getting-started.md)
 - [Configuration Reference](configuration.md)
 - [Using Auth Proxy Standalone](proxy-standalone.md)
+
+For administrator-only `node serve` and `runtime-lock`, see [host setup](../kata.md) (Japanese).

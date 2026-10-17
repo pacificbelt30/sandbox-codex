@@ -1,101 +1,39 @@
 # codex-dock ドキュメント
 
-> **日本語** | [English](en/index.md)
+**日本語** | [English](en/index.md)
 
-**codex-dock** は [Codex CLI](https://github.com/openai/codex) を Docker コンテナ内で安全に実行するための **AI サンドボックスコンテナマネージャー**です。
-認証情報をコンテナから隔離する Auth Proxy、専用ブリッジネットワーク、並列ワーカー管理などを提供します。
+codex-dockは、Codex CLIとClaude CodeをKataのVMで隔離して実行します。
+containerdがワーカーを管理し、DragonballがVMを動かします。
+Docker EngineとDocker CLIは不要です。
 
----
+## 初めて使う
 
-## ドキュメント一覧
-
-### はじめに
-
-| ドキュメント | 内容 |
+| 読む順序 | 内容 |
 |---|---|
-| [クイックスタート](getting-started.md) | インストールから初回実行まで |
-| [アーキテクチャ概要](architecture.md) | システム全体の構成図・コンポーネント説明・起動シーケンス |
-| [セキュリティ設計](security.md) | コンテナ設定・保護の仕組み・既知の問題 |
+| 1. [実行ホストの準備](kata.md) | 管理者向け。Linux/KVM、Kata、containerd、BuildKitを配置する |
+| 2. [クイックスタート](getting-started.md) | 利用者向け。認証・イメージを用意して最初のワーカーを起動する |
+| 3. [日常の運用](operations.md) | 一覧、ログ、停止、再起動、更新、後片付け |
 
-### Auth Proxy
+旧Docker環境を使っている場合は、[移行手順](migration.md)から始めてください。
 
-| ドキュメント | 内容 |
+## 目的から探す
+
+| 目的 | ページ |
 |---|---|
-| [Auth Proxy 概要・デプロイ](auth-proxy.md) | 認証プロキシの仕組み・起動方法・認証モード |
-| [API エンドポイント仕様](auth-proxy/endpoints.md) | 全エンドポイントのリクエスト/レスポンス仕様 |
-| [トークンの仕組みとセキュリティ](auth-proxy/tokens.md) | トークンライフサイクル・セキュリティ考慮事項 |
-| [Auth Proxy のみを使う](proxy-standalone.md) | `codex-dock run` を使わずに Codex CLI を設定する方法 ✨ |
+| VMの状態や残存資源を調べる | [VM管理](vm.md) |
+| カスタムイメージやテンプレートを作る | [build](commands/build.md) |
+| 一般通信の許可／拒否を設定する | [通信ポリシー](proxy-policy.md) |
+| 認証情報の扱いを知る | [認証プロキシ](auth-proxy.md) |
+| プロキシだけを使う | [単体利用](proxy-standalone.md) |
+| 起動や通信の問題を調べる | [トラブルシューティング](troubleshooting.md) |
+| フラグや設定名を調べる | [コマンド](commands.md)・[設定](configuration.md) |
 
-### ネットワーク
+## 仕組みと開発
 
-| ドキュメント | 内容 |
-|---|---|
-| [ネットワーク仕様](network.md) | プロキシルータ + per-worker Internal ネットワーク・egress 制御 |
-| [firewall（廃止）](firewall.md) | 旧 iptables firewall は廃止。ネットワーク仕様へ移行 |
+- [アーキテクチャ](architecture.md)：各コンポーネントと起動の流れ
+- [ネットワーク](network.md)：ワーカーと2種類のプロキシの接続
+- [セキュリティ](security.md)：保護する範囲と制限
+- [認証API](auth-proxy/endpoints.md)・[短命トークン](auth-proxy/tokens.md)
+- [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
 
-### コマンドリファレンス
-
-| ドキュメント | 内容 |
-|---|---|
-| [コマンドリファレンス（一覧）](commands.md) | 全コマンドのインデックス・グローバルオプション |
-| [`codex-dock run`](commands/run.md) | コンテナ起動・承認モード・並列実行・パッケージ管理 |
-| [`codex-dock proxy`](commands/proxy.md) | Auth Proxy の build / run / serve / stop / rm |
-| [ワーカー管理 (ps / stop / rm / logs)](commands/worker.md) | コンテナの一覧・停止・削除・ログ表示 |
-| [`codex-dock auth`](commands/auth.md) | 認証情報の show / set / rotate |
-| [`codex-dock network`](commands/network-cmd.md) | egress ネットワークの create / rm / status |
-| [`codex-dock firewall`](commands/firewall.md) | （廃止）ルータモデルへ移行 |
-| [`codex-dock build`](commands/build.md) | サンドボックスイメージのビルド |
-| [`codex-dock ui`](commands/ui.md) | TUI ダッシュボードのキーバインド |
-
-### 設定
-
-| ドキュメント | 内容 |
-|---|---|
-| [設定リファレンス](configuration.md) | config.toml の全設定項目・環境変数・認証ファイル |
-
----
-
-## 全体像（一枚図）
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  ホスト環境                                                   │
-│                                                               │
-│  ┌──────────────┐    ┌────────────────────────────────────┐  │
-│  │  codex-dock  │    │  Auth Proxy / ルータ (router)      │  │
-│  │  (CLI)       │───▶│  - 短命トークン発行                │  │
-│  └──────────────┘    │  - API キー / OAuth を保護          │  │
-│         │            └──────────┬─────────────────────────┘  │
-│         │                       │ Docker DNS: codex-auth-proxy │
-│         ▼                       │                             │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │  per-worker Internal ネット (dock-net-w-<name>)      │    │
-│  │                                                       │    │
-│  │  ┌──────────────┐  ┌──────────────┐                  │    │
-│  │  │ コンテナ A   │  │ コンテナ B   │ ✕ 別ネット/L2    │    │
-│  │  │ codex-dock   │  │ codex-dock   │◀─ ワーカー間     │    │
-│  │  │ worker-1     │  │ worker-2     │   通信ブロック   │    │
-│  │  └──────────────┘  └──────────────┘                  │    │
-│  └──────────────────────────────────────────────────────┘    │
-│                  proxy 経由のみ │ egress (NAT は proxy 側)        │
-│                              ▼                               │
-│                        インターネット                         │
-│                        (OpenAI API等)                         │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 主な特徴
-
-- **セキュリティ隔離**: Codex はホストではなく Docker コンテナ内で動作
-- **Auth Proxy**: API キーがコンテナに直接渡らず、短命トークン経由で保護
-- **dock-net**: ICC 無効・ホストアクセス制限付きの専用ブリッジネットワーク
-- **git worktree**: 並列開発ブランチを独立したコンテナで実行
-- **dock-ui**: 全ワーカーを一覧管理するターミナル UI
-- **パッケージ管理**: `apt`, `pip`, `npm` パッケージを `--pkg` または `packages.dock` で指定
-
-## 要件
-
-- Go 1.24 以上
-- Docker Engine 20.10 以上
+通常の実行先はLinux x86_64です。CLIのクロスビルドは、各OSでKataを実行できることを意味しません。

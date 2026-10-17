@@ -6,7 +6,7 @@
 
 egress ネットワーク（`dock-net-proxy`、プロキシのインターネット到達用）を管理します。ワーカー用の `Internal` ネットワークはワーカーのライフサイクルに合わせて自動で作成・削除されるため、手動管理は不要です。
 
-> 旧 `codex-dock firewall`（iptables）は廃止されました。隔離は Docker ネットワークで実現します。
+> 旧 `codex-dock firewall`（iptables）は廃止されました。隔離はroot管理サービスの専用bridge・namespace・nftablesで実現します。
 
 ---
 
@@ -43,7 +43,7 @@ Egress network:  dock-net-proxy
   ID:            a1b2c3d4e5f6
   Driver:        bridge
   Internal:      false
-  Subnet:        172.20.0.0/16
+  Subnet:        10.253.0.0/24
 Worker networks: 2 (Internal, one per worker)
   - dock-net-w-codex-brave-otter
   - dock-net-w-codex-calm-finch

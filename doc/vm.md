@@ -55,8 +55,11 @@ containerdへ問い合わせできない場合は孤立と判定せず、停止�
 
 孤立VMの回収は、そのVMのプロセス・予約・専用cgroupが対象。製品外からcontainerdオブジェクトを消して削除記録も残っていない場合、元のネットワーク・認証プレースホルダー・worktreeの完全な回収情報は復元できないため、別途確認する。単にホスト上の全VMMプロセスを走査して管理対象に取り込む機能ではない。他製品のKata VM、runcコンテナ、一般のQEMU VMは管理対象外。
 
-## 検証記録
+## 動作確認
 
-2026-10-17、containerd 2.4.2 / Kata 4.2.0 runtime-rs / Dragonball / BuildKit 0.34.0の専用ノードで全受入試験がPASS（213.83秒）。起動失敗の回収・停止namespaceの復元、カスタムimage、VM一覧の実PID/資源確認、管理サービス再起動時の同じguest boot IDと連続ログ、停止・同じIDでの再起動・認証復元・削除、保持した停止workerのprune保護、製品外削除後の孤児照合と回収を確認した。内部のdockerd/Docker CLIは使用していない。
+一覧の実PID・資源、管理サービス再起動時のVM維持、停止・同じIDでの再起動・認証復元・削除、孤児照合と回収を実機で確認しています。
+詳細は[テストと動作確認](testing.md)を参照してください。
 
-JSONでは `engine_state` と `engine_available` に管理層の状態を出力する。PIDには組み込みDragonballの `runtime` と、shimが所有する `logger` を表示する。guest応答・外部AI推論・対話キーボード操作はそれぞれ別の検証項目であり、host_verified単独の保証ではない。
+JSONの `engine_state` と `engine_available` は管理層の状態です。
+PIDには組み込みDragonballの `runtime` と、shimが所有する `logger` を表示します。
+`host_verified` 単独ではguestアプリケーションの応答は確認できません。

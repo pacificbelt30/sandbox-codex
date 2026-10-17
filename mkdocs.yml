@@ -1,8 +1,8 @@
 site_name: codex-dock ドキュメント
 site_description: AI サンドボックスコンテナマネージャー codex-dock の公式ドキュメント
-site_url: https://pacificbelt30.github.io/codex-dock/
-repo_name: pacificbelt30/codex-dock
-repo_url: https://github.com/pacificbelt30/codex-dock
+site_url: https://pacificbelt30.github.io/sandbox-codex/
+repo_name: pacificbelt30/sandbox-codex
+repo_url: https://github.com/pacificbelt30/sandbox-codex
 
 docs_dir: doc
 
@@ -33,26 +33,75 @@ theme:
 
 plugins:
   - search:
-      lang: ja
+      lang:
+        - ja
+        - en
 
 nav:
   - ホーム: index.md
-  - はじめに: getting-started.md
-  - Kataへの移行: kata.md
-  - Kata VMの管理: vm.md
-  - アーキテクチャ: architecture.md
-  - Auth Proxy: auth-proxy.md
-  - ネットワーク: network.md
-  - プロキシの通信ポリシー: proxy-policy.md
-  - firewall: firewall.md
-  - コマンド: commands.md
-  - 設定: configuration.md
-  - テストと動作確認: testing.md
+  - はじめに:
+      - クイックスタート: getting-started.md
+      - 実行ホストの準備: kata.md
+      - 旧環境からの移行: migration.md
+  - 運用:
+      - 日常の操作と更新: operations.md
+      - Kata VMの管理: vm.md
+      - 通信の許可・拒否: proxy-policy.md
+      - トラブルシューティング: troubleshooting.md
+  - リファレンス:
+      - コマンド一覧: commands.md
+      - ワーカー起動: commands/run.md
+      - ワーカー管理: commands/worker.md
+      - イメージの作成: commands/build.md
+      - プロキシ管理: commands/proxy.md
+      - 認証管理: commands/auth.md
+      - ネットワーク管理: commands/network-cmd.md
+      - TUI: commands/ui.md
+      - CLIの更新: commands/update.md
+      - 設定: configuration.md
+      - 認証API: auth-proxy/endpoints.md
+  - 仕組みと開発:
+      - アーキテクチャ: architecture.md
+      - 認証プロキシ: auth-proxy.md
+      - 短命トークン: auth-proxy/tokens.md
+      - プロキシの単体利用: proxy-standalone.md
+      - ネットワーク: network.md
+      - セキュリティ: security.md
+      - テストと動作確認: testing.md
+      - 廃止したfirewall機能: firewall.md
+      - 旧firewallコマンド: commands/firewall.md
+  - English:
+      - Home: en/index.md
+      - Quick start: en/getting-started.md
+      - Commands:
+          - Overview: en/commands.md
+          - Run: en/commands/run.md
+          - Workers: en/commands/worker.md
+          - Build: en/commands/build.md
+          - Proxy: en/commands/proxy.md
+          - Auth: en/commands/auth.md
+          - Network: en/commands/network-cmd.md
+          - TUI: en/commands/ui.md
+          - Update: en/commands/update.md
+      - Configuration: en/configuration.md
+      - Architecture: en/architecture.md
+      - Auth proxy: en/auth-proxy.md
+      - Auth API: en/auth-proxy/endpoints.md
+      - Tokens: en/auth-proxy/tokens.md
+      - Standalone proxy: en/proxy-standalone.md
+      - Network: en/network.md
+      - Security: en/security.md
+      - Removed firewall: en/firewall.md
+      - Removed firewall command: en/commands/firewall.md
 
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
@@ -61,3 +110,13 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    not_found: warn
+    anchors: warn

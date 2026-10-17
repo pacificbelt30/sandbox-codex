@@ -1,243 +1,76 @@
-# SKILL.md — codex-dock Reusable Task Patterns
+# codex-dock development patterns
 
-> Domain-specific instructions and reusable patterns for AI agents working on `codex-dock`.
-> Sources: `doc/architecture.md`, `doc/auth-proxy.md`, `doc/commands.md`, `.golangci.yml`, `.github/workflows/ci.yml`, `README.md`
+Read [CLAUDE.md](CLAUDE.md) for conventions and [architecture](doc/architecture.md) for the current containerd/Kata/Dragonball design.
+These patterns describe this repository. They do not replace the host setup or security checks.
 
----
+## Add a command or setting
 
-## 1. Adding a New CLI Command
+1. Put Cobra wiring in `cmd/` and business logic in `internal/`.
+2. Register the command and preserve explicitly supplied flags over config defaults.
+3. Wire environment overrides explicitly; do not assume a `CODEX_DOCK_*` name works automatically.
+4. Update `configs/config.toml.example` and both configuration references.
+5. Add focused tests for new runtime behavior or contracts.
 
-**Pattern**: All CLI commands use [Cobra](https://github.com/spf13/cobra).
+Do not import `cmd/` from internal packages. Avoid new global state.
 
-```
-cmd/<name>.go          ← Cobra command definition + flag binding
-internal/<pkg>/        ← Business logic (keep cmd/ thin)
-```
+## Change worker lifecycle
 
-**Steps**:
-1. Create `cmd/<name>.go` with a `var <name>Cmd = &cobra.Command{...}`.
-2. Register it in `cmd/root.go` (or whichever file calls `rootCmd.AddCommand`).
-3. Bind flags with `viper.BindPFlag` so they respect config file and env var precedence.
-4. Implement business logic in `internal/<pkg>/`.
-5. Add a test in `internal/<pkg>/<name>_test.go`.
-6. Run `go vet ./...` and `golangci-lint run` before committing.
+Use `sandbox.RunOptions` and the existing Manager. The engine talks to the dedicated node, not a Docker daemon.
+New and restarted workers must pass pinned asset, host process/cgroup and guest restriction checks before the guard releases user code.
+Keep token activation after successful verification.
 
----
+Stop revokes the token and preserves restart state. Restart restores the placeholder for the same worker ID.
+Remove persists intent first and retains cleanup retries for network, token, worktree and cgroup failures.
+Use existing ownership checks for recovery; do not kill arbitrary PIDs or delete unknown resources.
 
-## 2. Adding a New Internal Package
+## Change AI proxy behavior
 
-**Pattern**: All business logic lives under `internal/`.
+Keep credential loading and refresh in `internal/authproxy`, separate from sandbox management.
+Use the `Service` boundary for management calls.
 
-```
-internal/<pkg>/
-    <pkg>.go          ← Core implementation
-    <pkg>_test.go     ← Unit tests
-```
+- `worker_auth.go`: authenticate issued tokens before upstream access.
+- `reverse.go`, `websocket.go`: shared forwarding with a provider-specific injector.
+- `openai.go`, `anthropic.go`: provider credentials and refresh.
+- `tokens.go`, `admin.go`, `restore.go`: leases and management API.
+- `forward.go`, `transport.go`: credential-free general egress.
+- `internal/networkpolicy`: destination rules independent of authentication and engine details.
 
-- Export only what `cmd/` needs.
-- Do **not** import `cmd/` from `internal/` (would create a cycle).
-- Error handling: return `error` values — never silently swallow errors.
+Preserve HTTP/SSE/WS cancellation on revoke, expiry, replacement, restore and stop.
+Credential-file changes must keep caller UID/GID, private HOME, read-only mounts and CapDrop ALL.
+Use local upstream fixtures for credential injection and rejection tests.
 
----
+## Change network behavior
 
-## 3. Error Handling (errcheck Compliance)
+Use `internal/network` for worker network lifecycle and `internal/engine/network*.go` for native host resources.
+Worker names resolve through static hosts, not Docker embedded DNS.
+Admin remains on the primary egress interface, separate from worker-facing data.
+Do not reintroduce a shared worker network or bypass destination policy through a generic upstream proxy.
 
-The `errcheck` linter is enabled with `check-type-assertions: true`.
+General allow/deny rules belong in `internal/networkpolicy` and must apply consistently to HTTP, redirects and CONNECT.
+Private IP blocks, full DNS-answer checks and fixed-IP dialing must remain effective.
+See [policy extension boundaries](doc/proxy-policy.md#コードの境界).
 
-**Do**:
-```go
-if err := someFunc(); err != nil {
-    return fmt.Errorf("context: %w", err)
-}
+## Change images and templates
 
-// If truly ignorable, assign explicitly:
-_ = optionalClose()
-```
+Build through `internal/engine.Build` and standalone BuildKit. Import into the same containerd namespace.
+Keep the auth entrypoint protocol compatible; expose the matching script through `build --print-entrypoint`.
+User templates under `~/.config/codex-dock/templates/<name>/Dockerfile` override built-ins.
+Preserve tag resolution, validation and on-disk Dockerfile timestamp checks.
+Package auto-detection already exists; use explicit `apt:`, `pip:` and `npm:` prefixes in examples.
 
-**Don't**:
-```go
-someFunc()          // ❌ errcheck will fail
-f.Close()           // ❌ errcheck will fail
-```
+## Check a change
 
-In `_test.go` files, errcheck is relaxed — you may write `someFunc()` directly in tests.
-
----
-
-## 4. Auth Proxy Token Lifecycle
-
-> Source: `doc/architecture.md`, `internal/authproxy/proxy.go`
-
-The Auth Proxy is the security boundary. When writing code that starts or stops containers:
-
-**Startup sequence** (already implemented in `cmd/run.go`):
-1. Start Auth Proxy on a random host port (`127.0.0.1:<PORT>`).
-2. Issue a short-lived token: `proxy.IssueToken(containerName, ttl)` → `cdx-xxxx`.
-3. Pass `CODEX_TOKEN` and `CODEX_AUTH_PROXY_URL` as container env vars.
-
-**Shutdown sequence** (F-AUTH-04 — **not yet implemented**):
-```go
-// TODO: call this when container stops
-proxy.RevokeToken(token)
-```
-When implementing F-AUTH-04, call `RevokeToken` from `sandbox.Manager.Stop()` or the stop flow in `cmd/run.go`.
-
-**OAuth vs API key**: The Auth Proxy auto-detects the mode by checking if `~/.codex/auth.json` contains a `refresh_token` field. The `/token` endpoint returns either `{"api_key": "..."}` or `{"oauth_access_token": "..."}`.
-
----
-
-## 5. Docker Container Creation Pattern
-
-> Source: `internal/sandbox/manager.go`, `internal/sandbox/types.go`
-
-`RunOptions` (defined in `internal/sandbox/types.go`) is the canonical input struct. Add new container parameters there, then read them in `manager.go`.
-
-Security settings that **must** be preserved on every container:
-```go
-HostConfig{
-    CapDrop:        []string{"ALL"},
-    SecurityOpt:    []string{"no-new-privileges"},
-    PidsLimit:      ptr(int64(512)),
-    NetworkMode:    "dock-net",
-    // ReadOnly applied via Mounts[0].ReadOnly
-}
-```
-
-Non-root user is enforced in `docker/sandbox/Dockerfile` via `USER codex` (uid:1001).
-
----
-
-## 6. Writing / Running Tests
-
-**Test packages covered by CI**:
-- `./internal/sandbox/...`
-- `./internal/authproxy/...`
-- `./internal/worktree/...`
-- `./internal/config/...`
-
-**Run all tests**:
-```bash
-go test -race -coverprofile=coverage.out -covermode=atomic \
-  ./internal/sandbox/... \
-  ./internal/authproxy/... \
-  ./internal/worktree/... \
-  ./internal/config/...
-go tool cover -func=coverage.out
-```
-
-**Test file naming**: `<file>_test.go` in the same package. Use `_test` package suffix for black-box tests.
-
-**Race conditions**: Always run with `-race` locally before pushing; CI enforces it.
-
----
-
-## 7. Adding Configuration Options
-
-Configuration uses [Viper](https://github.com/spf13/viper) with this precedence:
-```
-CLI flags > CODEX_DOCK_* env vars > config.toml > built-in defaults
-```
-
-**Steps**:
-1. Add the field to the config struct (in `internal/config/` if it exists, otherwise in Viper initialization).
-2. Bind the Cobra flag: `viper.BindPFlag("field_name", cmd.Flags().Lookup("flag-name"))`.
-3. Set an env var override: `viper.BindEnv("field_name", "CODEX_DOCK_FIELD_NAME")`.
-4. Document in `doc/configuration.md` and `configs/config.toml.example`.
-
----
-
-## 8. Fixing Network Issues (F-NET-04)
-
-> Source: `doc/architecture.md`, `doc/network.md`
-
-**Problem**: Auth Proxy listens on `127.0.0.1` (host loopback), which is unreachable from containers on `dock-net`.
-
-**Fix pattern**:
-1. Determine the docker bridge gateway IP for `dock-net` (e.g., `192.168.200.1`).
-2. Bind the Auth Proxy listener to that IP instead of `127.0.0.1`.
-3. Set `CODEX_AUTH_PROXY_URL=http://192.168.200.1:<PORT>` in the container env.
-4. Add an iptables rule to allow only Auth Proxy traffic from dock-net containers.
-
-This fix also enables full NF-SEC-01 compliance (TLS or UNIX socket).
-
----
-
-## 9. TUI (Terminal UI) Patterns
-
-> Source: `internal/ui/ui.go`, `doc/commands.md`
-
-The TUI uses `github.com/rivo/tview` (backed by `tcell`). Refresh interval: 2 seconds.
-
-**Keybind registration pattern** (Cobra-style for TUI):
-```go
-switch event.Key() {
-case tcell.KeyRune:
-    switch event.Rune() {
-    case 'S': // stop selected container
-    case 'D': // delete selected container
-    case 'A': // stop all containers
-    case 'R': // TODO: start container (F-UI-02 — unimplemented)
-    case 'Q': // quit
-    }
-}
-```
-
-**Log view** (F-UI-03): The log panel currently shows stub text. Fix by calling `mgr.Logs(containerName)` and feeding output to the tview `TextView`.
-
----
-
-## 10. Pre-commit Checklist
-
-Before every commit:
+Use gofmt for Go files. Return contextual errors, close bodies and use request contexts.
+Run focused tests, then the required checks for the affected behavior:
 
 ```bash
-# 1. Format
-gofmt -w ./...
-
-# 2. Vet
-go vet ./...
-
-# 3. Lint
-golangci-lint run --timeout=5m
-
-# 4. Test
-go test -race ./internal/sandbox/... ./internal/authproxy/... \
-        ./internal/worktree/... ./internal/config/...
-
-# 5. Module tidy (must produce no diff)
-go mod tidy
-git diff --exit-code go.mod go.sum
+make build
+make test
+make vet
+make lint
 ```
 
-All five steps correspond to CI jobs (`lint`, `vet`, `test`, `build`) and must pass before pushing.
-
----
-
-## 11. packages.dock File Format
-
-> Source: `doc/commands.md`, `internal/sandbox/packages.go`
-
-```
-# Comment lines start with #
-apt:libssl-dev        # apt package
-pip:requests          # pip package
-npm:typescript        # npm package
-libssl-dev            # no prefix → treated as apt (F-PKG-05: auto-detection not implemented)
-```
-
-When adding auto-detection for F-PKG-05, implement heuristics in `internal/sandbox/packages.go`.
-
----
-
-## 12. Cross-Platform Build Targets
-
-> Source: `.github/workflows/ci.yml`
-
-| Target | Command |
-|---|---|
-| Linux amd64 (native CI) | `go build -o codex-dock .` |
-| macOS arm64 | `GOOS=darwin GOARCH=arm64 go build -o codex-dock-darwin-arm64 .` |
-| macOS amd64 | `GOOS=darwin GOARCH=amd64 go build -o codex-dock-darwin-amd64 .` |
-| Linux arm64 | `GOOS=linux GOARCH=arm64 go build -o codex-dock-linux-arm64 .` |
-
-The binary has no runtime dependencies beyond a Docker socket.
+Runtime changes also need `make kata-e2e` on a prepared Linux/KVM host.
+Documentation changes need `mkdocs build --strict`.
+See [testing](doc/testing.md) for live AI checks and limitations.
+Do not put real credentials, tokens or private acceptance logs into the repository.

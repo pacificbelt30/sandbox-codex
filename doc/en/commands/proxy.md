@@ -1,93 +1,69 @@
-# `codex-dock proxy` — Auth Proxy Management
+# Manage proxies
 
-> [日本語](../../commands/proxy.md) | **English**
->
-> [← Command Reference](../commands.md)
+[日本語](../../commands/proxy.md) | **English**
 
-Build, start, stop, and remove the Auth Proxy container.
+`codex-dock proxy` manages the auth and general egress proxies on containerd.
+See [auth proxy](../auth-proxy.md) and [update procedure](../../operations.md#cliプロキシを更新する) (Japanese).
 
----
-
-## Subcommands
-
-| Subcommand | Description |
-|---|---|
-| [`proxy build`](#proxy-build) | Build Auth Proxy image |
-| [`proxy run`](#proxy-run) | Start Auth Proxy container |
-| [`proxy serve`](#proxy-serve) | Start as a local process |
-| [`proxy stop`](#proxy-stop) | Stop Auth Proxy container |
-| [`proxy rm`](#proxy-rm) | Remove Auth Proxy container |
-
----
-
-## `proxy build`
+## Build
 
 ```bash
-codex-dock proxy build [OPTIONS]
+codex-dock proxy build
+codex-dock proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
-| Option | Short | Default | Description |
-|---|---|---|---|
-| `--tag` | `-t` | `proxy_image` (from config) | Image tag |
-| `--dockerfile` | `-f` | (auto-detected) | Path to auth-proxy.Dockerfile |
+`--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
+Standalone BuildKit imports OCI output into containerd. Build from the repository root: the current directory is the context and Go source is required.
+The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`, then the config directory.
 
-Dockerfile search order: current dir → `docker/` subdir → `~/.config/codex-dock/` (auto-written if missing).
-
----
-
-## `proxy run`
+## Start
 
 ```bash
-codex-dock proxy run [OPTIONS]
+codex-dock proxy run
 ```
 
-| Option | Short | Default | Description |
-|---|---|---|---|
-| `--name` | | `codex-auth-proxy` | Container name |
-| `--port` | `-p` | `18080` | Host port |
-| `--network` | | `dock-net-proxy` | Docker network to attach to (auto-created if missing) |
-| `--admin-secret` | | | Secret for `/admin/*` endpoints |
-
-Automatically binds all detected auth sources to the container:
-
-| Auth Type | Host Source | How Passed |
+| Flag | Default | Purpose |
 |---|---|---|
-| API key (env) | `OPENAI_API_KEY` | `-e OPENAI_API_KEY=<value>` |
-| API key (saved) | `~/.config/codex-dock/apikey` | bind-mount (read-only) |
-| OAuth / ChatGPT | `~/.codex/auth.json` | bind-mount (read-only) |
+| `--name` | `codex-auth-proxy` | Auth container name |
+| `--http-name` | `codex-http-proxy` | Egress container name |
+| `--port`, `-p` | `18080` | Internal auth data port, not host-published |
+| `--admin-port` | `18081` | Admin port published on host loopback |
+| `--http-port` | `18082` | Internal egress port, not host-published |
+| `--network` | `dock-net-proxy` | Shared egress network; created if missing |
+| `--admin-secret` | Unset | Server secret; configure the same value in host clients |
 
----
+Policy flags are `--forward-allow-domain`, `--forward-deny-domain`, `--forward-allow-cidr`, `--forward-deny-cidr`, `--forward-allow-port` and `--forward-deny-port`.
+Domain/CIDR flags repeat; port flags repeat or accept comma-separated values.
+See [policy rules](../../proxy-policy.md) (Japanese).
 
-## `proxy serve`
+The auth proxy reads credentials as the caller's UID/GID through read-only binds under a private HOME.
+Old layouts, policy mismatches and missing worker-auth capability are rejected rather than silently updating existing containers.
 
-Run Auth Proxy as a local process (not in a container).
-
-```bash
-codex-dock proxy serve --listen 127.0.0.1:18080 [OPTIONS]
-```
-
-→ See [Using Auth Proxy Standalone](../proxy-standalone.md) for details.
-
----
-
-## `proxy stop`
+## Stop and remove
 
 ```bash
-codex-dock proxy stop [--name codex-auth-proxy]
+# Both default proxies
+codex-dock proxy stop
+codex-dock proxy rm
+
+# One named proxy
+codex-dock proxy stop --name codex-http-proxy
+codex-dock proxy rm --name codex-http-proxy
 ```
 
----
+Use `--name` for custom names. `proxy rm --force` removes a running container.
+Finish worker tasks first; these proxies are shared services.
 
-## `proxy rm`
+## Local process
+
+The internal `proxy serve` command is available for development and standalone use:
 
 ```bash
-codex-dock proxy rm [--name codex-auth-proxy] [--force]
+codex-dock proxy serve --role auth \
+  --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
+  --admin-secret "$PROXY_ADMIN_SECRET"
 ```
 
----
-
-## Related Documentation
-
-- [Auth Proxy Specification](../auth-proxy.md)
-- [API Endpoint Reference](../auth-proxy/endpoints.md)
-- [Using Auth Proxy Standalone](../proxy-standalone.md)
+Role `auth` serves AI/token/admin routes; `egress` forwards general traffic.
+The default data listen address is `0.0.0.0:18080`, so set loopback explicitly for local use.
+This command does not create Kata isolation or worker networks. See [standalone use](../proxy-standalone.md).
