@@ -1,6 +1,7 @@
 package authproxy
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,15 @@ type tokenRecord struct {
 	ContainerName string
 	ExpiresAt     time.Time
 	IssuedAt      time.Time
+	context       context.Context
+	cancel        context.CancelFunc
+}
+
+func newTokenRecord(name, token string, ttl int) *tokenRecord {
+	now := time.Now()
+	expires := now.Add(time.Duration(ttl) * time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), expires)
+	return &tokenRecord{Token: token, ContainerName: name, ExpiresAt: expires, IssuedAt: now, context: ctx, cancel: cancel}
 }
 
 // IssueToken creates and stores a short-lived token for a container.
@@ -24,14 +34,12 @@ func (p *Proxy) IssueToken(containerName string, ttlSec int) (string, error) {
 		return "", err
 	}
 
-	rec := &tokenRecord{
-		Token:         token,
-		ContainerName: containerName,
-		IssuedAt:      time.Now(),
-		ExpiresAt:     time.Now().Add(time.Duration(ttlSec) * time.Second),
-	}
+	rec := newTokenRecord(containerName, token, ttlSec)
 
 	p.mu.Lock()
+	if old := p.tokens[containerName]; old != nil && old.cancel != nil {
+		old.cancel()
+	}
 	p.tokens[containerName] = rec
 	p.mu.Unlock()
 
@@ -44,6 +52,9 @@ func (p *Proxy) IssueToken(containerName string, ttlSec int) (string, error) {
 // RevokeToken immediately revokes the token for a container.
 func (p *Proxy) RevokeToken(containerName string) {
 	p.mu.Lock()
+	if rec := p.tokens[containerName]; rec != nil && rec.cancel != nil {
+		rec.cancel()
+	}
 	delete(p.tokens, containerName)
 	p.mu.Unlock()
 	if p.cfg.Verbose {
@@ -145,6 +156,9 @@ func (p *Proxy) expireLoop() {
 		p.mu.Lock()
 		for name, rec := range p.tokens {
 			if now.After(rec.ExpiresAt) {
+				if rec.cancel != nil {
+					rec.cancel()
+				}
 				delete(p.tokens, name)
 				if p.cfg.Verbose {
 					fmt.Printf("Token expired for %s\n", name)

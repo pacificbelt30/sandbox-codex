@@ -95,6 +95,10 @@ codex-dock run
 
 ## 維持する操作と状態
 
+認証プロキシは起動したCLIのUID/GIDと専用HOMEで、所有者だけが読める資格情報ファイルをread-only mountする。元の`0600`権限とcapability全削除を維持する。別のUID/GIDでしか読めない資格情報は起動前に拒否する。CLI更新時はworkerをdrainし、`proxy build`でイメージを再ビルドしてproxyを再作成する。旧バイナリのキャッシュはlayoutラベルだけで採用せず、admin APIのworker認証対応を確認してからworkerを起動する。
+
+AI reverse proxyはOpenAIのBearer、Anthropicの`x-api-key`またはBearerに、発行済みで有効なworker placeholderを要求する。未発行・期限切れ・失効済みtokenと曖昧な認証headerを上流接続前に拒否する。失効・期限切れ・置換時には、そのtokenを利用中のHTTP streamとWebSocketも閉じる。
+
 `run / start / stop / rm / ps / logs / ui / vm` は同じ操作で利用する。イメージは同じOCI/Dockerfile形式を使い、`build -f`、テンプレート、自動ビルドは独立BuildKitへ接続する。`BUILDKIT_HOST` でbuilderを指定できる。BuildKitのcontainerd workerは同じsocket・namespaceを使い、ローカルのベースimageを再利用する。
 
 停止中のコンテナと書き込み可能なsnapshotはcontainerdに残る。再起動で同じID・workspaceを利用し、静的proxy IP・認証placeholderを復元する。削除intentは従来どおりユーザーのprivate状態へ永続化し、container・network・token・worktree・host cgroupのいずれかに失敗したら再試行情報を残す。

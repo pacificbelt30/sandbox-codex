@@ -13,6 +13,13 @@ import (
 // inject overwrites auth headers with the host's real credentials before the
 // request leaves the proxy.
 func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix, targetBase string, inject func(http.Header)) {
+	authenticated, done, ok := p.workerRequest(r, stripPrefix == "/anthropic")
+	if !ok {
+		http.Error(w, "worker token invalid or expired", http.StatusUnauthorized)
+		return
+	}
+	defer done()
+	r = authenticated
 	path := strings.TrimPrefix(r.URL.Path, stripPrefix)
 	target := targetBase + path
 	if r.URL.RawQuery != "" {
@@ -21,7 +28,7 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 
 	// WebSocket upgrade requests require raw TCP tunneling, not HTTP proxying.
 	if isWebSocketRequest(r) {
-		p.handleWebSocketProxy(w, r, target)
+		p.handleWebSocketProxy(w, r, target, inject)
 		return
 	}
 
@@ -49,7 +56,7 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		"upgrade":             true,
 	}
 	for k, vv := range r.Header {
-		if hopByHop[strings.ToLower(k)] {
+		if hopByHop[strings.ToLower(k)] || strings.EqualFold(k, "X-Codex-Token") || strings.EqualFold(k, "Authorization") || strings.EqualFold(k, "X-Api-Key") {
 			continue
 		}
 		for _, v := range vv {

@@ -2,6 +2,7 @@ package authproxy
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ func isWebSocketRequest(r *http.Request) bool {
 // It hijacks the incoming HTTP/1.1 connection, opens a raw TCP (or TLS) connection
 // to the upstream, performs the HTTP upgrade handshake, then copies data
 // bidirectionally between client and upstream.
-func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, targetURLStr string) {
+func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, targetURLStr string, inject func(http.Header)) {
 	targetURL, err := url.Parse(targetURLStr)
 	if err != nil {
 		http.Error(w, "invalid target URL", http.StatusInternalServerError)
@@ -52,6 +53,8 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 		return
 	}
 	defer upstreamConn.Close() //nolint:errcheck
+	stopUpstream := context.AfterFunc(r.Context(), func() { _ = upstreamConn.Close() })
+	defer stopUpstream()
 
 	// Send the HTTP upgrade request to the upstream, forwarding all client headers.
 	// Authorization and ChatGPT-Account-Id are skipped here and replaced with
@@ -61,37 +64,18 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 		http.Error(w, "writing upgrade request: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	for k, vv := range r.Header {
-		if strings.EqualFold(k, "authorization") || strings.EqualFold(k, "chatgpt-account-id") {
-			continue
-		}
+	headers := r.Header.Clone()
+	headers.Del("Authorization")
+	headers.Del("X-Api-Key")
+	headers.Del("X-Codex-Token")
+	headers.Del("ChatGPT-Account-Id")
+	inject(headers)
+	for k, vv := range headers {
 		for _, v := range vv {
 			if _, err := fmt.Fprintf(upstreamConn, "%s: %s\r\n", k, v); err != nil {
 				http.Error(w, "writing headers: "+err.Error(), http.StatusBadGateway)
 				return
 			}
-		}
-	}
-	// Inject real host credentials.
-	if p.oauthCreds != nil {
-		p.mu.RLock()
-		accessToken := p.oauthCreds.AccessToken
-		accountID := p.oauthCreds.AccountID
-		p.mu.RUnlock()
-		if _, err := fmt.Fprintf(upstreamConn, "Authorization: Bearer %s\r\n", accessToken); err != nil {
-			http.Error(w, "writing auth header: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		if accountID != "" {
-			if _, err := fmt.Fprintf(upstreamConn, "ChatGPT-Account-Id: %s\r\n", accountID); err != nil {
-				http.Error(w, "writing account-id header: "+err.Error(), http.StatusBadGateway)
-				return
-			}
-		}
-	} else if p.apiKey != "" {
-		if _, err := fmt.Fprintf(upstreamConn, "Authorization: Bearer %s\r\n", p.apiKey); err != nil {
-			http.Error(w, "writing auth header: "+err.Error(), http.StatusBadGateway)
-			return
 		}
 	}
 	if _, err := fmt.Fprint(upstreamConn, "\r\n"); err != nil {
@@ -132,6 +116,8 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 		return
 	}
 	defer clientConn.Close() //nolint:errcheck
+	stopClient := context.AfterFunc(r.Context(), func() { _ = clientConn.Close() })
+	defer stopClient()
 
 	// Forward the 101 response to the client.
 	if _, err := fmt.Fprint(clientBufRW, "HTTP/1.1 101 Switching Protocols\r\n"); err != nil {

@@ -56,6 +56,7 @@ func TestHandleAnthropicProxy_APIKeyMode_InjectsXAPIKey(t *testing.T) {
 	// Container sends a placeholder key; the proxy must overwrite it.
 	req.Header.Set("x-api-key", "cdx-placeholder")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAnthropicProxy(w, req)
 
 	if w.Code != http.StatusOK {
@@ -95,6 +96,7 @@ func TestHandleAnthropicProxy_OAuthMode_InjectsBearer(t *testing.T) {
 		strings.NewReader(`{}`))
 	req.Header.Set("x-api-key", "cdx-placeholder")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAnthropicProxy(w, req)
 
 	if w.Code != http.StatusOK {
@@ -127,6 +129,7 @@ func TestHandleAnthropicProxy_QueryPreserved(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/anthropic/v1/models?limit=5", nil)
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAnthropicProxy(w, req)
 
 	if gotQuery != "limit=5" {

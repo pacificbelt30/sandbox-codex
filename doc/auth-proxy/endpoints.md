@@ -143,7 +143,9 @@ Content-Type: application/json
 
 ## `ANY /v1/*` — Responses API リバースプロキシ
 
-Codex CLI は `OPENAI_BASE_URL=http://proxy/v1` を参照し、すべての Responses API リクエストをプロキシ経由で送ります。
+Codex CLI は `~/.codex/config.toml` の `openai_base_url=http://proxy/v1` を参照し、Responses API リクエストをプロキシ経由で送ります。
+
+`/v1/*`と`/chatgpt/*`は`Authorization: Bearer <有効なworker placeholder>`を要求します。`/anthropic/*`は同じplaceholderを`x-api-key`またはBearerで受け付けます。未発行・失効・期限切れ・重複・矛盾する認証は上流接続前に401で拒否します。WebSocket upgradeにも同じ検証を行い、tokenが失効・期限切れ・置換された場合は接続中のstream/tunnelも終了します。
 
 | 認証モード | 転送先 |
 |---|---|
@@ -274,8 +276,10 @@ X-Proxy-Admin-Secret: <シークレット>
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"oauth_mode": false}
+{"oauth_mode": false, "worker_token_auth": true}
 ```
+
+`worker_token_auth`がtrueでない旧proxyには新しいCLIは接続しません。workerをdrainし、proxy imageを再ビルドしてproxyを再作成してください。
 
 ---
 

@@ -942,6 +942,7 @@ func TestHandleAPIProxy_APIKeyMode_ForwardsToAPIUpstream(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	req.Header.Set("Authorization", "Bearer sk-test-key-12345")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if w.Code != http.StatusOK {
@@ -977,6 +978,7 @@ func TestHandleAPIProxy_OAuthMode_ForwardsToChatGPTCodex(t *testing.T) {
 		strings.NewReader(`{"model":"codex-mini"}`))
 	req.Header.Set("Authorization", "Bearer at-oauth-access")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if w.Code != http.StatusOK {
@@ -1004,6 +1006,7 @@ func TestHandleAPIProxy_QueryStringPreserved(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models?limit=10&order=asc", nil)
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if gotQuery != "limit=10&order=asc" {
@@ -1027,6 +1030,7 @@ func TestHandleAPIProxy_ResponseBodyRelayed(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`))
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if w.Code != http.StatusCreated {
@@ -1058,6 +1062,7 @@ func TestHandleAPIProxy_HopByHopHeadersNotForwarded(t *testing.T) {
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Authorization", "Bearer sk-test")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if gotConnection != "" {
@@ -1083,6 +1088,7 @@ func TestHandleAPIProxy_NonHopByHopHeadersForwarded(t *testing.T) {
 	req.Header.Set("Version", "0.110.0") // Codex CLI version header
 	req.Header.Set("Authorization", "Bearer sk-test")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if gotVersion != "0.110.0" {
@@ -1109,6 +1115,7 @@ func TestHandleChatGPTProxy_ForwardsToChatGPTBackend(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/chatgpt/public_api/conversation_limit", nil)
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleChatGPTProxy(w, req)
 
 	if w.Code != http.StatusOK {
@@ -1135,6 +1142,7 @@ func TestHandleChatGPTProxy_QueryStringPreserved(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/chatgpt/some/path?foo=bar", nil)
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleChatGPTProxy(w, req)
 
 	if gotQuery != "foo=bar" {
@@ -1157,6 +1165,7 @@ func TestHandleChatGPTProxy_ResponseStatusRelayed(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/chatgpt/limits", nil)
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleChatGPTProxy(w, req)
 
 	if w.Code != http.StatusTooManyRequests {
@@ -1181,6 +1190,7 @@ func TestHandleChatGPTProxy_HopByHopHeadersNotForwarded(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/chatgpt/limits", nil)
 	req.Header.Set("Upgrade", "websocket")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleChatGPTProxy(w, req)
 
 	if gotUpgrade != "" {
@@ -1206,6 +1216,7 @@ func TestReverseProxy_EndToEnd_APIKeyMode(t *testing.T) {
 	defer p.Stop()
 
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, p.Endpoint()+"/v1/models", nil)
+	authorizeTestRequest(t, p, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /v1/models: %v", err)
@@ -1235,6 +1246,7 @@ func TestReverseProxy_EndToEnd_ChatGPTProxy(t *testing.T) {
 	defer p.Stop()
 
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, p.Endpoint()+"/chatgpt/public_api/limits", nil)
+	authorizeTestRequest(t, p, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /chatgpt/public_api/limits: %v", err)
@@ -1332,8 +1344,8 @@ func TestWebSocketProxy_Tunnel(t *testing.T) {
 
 	// Send the WebSocket HTTP upgrade request.
 	_, err = fmt.Fprintf(clientConn,
-		"GET /v1/responses HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-		proxyAddr)
+		"GET /v1/responses HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nAuthorization: Bearer %s\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		proxyAddr, issuedTestToken(t, p))
 	if err != nil {
 		t.Fatalf("writing upgrade request: %v", err)
 	}
@@ -1431,6 +1443,7 @@ func TestHandleAPIProxy_PlaceholderReplacedWithRealKey(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	req.Header.Set("Authorization", "Bearer cdx-placeholder-fake-token")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if gotAuth != "Bearer sk-test-key-12345" {
@@ -1462,6 +1475,7 @@ func TestHandleAPIProxy_PlaceholderReplacedWithRealToken_OAuthMode(t *testing.T)
 	req.Header.Set("Authorization", "Bearer cdx-placeholder")
 	req.Header.Set("ChatGPT-Account-Id", "acc-wrong")
 	w := httptest.NewRecorder()
+	authorizeTestRequest(t, p, req)
 	p.handleAPIProxy(w, req)
 
 	if gotAuth != "Bearer at-real-oauth-token" {
@@ -1534,9 +1548,9 @@ func TestWebSocketProxy_InjectsRealCredentials(t *testing.T) {
 	// Send WebSocket upgrade with placeholder credentials.
 	_, err = fmt.Fprintf(clientConn,
 		"GET /v1/responses HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
-			"Authorization: Bearer cdx-placeholder-ws\r\nChatGPT-Account-Id: acc-wrong\r\n"+
+			"Authorization: Bearer %s\r\nChatGPT-Account-Id: acc-wrong\r\n"+
 			"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-		proxyAddr)
+		proxyAddr, issuedTestToken(t, p))
 	if err != nil {
 		t.Fatalf("writing upgrade request: %v", err)
 	}
@@ -1624,6 +1638,7 @@ func TestRemoteProxy_ReportsAnthropicOAuthMode(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]bool{
+			"worker_token_auth":    true,
 			"oauth_mode":           true,
 			"anthropic_available":  true,
 			"anthropic_oauth_mode": true,

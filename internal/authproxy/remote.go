@@ -37,6 +37,9 @@ func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, e
 	if err != nil {
 		return nil, err
 	}
+	if !mode["worker_token_auth"] {
+		return nil, fmt.Errorf("auth proxy does not enforce worker API tokens; rebuild the proxy image and recreate the proxy before running workers")
+	}
 	r.oauthMode = mode["oauth_mode"]
 	r.anthropicMode = mode["anthropic_available"]
 	r.anthropicOAuthMode = mode["anthropic_oauth_mode"]

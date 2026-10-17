@@ -25,6 +25,7 @@ func doProxyRequest(t *testing.T, p *Proxy, method, path, body string, headers m
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	authorizeTestRequest(t, p, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request through proxy: %v", err)

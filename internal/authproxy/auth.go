@@ -18,8 +18,8 @@ type AuthInfo struct {
 }
 
 // OAuthCredentials holds OAuth credentials loaded from ~/.codex/auth.json.
-// All token fields are passed to containers via the Auth Proxy.
-// NOTE: This includes RefreshToken — see doc/auth-proxy.md for security implications.
+// Access and refresh tokens remain in the proxy. Workers receive a placeholder
+// access token and account/ID metadata needed by the Codex login flow.
 type OAuthCredentials struct {
 	IDToken      string `json:"id_token"`
 	AccessToken  string `json:"access_token"`

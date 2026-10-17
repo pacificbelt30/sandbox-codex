@@ -23,6 +23,7 @@ func doAnthropicRequest(t *testing.T, p *Proxy, body string, headers map[string]
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	authorizeTestRequest(t, p, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request through proxy: %v", err)

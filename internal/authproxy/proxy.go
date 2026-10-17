@@ -319,6 +319,16 @@ func primaryNonLoopbackIPv4() string {
 
 // Stop shuts down the proxy and revokes all tokens.
 func (p *Proxy) Stop() {
+	// Hijacked WebSockets are not closed by http.Server.Shutdown. Cancel each
+	// worker lease first, including active HTTP streams and upgraded sockets.
+	p.mu.Lock()
+	for _, rec := range p.tokens {
+		if rec.cancel != nil {
+			rec.cancel()
+		}
+	}
+	p.tokens = make(map[string]*tokenRecord)
+	p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if p.server != nil {
@@ -327,9 +337,6 @@ func (p *Proxy) Stop() {
 	if p.adminServer != nil {
 		_ = p.adminServer.Shutdown(ctx)
 	}
-	p.mu.Lock()
-	p.tokens = make(map[string]*tokenRecord)
-	p.mu.Unlock()
 }
 
 // Port returns the TCP port the proxy is listening on.

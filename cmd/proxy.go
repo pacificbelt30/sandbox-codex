@@ -230,7 +230,14 @@ func ensureProxyImage(ctx context.Context, image string) error {
 
 // ensureProxyContainer (re)starts one proxy container from its spec: a running
 // container is left alone, a stopped one is started, and a missing one is created.
-func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) error {
+func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error) {
+	// A cached image can still contain an old binary after the host CLI is
+	// upgraded. Labels describe its layout, not its authentication behavior.
+	defer func() {
+		if result == nil && spec.role == authproxy.RoleAuth {
+			_, result = connectProxyWithRetry(fmt.Sprintf("http://127.0.0.1:%d", spec.adminPort), fmt.Sprintf("http://%s:%d", spec.name, defaultAuthDataPort), spec.adminSecret, 20)
+		}
+	}()
 	c, err := engine.NewClient()
 	if err != nil {
 		return err

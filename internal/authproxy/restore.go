@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 )
 
 func (p *Proxy) RestoreToken(name, token string, ttl int) error {
@@ -31,8 +30,10 @@ func (p *Proxy) RestoreToken(name, token string, ttl int) error {
 			return fmt.Errorf("placeholder already belongs to another worker")
 		}
 	}
-	now := time.Now()
-	p.tokens[name] = &tokenRecord{Token: token, ContainerName: name, IssuedAt: now, ExpiresAt: now.Add(time.Duration(ttl) * time.Second)}
+	if old := p.tokens[name]; old != nil && old.cancel != nil {
+		old.cancel()
+	}
+	p.tokens[name] = newTokenRecord(name, token, ttl)
 	return nil
 }
 
