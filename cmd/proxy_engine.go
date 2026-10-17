@@ -8,9 +8,14 @@ import (
 	dn "github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
+
+const proxyCredentialHome = "/var/lib/codex-dock-proxy"
 
 // The proxy spec has one source of truth for credentials, policy, and roles.
 // Convert its structured option vector to the node DTO; no shell/CLI is run.
@@ -18,6 +23,12 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 	args := buildProxyRunArgs(a)
 	c := &container.Config{User: "0:0", Labels: map[string]string{}}
 	h := &container.HostConfig{Runtime: "runc", CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, PortBindings: nat.PortMap{}}
+	if a.mountCreds {
+		// Read owner-only host credentials as the invoking account, without
+		// granting DAC override or changing the source file's permissions.
+		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
+		c.Env = append(c.Env, "HOME="+proxyCredentialHome)
+	}
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if arg == "-d" {
@@ -50,7 +61,14 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 			if len(parts) != 3 || parts[2] != "ro" {
 				return nil, nil, fmt.Errorf("proxy credentials require read-only bind mounts")
 			}
-			h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: parts[0], Target: parts[1], ReadOnly: true})
+			if !strings.HasPrefix(parts[1], "/root/") {
+				return nil, nil, fmt.Errorf("invalid proxy credential destination")
+			}
+			if err := checkProxyCredentialAccess(parts[0], os.Geteuid(), os.Getegid()); err != nil {
+				return nil, nil, err
+			}
+			target := filepath.Join(proxyCredentialHome, strings.TrimPrefix(parts[1], "/root/"))
+			h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: parts[0], Target: target, ReadOnly: true})
 		case "-p":
 			parts := strings.Split(value, ":")
 			if len(parts) != 3 || parts[0] != "127.0.0.1" {
@@ -69,6 +87,27 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 		}
 	}
 	return nil, nil, fmt.Errorf("proxy spec has no image")
+}
+
+func checkProxyCredentialAccess(path string, uid, gid int) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("proxy credential metadata: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || !info.Mode().IsRegular() {
+		return fmt.Errorf("proxy credential must be a regular file: %s", path)
+	}
+	permission := os.FileMode(0004)
+	if uint32(uid) == stat.Uid {
+		permission = 0400
+	} else if uint32(gid) == stat.Gid {
+		permission = 0040
+	}
+	if info.Mode().Perm()&permission == 0 {
+		return fmt.Errorf("proxy credential %s is not readable by proxy UID:GID %d:%d without capabilities; run as its owning account", path, uid, gid)
+	}
+	return nil
 }
 func stopProxy(ctx context.Context, name string) error {
 	c, err := engine.NewClient()

@@ -25,7 +25,7 @@ const (
 	defaultAuthAdminPort          = 18081
 	defaultHTTPProxyPort          = 18082
 	proxyLayoutLabel              = "io.codex-dock.proxy-layout"
-	proxyLayoutVersion            = "split-v1"
+	proxyLayoutVersion            = "split-v2-owner-auth"
 )
 
 var (
