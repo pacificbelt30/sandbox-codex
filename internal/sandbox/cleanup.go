@@ -68,6 +68,28 @@ func (m *Manager) stateDirectory() (string, error) {
 	return root, nil
 }
 
+// Check before reserving runtime resources: rollback also needs this directory.
+// Probe actual writes and durability, not just ownership and permission bits.
+func (m *Manager) checkCleanupState() error {
+	dir, err := m.stateDirectory()
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".write-check-*")
+	if err != nil {
+		return err
+	}
+	err = errors.Join(f.Sync(), f.Close(), os.Remove(f.Name()))
+	if err != nil {
+		return err
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(d.Sync(), d.Close())
+}
+
 func (m *Manager) lockCleanup(ctx context.Context, id string) (func(), error) {
 	if !fullContainerID.MatchString(id) {
 		return nil, fmt.Errorf("cleanup requires a full container ID")

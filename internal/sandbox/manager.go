@@ -173,6 +173,9 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 			return "", err
 		}
 	}
+	if err := m.checkCleanupState(); err != nil {
+		return "", fmt.Errorf("preparing cleanup state: %w", err)
+	}
 
 	var createdID, createdNetwork string
 	var allocation string
