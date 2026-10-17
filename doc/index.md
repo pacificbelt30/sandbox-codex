@@ -20,6 +20,7 @@ Docker EngineとDocker CLIは不要です。
 
 | 目的 | ページ |
 |---|---|
+| ファイル共有・所有者・権限を確認する | [workspace](workspace.md) |
 | VMの状態や残存資源を調べる | [VM管理](vm.md) |
 | カスタムイメージやテンプレートを作る | [build](commands/build.md) |
 | 一般通信の許可／拒否を設定する | [通信ポリシー](proxy-policy.md) |

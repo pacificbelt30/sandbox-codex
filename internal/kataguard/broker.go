@@ -20,6 +20,7 @@ import (
 
 type NodeInfo struct {
 	Profile, Endpoint, Stamp, Launcher, Root string
+	SharedFSCache                            string
 	Protected                                []string
 }
 type nodeRequest struct {
@@ -131,7 +132,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 			switch req.Action {
 			case "validate":
 				err = g.Validate(ctx, req.Runtime)
-				reply.Info = NodeInfo{Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, Protected: append(g.ProtectedPaths(), socket)}
+				reply.Info = NodeInfo{Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, SharedFSCache: "none", Protected: append(g.ProtectedPaths(), socket)}
 			case "inventory":
 				reply.Inventory, err = g.Inventory(ctx)
 			case "recover-orphan":
@@ -223,6 +224,9 @@ func (c *Client) Validate(ctx context.Context, runtime string) error {
 	}
 	if r.Info.Profile != Profile || r.Info.Endpoint != c.endpoint || len(r.Info.Stamp) != 64 || !cleanPath(r.Info.Root) || !cleanPath(r.Info.Launcher) {
 		return fmt.Errorf("Kata node returned another profile")
+	}
+	if r.Info.SharedFSCache != "none" {
+		return fmt.Errorf("Kata node does not enforce coherent shared workspaces; update the node, regenerate its config with virtio_fs_cache=\"none\" and reseal the asset manifest")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

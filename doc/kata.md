@@ -56,11 +56,14 @@ make build
 ```
 
 `prepare_guest.py` は固定した元imageのSHA256と構造を確認し、新しいコピーへPID hookを入れる。元imageは書き換えない。`configure.py` はguest seccomp、annotation無効化、hook、sandbox cgroup、静的資源割当を明示する。guest VMはworkload 2 GiB + overhead 512 MiBで起動する。
+共有ファイルの `virtio_fs_cache` は `none` に固定し、`virtio_fs_extra_args` は `open,no_writeback_cache` を指定する。`auto` / `always` ではホストの上書きをVMが古い内容として読むため、現行ノードはその構成を拒否する。
+既存環境はワーカーを停止・削除し、設定の再生成とmanifestの再作成を行う。
+CLIは管理サービスが共有cacheの要件を検証できるかも確認するため、nodeも同じ版へ更新する。
 
 ## 2. ホストへ配置する
 
 配置先が既存の場合は、[固定資産の更新](#固定資産の更新)を参照してください。以下は新規配置の例です。
-`make build` はGo 1.24.7以上で実行します。
+`make build` にはGo 1.24.7以上とMakeが必要です。
 
 ```bash
 sudo groupadd --system codex-dock

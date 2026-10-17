@@ -113,8 +113,8 @@ test:
 		./internal/template/...
 
 ## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
-kata-e2e:
-	CODEX_DOCK_KATA_E2E=1 go test ./internal/sandbox -run '^TestKataAcceptance$$' -count=1 -v -timeout=15m
+kata-e2e: build
+	CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_TEST_BINARY="$(CURDIR)/$(BINARY)" go test ./internal/sandbox -run '^TestKata(Acceptance|WorkspaceSharing)$$' -count=1 -v -timeout=15m
 
 ## lint: run golangci-lint
 lint:

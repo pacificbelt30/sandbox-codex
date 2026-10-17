@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -35,6 +36,8 @@ type kataConfig struct {
 		Kernel         string   `toml:"kernel"`
 		Image          string   `toml:"image"`
 		SharedFS       string   `toml:"shared_fs"`
+		FSCache        string   `toml:"virtio_fs_cache"`
+		FSExtraArgs    []string `toml:"virtio_fs_extra_args"`
 		Annotations    []string `toml:"enable_annotations"`
 		Hook           string   `toml:"guest_hook_path"`
 		Memory         int      `toml:"default_memory"`
@@ -117,6 +120,12 @@ func readConfig(kataPath, daemonPath, runtime string) (kataConfig, daemonConfig,
 	h, ok := k.Hypervisor["dragonball"]
 	if !ok || len(k.Hypervisor) != 1 || h.SharedFS != "inline-virtio-fs" || h.Hook != "/usr/share/codex-dock/hooks" || h.Memory != 2560 || h.MaxMemory != 4096 || h.OverheadMemory != 512 || h.OverheadCPUs != 0 || rt["disable_guest_seccomp"] != false || rt["sandbox_cgroup_only"] != true || rt["static_sandbox_resource_mgmt"] != true || rt["hypervisor_name"] != "dragonball" || !explicit || len(annotations) != 0 {
 		return k, d, fmt.Errorf("Kata config does not match %s (Dragonball, seccomp, static sizing, hooks or cgroups)", Profile)
+	}
+	if h.FSCache != "none" {
+		return k, d, fmt.Errorf("shared workspaces require virtio_fs_cache=\"none\"; regenerate the Kata config and reseal the asset manifest")
+	}
+	if !slices.Equal(h.FSExtraArgs, []string{"--thread-pool-size=1", "-o", "open,no_writeback_cache"}) {
+		return k, d, fmt.Errorf("shared workspaces require virtio_fs_extra_args with open,no_writeback_cache; regenerate the Kata config and reseal the asset manifest")
 	}
 	if runtime != "io.containerd.kata.v2" {
 		return k, d, fmt.Errorf("unsupported Kata registration")

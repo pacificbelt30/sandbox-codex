@@ -20,6 +20,14 @@ def configure(source: str, image: str) -> str:
         raise ValueError("guest image must be an absolute path")
     for key, value in {
         "image": json.dumps(image),
+        # The host and guest edit the same workspace. Close-to-open caching
+        # can retain old host contents even after a client reopens a file.
+        "virtio_fs_cache": json.dumps("none"),
+        # Dragonball defaults to writeback/no_open independently of cache mode.
+        # Keep real opens and direct reads so live host edits are coherent.
+        "virtio_fs_extra_args": json.dumps([
+            "--thread-pool-size=1", "-o", "open,no_writeback_cache"
+        ]),
         "enable_annotations": "[]",
         "disable_guest_seccomp": "false",
         "guest_hook_path": json.dumps("/usr/share/codex-dock/hooks"),

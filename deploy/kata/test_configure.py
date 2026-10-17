@@ -7,6 +7,8 @@ class ProfileTests(unittest.TestCase):
     def test_guest_policy_cannot_be_weakened_by_annotations(self):
         source = '''[hypervisor.dragonball]
 shared_fs = "inline-virtio-fs"
+virtio_fs_cache = "auto"
+virtio_fs_extra_args = ["--thread-pool-size=4", "-o", "writeback,no_open"]
 overhead_vcpus = 2.0
 overhead_memory = 0
 default_memory = 2048
@@ -22,6 +24,9 @@ hypervisor_name = "dragonball"
 '''
         profile = tomllib.loads(configure(source, "/trusted/guest.image"))
         self.assertFalse(profile["runtime"]["disable_guest_seccomp"])
+        self.assertEqual(profile["hypervisor"]["dragonball"]["virtio_fs_cache"], "none")
+        self.assertEqual(profile["hypervisor"]["dragonball"]["virtio_fs_extra_args"],
+                         ["--thread-pool-size=1", "-o", "open,no_writeback_cache"])
         self.assertTrue(profile["runtime"]["sandbox_cgroup_only"])
         self.assertEqual(profile["hypervisor"]["dragonball"]["default_memory"], 2560)
         self.assertEqual(profile["hypervisor"]["dragonball"]["default_maxmemory"], 4096)

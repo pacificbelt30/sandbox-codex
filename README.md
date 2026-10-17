@@ -71,6 +71,7 @@ codex-dock ui
 | 実行ホストを用意する | [Kata / Dragonballの配置](doc/kata.md) |
 | 停止・再起動・更新する | [日常の運用](doc/operations.md) |
 | 旧Docker環境から移る | [移行手順](doc/migration.md) |
+| 共有ファイル・所有者を確認する | [ファイル共有](doc/workspace.md) |
 | VMの状態を調べる | [VM管理](doc/vm.md) |
 | 独自イメージを作る | [buildコマンド](doc/commands/build.md) |
 | 外部通信を制限する | [通信ポリシー](doc/proxy-policy.md) |
@@ -80,7 +81,7 @@ codex-dock ui
 
 ## 開発
 
-ソースのビルドにはGo 1.24.7以上が必要です。
+ソースのビルドにはGo 1.24.7以上とMakeが必要です。
 `make build` はCLI、ワーカー起動用guard、IO loggerを作成します。
 ホストへの配置は[Kataの手順](doc/kata.md)を参照してください。
 

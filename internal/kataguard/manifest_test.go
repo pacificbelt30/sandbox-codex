@@ -55,6 +55,8 @@ func TestManifestBindsDragonballContainerdAssets(t *testing.T) {
 kernel=%q
 image=%q
 shared_fs="inline-virtio-fs"
+virtio_fs_cache="none"
+virtio_fs_extra_args=["--thread-pool-size=1","-o","open,no_writeback_cache"]
 enable_annotations=[]
 guest_hook_path="/usr/share/codex-dock/hooks"
 default_memory=2560
@@ -117,6 +119,24 @@ address=%q
 	original, err := os.ReadFile(kata)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, setting := range []string{"virtio_fs_cache=\"auto\"", "virtio_fs_cache=\"always\"", ""} {
+		changed := strings.Replace(string(original), "virtio_fs_cache=\"none\"", setting, 1)
+		if err := os.WriteFile(kata, []byte(changed), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := readConfig(kata, daemon, "io.containerd.kata.v2"); err == nil || !strings.Contains(err.Error(), "virtio_fs_cache") {
+			t.Fatalf("incoherent shared filesystem cache accepted: %q, %v", setting, err)
+		}
+	}
+	for _, setting := range []string{"writeback_cache,no_open", "open,writeback_cache", "no_open,no_writeback_cache", ""} {
+		changed := strings.Replace(string(original), "open,no_writeback_cache", setting, 1)
+		if err := os.WriteFile(kata, []byte(changed), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := readConfig(kata, daemon, "io.containerd.kata.v2"); err == nil || !strings.Contains(err.Error(), "virtio_fs_extra_args") {
+			t.Fatalf("incoherent writeback/open settings accepted: %q, %v", setting, err)
+		}
 	}
 	if err = os.WriteFile(kata, []byte(strings.Replace(string(original), "disable_guest_seccomp=false", "", 1)), 0600); err != nil {
 		t.Fatal(err)

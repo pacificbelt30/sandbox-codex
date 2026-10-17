@@ -13,7 +13,7 @@ Run as a member of the operator group. Use the same account for credentials and 
 codex-dock runtime-check
 ```
 
-To build from a source checkout, use Go 1.24.7 or later:
+To build from a source checkout, use Go 1.24.7 or later and Make:
 
 ```bash
 make build

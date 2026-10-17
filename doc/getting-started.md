@@ -18,7 +18,7 @@ Linux x86_64、KVM、cgroup v2、専用containerd、Kata runtime-rs、Dragonball
 エラーが出た場合は[トラブルシューティング](troubleshooting.md)を参照してください。
 
 ソースからCLIを用意する場合は、リポジトリで次を実行します。
-Go 1.24.7以上が必要です。管理サービスや固定資産の配置は別途必要です。
+Go 1.24.7以上とMakeが必要です。管理サービスや固定資産の配置は別途必要です。
 
 ```bash
 make build
@@ -71,6 +71,7 @@ codex-dock build
 
 作業するプロジェクトのディレクトリで実行します。
 カレントディレクトリをVM内の `/workspace` に共有します。
+[ファイル共有と所有者](workspace.md)で、双方向の反映とUID/GIDの扱いを説明しています。
 
 ```bash
 codex-dock run --agent codex

@@ -44,6 +44,8 @@ The Docker SDK remains an internal DTO/HTTP compatibility dependency, not a Dock
 5. Check the host shim/logger, worker ID and cgroup limits, then the guest kernel, user, capabilities, seccomp and resource limits.
 6. Activate the placeholder token and release the original entrypoint with a nonce.
 
+Shared workspaces use inline virtio-fs with `virtio_fs_cache = "none"` and `open,no_writeback_cache`. The node rejects old `auto`/`always` profiles to avoid stale host edits. Regenerate the profile and manifest when upgrading.
+
 Only the auth proxy injects real credentials. The egress proxy has no credentials.
 `--no-internet` leaves the egress proxy disconnected while keeping fixed AI routes available.
 

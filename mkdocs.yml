@@ -45,6 +45,7 @@ nav:
       - 旧環境からの移行: migration.md
   - 運用:
       - 日常の操作と更新: operations.md
+      - ファイル共有と所有者: workspace.md
       - Kata VMの管理: vm.md
       - 通信の許可・拒否: proxy-policy.md
       - トラブルシューティング: troubleshooting.md

@@ -120,6 +120,8 @@ Recreate the proxy to apply changes. See [policy rules](../proxy-policy.md) (Jap
 | `CODEX_DOCK_KATA_RUNTIME` | Override `run.kata_runtime` |
 | `CODEX_DOCK_PROXY_ADMIN_SECRET` | Admin client secret |
 | `CODEX_DOCK_KATA_NODE_SOCKET` | Absolute node socket path |
+| `CODEX_DOCK_STATE_DIR` | Private absolute path for cleanup/retry records |
+| `XDG_STATE_HOME` | State root when no dedicated state directory is set |
 | `BUILDKIT_HOST` | Builder address; default `unix:///run/codex-dock-buildkit/buildkitd.sock` |
 | HTTP/HTTPS/NO/ALL proxy variables, upper/lowercase | BuildKit build args |
 | `CODEX_PROXY_CERT` | CA file passed as BuildKit `proxy_ca` secret |

@@ -128,6 +128,8 @@ private IP等の遮断は、許可ルールでは解除できません。
 | `CODEX_DOCK_KATA_RUNTIME` | `run.kata_runtime` の上書き |
 | `CODEX_DOCK_PROXY_ADMIN_SECRET` | ホストCLIの管理secret。明示したCLIフラグを優先 |
 | `CODEX_DOCK_KATA_NODE_SOCKET` | CLIが接続する管理Unixソケットの絶対パス |
+| `CODEX_DOCK_STATE_DIR` | ワーカーの回収・再試行記録の保存先。安全な絶対パスを指定 |
+| `XDG_STATE_HOME` | 専用保存先未指定時の状態ルート |
 | `BUILDKIT_HOST` | ビルド先。既定は `unix:///run/codex-dock-buildkit/buildkitd.sock` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` / `ALL_PROXY` と小文字版 | BuildKitへのbuild args |
 | `CODEX_PROXY_CERT` | ビルド中に使うCAのパス。`proxy_ca` secretで渡す |

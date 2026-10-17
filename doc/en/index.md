@@ -19,6 +19,7 @@ The execution host must be Linux x86_64. Cross-compiling the CLI does not make K
 | Task | Guide |
 |---|---|
 | Move from Docker | [Migration](../migration.md) (Japanese) |
+| Understand shared files and ownership | [Workspace](../workspace.md) (Japanese) |
 | Inspect and manage VMs | [VM management](../vm.md) (Japanese) |
 | Build a custom image | [Build command](commands/build.md) |
 | Restrict outbound traffic | [Network](network.md), [policy rules](../proxy-policy.md) (Japanese) |
