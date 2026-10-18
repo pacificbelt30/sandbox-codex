@@ -117,6 +117,7 @@ test:
 		./internal/kataguard/... \
 		./internal/engine/... \
 		./internal/worktree/... \
+		./internal/diagnostics/... \
 		./internal/config/... \
 		./internal/template/...
 
