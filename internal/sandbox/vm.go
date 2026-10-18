@@ -21,7 +21,7 @@ func (m *Manager) vmNode() (vmNode, error) {
 	}
 	api, ok := node.(vmNode)
 	if !ok {
-		return nil, fmt.Errorf("Kata node requires an update for VM management")
+		return nil, fmt.Errorf("kata node requires an update for VM management")
 	}
 	return api, nil
 }

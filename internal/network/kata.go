@@ -91,7 +91,7 @@ func (m *Manager) KataProxyHosts(ctx context.Context, networkID, workerID string
 
 func validateKataNetwork(n dockernetwork.Inspect) error {
 	if n.Driver != "bridge" || !n.Internal || n.Options[isolatedIPv4] != "isolated" || (n.EnableIPv6 && n.Options[isolatedIPv6] != "isolated") || n.Labels[managedLabel] != "true" || n.Labels["codex-dock.isolation"] != "kata" {
-		return fmt.Errorf("Kata requires a managed internal bridge with isolated gateway mode")
+		return fmt.Errorf("kata requires a managed internal bridge with isolated gateway mode")
 	}
 	return nil
 }

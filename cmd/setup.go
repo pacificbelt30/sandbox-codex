@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,7 +14,7 @@ import (
 func init() {
 	var bundle, operator, cache string
 	var apply, offline, rollback bool
-	setup := &cobra.Command{Use: "setup", Short: "Plan or apply a verified Ubuntu 26.04 x86_64 node install/update", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	setup := &cobra.Command{Use: "setup", Short: "Plan or apply a verified Ubuntu 26.04 x86_64 node install/update", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		if !rollback && (bundle == "" || operator == "") {
 			return fmt.Errorf("provide --bundle PATH --operator USER; make node-bundle prepares a matching CLI and helpers")
 		}
@@ -24,7 +25,7 @@ func init() {
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(dir)
+		defer func() { runErr = errors.Join(runErr, os.RemoveAll(dir)) }()
 		entries, err := kataassets.Files.ReadDir(".")
 		if err != nil {
 			return err

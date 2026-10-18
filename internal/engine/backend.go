@@ -463,7 +463,8 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 	if err != nil {
 		return container.InspectResponse{}, err
 	}
-	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil
+	// Docker's current API still requires NetworkSettingsBase for published ports.
+	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil //nolint:staticcheck
 }
 
 func (b *Backend) start(ctx context.Context, r *record, c cd.Container) error {
@@ -548,7 +549,7 @@ func (b *Backend) deleteTask(ctx context.Context, r *record, t cd.Task) error {
 	}
 	if r.Host.Runtime != "runc" {
 		if b.opts.Retire == nil {
-			return fmt.Errorf("Dragonball retirement verifier missing")
+			return fmt.Errorf("dragonball retirement verifier missing")
 		}
 		if err = b.opts.Retire(ctx, r.Config.Labels["codex-dock.allocation"], r.ID); err != nil {
 			return err
@@ -593,7 +594,7 @@ func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout i
 		}
 		timer := time.NewTimer(time.Duration(max(timeout, 0)) * time.Second)
 		defer timer.Stop()
-		var deadline <-chan time.Time = timer.C
+		deadline := timer.C
 		if timeout < 0 {
 			timer.Stop()
 			deadline = nil

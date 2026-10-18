@@ -982,19 +982,6 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
-// cleanupWorkerNetwork removes a worker's Internal network after its container is
-// gone. RemoveWorkerNetwork force-disconnects any remaining endpoints (notably the
-// multi-homed proxy), so this works even when the Manager has no proxy reference
-// (e.g. the `rm` command / TUI). Failures are reported but not fatal.
-func (m *Manager) cleanupWorkerNetwork(name string) {
-	if m.network == nil || name == "" {
-		return
-	}
-	if err := m.network.RemoveWorkerNetwork(name); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: removing worker network for %s: %v\n", name, err)
-	}
-}
-
 func buildCodexArgs(opts RunOptions) []string {
 	args := []string{"codex"}
 	switch opts.ApprovalMode {

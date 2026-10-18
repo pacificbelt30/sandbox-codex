@@ -61,7 +61,7 @@ func (m *Manager) CheckRuntime(ctx context.Context, opts RunOptions) error {
 			return err
 		}
 		if info.CgroupDriver != "cgroupfs" || info.CgroupVersion != "2" {
-			return fmt.Errorf("Kata requires a cgroup v2 daemon using cgroupfs")
+			return fmt.Errorf("kata requires a cgroup v2 daemon using cgroupfs")
 		}
 		return guard.Validate(ctx, registration)
 	}
@@ -86,7 +86,7 @@ func validateRuntime(info system.Info, isolation, registration string) error {
 			return fmt.Errorf("runtime %q has a non-Kata runtimeType", registration)
 		}
 		if registration != DefaultKataRuntime && r.Path == "" && r.Type == "" {
-			return fmt.Errorf("The node does not expose the type of Kata alias %q; use %s or a daemon that exposes registration metadata", registration, DefaultKataRuntime)
+			return fmt.Errorf("the node does not expose the type of Kata alias %q; use %s or a daemon that exposes registration metadata", registration, DefaultKataRuntime)
 		}
 	}
 	return nil

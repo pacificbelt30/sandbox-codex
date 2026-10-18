@@ -167,7 +167,7 @@ func TestGuestIdentityAndResourcesRemainCheckedOnRestart(t *testing.T) {
 	if err = m.Stop(id, 1); err != nil {
 		t.Fatal(err)
 	}
-	f.worker.HostConfig.Resources.Memory = 0
+	f.worker.HostConfig.Memory = 0
 	if err = m.Start(id); err == nil || !strings.Contains(err.Error(), "resource") {
 		t.Fatalf("unbounded restart accepted: %v", err)
 	}

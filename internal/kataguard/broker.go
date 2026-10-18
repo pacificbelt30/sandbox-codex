@@ -42,7 +42,7 @@ type nodeReply struct {
 // to attested envelopes; there is no TCP management endpoint.
 func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("Kata node service must run as root")
+		return fmt.Errorf("kata node service must run as root")
 	}
 	if !cleanPath(socket) {
 		return fmt.Errorf("invalid node socket path")
@@ -54,7 +54,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 		if info.Mode()&os.ModeSocket == 0 || !rootOwner(info) {
 			return fmt.Errorf("untrusted existing node socket")
 		}
-		conn, dialErr := net.DialTimeout("unix", socket, time.Second)
+		conn, dialErr := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "unix", socket)
 		if conn != nil {
 			_ = conn.Close()
 		}
@@ -91,7 +91,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 		return err
 	}
 	defer func() { _ = backend.Close() }()
-	listener, err := net.Listen("unix", socket)
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "unix", socket)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ type Client struct {
 func Connect(socket, endpoint string) (*Client, error) {
 	canonical, err := filepath.EvalSymlinks(socket)
 	if err != nil {
-		return nil, fmt.Errorf("Kata node service is unavailable: %w", err)
+		return nil, fmt.Errorf("kata node service is unavailable: %w", err)
 	}
 	if err = trustedPath(filepath.Dir(canonical), true); err != nil {
 		return nil, err
@@ -207,14 +207,14 @@ func (c *Client) call(ctx context.Context, req nodeRequest) (nodeReply, error) {
 	r.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(r)
 	if err != nil {
-		return result, fmt.Errorf("Kata node service: %w", err)
+		return result, fmt.Errorf("kata node service: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if err = json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&result); err != nil {
 		return result, err
 	}
 	if resp.StatusCode != 200 || result.Error != "" {
-		return result, fmt.Errorf("Kata node: %s", result.Error)
+		return result, fmt.Errorf("kata node: %s", result.Error)
 	}
 	return result, nil
 }
@@ -225,18 +225,18 @@ func (c *Client) Validate(ctx context.Context, runtime string) error {
 		return err
 	}
 	if r.Info.Profile != Profile || r.Info.Endpoint != c.endpoint || len(r.Info.Stamp) != 64 || !cleanPath(r.Info.Root) || !cleanPath(r.Info.Launcher) {
-		return fmt.Errorf("Kata node returned another profile")
+		return fmt.Errorf("kata node returned another profile")
 	}
 	if buildinfo.Version != "dev" && r.Info.BuildVersion != buildinfo.Version {
 		return fmt.Errorf("CLI/node versions differ (%s / %s); update the matching node bundle with codex-dock setup", buildinfo.Version, r.Info.BuildVersion)
 	}
 	if r.Info.SharedFSCache != "none" {
-		return fmt.Errorf("Kata node does not enforce coherent shared workspaces; update the node, regenerate its config with virtio_fs_cache=\"none\" and reseal the asset manifest")
+		return fmt.Errorf("kata node does not enforce coherent shared workspaces; update the node, regenerate its config with virtio_fs_cache=\"none\" and reseal the asset manifest")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.info.Stamp != "" && r.Info.Stamp != c.info.Stamp {
-		return fmt.Errorf("Kata node profile changed; recreate manager/workers")
+		return fmt.Errorf("kata node profile changed; recreate manager/workers")
 	}
 	c.info = r.Info
 	return nil

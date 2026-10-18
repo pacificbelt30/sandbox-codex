@@ -117,9 +117,9 @@ func (m *Manager) prepareKataBootstrap(ctx context.Context, c *container.Config,
 	c.Labels[labelProfile] = g.Stamp()
 	h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: g.Launcher(), Target: guestGuard, ReadOnly: true})
 	h.Tmpfs = map[string]string{"/run/codex-dock-control": "rw,noexec,nosuid,nodev,size=1048576,mode=1777"}
-	h.Resources.Memory = kataguard.GuestMemory
-	h.Resources.MemorySwap = kataguard.GuestMemory
-	h.Resources.NanoCPUs = 1_000_000_000
+	h.Memory = kataguard.GuestMemory
+	h.MemorySwap = kataguard.GuestMemory
+	h.NanoCPUs = 1_000_000_000
 	h.CgroupParent, err = g.Reserve(ctx, allocation)
 	return err
 }
@@ -204,7 +204,7 @@ func verifyGuest(data []byte, nonce, hostBoot, user string, waiting bool) error 
 			}
 		}
 		if key == "Uid" && values[0] == "0" {
-			return fmt.Errorf("Kata workload must run as non-root")
+			return fmt.Errorf("kata workload must run as non-root")
 		}
 	}
 	parts := strings.Split(user, ":")
@@ -229,7 +229,7 @@ func (m *Manager) verifyKataGuest(ctx context.Context, id string, waiting bool) 
 		return err
 	}
 	if v.Config.Labels[labelProfile] != g.Stamp() {
-		return fmt.Errorf("Kata assets/profile changed; recreate this worker")
+		return fmt.Errorf("kata assets/profile changed; recreate this worker")
 	}
 	if err = g.Verify(ctx, v.Config.Labels[labelAllocation], id); err != nil {
 		return err

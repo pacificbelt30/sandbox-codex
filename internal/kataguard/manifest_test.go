@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -41,7 +40,11 @@ func TestManifestBindsDragonballContainerdAssets(t *testing.T) {
 	}
 	t.Setenv("PATH", filepath.Dir(logger)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	launcher := filepath.Join(root, "worker-guard")
-	build := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-buildvcs=false", "-o", launcher, "../../cmd/worker-guard")
+	goBinary, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := exec.Command(goBinary, "build", "-buildvcs=false", "-o", launcher, "../../cmd/worker-guard")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 	if data, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build trusted bootstrap: %v %s", err, data)

@@ -29,7 +29,7 @@ func CheckImage(ctx context.Context, image, agent string) (diagnostics.Report, e
 	if err != nil {
 		return report, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		var detail struct {
 			Message string `json:"message"`

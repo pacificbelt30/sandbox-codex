@@ -119,7 +119,7 @@ func readConfig(kataPath, daemonPath, runtime string) (kataConfig, daemonConfig,
 	annotations, explicit := db["enable_annotations"].([]any)
 	h, ok := k.Hypervisor["dragonball"]
 	if !ok || len(k.Hypervisor) != 1 || h.SharedFS != "inline-virtio-fs" || h.Hook != "/usr/share/codex-dock/hooks" || h.Memory != 2560 || h.MaxMemory != 4096 || h.OverheadMemory != 512 || h.OverheadCPUs != 0 || rt["disable_guest_seccomp"] != false || rt["sandbox_cgroup_only"] != true || rt["static_sandbox_resource_mgmt"] != true || rt["hypervisor_name"] != "dragonball" || !explicit || len(annotations) != 0 {
-		return k, d, fmt.Errorf("Kata config does not match %s (Dragonball, seccomp, static sizing, hooks or cgroups)", Profile)
+		return k, d, fmt.Errorf("kata config does not match %s (Dragonball, seccomp, static sizing, hooks or cgroups)", Profile)
 	}
 	if h.FSCache != "none" {
 		return k, d, fmt.Errorf("shared workspaces require virtio_fs_cache=\"none\"; regenerate the Kata config and reseal the asset manifest")
@@ -272,7 +272,7 @@ func Load(path string) (Manifest, error) {
 			return m, err
 		}
 		if len(asset.SHA256) != 64 || actual != asset.SHA256 {
-			return m, fmt.Errorf("Kata asset checksum mismatch: %s", name)
+			return m, fmt.Errorf("kata asset checksum mismatch: %s", name)
 		}
 	}
 	k, _, err := readConfig(m.Assets["config"].Path, m.Assets["daemon"].Path, m.Runtime)

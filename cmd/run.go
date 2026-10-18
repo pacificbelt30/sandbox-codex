@@ -156,7 +156,9 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	runOpts.ExecCmd = execCmd
 
 	if runOpts.WatchPolling {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Host edit polling enabled for Chokidar/Watchpack (1s). Other watchers require their own polling settings.")
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Host edit polling enabled for Chokidar/Watchpack (1s). Other watchers require their own polling settings."); err != nil {
+			return err
+		}
 	}
 	// Resolve project directory
 	projectDir, err := resolveProjectDir(runOpts.ProjectDir)

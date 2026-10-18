@@ -36,9 +36,11 @@ func init() {
 			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run codex-dock auth set; then rerun init")
 		}
 		if agent == "claude" && !state.anthropicAvailable {
-			return fmt.Errorf("Anthropic credentials missing: run claude login or set ANTHROPIC_API_KEY; then rerun init --agent claude")
+			return fmt.Errorf("anthropic credentials missing: run claude login or set ANTHROPIC_API_KEY; then rerun init --agent claude")
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "Credentials configured (contents are never printed).")
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Credentials configured (contents are never printed)."); err != nil {
+			return err
+		}
 		m, err := sandbox.NewManager(managementConfig())
 		if err != nil {
 			return err
@@ -53,7 +55,9 @@ func init() {
 			if name == "" {
 				return fmt.Errorf("custom image %s is unavailable; build it first with codex-dock build -f Dockerfile --tag %s", runOpts.Image, runOpts.Image)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), reason)
+			if _, err = fmt.Fprintln(cmd.OutOrStdout(), reason); err != nil {
+				return err
+			}
 			if err = buildFromTemplate(cmd.Context(), name, runOpts.Image); err != nil {
 				return err
 			}
@@ -82,8 +86,8 @@ func init() {
 		if _, err = reconcileProxyAuthState(cmd.Context(), proxy, false); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: codex-dock run --agent %s\nFor host edit watchers add --watch-polling (Chokidar/Watchpack).\n", agent)
-		return nil
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: codex-dock run --agent %s\nFor host edit watchers add --watch-polling (Chokidar/Watchpack).\n", agent)
+		return err
 	}}
 	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude")
 	rootCmd.AddCommand(prepare)

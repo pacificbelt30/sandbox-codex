@@ -40,21 +40,21 @@ func New(c Config) (*Guard, error) {
 		c.MaxWorkers = 2
 	}
 	if c.MaxWorkers < 1 || c.MaxWorkers > 64 {
-		return nil, fmt.Errorf("Kata max workers must be 1..64")
+		return nil, fmt.Errorf("kata max workers must be 1..64")
 	}
 	u, err := url.Parse(c.Endpoint)
 	if err != nil || u.Scheme != "unix" || u.Host != "" || !cleanPath(u.Path) || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-		return nil, fmt.Errorf("Kata verification requires a local unix node endpoint")
+		return nil, fmt.Errorf("kata verification requires a local unix node endpoint")
 	}
 	if err = trustedPath(c.CgroupRoot, true); err != nil {
 		return nil, err
 	}
 	if !strings.HasPrefix(c.CgroupRoot, "/sys/fs/cgroup/") {
-		return nil, fmt.Errorf("Kata requires a dedicated cgroup v2 subtree")
+		return nil, fmt.Errorf("kata requires a dedicated cgroup v2 subtree")
 	}
 	var stat syscall.Statfs_t
 	if err = syscall.Statfs(c.CgroupRoot, &stat); err != nil || stat.Type != 0x63677270 {
-		return nil, fmt.Errorf("Kata requires a cgroup v2 kernel filesystem")
+		return nil, fmt.Errorf("kata requires a cgroup v2 kernel filesystem")
 	}
 	if err = os.MkdirAll(c.StateDir, 0700); err != nil {
 		return nil, err
@@ -79,13 +79,13 @@ func (g *Guard) Validate(ctx context.Context, runtime string) error {
 		return err
 	}
 	if m.Runtime != runtime {
-		return fmt.Errorf("Kata registration differs from pinned manifest")
+		return fmt.Errorf("kata registration differs from pinned manifest")
 	}
 	// The manifest used for process checks must not change during this manager.
 	old, _ := json.Marshal(g.manifest)
 	fresh, _ := json.Marshal(m)
 	if string(old) != string(fresh) {
-		return fmt.Errorf("Kata manifest changed; restart the manager")
+		return fmt.Errorf("kata manifest changed; restart the manager")
 	}
 	_, d, err := readConfig(m.Assets["config"].Path, m.Assets["daemon"].Path, runtime)
 	if err != nil {
@@ -166,7 +166,7 @@ func (g *Guard) Validate(ctx context.Context, runtime string) error {
 		}
 		for _, controller := range []string{"cpu", "memory", "pids"} {
 			if !slices.Contains(strings.Fields(string(data)), controller) {
-				return fmt.Errorf("Kata %s must enable %s", name, controller)
+				return fmt.Errorf("kata %s must enable %s", name, controller)
 			}
 		}
 	}
@@ -192,7 +192,7 @@ func (g *Guard) checkLimits(path string) error {
 			return err
 		}
 		if strings.TrimSpace(string(b)) != want {
-			return fmt.Errorf("Kata host envelope mismatch: %s", name)
+			return fmt.Errorf("kata host envelope mismatch: %s", name)
 		}
 	}
 	return nil
@@ -217,7 +217,7 @@ func (g *Guard) Reserve(ctx context.Context, id string) (string, error) {
 			return "", err
 		}
 		if strings.Contains(string(data), "populated 1") {
-			return "", fmt.Errorf("Kata allocation is already occupied")
+			return "", fmt.Errorf("kata allocation is already occupied")
 		}
 		if err := g.trackAllocation(ctx, id, ""); err != nil {
 			return "", err
@@ -237,7 +237,7 @@ func (g *Guard) Reserve(ctx context.Context, id string) (string, error) {
 		}
 	}
 	if count >= g.config.MaxWorkers {
-		return "", fmt.Errorf("Kata capacity exhausted (%d workers); stop/remove a worker or change the node limit", g.config.MaxWorkers)
+		return "", fmt.Errorf("kata capacity exhausted (%d workers); stop/remove a worker or change the node limit", g.config.MaxWorkers)
 	}
 	// Persist the reservation before its cgroup exists, so interrupted creation
 	// remains discoverable and does not silently lose capacity.
@@ -353,7 +353,7 @@ func (g *Guard) scanProcesses(ctx context.Context, id, worker string, complete b
 				return err
 			}
 			if !strings.Contains(string(args), worker) {
-				return fmt.Errorf("Kata process has another worker identity")
+				return fmt.Errorf("kata process has another worker identity")
 			}
 			cg, err := os.ReadFile(proc + "/cgroup")
 			if err != nil {
@@ -361,14 +361,14 @@ func (g *Guard) scanProcesses(ctx context.Context, id, worker string, complete b
 			}
 			relative := strings.TrimPrefix(path, "/sys/fs/cgroup")
 			if strings.TrimSpace(string(cg)) != "0::"+relative {
-				return fmt.Errorf("Kata process moved out of its envelope")
+				return fmt.Errorf("kata process moved out of its envelope")
 			}
 			after, err := os.ReadFile(proc + "/stat")
 			if err != nil {
 				return err
 			}
 			if procStart(string(before)) == "" || procStart(string(before)) != procStart(string(after)) {
-				return fmt.Errorf("Kata process identity changed")
+				return fmt.Errorf("kata process identity changed")
 			}
 			seen[matched] = true
 			numeric, _ := strconv.Atoi(pid)
@@ -384,7 +384,7 @@ func (g *Guard) scanProcesses(ctx context.Context, id, worker string, complete b
 	}
 	for _, name := range []string{"runtime"} {
 		if !seen[name] {
-			return processes, fmt.Errorf("Kata %s not found inside resource envelope", name)
+			return processes, fmt.Errorf("kata %s not found inside resource envelope", name)
 		}
 	}
 	return processes, nil
@@ -454,7 +454,7 @@ func (g *Guard) releaseUnlocked(ctx context.Context, id, worker string) error {
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Kata envelope remains occupied: %w", ctx.Err())
+			return fmt.Errorf("kata envelope remains occupied: %w", ctx.Err())
 		case <-time.After(50 * time.Millisecond):
 		}
 	}

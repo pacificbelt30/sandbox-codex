@@ -165,7 +165,9 @@ func normalizeHost(host string) (string, error) {
 			return "", fmt.Errorf("invalid destination host")
 		}
 		for _, c := range label {
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+			switch {
+			case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '-':
+			default:
 				return "", fmt.Errorf("invalid destination host")
 			}
 		}

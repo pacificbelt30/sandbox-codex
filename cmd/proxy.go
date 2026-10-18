@@ -128,24 +128,6 @@ At least one credential source must be configured before running.`,
 	},
 }
 
-// proxyContainerInfo returns the containerd task status and the codex-dock proxy layout
-// version of the named container. Empty values mean the container does not
-// exist. Containers created before layout versioning have an empty version and
-// must be recreated: in particular, the old single-proxy layout publishes
-// port 18080 while current clients connect to the split admin port at 18081.
-func proxyContainerInfo(ctx context.Context, name string) (state, layout string) {
-	c, err := engine.NewClient()
-	if err != nil {
-		return "", ""
-	}
-	defer func() { _ = c.Close() }()
-	v, err := c.ContainerInspect(ctx, name)
-	if err != nil || v.State == nil || v.Config == nil {
-		return "", ""
-	}
-	return v.State.Status, v.Config.Labels[proxyLayoutLabel]
-}
-
 // startProxyContainer ensures BOTH proxy containers are running:
 //   - codex-auth-proxy (RoleAuth): credential-injecting reverse routes + token +
 //     admin. Data-plane internal; admin published to host loopback (egress IP).

@@ -587,11 +587,16 @@ func (b *Backend) openPorts(ctx context.Context, r *record) error {
 			if target == "" {
 				return fmt.Errorf("published proxy requires an egress endpoint")
 			}
-			listener, err := net.Listen("tcp", net.JoinHostPort(binding.HostIP, binding.HostPort))
+			listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort(binding.HostIP, binding.HostPort))
 			if err != nil {
 				return err
 			}
-			binding.HostPort = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+			addr, ok := listener.Addr().(*net.TCPAddr)
+			if !ok {
+				_ = listener.Close()
+				return fmt.Errorf("published proxy listener returned a non-TCP address")
+			}
+			binding.HostPort = strconv.Itoa(addr.Port)
 			r.Host.PortBindings[port][bindingIndex] = binding
 			if err = b.save(r); err != nil {
 				_ = listener.Close()
@@ -611,7 +616,7 @@ func relay(listener net.Listener, target string) {
 		}
 		go func() {
 			defer func() { _ = c.Close() }()
-			up, err := net.DialTimeout("tcp", target, 5*time.Second)
+			up, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(context.Background(), "tcp", target)
 			if err != nil {
 				return
 			}
@@ -639,7 +644,7 @@ func relay(listener net.Listener, target string) {
 // Proxy namespaces are kept intact because they serve other workers as well.
 func (b *Backend) refreshWorkerNamespace(ctx context.Context, r *record) error {
 	if r.Config.Labels["codex-dock.managed"] != "true" || len(r.Networks) != 1 {
-		return fmt.Errorf("Dragonball requires one managed worker endpoint")
+		return fmt.Errorf("dragonball requires one managed worker endpoint")
 	}
 	for name, e := range r.Networks {
 		n, err := b.network(name)

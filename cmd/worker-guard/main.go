@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -92,7 +93,7 @@ func main() {
 		if len(os.Args) != 3 {
 			die(fmt.Errorf("missing nonce"))
 		}
-		conn, err := net.DialTimeout("unix", socket, 5*time.Second)
+		conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(context.Background(), "unix", socket)
 		if err != nil {
 			die(err)
 		}

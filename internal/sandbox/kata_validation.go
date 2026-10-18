@@ -22,7 +22,7 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 		return err
 	}
 	if v.Config == nil || v.HostConfig == nil || v.Config.Labels[labelIsolation] != RuntimeKata || v.HostConfig.Runtime != v.Config.Labels[labelRuntime] {
-		return fmt.Errorf("Kata runtime identity mismatch")
+		return fmt.Errorf("kata runtime identity mismatch")
 	}
 	h := v.HostConfig
 	g, err := m.kataNode()
@@ -34,10 +34,10 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 		return err
 	}
 	if v.Config.Labels[labelProfile] != g.Stamp() || h.CgroupParent != parent || len(v.Config.Entrypoint) != 3 || v.Config.Entrypoint[0] != guestGuard || v.Config.Entrypoint[1] != "wait" || v.Config.Entrypoint[2] != v.Config.Labels[labelAllocation] {
-		return fmt.Errorf("Kata worker requires the pinned verification bootstrap; recreate it")
+		return fmt.Errorf("kata worker requires the pinned verification bootstrap; recreate it")
 	}
 	if h.Memory != kataguard.GuestMemory || h.MemorySwap != kataguard.GuestMemory || h.NanoCPUs != 1_000_000_000 || h.PidsLimit == nil || *h.PidsLimit != 512 {
-		return fmt.Errorf("Kata workload resource limits changed")
+		return fmt.Errorf("kata workload resource limits changed")
 	}
 	launcher := false
 	var userMounts []mount.Mount
@@ -55,17 +55,17 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 		return fmt.Errorf("trusted Kata bootstrap mount is missing")
 	}
 	if h.Privileged || len(h.CapAdd) != 0 || !slices.Contains(h.CapDrop, "ALL") || !slices.Contains(h.SecurityOpt, "no-new-privileges:true") {
-		return fmt.Errorf("Kata worker security settings changed")
+		return fmt.Errorf("kata worker security settings changed")
 	}
 	if !slices.Equal(h.DNS, []string{"127.0.0.1"}) || len(h.PortBindings) != 0 || h.PublishAllPorts {
-		return fmt.Errorf("Kata worker must not expose ports or use external DNS")
+		return fmt.Errorf("kata worker must not expose ports or use external DNS")
 	}
 	if string(h.NetworkMode) != network.WorkerNetworkName(strings.TrimPrefix(v.Name, "/")) {
-		return fmt.Errorf("Kata worker network identity mismatch")
+		return fmt.Errorf("kata worker network identity mismatch")
 	}
 	netID := v.Config.Labels[labelPrefix+"network-id"]
 	if netID == "" {
-		return fmt.Errorf("Kata worker is missing its network ID")
+		return fmt.Errorf("kata worker is missing its network ID")
 	}
 	if v.NetworkSettings != nil {
 		if v.State != nil && v.State.Running && len(v.NetworkSettings.Networks) != 1 {
@@ -76,7 +76,7 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 			// and again after stop. The configured network name must still
 			// match; a live worker must expose the exact materialized ID.
 			if name != string(h.NetworkMode) || endpoint == nil || (endpoint.NetworkID != "" && endpoint.NetworkID != netID) || (v.State != nil && v.State.Running && endpoint.NetworkID == "") {
-				return fmt.Errorf("Kata worker has an unexpected attached network")
+				return fmt.Errorf("kata worker has an unexpected attached network")
 			}
 		}
 	}
@@ -95,7 +95,7 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 	expected := slices.Clone(h.ExtraHosts)
 	sort.Strings(expected)
 	if !slices.Equal(actual, expected) {
-		return fmt.Errorf("Kata proxy addresses changed; recreate the worker to refresh its pinned hosts")
+		return fmt.Errorf("kata proxy addresses changed; recreate the worker to refresh its pinned hosts")
 	}
 	return nil
 }
