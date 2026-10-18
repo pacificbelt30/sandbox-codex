@@ -484,7 +484,10 @@ def apply(args, record):
                 run(['systemctl', 'enable', service])
         if stopped_admission or transaction:
             if previously_active:
-                run(['systemctl', 'start', *reversed(previously_active)])
+                if current and set(previously_active) == set(SERVICES):
+                    start_and_check(current['release'])
+                else:
+                    run(['systemctl', 'start', *reversed(previously_active)])
         raise
 
 
