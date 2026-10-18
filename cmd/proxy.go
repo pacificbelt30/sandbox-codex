@@ -476,6 +476,13 @@ func resolveProxyDockerfile(flagValue string) (string, string, error) {
 	}
 
 	// Fall back to the default Dockerfile written into the config directory.
+	// It compiles the current directory's Go source, so fail with a useful
+	// instruction before starting a BuildKit build from an unrelated project.
+	for _, source := range []string{"go.mod", "cmd/proxy.go", "main.go"} {
+		if _, err := os.Stat(source); err != nil {
+			return "", "", fmt.Errorf("proxy image build needs the codex-dock source checkout; run init or proxy build from its repository root (%s is missing in the current directory)", source)
+		}
+	}
 	configDir, err := defaultConfigDir()
 	if err != nil {
 		return "", "", fmt.Errorf("auth-proxy.Dockerfile not found; use -f to specify path")

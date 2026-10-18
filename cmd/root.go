@@ -16,9 +16,11 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "codex-dock",
-	Version: buildinfo.Version,
-	Short:   "AI Sandbox Container Manager for Codex CLI",
+	Use:           "codex-dock",
+	Version:       buildinfo.Version,
+	Short:         "AI Sandbox Container Manager for Codex CLI",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `codex-dock runs Codex CLI and Claude Code in Kata VM-isolated workers
 managed through containerd and Dragonball, with auth proxy, network separation and parallel workers.
 Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,

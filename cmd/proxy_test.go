@@ -162,6 +162,14 @@ func TestResolveProxyDockerfile_DockerSubdir(t *testing.T) {
 func TestResolveProxyDockerfile_FallbackToConfigDir(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	if err := os.MkdirAll("cmd", 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"go.mod", "cmd/proxy.go", "main.go"} {
+		if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -180,6 +188,14 @@ func TestResolveProxyDockerfile_FallbackToConfigDir(t *testing.T) {
 	configDir := filepath.Join(homeDir, ".config", "codex-dock")
 	if _, err := os.Stat(filepath.Join(configDir, "auth-proxy.Dockerfile")); err != nil {
 		t.Errorf("auth-proxy.Dockerfile not written to config dir: %v", err)
+	}
+}
+
+func TestResolveProxyDockerfile_OutsideSourceCheckout(t *testing.T) {
+	t.Chdir(t.TempDir())
+	_, _, err := resolveProxyDockerfile("")
+	if err == nil || !strings.Contains(err.Error(), "repository root") {
+		t.Fatalf("expected source checkout guidance, got %v", err)
 	}
 }
 

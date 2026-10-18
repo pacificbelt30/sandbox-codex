@@ -1,4 +1,5 @@
 import io
+from contextlib import redirect_stdout
 import tarfile
 import json
 from pathlib import Path
@@ -9,6 +10,19 @@ import setup
 
 
 class SetupTests(unittest.TestCase):
+    def test_plan_shows_bundle_version_and_operator_before_apply(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp)
+            record = {'version': 'test-version'}
+            output = io.StringIO()
+            with patch('sys.argv', ['setup.py', '--bundle', str(bundle), '--operator', 'alice']), \
+                    patch.object(setup, 'bundle_info', return_value=record), \
+                    patch.object(setup, 'host_check'), \
+                    redirect_stdout(output):
+                setup.main()
+            self.assertIn(f'Bundle: {bundle.resolve()} (version test-version); operator: alice', output.getvalue())
+            self.assertIn('No host changes.', output.getvalue())
+
     def test_bundle_rejects_changed_helpers_and_extra_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -378,6 +378,8 @@ def main():
     if not args.rollback:
         host_check(args.operator)
     print('Plan: rollback previous setup' if args.rollback else 'Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3', flush=True)
+    if not args.rollback:
+        print(f'Bundle: {args.bundle.resolve()} (version {record.get("version", "unknown")}); operator: {args.operator}; cache: {args.cache.resolve()}; offline: {"yes" if args.offline else "no"}', flush=True)
     print('Stop admission/builds; require empty containers, tasks and VM allocations; keep images and projects. Install into a new root-owned release; switch only codex-dock services; verify readiness; restore previous files/services on failure.', flush=True)
     if not args.apply:
         print('No host changes. Add --apply as root. Operator access is root-equivalent. Runtime downloads are pinned in assets.lock.json.', flush=True)

@@ -38,9 +38,19 @@ The auth proxy runs as the caller's UID/GID and reads files through read-only bi
 Owner-only `0600` files work without changing their permissions.
 Real API keys and OAuth access/refresh tokens are not passed to workers.
 
-## 3. Build images and start the proxies
+## 3. Prepare images and start the proxies
 
-Build the proxy from the repository root: it needs the Go source.
+From the repository root, run the guided preparation command as your normal account:
+
+```bash
+codex-dock init
+# For Claude Code:
+codex-dock init --agent claude
+```
+
+It checks host readiness and credentials, builds a missing worker image, checks image compatibility, and starts the proxies. If the proxy image is missing, its build needs the Go source in the repository root. After building it once, you can return to your project directory.
+
+To perform those steps separately:
 
 ```bash
 codex-dock proxy build

@@ -10,16 +10,21 @@
 
 ```bash
 make node-bundle
-./dist/node-bundle/codex-dock setup --bundle ./dist/node-bundle --operator "$USER"
+./dist/node-bundle/codex-dock setup
 ```
 
 最初は計画だけを表示します。対象アカウントは既存の通常利用者を指定します。
+バンドル内のCLIから実行すると、隣接する `bundle.json` を自動で探します。通常利用者で計画を表示する場合は、その利用者をoperatorに選びます。
+計画にはバンドルのパスと版、operator、キャッシュ、オフライン指定が表示されます。
+別のCLIや利用者を使う場合は `--bundle PATH --operator USER` を明示してください。
 計画を確認したら、同じバンドルのCLIで適用します。
 
 ```bash
 sudo ./dist/node-bundle/codex-dock setup \
-  --bundle ./dist/node-bundle --operator "$USER" --apply
+  --operator "$USER" --apply
 ```
+
+`--apply` では付与先の `--operator` を必ず明示します。適用前に対象アカウントを確認してください。
 
 通常の認証や `run` にはsudoを使いません。
 再ログインしてグループを反映した後、ホストのAI認証を用意して実行します。
