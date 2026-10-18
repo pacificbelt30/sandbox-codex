@@ -41,7 +41,8 @@ nav:
   - ホーム: index.md
   - はじめに:
       - クイックスタート: getting-started.md
-      - 実行ホストの準備: kata.md
+      - 導入と更新の自動化: setup.md
+      - 実行ホストの手動準備: kata.md
       - 旧環境からの移行: migration.md
   - 運用:
       - 日常の操作と更新: operations.md

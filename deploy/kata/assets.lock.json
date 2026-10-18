@@ -1,0 +1,26 @@
+{
+  "kata": {
+    "version": "4.2.0",
+    "url": "https://github.com/kata-containers/kata-containers/releases/download/4.2.0/kata-static-4.2.0-amd64.tar.zst",
+    "file": "kata-static-4.2.0-amd64.tar.zst",
+    "sha256": "b828904fa3f1e49ddd7dc799c72cb1503cd1e772d354c3987c8d4189b2a623a8"
+  },
+  "containerd": {
+    "version": "2.4.2",
+    "url": "https://github.com/containerd/containerd/releases/download/v2.4.2/containerd-2.4.2-linux-amd64.tar.gz",
+    "file": "containerd-2.4.2-linux-amd64.tar.gz",
+    "sha256": "35880c1dd4627e8ce56526bfabb39c144e83458ffdb197ce6f05d17d94d7d91e"
+  },
+  "buildkit": {
+    "version": "0.34.0",
+    "url": "https://github.com/moby/buildkit/releases/download/v0.34.0/buildkit-v0.34.0.linux-amd64.tar.gz",
+    "file": "buildkit-v0.34.0.linux-amd64.tar.gz",
+    "sha256": "14813b1fb2a40082114e6d386c6fc5e7dd5298176ce7ee1a18bc33e73e109ac3"
+  },
+  "runc": {
+    "version": "1.4.3",
+    "url": "https://github.com/opencontainers/runc/releases/download/v1.4.3/runc.amd64",
+    "file": "runc-1.4.3.amd64",
+    "sha256": "f6ae8efc0fa40079e1475e97cbe9d1bd3f106a28d6af78a11d9f1bd565515e60"
+  }
+}

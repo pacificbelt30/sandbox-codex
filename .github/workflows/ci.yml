@@ -73,6 +73,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Test Kata profile and transactional setup
+        run: python3 -m unittest discover -s deploy/kata -p 'test_*.py'
+
       - name: Run tests
         run: |
           go test \
@@ -87,6 +90,7 @@ jobs:
             ./internal/kataguard/... \
             ./internal/engine/... \
             ./internal/worktree/... \
+            ./internal/diagnostics/... \
             ./internal/config/... \
             ./internal/template/...
 

@@ -72,6 +72,22 @@ func TestKataAcceptance(t *testing.T) {
 	}
 	workerImage = customImage
 	t.Log("verified: standalone BuildKit custom Dockerfile RUN, OCI export and containerd import")
+	report, err := engine.CheckImage(ctx, workerImage, "codex")
+	if err != nil || report.Err() != nil {
+		t.Fatalf("custom image static preflight: %v %v", err, report.Err())
+	}
+	if err = os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte("FROM "+workerImage+"\nUSER 0\nRUN rm /usr/bin/python3\nUSER 1001\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	badImage := prefix + "-missing-python:verification"
+	if err = engine.Build(ctx, badImage, filepath.Join(buildDir, "Dockerfile"), buildDir, &buildLog); err != nil {
+		t.Fatalf("negative image fixture: %v", err)
+	}
+	badReport, err := engine.CheckImage(ctx, badImage, "codex")
+	if err != nil || badReport.Err() == nil {
+		t.Fatalf("missing Python not caught before worker creation: %v %+v", err, badReport)
+	}
+	t.Log("verified: read-only image compatibility checks accept the custom image and reject missing Python without a worker")
 
 	egress, err := c.NetworkCreate(ctx, prefix+"-egress", dockernetwork.CreateOptions{Driver: "bridge"})
 	if err != nil {

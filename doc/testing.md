@@ -112,3 +112,41 @@ mkdocs build --strict
 
 ページ・見出しへのリンク切れ、ナビゲーションへの掲載漏れをエラーとして確認します。
 プレビューは `mkdocs serve` で起動できます。
+
+## 新規導入・更新・復旧を検証する
+
+専用のLinux/KVMホストから `scripts/verify-setup.py` を実行します。
+外側の使い捨てUbuntuを作るためだけにDockerを使い、内部の製品はネイティブcontainerd/Kata/Dragonballで実行します。
+既存の通常CIはroot権限を使わない設定生成・配置・復旧の単体テストだけを実行します。
+
+`deploy/kata/Dockerfile.verify` はsystemdとOS依存パッケージを準備します。
+`setup` 本体が固定配布物を展開して、専用サービスを新規導入します。
+内部ノードへホストPID、ホストDockerソケット、外部ネットワーク、実認証情報は渡しません。
+containerdのデータは、イメージ展開に必要なwhiteoutを扱える専用ボリュームへ配置します。
+
+ソースのルートで、Go・Make・Python・Dockerを使って試験資産を作成します。
+イメージのビルドにproxy/CAが必要な環境では、[Kataの通信設定](kata.md#3-ネットワークとサービスを有効にする)と同様に環境を整えてください。
+
+```bash
+make node-bundle VERSION=setup-test-a
+mv dist/node-bundle dist/node-bundle-a
+make node-bundle VERSION=setup-test-b
+mv dist/node-bundle dist/node-bundle-b
+mkdir -p .kata-verification/setup-e2e
+CGO_ENABLED=0 go test -c ./internal/sandbox -o .kata-verification/setup-e2e/acceptance.test
+docker build -t codex-dock-setup-node:verification -f deploy/kata/Dockerfile.verify deploy/kata
+docker build -t codex-dock:kata-guard docker/sandbox
+docker build -t codex-dock-proxy:policy-verification -f docker/proxy/Dockerfile .
+docker save -o .kata-verification/setup-e2e/images.tar codex-dock:kata-guard codex-dock-proxy:policy-verification
+CODEX_DOCK_DISPOSABLE_SETUP=1 python3 scripts/verify-setup.py \
+  --bundle dist/node-bundle-a --next-bundle dist/node-bundle-b \
+  --images .kata-verification/setup-e2e/images.tar \
+  --acceptance .kata-verification/setup-e2e/acceptance.test
+```
+
+必要な場合だけ `--sudo-docker` を付けます。配布物を準備済みなら `--cache PATH --offline` で検証できます。
+スクリプトはホストの既存サービスを変更せず、自分が作ったラベル付きノードと専用ボリュームを最後に回収します。
+証跡は `.kata-verification/setup-e2e/<識別子>/` に残します。
+
+確認範囲は、計画時にサービスを作らないこと、新規配置、通常利用者の `init`、実Kata受入、稼働資源がある場合の更新拒否、正常更新時のイメージ保持、新サービスの起動失敗からの自動復旧、明示的なロールバックです。
+OSパッケージのネットワーク取得、ホスト再起動、外部AI推論はこの試験に含みません。

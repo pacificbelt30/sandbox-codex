@@ -227,12 +227,12 @@ func TestKataWorkspaceSharing(t *testing.T) {
 		}
 		write(t, filepath.Join(project, "host-private"), "host-before", 0600)
 		write(t, filepath.Join(project, ".hidden"), "hidden", 0640)
-		var flags []string
+		flags := []string{"--watch-polling"}
 		if foreign := os.Getenv("CODEX_DOCK_KATA_OWNER_FIXTURE"); foreign != "" {
 			flags = append(flags, "--mount", foreign+":/foreign:rw")
 		}
 		w := launch(t, project, flags...)
-		if len(flags) > 0 {
+		if os.Getenv("CODEX_DOCK_KATA_OWNER_FIXTURE") != "" {
 			guest(t, w, `import errno
 for action in [lambda:Path('/foreign/foreign-private').read_text(),lambda:Path('/foreign/foreign-private').write_text('bad')]:
  try: action()
@@ -243,6 +243,11 @@ result={}`)
 			hostMetadata(t, filepath.Join(os.Getenv("CODEX_DOCK_KATA_OWNER_FIXTURE"), "setgid/from-current-user"), uint32(os.Getuid()), 12002, 0644)
 			t.Log("PASS: another UID's 0600 file is denied; setgid directory preserves its group on guest-created files")
 		}
+		guest(t, w, `assert os.environ["CHOKIDAR_USEPOLLING"]=="true"
+assert os.environ["CHOKIDAR_INTERVAL"]=="1000"
+assert os.environ["WATCHPACK_POLLING"]=="1000"
+assert "HTTP_PROXY" not in os.environ
+result={}`)
 		got := guest(t, w, `p=Path('/workspace/host-private'); s=p.stat()
 assert os.getuid()==`+strconv.Itoa(os.Getuid())+` and os.getgid()==`+strconv.Itoa(os.Getgid())+`
 assert (s.st_uid,s.st_gid,s.st_mode&0o777)==(os.getuid(),os.getgid(),0o600)

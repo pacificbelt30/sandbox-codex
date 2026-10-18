@@ -11,7 +11,10 @@ Full command reference for codex-dock. See the individual pages below for detail
 | Command | Description | Details |
 |---|---|---|
 | [`codex-dock run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
-| [`codex-dock runtime-check`](../kata.md) | Verify execution host | Pinned assets, containerd and node |
+| [`codex-dock setup`](../setup.md) | Install, update or restore the node | Plan, --apply, --rollback (Japanese guide) |
+| [`codex-dock init`](../getting-started.md) | Prepare the first worker | Readiness, credentials, image and proxies |
+| [`codex-dock runtime-check`](../troubleshooting.md) | Diagnose execution host | doctor alias, --json and recovery steps |
+| [`codex-dock image check`](../commands/build.md) | Inspect image compatibility | Platform, tools and auth entrypoint |
 | [`codex-dock vm`](../vm.md) | Reconcile and manage Kata VMs | ps / inspect / start / stop / rm / prune |
 | [`codex-dock vm start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
 | [`codex-dock proxy`](commands/proxy.md) | Manage Auth Proxy | build / run / serve / stop / rm |

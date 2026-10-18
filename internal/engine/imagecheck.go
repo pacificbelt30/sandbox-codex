@@ -31,7 +31,11 @@ func CheckImage(ctx context.Context, image, agent string) (diagnostics.Report, e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return report, fmt.Errorf("image inspection failed (HTTP %d); verify the image exists and update the node to this CLI version", resp.StatusCode)
+		var detail struct {
+			Message string `json:"message"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&detail)
+		return report, fmt.Errorf("image inspection failed (HTTP %d): %s; verify the image, node version and snapshotter storage", resp.StatusCode, detail.Message)
 	}
 	err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&report)
 	return report, err

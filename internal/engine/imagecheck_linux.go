@@ -50,7 +50,15 @@ func (b *Backend) checkImage(ctx context.Context, name, agent string) (report di
 		defer cancel()
 		resultErr = errors.Join(resultErr, service.Remove(cleanup, key))
 	}()
-	err = mount.WithReadonlyTempMount(ctx, mounts, func(root string) error { report = inspectImageRoot(root, ic, agent); return nil })
+	err = mount.WithReadonlyTempMount(ctx, mounts, func(root string) error {
+		report = inspectImageRoot(root, ic, agent)
+		descriptor, err := img.Config(ctx)
+		if err != nil {
+			return err
+		}
+		report.Add("identity", descriptor.Digest.String(), "", nil)
+		return nil
+	})
 	return report, err
 }
 
