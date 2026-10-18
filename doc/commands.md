@@ -11,7 +11,10 @@ codex-dock の全コマンドリファレンスです。各コマンドの詳細
 | コマンド | 説明 | 詳細 |
 |---|---|---|
 | [`codex-dock run`](commands/run.md) | サンドボックスコンテナの起動 | オプション・承認モード・並列実行・パッケージ管理 |
-| [`codex-dock runtime-check`](kata.md) | 実行ホストの検証 | 固定資産・containerd・ノード |
+| [`codex-dock setup`](setup.md) | ホスト導入・更新・復旧 | 計画表示 / --apply / --rollback |
+| [`codex-dock init`](getting-started.md) | 初回起動の準備 | 診断・認証確認・イメージ検査・プロキシ起動 |
+| [`codex-dock runtime-check`](troubleshooting.md#複数の前提条件をまとめて調べる) | 実行環境の診断 | doctor別名・--json・修正手順 |
+| [`codex-dock image check`](commands/build.md#起動前に互換性を調べる) | イメージの事前検査 | platform・必要ツール・entrypoint |
 | [`codex-dock vm`](vm.md) | Kata VMの照合と管理 | ps / inspect / start / stop / rm / prune |
 | [`codex-dock vm start`](commands/worker.md) | 停止済みワーカーの再起動 | 同じID・認証の復元 |
 | [`codex-dock proxy`](commands/proxy.md) | Auth Proxy の管理 | build / run / serve / stop / rm |

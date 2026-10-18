@@ -46,3 +46,6 @@ __pycache__/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Matching CLI/node installation bundles
+/dist/

@@ -15,6 +15,8 @@ buildctl → 独立BuildKit → OCI archive → 同じcontainerd namespace
 
 Goの互換DTOとHTTPクライアントにはDockerライブラリを利用するが、接続先は本製品の管理サービスである。`DOCKER_HOST`・Docker context・Docker daemonの探索や自動fallbackはしない。接続先を変える場合は `CODEX_DOCK_KATA_NODE_SOCKET` を指定する。
 
+Ubuntu 26.04で新しく配置する場合は、[自動セットアップ](setup.md)も使えます。以下は手動配置の手順です。
+
 ## 必要なホスト
 
 Linux x86_64、KVM、cgroup v2、`cpu memory pids` controller、pidfdと`cgroup.kill`、iproute2・nftables・runc、containerd 2.xの設定v3が必要。検証版はKata 4.2.0 / containerd 2.4.2 / BuildKit 0.34.0。KataのDragonball用kernelには公式配布物上でexperimentalの名称が付く。更新時は資産を検証して受入試験を再実行する。

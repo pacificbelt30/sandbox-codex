@@ -1,3 +1,5 @@
+//go:build ignore
+
 /* Derived from agent-orchestrator-platform's MIT-licensed guest prestart hook.
  * Preserve codex-dock's 512-process policy, only on the workload's cgroup. */
 #define _GNU_SOURCE

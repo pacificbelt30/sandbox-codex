@@ -461,7 +461,7 @@ func (g *Guard) releaseUnlocked(ctx context.Context, id, worker string) error {
 }
 
 func (g *Guard) ProtectedPaths() []string {
-	paths := []string{g.config.Manifest, g.config.StateDir, g.config.CgroupRoot, "/proc", "/sys/fs/cgroup", "/dev/kvm", "/run/netns", "/run/codex-dock-buildkit", "/var/lib/codex-dock-buildkit"}
+	paths := []string{g.config.Manifest, g.config.StateDir, g.config.CgroupRoot, "/proc", "/sys/fs/cgroup", "/dev/kvm", "/run/netns", "/run/codex-dock-buildkit", "/var/lib/codex-dock-buildkit", "/var/lib/codex-dock-setup", "/var/cache/codex-dock-setup", "/opt/codex-dock/releases"}
 	if _, d, err := readConfig(g.manifest.Assets["config"].Path, g.manifest.Assets["daemon"].Path, g.manifest.Runtime); err == nil {
 		paths = append(paths, d.Root, d.State, d.GRPC.Address)
 	}

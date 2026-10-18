@@ -19,7 +19,7 @@ Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです
 
 ## 最初に使う
 
-1. 管理者が[Kata実行ホストを準備](doc/kata.md)します。
+1. 管理者が[実行ホストを準備](doc/setup.md)します。
 2. 利用者が[クイックスタート](doc/getting-started.md)に沿って認証とイメージを用意します。
 3. ワーカーを起動します。
 
@@ -28,16 +28,15 @@ ChatGPT認証を使う場合は、同じ利用者の `~/.codex/auth.json` を参
 APIキーを使う場合は、先に `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` を設定してください。
 
 ```bash
-codex-dock runtime-check
-codex-dock proxy build
-codex-dock proxy run
-codex-dock build
-
+codex-dock init
 codex-dock run --agent codex
-# または
+
+# Claude Codeを使う場合
+codex-dock init --agent claude
 codex-dock run --agent claude
 ```
 
+プロキシイメージを初めてビルドする際は、リポジトリのルートで `init` を実行します。
 `--agent` を省略すると、認証設定済みのシェルが開きます。
 通常の操作はoperator groupに属する利用者で行います。
 Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り替えません。
@@ -68,7 +67,7 @@ codex-dock ui
 | 目的 | ドキュメント |
 |---|---|
 | 初めて使う | [クイックスタート](doc/getting-started.md) |
-| 実行ホストを用意する | [Kata / Dragonballの配置](doc/kata.md) |
+| 実行ホストを用意・更新する | [自動セットアップ](doc/setup.md) / [手動配置](doc/kata.md) |
 | 停止・再起動・更新する | [日常の運用](doc/operations.md) |
 | 旧Docker環境から移る | [移行手順](doc/migration.md) |
 | 共有ファイル・所有者を確認する | [ファイル共有](doc/workspace.md) |

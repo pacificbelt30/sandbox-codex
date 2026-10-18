@@ -44,6 +44,9 @@ codex-dock run --agent codex --parallel 2 --worktree \
 上限の変更は管理者が `node serve --max-workers` で行います。
 CPUとメモリの要件は[Kataの手順](kata.md#必要なホスト)を参照してください。
 
+自動セットアップで配置した環境は、[setupによる更新・復旧](setup.md#更新する)を使えます。
+以下は手動配置の更新手順です。
+
 ## CLI・プロキシを更新する
 
 認証方式や通信ポリシーを変える場合も、この順序で更新します。

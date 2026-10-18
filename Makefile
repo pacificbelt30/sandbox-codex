@@ -17,7 +17,7 @@ TEMPLATES_DIR := $(CONFIG_DIR)/templates
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X $(MODULE)/internal/buildinfo.Version=$(VERSION)"
 
-.PHONY: all build worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e lint vet tidy help
+.PHONY: all build node-bundle worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e lint vet tidy help
 
 ## all: build binary and OCI images
 all: build image proxy-image
@@ -33,6 +33,14 @@ worker-guard:
 ## io-logger: build the shim-owned static Linux console logger
 io-logger:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(IO_LOGGER) ./cmd/io-logger
+
+## node-bundle: build a matching Linux amd64 CLI and helpers for setup/update
+node-bundle:
+	mkdir -p dist/node-bundle
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/node-bundle/codex-dock .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-worker-guard ./cmd/worker-guard
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-io-logger ./cmd/io-logger
+	python3 deploy/kata/bundle.py dist/node-bundle "$(VERSION)"
 
 ## install: install the binary to $(BINDIR) (default: /usr/local/bin)
 install: build
