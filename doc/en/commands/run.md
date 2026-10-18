@@ -13,12 +13,19 @@ On-disk template rebuilds are controlled by [auto_build](../configuration.md#aut
 See [build](build.md) for custom tags and templates.
 
 ```bash
-codex-dock run [OPTIONS] [-- command...]
+codex-dock run [OPTIONS] [IMAGE [COMMAND...]]
+codex-dock run [OPTIONS] -- COMMAND...  # Run in the default image
 ```
 
-A command placed after `--` runs once instead of the interactive shell — like
-`docker run <image> <cmd>` — and is equivalent to `--exec` but without having
-to quote the whole command as one string ([details](#--exec)).
+IMAGE and COMMAND follow Docker's positional order. Put codex-dock flags before IMAGE.
+With `--image` or `--template`, positional arguments are treated as the command.
+The command is equivalent to `--exec` without quoting it as one string.
+
+```bash
+codex-dock run -d --name worker codex-dock:latest
+codex-dock run codex-dock:latest npm test -- --watch=false
+codex-dock run -- npm test -- --watch=false
+```
 
 ---
 
@@ -28,11 +35,11 @@ to quote the whole command as one string ([details](#--exec)).
 |---|---|---|---|
 | `--runtime` | | `kata` | Worker isolation; `runc` is explicit compatibility mode |
 | `--kata-runtime` | | `io.containerd.kata.v2` | Kata registration on dedicated containerd |
-| `--image` | `-i` | `codex-dock:latest` | OCI image for the sandbox |
+| `--image` | `-i` | `codex-dock:latest` | OCI image for the sandbox; also accepted positionally |
 | `--template` | `-T` | | Sandbox image template (`plain`, `pwn`, etc.). Resolved to the template's image tag; an explicit `--image` always takes precedence. Auto-built if not present locally |
 | `--pkg` | `-p` | | Additional packages (repeatable): `apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | Path to a package definition file (`packages.dock`) |
-| `--project` | `-d` | `.` (current dir) | Directory to mount at `/workspace` |
+| `--project` | | `.` (current dir) | Directory to mount at `/workspace` |
 | `--worktree` | `-w` | `false` | Use git worktree to isolate containers |
 | `--branch` | `-b` | | Branch name to check out (requires `--worktree`) |
 | `--new-branch` | `-B` | `false` | Create a new branch (requires `--worktree` and `--branch`) |
@@ -50,7 +57,7 @@ to quote the whole command as one string ([details](#--exec)).
 | `--force-recreate-proxy` | | `false` | Recreate the Auth Proxy when its credential state differs from the host even if workers are running (existing workers lose authentication) |
 | `--token-ttl` | | `3600` | Auth Proxy token TTL in seconds |
 | `--agents-md` | | | Path to `AGENTS.md` file |
-| `--detach` | `-D` | `false` | Run in background (no log output) |
+| `--detach` | `-d` | `false` | Run in background (no log output); the old `-D` still works |
 | `--parallel` | `-P` | `1` | Number of parallel workers |
 | `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
 | `--shell-type` | | auto-detected from `$SHELL`, else `bash` | Interactive shell to launch ([details](#--shell-type)) |
@@ -60,6 +67,16 @@ When the host and Auth Proxy credential modes differ, `run` automatically
 recreates the Auth Proxy if no workers are running. If workers are running it
 stops with an error so their in-memory tokens are not invalidated. Pass
 `--force-recreate-proxy` to recreate it anyway, then create new workers if their pinned proxy IP changed.
+
+---
+
+## Docker CLI differences
+
+`run -d`, `run IMAGE COMMAND`, `ps -a`, `logs -f`, `start`, `stop`, `rm -f`, and `build -t` use Docker style.
+Replace the old `run -d PATH` project shorthand with `run --project PATH`. The old `-D` still means detach.
+In this CLI, `run -p` selects packages, `run -i` selects an image, `run -t` sets an agent task, and `-v` enables verbose output.
+Host port publishing is not supported. Use `--mount HOST:CONTAINER[:ro|rw]` for extra bind mounts.
+The current project is shared at `/workspace` by default, and a foreground worker is removed after exit unless you pass `--keep`.
 
 ---
 

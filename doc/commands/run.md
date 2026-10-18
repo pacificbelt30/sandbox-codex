@@ -14,12 +14,19 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 独自タグやテンプレートは[build](build.md)を参照してください。
 
 ```bash
-codex-dock run [OPTIONS] [-- command...]
+codex-dock run [OPTIONS] [IMAGE [COMMAND...]]
+codex-dock run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
 ```
 
-`--` の後にコマンドを置くと、対話シェルの代わりにそのコマンドを1回だけ実行します
-（`docker run <image> <cmd>` と同様の形）。`--exec` と同等ですが、コマンド全体を
-1つの文字列としてクォートする必要がありません（[詳細](#--exec--コマンドの実行)）。
+イメージとコマンドの位置は `docker run IMAGE COMMAND` と同じです。フラグはイメージの前に置きます。
+`--image` または `--template` を指定した場合は位置引数をコマンドとして扱います。
+コマンドは `--exec` と同等ですが、全体を1つの文字列にクォートする必要はありません。
+
+```bash
+codex-dock run -d --name worker codex-dock:latest
+codex-dock run codex-dock:latest npm test -- --watch=false
+codex-dock run -- npm test -- --watch=false
+```
 
 ---
 
@@ -29,11 +36,11 @@ codex-dock run [OPTIONS] [-- command...]
 |---|---|---|---|
 | `--runtime` | | `kata` | ワーカーの隔離方式。`runc` は明示的な互換モード |
 | `--kata-runtime` | | `io.containerd.kata.v2` | 専用containerdのKata登録名 |
-| `--image` | `-i` | `codex-dock:latest` | サンドボックスに使用するOCIイメージ |
+| `--image` | `-i` | `codex-dock:latest` | サンドボックスに使用するOCIイメージ。位置引数でも指定可能 |
 | `--template` | `-T` | | サンドボックスイメージテンプレート（`plain`, `pwn` 等）。指定したテンプレートのタグに解決される。`--image` を明示指定した場合はそちらが優先。存在しなければ自動ビルドされる |
 | `--pkg` | `-p` | | 追加パッケージ（繰り返し指定可）`apt:<pkg>`, `pip:<pkg>`, `npm:<pkg>` |
 | `--pkg-file` | | | パッケージ定義ファイルのパス (`packages.dock`) |
-| `--project` | `-d` | `.`（カレント） | `/workspace` にマウントするプロジェクトディレクトリ |
+| `--project` | | `.`（カレント） | `/workspace` にマウントするプロジェクトディレクトリ |
 | `--worktree` | `-w` | `false` | git worktree を使ってコンテナを分離する |
 | `--branch` | `-b` | | チェックアウトするブランチ名（`--worktree` が必要） |
 | `--new-branch` | `-B` | `false` | 新規ブランチを作成する（`--worktree` と `--branch` が必要） |
@@ -51,11 +58,21 @@ codex-dock run [OPTIONS] [-- command...]
 | `--force-recreate-proxy` | | `false` | ホストとAuth Proxyの認証状態が異なる場合、稼働中ワーカーがあってもAuth Proxyを再作成する（既存ワーカーの認証は失効） |
 | `--token-ttl` | | `3600` | Auth Proxy トークンの有効期限（秒） |
 | `--agents-md` | | | `AGENTS.md` ファイルのパス |
-| `--detach` | `-D` | `false` | バックグラウンドで実行（ログを表示しない） |
+| `--detach` | `-d` | `false` | バックグラウンドで実行（ログを表示しない）。従来の `-D` も利用可能 |
 | `--parallel` | `-P` | `1` | 並列ワーカー数 |
 | `--shell` | `-s` | `false` | `entrypoint.sh` をバイパスした素の（未認証の）シェルを起動（デバッグ用） |
 | `--shell-type` | | `$SHELL` から自動判定、それ以外は `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
 | `--user` | | `current` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
+
+---
+
+## Docker CLI との対応
+
+`run -d`、`run IMAGE COMMAND`、`ps -a`、`logs -f`、`start`、`stop`、`rm -f`、`build -t` はDockerと同じ形で使えます。
+従来の `run -d PATH`（プロジェクト指定）は `run --project PATH` に置き換えてください。従来の `-D` はバックグラウンド実行として引き続き使えます。
+ただし `run -p` は追加パッケージ、`run -i` はイメージ、`run -t` はエージェントのタスク、`-v` は詳細ログです。
+ホストポートの公開には対応していません。追加マウントは `--mount HOST:CONTAINER[:ro|rw]` を使います。
+ワーカーは既定で現在のプロジェクトを `/workspace` に共有し、前面実行の終了時に削除されます（保持する場合は `--keep`）。
 
 ---
 

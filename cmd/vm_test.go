@@ -18,6 +18,16 @@ func TestVMCommandsExposeExpectedManagementSurface(t *testing.T) {
 		}
 	}
 }
+
+func TestTopLevelStartMatchesWorkerManagement(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"start", "worker"})
+	if err != nil || cmd != startCmd {
+		t.Fatalf("top-level start command missing: %v", err)
+	}
+	if err := startCmd.Args(startCmd, nil); err == nil {
+		t.Fatal("start should require a worker name or ID")
+	}
+}
 func TestVMTableKeepsUnknownAndOrphanStatesVisible(t *testing.T) {
 	rows := []kataguard.VM{{ID: "run", State: "running"}, {ID: "stopped", State: "exited"}, {ID: "unknown", State: "unknown"}, {ID: "orphan", State: "orphan-empty", Orphan: true}}
 	visible := visibleVMs(rows, false)

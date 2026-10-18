@@ -76,6 +76,9 @@ jobs:
       - name: Test Kata profile and transactional setup
         run: python3 -m unittest discover -s deploy/kata -p 'test_*.py'
 
+      - name: Test install script
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
       - name: Run tests
         run: |
           go test \

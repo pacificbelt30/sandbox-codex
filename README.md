@@ -23,6 +23,8 @@ Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです
 2. 利用者が[クイックスタート](doc/getting-started.md)に沿って認証とイメージを用意します。
 3. ワーカーを起動します。
 
+Ubuntu 26.04 の対応ホストでは、ソースのルートから `./scripts/install.sh` で導入計画を確認し、`./scripts/install.sh --apply` でバンドル作成から適用まで実行できます。
+
 準備済みのホストでは、認証を設定してから次の順序で実行します。
 ChatGPT認証を使う場合は、同じ利用者の `~/.codex/auth.json` を参照します。
 APIキーを使う場合は、先に `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` を設定してください。
@@ -46,14 +48,13 @@ Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り
 ```bash
 # 独立したブランチでバックグラウンド実行
 codex-dock run --agent codex --task "テストを追加して" \
-  --worktree --branch add-tests --new-branch --detach
+  --worktree --branch add-tests --new-branch -d
 
 codex-dock ps -a
 codex-dock vm ps -a
 codex-dock logs WORKER --follow
 codex-dock stop WORKER
-codex-dock vm start WORKER
-codex-dock stop WORKER
+codex-dock start WORKER
 codex-dock rm WORKER
 codex-dock ui
 ```

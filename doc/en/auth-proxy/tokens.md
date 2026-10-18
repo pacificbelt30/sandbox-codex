@@ -28,7 +28,7 @@ The 30-second record cleanup loop does not delay authentication expiry.
 | Remove | Revoke and reclaim resources; retain retry records on failure |
 | Stop proxy | Revoke all tokens and connections; issuance records are in memory |
 
-Use `codex-dock vm start NAME` to restart a stopped worker.
+Use `codex-dock start NAME` to restart a stopped worker.
 The admin restore API accepts saved placeholders, not real API keys or another worker's token.
 
 ## Worker data

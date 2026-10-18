@@ -16,7 +16,7 @@ codex-dock の全コマンドリファレンスです。各コマンドの詳細
 | [`codex-dock runtime-check`](troubleshooting.md#複数の前提条件をまとめて調べる) | 実行環境の診断 | doctor別名・--json・修正手順 |
 | [`codex-dock image check`](commands/build.md#起動前に互換性を調べる) | イメージの事前検査 | platform・必要ツール・entrypoint |
 | [`codex-dock vm`](vm.md) | Kata VMの照合と管理 | ps / inspect / start / stop / rm / prune |
-| [`codex-dock vm start`](commands/worker.md) | 停止済みワーカーの再起動 | 同じID・認証の復元 |
+| [`codex-dock start`](commands/worker.md) | 停止済みワーカーの再起動 | 同じID・認証の復元 |
 | [`codex-dock proxy`](commands/proxy.md) | Auth Proxy の管理 | build / run / serve / stop / rm |
 | [`codex-dock ps`](commands/worker.md#codex-dock-ps--ワーカー一覧) | ワーカー一覧 | 実行中コンテナの表示 |
 | [`codex-dock stop`](commands/worker.md#codex-dock-stop--コンテナの停止) | コンテナの停止 | 単体・全停止 |

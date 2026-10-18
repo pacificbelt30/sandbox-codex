@@ -2,7 +2,7 @@
 
 [日本語](../getting-started.md) | **English**
 
-This guide assumes an administrator has completed the [Kata / Dragonball host setup](../kata.md) (Japanese).
+This guide assumes an administrator has completed the [Kata / Dragonball host setup](../setup.md) (Japanese).
 The host needs Linux x86_64, KVM, cgroup v2, dedicated containerd, Kata runtime-rs, Dragonball, BuildKit and `buildctl`.
 
 ## 1. Check the host
@@ -83,7 +83,7 @@ The default runtime is Kata. A failed isolation check stops startup; it never fa
 ```bash
 codex-dock run --agent codex --name add-tests \
   --task "Add unit tests" --approval-mode full-auto \
-  --worktree --branch add-tests --new-branch --detach
+  --worktree --branch add-tests --new-branch -d
 
 codex-dock ps -a
 codex-dock logs add-tests --follow
@@ -95,7 +95,7 @@ codex-dock logs add-tests --follow
 
 ```bash
 codex-dock stop add-tests
-codex-dock vm start add-tests
+codex-dock start add-tests
 codex-dock rm add-tests --force
 ```
 

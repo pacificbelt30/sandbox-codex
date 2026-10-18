@@ -20,7 +20,7 @@ VMが動いていてもアプリケーションの正常応答までは保証し
 
 ```bash
 codex-dock stop WORKER
-codex-dock vm start WORKER
+codex-dock start WORKER
 codex-dock stop WORKER
 codex-dock rm WORKER
 ```

@@ -16,7 +16,7 @@ Full command reference for codex-dock. See the individual pages below for detail
 | [`codex-dock runtime-check`](../troubleshooting.md) | Diagnose execution host | doctor alias, --json and recovery steps |
 | [`codex-dock image check`](../commands/build.md) | Inspect image compatibility | Platform, tools and auth entrypoint |
 | [`codex-dock vm`](../vm.md) | Reconcile and manage Kata VMs | ps / inspect / start / stop / rm / prune |
-| [`codex-dock vm start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
+| [`codex-dock start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
 | [`codex-dock proxy`](commands/proxy.md) | Manage Auth Proxy | build / run / serve / stop / rm |
 | [`codex-dock ps`](commands/worker.md#codex-dock-ps) | List workers | Show running containers |
 | [`codex-dock stop`](commands/worker.md#codex-dock-stop) | Stop containers | Single or all |

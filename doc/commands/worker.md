@@ -28,15 +28,16 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
-## `codex-dock vm start` — ワーカーの再起動
+## `codex-dock start` — ワーカーの再起動
 
 ```bash
-codex-dock vm start NAME_OR_ID
+codex-dock start NAME_OR_ID
 ```
 
 停止済みワーカーを同じID・workspaceで再起動します。
 Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
 プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
+Kata VM の台帳を指定して復旧する場合は、従来の `codex-dock vm start` も使えます。
 
 ## `codex-dock stop` — コンテナの停止
 
@@ -49,7 +50,7 @@ codex-dock stop [NAME|ID...] [OPTIONS]
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
 | `--all` | `-a` | `false` | 実行中の全コンテナを停止 |
-| `--timeout` | | `10` | 強制停止までの待機時間（秒） |
+| `--timeout` | `-t` | `10` | 強制停止までの待機時間（秒） |
 
 **使用例：**
 

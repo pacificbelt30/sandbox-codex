@@ -456,6 +456,15 @@ func (m *Manager) Start(containerID string) (startErr error) {
 	return nil
 }
 
+// StartByName resolves a retained worker by its name or ID prefix and starts it.
+func (m *Manager) StartByName(name string) error {
+	id, err := m.resolveID(name)
+	if err != nil {
+		return err
+	}
+	return m.Start(id)
+}
+
 // Wait returns a channel that receives nil when the container exits cleanly, or an error.
 func (m *Manager) Wait(containerID string) <-chan error {
 	ch := make(chan error, 1)

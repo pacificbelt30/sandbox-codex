@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -12,6 +13,49 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+func TestRunDetachUsesDockerShorthand(t *testing.T) {
+	if got := runCmd.Flags().Lookup("detach").Shorthand; got != "d" {
+		t.Fatalf("--detach shorthand = %q; want -d", got)
+	}
+	if got := runCmd.Flags().Lookup("project").Shorthand; got != "" {
+		t.Fatalf("--project shorthand = %q; want long flag only", got)
+	}
+	if got := runCmd.Flags().Lookup("detach-legacy").Shorthand; got != "D" {
+		t.Fatalf("legacy detach shorthand = %q; want -D", got)
+	}
+}
+
+func TestRunDockerPositionals(t *testing.T) {
+	for _, tc := range []struct {
+		name, image string
+		argv        []string
+		command     []string
+	}{
+		{"image and command flags", "codex-dock:latest", []string{"-d", "codex-dock:latest", "npm", "test", "--watch=false"}, []string{"npm", "test", "--watch=false"}},
+		{"image with separator", "codex-dock:latest", []string{"codex-dock:latest", "--", "sh", "-c", "echo ok"}, []string{"sh", "-c", "echo ok"}},
+		{"default image command", "", []string{"--", "ls", "-la"}, []string{"ls", "-la"}},
+		{"explicit image flag", "", []string{"--image", "custom:latest", "--", "ls", "-la"}, []string{"ls", "-la"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "run"}
+			cmd.Flags().SetInterspersed(false)
+			cmd.Flags().BoolP("detach", "d", false, "")
+			cmd.Flags().String("image", "", "")
+			cmd.SetArgs(tc.argv)
+			cmd.RunE = func(cmd *cobra.Command, args []string) error {
+				image, command := resolveRunPositionals(args, cmd.ArgsLenAtDash(), cmd.Flags().Changed("image"))
+				if image != tc.image || !slices.Equal(command, tc.command) {
+					t.Errorf("image=%q command=%q; want image=%q command=%q", image, command, tc.image, tc.command)
+				}
+				return nil
+			}
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 // TestResolveContainerUser_Empty verifies that an empty mode returns "" (image default).
 func TestResolveContainerUser_Empty(t *testing.T) {

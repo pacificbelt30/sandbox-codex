@@ -113,7 +113,7 @@ Kataでは、独立したカーネルと権限・資源の制限を確認して�
 ```bash
 codex-dock run --agent codex --name add-tests \
   --task "ユニットテストを追加して" --approval-mode full-auto \
-  --worktree --branch add-tests --new-branch --detach
+  --worktree --branch add-tests --new-branch -d
 
 codex-dock ps -a
 codex-dock logs add-tests --follow
@@ -126,7 +126,7 @@ codex-dock logs add-tests --follow
 
 ```bash
 codex-dock stop add-tests
-codex-dock vm start add-tests
+codex-dock start add-tests
 codex-dock rm add-tests --force
 ```
 

@@ -53,16 +53,18 @@ var (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run [flags] [-- command...]",
+	Use:   "run [flags] [IMAGE [COMMAND...]]",
 	Short: "Start a sandboxed Codex worker container",
 	Long: `Start a Kata VM-isolated worker managed through containerd and Dragonball (Linux/KVM required).
 Use --runtime runc for explicit compatibility without VM isolation.
 Auth credentials are injected via the Auth Proxy instead of being directly mounted.
 
-A command placed after "--" is run once instead of an interactive shell (like
-"docker run <image> <cmd>"), equivalent to --exec but without having to quote
-the whole command as a single string:
+A positional IMAGE and optional COMMAND work like "docker run IMAGE COMMAND".
+Without an image, use "-- COMMAND..." to run a command in the default image.
+Both forms are equivalent to --exec without quoting the whole command:
 
+  codex-dock run -d --agent codex codex-dock:latest
+  codex-dock run codex-dock:latest npm test -- --watch=false
   codex-dock run -- npm test -- --watch=false`,
 	Args: cobra.ArbitraryArgs,
 	RunE: runWorker,
@@ -72,13 +74,14 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	f := runCmd.Flags()
+	f.SetInterspersed(false) // After IMAGE, flags belong to COMMAND as in docker run.
 	f.StringVar(&runOpts.Runtime, "runtime", sandbox.RuntimeKata, "Worker isolation: kata (default, requires Linux/KVM) or explicit runc compatibility mode; never falls back automatically")
 	f.StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration on the dedicated containerd node")
 	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "OCI image for the sandbox")
 	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "codex-dock build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
-	f.StringVarP(&runOpts.ProjectDir, "project", "d", ".", "Project directory to mount as /workspace")
+	f.StringVar(&runOpts.ProjectDir, "project", ".", "Project directory to mount as /workspace")
 	f.BoolVarP(&runOpts.UseWorktree, "worktree", "w", false, "Use git worktree for isolation")
 	f.StringVarP(&runOpts.Branch, "branch", "b", "", "Branch to checkout (requires --worktree)")
 	f.BoolVarP(&runOpts.NewBranch, "new-branch", "B", false, "Create new branch (requires --worktree and --branch)")
@@ -115,7 +118,11 @@ func init() {
 	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers (API reverse routes)")
 	f.StringVar(&httpProxyURL, "http-proxy-url", "http://codex-http-proxy:18082", "General-egress (forward) proxy URL workers use for HTTP(S)_PROXY")
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
-	f.BoolVarP(&runOpts.Detach, "detach", "D", false, "Run container in background")
+	f.BoolVarP(&runOpts.Detach, "detach", "d", false, "Run container in background")
+	f.BoolVarP(&runOpts.Detach, "detach-legacy", "D", false, "Deprecated alias for --detach")
+	if err := f.MarkHidden("detach-legacy"); err != nil {
+		panic(err)
+	}
 	f.BoolVar(&runKeep, "keep", false, "Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate)")
 	f.BoolVar(&forceRecreateProxy, "force-recreate-proxy", false, "Recreate an auth proxy whose credential state differs from the host even when workers are running (existing workers will lose authentication)")
 	f.IntVarP(&runOpts.Parallel, "parallel", "P", 1, "Number of parallel workers")
@@ -134,6 +141,10 @@ func init() {
 
 func runWorker(cmd *cobra.Command, args []string) error {
 	applyRunConfigDefaults(cmd)
+	image, commandArgs := resolveRunPositionals(args, cmd.ArgsLenAtDash(), cmd.Flags().Changed("image") || cmd.Flags().Changed("template"))
+	if image != "" {
+		runOpts.Image = image
+	}
 	if _, _, err := sandbox.ResolveRuntime(runOpts.Runtime, runOpts.KataRuntime); err != nil {
 		return err
 	}
@@ -147,9 +158,9 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// A trailing "-- command..." is equivalent to --exec, but as separate
-	// argv entries rather than one pre-quoted string.
-	execCmd, err := resolveExecCmd(runOpts.ExecCmd, args)
+	// A positional command is equivalent to --exec, but as separate argv
+	// entries rather than one pre-quoted string.
+	execCmd, err := resolveExecCmd(runOpts.ExecCmd, commandArgs)
 	if err != nil {
 		return err
 	}
@@ -293,6 +304,22 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+// resolveRunPositionals keeps the explicit --image/--template forms and the
+// existing "-- COMMAND" form while allowing Docker's IMAGE COMMAND form.
+func resolveRunPositionals(args []string, atDash int, explicitImage bool) (string, []string) {
+	if len(args) == 0 {
+		return "", nil
+	}
+	if atDash == 0 || explicitImage {
+		return "", args
+	}
+	command := args[1:]
+	if len(command) > 0 && command[0] == "--" {
+		command = command[1:]
+	}
+	return args[0], command
 }
 
 type proxyAuthState struct {

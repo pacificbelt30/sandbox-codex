@@ -56,7 +56,7 @@ ls -l ~/.codex/auth.json
 ## AI APIが401を返す
 
 プロキシが返す `worker token invalid or expired` は、短命トークンの欠落・失効・期限切れを示します。
-停止後の再起動には `codex-dock vm start WORKER` を使い、認証を復元します。
+停止後の再起動には `codex-dock start WORKER` を使い、認証を復元します。
 TTLを超えるタスクでは `run --token-ttl SECONDS` を調整してください。
 
 上流API由来の認証エラーは、ホストのログイン状態やAPIキーを確認します。

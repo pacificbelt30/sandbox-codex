@@ -5,8 +5,19 @@
 
 ## 初めて配置する
 
-ソースのルートで、Go・Make・Python 3.11以上を使って同じ版のCLIとhelperをまとめます。
-このビルドにはDockerを使いません。
+ソースのルートで、Go 1.24.7以上・Make・Python 3.11以上を使って次のスクリプトを実行します。
+同じ版のCLIとhelperをまとめてバンドルを検証し、導入計画を表示します。このビルドにはDockerを使いません。
+
+```bash
+./scripts/install.sh
+./scripts/install.sh --apply
+```
+
+`--apply` は計画が成功した後、同じバンドルのCLIを `sudo` で実行します。付与先はスクリプトを実行した通常利用者です。
+別の利用者へ付与する場合は `--operator USER`、既存バンドルを使う場合は `--bundle PATH` を指定します。
+`--cache PATH` と `--offline` も計画と適用の両方へ渡します。スクリプトをrootとして実行する場合は `--operator USER` が必須です。
+
+個別に実行する場合は次の順序です。
 
 ```bash
 make node-bundle
@@ -60,8 +71,8 @@ KVMと `cpu memory pids` のcgroup v2 controllerが必要です。ホスト自�
 
 1. 作業中の成果を保存する。
 2. 旧版CLIでワーカーを停止・削除し、プロキシも停止・削除する。
-3. 新しいソースで `make node-bundle` を実行する。
-4. 新しいバンドルの `setup` で計画を確認し、`--apply` する。
+3. 新しいソースで `./scripts/install.sh` を実行し、計画を確認する。
+4. `./scripts/install.sh --apply` で新しいバンドルを適用する。
 5. 再ログインし、通常利用者で `codex-dock init` と実Kata受入試験を実行する。
 
 更新時は、受付サービスとBuildKitを止めた後、停止済みを含む全コンテナ・task・VM予約・VM cgroupが空であることを確認します。

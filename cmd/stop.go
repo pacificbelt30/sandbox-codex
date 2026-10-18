@@ -53,5 +53,5 @@ var stopCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(stopCmd)
 	stopCmd.Flags().BoolVarP(&stopAll, "all", "a", false, "Stop all running containers")
-	stopCmd.Flags().IntVar(&stopTimeout, "timeout", 10, "Timeout in seconds before force kill")
+	stopCmd.Flags().IntVarP(&stopTimeout, "timeout", "t", 10, "Timeout in seconds before force kill")
 }
