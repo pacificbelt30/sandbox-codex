@@ -150,11 +150,14 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	applyRunConfigDefaults(cmd)
 	applyProjectRunConfig(cmd, projectCfg)
+	// An explicit template selects both the image tag and its build source.
+	// A project build with the same tag must not replace that template.
+	buildCfg := projectBuildConfigForRun(cmd, projectCfg)
 	if runOpts.DirectAgent {
-		if codexOptionPresent(runOpts.AgentArgs, "--model", "-m") {
+		if codexOptionPresent(runOpts.AgentArgs, "--model", "-m", "--profile", "-p") || codexConfigOverridePresent(runOpts.AgentArgs, "model") {
 			runOpts.Model = ""
 		}
-		if codexOptionPresent(runOpts.AgentArgs, "--ask-for-approval", "-a", "--full-auto", "--dangerously-bypass-approvals-and-sandbox") {
+		if codexOptionPresent(runOpts.AgentArgs, "--ask-for-approval", "-a", "--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--profile", "-p") || codexConfigOverridePresent(runOpts.AgentArgs, "approval_policy") {
 			approvalModeFlag = "suggest"
 		}
 	}
@@ -290,18 +293,18 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	// Auto-build the sandbox image when it is not present locally, or when it
 	// is stale relative to its template's Dockerfile (see imageNeedsBuild).
-	needsBuild, reason, err := imageNeedsBuild(sbMgr, runOpts.Image, projectCfg)
+	needsBuild, reason, err := imageNeedsBuild(sbMgr, runOpts.Image, buildCfg)
 	if err != nil {
 		return fmt.Errorf("checking image %s: %w", runOpts.Image, err)
 	}
 	if needsBuild {
 		fmt.Printf("%s, building...\n", reason)
-		if projectCfg != nil && projectCfg.Build.Dockerfile != "" && projectCfg.Build.Tag == runOpts.Image {
-			if err := buildProjectImage(cmd.Context(), projectCfg, runOpts.Image); err != nil {
+		if buildCfg != nil && buildCfg.Build.Dockerfile != "" && buildCfg.Build.Tag == runOpts.Image {
+			if err := buildProjectImage(cmd.Context(), buildCfg, runOpts.Image); err != nil {
 				return fmt.Errorf("auto-build project image: %w", err)
 			}
-		} else if projectCfg != nil && projectCfg.Build.Template != "" && projectCfg.Build.Tag == runOpts.Image {
-			if err := buildFromTemplate(cmd.Context(), projectCfg.Build.Template, runOpts.Image); err != nil {
+		} else if buildCfg != nil && buildCfg.Build.Template != "" && buildCfg.Build.Tag == runOpts.Image {
+			if err := buildFromTemplate(cmd.Context(), buildCfg.Build.Template, runOpts.Image); err != nil {
 				return fmt.Errorf("auto-build project template: %w", err)
 			}
 		} else if tmplName := template.MatchTag(runOpts.Image); tmplName != "" {
@@ -325,6 +328,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	return runSingle(sbMgr, sigCh)
+}
+
+func projectBuildConfigForRun(cmd *cobra.Command, cfg *ProjectConfig) *ProjectConfig {
+	if cmd.Flags().Changed("template") {
+		return nil
+	}
+	return cfg
 }
 
 // resolveRunPositionals keeps the explicit --image/--template forms and the

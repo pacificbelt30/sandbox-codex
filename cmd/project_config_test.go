@@ -167,3 +167,13 @@ func TestProjectBuildConfigUsesProjectDockerfile(t *testing.T) {
 		t.Fatalf("build settings = %q, %q, %q", buildDockerfile, buildTag, buildTemplate)
 	}
 }
+
+func TestProjectDockerfileRecognizesPlatformFlagBeforeBase(t *testing.T) {
+	data := []byte("# FROM codex-dock:latest\nFROM --platform=linux/amd64 codex-dock:latest AS base\nFROM scratch\n")
+	if !projectDockerfileUsesBase(data, "codex-dock:latest") {
+		t.Fatal("platform-qualified base image was not recognized")
+	}
+	if projectDockerfileUsesBase([]byte("FROM scratch\n"), "codex-dock:latest") {
+		t.Fatal("unrelated base image was recognized")
+	}
+}

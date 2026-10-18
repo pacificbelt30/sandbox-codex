@@ -1,7 +1,9 @@
 package sandbox
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -110,5 +112,36 @@ func TestEntrypointDirectCodexExec(t *testing.T) {
 	}
 	if strings.Contains(script, "sleep 1") {
 		t.Error("entrypoint must not add an unconditional startup delay")
+	}
+}
+
+func TestDirectCodexUsesKataSandboxConfigAsDefault(t *testing.T) {
+	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, _, ok := strings.Cut(string(entrypoint), "# launch_interactive")
+	if !ok {
+		t.Fatal("could not isolate agent argument builder")
+	}
+	for _, tc := range []struct {
+		name, direct string
+		wantSandbox  bool
+	}{
+		{"direct", "1", false},
+		{"managed", "0", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			command := exec.Command("bash", "-c", prefix+"\nbuild_codex_args\nprintf '%s\\0' \"${CODEX_ARGS[@]}\"\n")
+			command.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + t.TempDir(), "CODEX_DOCK_VERIFIED_KATA=1", "DOCK_DIRECT_AGENT=" + tc.direct}
+			output, err := command.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			hasSandbox := bytes.Contains(output, []byte("--sandbox\x00danger-full-access\x00"))
+			if hasSandbox != tc.wantSandbox {
+				t.Fatalf("direct=%s sandbox flag present=%t; want %t; args=%q", tc.direct, hasSandbox, tc.wantSandbox, output)
+			}
+		})
 	}
 }

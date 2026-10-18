@@ -241,16 +241,31 @@ func buildProjectImage(ctx context.Context, cfg *ProjectConfig, tag string) erro
 	}
 	// The usual project Dockerfile extends the bundled worker image. Build that
 	// base on a fresh clone before asking BuildKit to resolve it locally.
+	if projectDockerfileUsesBase(data, "codex-dock:latest") {
+		if err := ensureBaseImage(ctx, "codex-dock:latest"); err != nil {
+			return err
+		}
+	}
+	return executeBuild(ctx, tag, dockerfile, buildCtx)
+}
+
+func projectDockerfileUsesBase(data []byte, image string) bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && strings.EqualFold(fields[0], "FROM") && fields[1] == "codex-dock:latest" {
-			if err := ensureBaseImage(ctx, "codex-dock:latest"); err != nil {
-				return err
+		if len(fields) < 2 || !strings.EqualFold(fields[0], "FROM") {
+			continue
+		}
+		for _, field := range fields[1:] {
+			if strings.HasPrefix(field, "--") {
+				continue
+			}
+			if field == image {
+				return true
 			}
 			break
 		}
 	}
-	return executeBuild(ctx, tag, dockerfile, buildCtx)
+	return false
 }
 
 func projectSettingsSummary(cfg *ProjectConfig) string {

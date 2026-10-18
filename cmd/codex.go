@@ -30,9 +30,40 @@ func codexOptionPresent(args []string, names ...string) bool {
 			break
 		}
 		for _, name := range names {
-			if arg == name || strings.HasPrefix(arg, name+"=") {
+			if arg == name || strings.HasPrefix(arg, name+"=") || len(name) == 2 && name[0] == '-' && name[1] != '-' && strings.HasPrefix(arg, name) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// Codex -c/--config values are native CLI overrides, so they take precedence
+// over defaults injected from codex-dock's global or project configuration.
+func codexConfigOverridePresent(args []string, key string) bool {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			break
+		}
+		value := ""
+		switch {
+		case arg == "-c" || arg == "--config":
+			if i+1 < len(args) {
+				if args[i+1] == "--" {
+					return false
+				}
+				i++
+				value = args[i]
+			}
+		case strings.HasPrefix(arg, "--config="):
+			value = strings.TrimPrefix(arg, "--config=")
+		case strings.HasPrefix(arg, "-c") && len(arg) > 2:
+			value = strings.TrimPrefix(arg, "-c")
+		}
+		name, _, hasValue := strings.Cut(value, "=")
+		if hasValue && strings.TrimSpace(name) == key {
+			return true
 		}
 	}
 	return false

@@ -26,6 +26,23 @@ func TestRunDetachUsesDockerShorthand(t *testing.T) {
 	}
 }
 
+func TestExplicitTemplateIgnoresProjectBuildSource(t *testing.T) {
+	cfg := &ProjectConfig{}
+	cfg.Build.Dockerfile = "Dockerfile.codex-dock"
+	cfg.Build.Tag = "codex-dock:latest"
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().String("template", "", "")
+	if got := projectBuildConfigForRun(cmd, cfg); got != cfg {
+		t.Fatal("project build source must apply without an explicit template")
+	}
+	if err := cmd.Flags().Set("template", "plain"); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectBuildConfigForRun(cmd, cfg); got != nil {
+		t.Fatal("explicit template must select its own build source")
+	}
+}
+
 func TestRunDockerPositionals(t *testing.T) {
 	for _, tc := range []struct {
 		name, image string

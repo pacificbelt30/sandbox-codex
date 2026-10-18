@@ -188,7 +188,9 @@ build_codex_args() {
         danger)    CODEX_ARGS+=("--dangerously-bypass-approvals-and-sandbox") ;;
         suggest|*) ;;
     esac
-    if [[ "${CODEX_DOCK_VERIFIED_KATA:-}" == 1 && "${CODEX_APPROVAL_MODE:-suggest}" != danger ]]; then
+    # The verified Kata config supplies this default for direct Codex launches.
+    # Leave native --sandbox, -s and -c sandbox_mode=... overrides to Codex.
+    if [[ "${CODEX_DOCK_VERIFIED_KATA:-}" == 1 && "${CODEX_APPROVAL_MODE:-suggest}" != danger && "${DOCK_DIRECT_AGENT:-0}" != 1 ]]; then
         CODEX_ARGS+=("--sandbox" "danger-full-access")
     fi
     if [[ -n "${CODEX_MODEL:-}" ]]; then
