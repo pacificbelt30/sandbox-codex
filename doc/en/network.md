@@ -14,7 +14,8 @@ It does not depend on Docker network APIs or a CNI daemon.
 | `codex-auth-proxy` | Fixed AI reverse routes and token API on connected worker networks |
 | `codex-http-proxy` | General HTTP/CONNECT forwarding, attached only when allowed |
 
-Each worker has one private network and static proxy hosts entries.
+Each worker has one private network. Kata workers receive proxy URLs pinned to
+the verified front IPs on that network, without relying on the guest hosts file.
 The worker uses loopback DNS; external resolution and dialing happen in the proxies.
 Proxy namespaces do not forward IP packets between interfaces.
 

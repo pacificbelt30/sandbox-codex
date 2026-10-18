@@ -97,6 +97,7 @@ type MountSpec struct {
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
 	pendingPlaceholder string
+	proxyHosts         []string
 	// Runtime selects the isolation boundary, not the container management API.
 	// Empty means Kata. Runc requires an explicit compatibility opt-in.
 	Runtime       string

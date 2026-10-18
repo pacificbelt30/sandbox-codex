@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
@@ -271,6 +272,7 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 		if err != nil {
 			return "", err
 		}
+		opts.proxyHosts = proxyHosts
 	}
 	applyRuntime(hostConfig, isolation, registration, proxyHosts)
 	// Reserve and validate the network before issuing credentials. A name
@@ -742,9 +744,13 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 				return nil, fmt.Errorf("issuing auth token: %w", err)
 			}
 		}
-		// ContainerEndpoint() returns the auth proxy URL reachable from workers
-		// over the per-worker Internal network via Docker DNS (codex-auth-proxy).
-		containerProxyURL := m.proxy.ContainerEndpoint()
+		// ContainerEndpoint() identifies the auth proxy on the worker network.
+		// Kata uses its verified front IP because guest /etc/hosts injection is
+		// not reliable across all supported node setups.
+		containerProxyURL, err := kataProxyEndpoint(m.proxy.ContainerEndpoint(), opts.proxyHosts)
+		if err != nil {
+			return nil, err
+		}
 
 		wantCodex := opts.Agent == AgentCodex || opts.Agent == AgentNone
 		wantClaude := opts.Agent == AgentClaude || opts.Agent == AgentNone
@@ -791,6 +797,11 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 			egressProxyURL := m.httpProxyURL
 			if egressProxyURL == "" {
 				egressProxyURL = containerProxyURL // back-compat: single proxy
+			} else {
+				egressProxyURL, err = kataProxyEndpoint(egressProxyURL, opts.proxyHosts)
+				if err != nil {
+					return nil, err
+				}
 			}
 			authHost := proxyEndpointHost(containerProxyURL)
 			// NO_PROXY excludes the auth proxy (API/token traffic must reach it
@@ -899,6 +910,30 @@ func proxyEndpointHost(endpoint string) string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+// Kata's guest may not receive the host-generated /etc/hosts bind mount.
+// Use the already validated, per-worker proxy address for product endpoints.
+func kataProxyEndpoint(endpoint string, hosts []string) (string, error) {
+	if len(hosts) == 0 {
+		return endpoint, nil
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("invalid proxy endpoint %q", endpoint)
+	}
+	for _, entry := range hosts {
+		name, ip, ok := strings.Cut(entry, ":")
+		if ok && name == u.Hostname() {
+			if u.Port() == "" {
+				u.Host = ip
+			} else {
+				u.Host = net.JoinHostPort(ip, u.Port())
+			}
+			return u.String(), nil
+		}
+	}
+	return "", fmt.Errorf("proxy %q is not attached to the Kata worker network", u.Hostname())
 }
 
 // nameTaken reports whether a worker name is already in use by an existing
@@ -1022,8 +1057,8 @@ func absolutePath(path string) (string, error) {
 
 // buildHostConfig constructs the container HostConfig with security defaults.
 // netName is the per-worker Internal network the container is attached to; the
-// worker reaches the proxy over this network via Docker embedded DNS
-// (codex-auth-proxy), so no host.docker.internal/host-gateway alias is needed.
+// worker reaches the proxy over this network. Kata pins its endpoint to the
+// validated front IP; no host-gateway alias is needed.
 func buildHostConfig(mounts []mount.Mount, netName string) *container.HostConfig {
 	return &container.HostConfig{
 		NetworkMode: container.NetworkMode(netName),

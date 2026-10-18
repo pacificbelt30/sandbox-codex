@@ -95,9 +95,9 @@ func validateRuntime(info system.Info, isolation, registration string) error {
 func applyRuntime(hc *container.HostConfig, isolation, registration string, proxyHosts []string) {
 	hc.Runtime = registration
 	if isolation == RuntimeKata {
-		// Static per-network addresses work inside a guest without relying on
-		// Docker's namespace-local 127.0.0.11 resolver. General DNS/HTTP egress
-		// remains the responsibility of the existing forward proxy.
+		// Preserve the validated per-network proxy mapping for inspection and
+		// recovery. Product proxy URLs use the pinned IP because guest hosts
+		// mounts are not reliable on every Kata node setup.
 		hc.ExtraHosts = proxyHosts
 		hc.DNS = []string{"127.0.0.1"}
 	}

@@ -345,14 +345,23 @@ while True:
 	}
 	kataExec(t, ctx, c, w1, false, []string{"sh", "-c", `git add kata-created && git -c user.name=Fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -m kata-acceptance`})
 	kataExec(t, ctx, c, w1, true, []string{"bash", "-ic", "test -t 1 && stty size"})
-	kataExec(t, ctx, c, w1, false, []string{"curl", "-fsS", "--noproxy", "*", containerURL + "/health"})
-	kataExec(t, ctx, c, w1, false, []string{"curl", "-fsS", "--noproxy", "*", "http://" + httpName + ":18082/health"})
+	w1info, err := c.ContainerInspect(ctx, w1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authEndpoint, _ := envValue(w1info.Config.Env, "CODEX_AUTH_PROXY_URL")
+	httpEndpoint, _ := envValue(w1info.Config.Env, "HTTP_PROXY")
+	if authEndpoint == "" || httpEndpoint == "" {
+		t.Fatal("worker has no pinned proxy endpoints")
+	}
+	kataExec(t, ctx, c, w1, false, []string{"curl", "-fsS", "--noproxy", "*", authEndpoint + "/health"})
+	kataExec(t, ctx, c, w1, false, []string{"curl", "-fsS", "--noproxy", "*", httpEndpoint + "/health"})
 	kataExec(t, ctx, c, w1, false, []string{"sh", "-c", `test "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -x "$HTTP_PROXY" http://10.255.255.1/)" = 403`})
 	deny := func(id, url string) {
 		t.Helper()
 		kataExec(t, ctx, c, id, false, []string{"sh", "-c", `! curl -fsS --noproxy '*' --connect-timeout 2 --max-time 3 "$1"`, "probe", url})
 	}
-	deny(w1, "http://"+authName+":18081/admin/mode")
+	deny(w1, "http://"+net.JoinHostPort(proxyEndpointHost(authEndpoint), "18081")+"/admin/mode")
 
 	// A live host service has a positive control from the egress network.
 	listener, err := net.Listen("tcp", "0.0.0.0:0")
@@ -399,7 +408,15 @@ while True:
 	t.Log("verified: node concurrency ceiling rejects third worker")
 	ready(w2, "python3")
 	kataExec(t, ctx, c, w2, false, []string{"sh", "-c", `! touch /workspace/forbidden && test -z "${HTTP_PROXY:-}"`})
-	kataExec(t, ctx, c, w2, false, []string{"curl", "-fsS", "--noproxy", "*", containerURL + "/health"})
+	w2info, err := c.ContainerInspect(ctx, w2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w2AuthEndpoint, _ := envValue(w2info.Config.Env, "CODEX_AUTH_PROXY_URL")
+	if w2AuthEndpoint == "" {
+		t.Fatal("second worker has no pinned auth endpoint")
+	}
+	kataExec(t, ctx, c, w2, false, []string{"curl", "-fsS", "--noproxy", "*", w2AuthEndpoint + "/health"})
 	for i := 0; i < 50; i++ {
 		if _, err := kataExecResult(ctx, c, w2, false, []string{"curl", "-fsS", "--noproxy", "*", "http://127.0.0.1:8089/"}); err == nil {
 			break
@@ -409,14 +426,10 @@ while True:
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	w2info, err := c.ContainerInspect(ctx, w2)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, ep := range w2info.NetworkSettings.Networks {
 		deny(w1, "http://"+ep.IPAddress+":8089/")
 	}
-	w1info, err := c.ContainerInspect(ctx, w1)
+	w1info, err = c.ContainerInspect(ctx, w1)
 	if err != nil {
 		t.Fatal(err)
 	}

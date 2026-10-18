@@ -250,6 +250,38 @@ func TestBuildEnv_SeparateHTTPProxy(t *testing.T) {
 	}
 }
 
+func TestBuildEnv_KataUsesPinnedProxyAddresses(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true, oauth: true})
+	m.httpProxyURL = "http://codex-http-proxy:18082"
+	opts := RunOptions{Agent: AgentNone, TokenTTL: 60, proxyHosts: []string{
+		"codex-auth-proxy:10.253.2.2", "codex-http-proxy:10.253.2.3",
+	}}
+	env, err := m.buildEnv("w1", opts, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"CODEX_AUTH_PROXY_URL": "http://10.253.2.2:18080",
+		"OPENAI_BASE_URL":      "http://10.253.2.2:18080/v1",
+		"ANTHROPIC_BASE_URL":   "http://10.253.2.2:18080/anthropic",
+		"HTTP_PROXY":           "http://10.253.2.3:18082",
+		"HTTPS_PROXY":          "http://10.253.2.3:18082",
+	} {
+		if got, _ := envValue(env, key); got != want {
+			t.Errorf("%s = %q; want %q", key, got, want)
+		}
+	}
+	if got, _ := envValue(env, "CODEX_REFRESH_TOKEN_URL_OVERRIDE"); !strings.HasPrefix(got, "http://10.253.2.2:18080/oauth/token?cdx=") {
+		t.Errorf("refresh endpoint = %q", got)
+	}
+	if got, _ := envValue(env, "NO_PROXY"); !strings.Contains(got, "10.253.2.2") || !strings.Contains(got, "10.253.2.3") {
+		t.Errorf("NO_PROXY = %q", got)
+	}
+	if _, err := kataProxyEndpoint("http://codex-auth-proxy:18080", []string{"other:10.253.2.2"}); err == nil {
+		t.Fatal("unattached proxy name was accepted")
+	}
+}
+
 func TestBuildEnv_NoInternetSkipsProxyVars(t *testing.T) {
 	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080", anthropic: true})
 	env, err := m.buildEnv("w1", RunOptions{Agent: AgentCodex, TokenTTL: 60, NoInternet: true}, "")

@@ -54,12 +54,11 @@ fi
 if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     log "Fetching Codex credentials from Auth Proxy (${CODEX_AUTH_PROXY_URL})..."
 
-    # The worker reaches the proxy over its dedicated Internal Docker network via
-    # the embedded DNS name (codex-auth-proxy). NO_PROXY excludes that host so this
-    # request hits the proxy directly instead of looping through the forward proxy.
+    # The worker reaches the proxy over its dedicated internal network. Kata
+    # uses its validated front IP; NO_PROXY sends this request directly.
     fetch_token() {
         local endpoint="$1"
-        curl -sf --connect-timeout 3 --max-time 10 \
+        curl -fsS --connect-timeout 3 --max-time 10 \
             -H "X-Codex-Token: ${CODEX_TOKEN}" \
             "${endpoint}/token"
     }

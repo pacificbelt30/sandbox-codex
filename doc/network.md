@@ -11,7 +11,7 @@ containerd/Kataの実行管理とネットワーク管理は分離する。root�
 | `codex-auth-proxy` | 必要なworker networkへ追加interfaceを接続。API reverseとtokenを提供 |
 | `codex-http-proxy` | 一般通信を許可したworker networkだけへ追加接続。forward専用、実資格情報なし |
 
-ワーカーは1つの専用networkにだけ接続し、proxyのfront IPを静的hostsへ固定する。DNSは127.0.0.1。proxyの名前解決と外部dialはproxy側が担当する。proxy namespaceのIP forwardingは無効化し、別worker網やprimary網へIP packetを中継しない。
+ワーカーは1つの専用networkにだけ接続する。Kataワーカーに渡す認証・一般通信proxyのURLは、そのnetworkで検証済みのfront IPに固定し、guestのhostsファイルに依存しない。DNSは127.0.0.1。外部名の解決とdialはproxy側が担当する。proxy namespaceのIP forwardingは無効化し、別worker網やprimary網へIP packetを中継しない。
 
 専用nftables tableはworker bridgeからのホスト入力と他interfaceへの転送を落とす。同一bridge内のworker/proxy通信は許可する。外部向けNATを持つのはproxyのegress bridgeだけ。host IPv4 forwardingと既存firewallの方針は実行ホスト側で準備する。本製品は他サービスのtableをflushしない。
 
