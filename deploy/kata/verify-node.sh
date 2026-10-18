@@ -40,6 +40,32 @@ if [[ ! -f created ]]; then
  cli logs setup-worker > /evidence/worker-logs.txt 2>&1 || true
  cli ps -a > /evidence/containers-at-timeout.txt 2>&1 || true
  cli vm inspect setup-worker > /evidence/worker-timeout.json 2>&1 || true
+ for hosts in /var/lib/codex-dock-node/engine/tasks/*/hosts; do
+  [[ -f $hosts ]] || continue
+  if grep -q codex-auth-proxy "$hosts"; then
+   cp "$hosts" /evidence/worker-hosts-at-timeout.txt
+   break
+  fi
+ done
+ {
+  ip -brief link
+  ip -brief address
+  bridge link
+  ip netns list
+  for namespace in $(ip netns list | awk '{print $1}'); do
+   echo "namespace: $namespace"
+   ip -n "$namespace" -brief address
+   ip -n "$namespace" route
+   ip -n "$namespace" neigh
+  done
+  for interface in /sys/class/net/v*/ifindex; do
+   [[ -e $interface ]] || continue
+   name=${interface%/ifindex}
+   name=${name##*/}
+   echo "tc ingress: $name"
+   tc filter show dev "$name" ingress
+  done
+ } > /evidence/network-at-timeout.txt 2>&1 || true
  echo 'worker did not create the shared file within 60 seconds' >&2
  exit 1
 fi
