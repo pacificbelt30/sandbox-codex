@@ -25,3 +25,15 @@ func TestCodexCommandForwardsFlagsAndPrompt(t *testing.T) {
 		t.Errorf("forwarded = %q; want %q", got, want)
 	}
 }
+
+func TestCodexOptionPresent(t *testing.T) {
+	if !codexOptionPresent([]string{"exec", "--model=other", "prompt"}, "--model", "-m") {
+		t.Fatal("long option with value not detected")
+	}
+	if !codexOptionPresent([]string{"-m", "other"}, "--model", "-m") {
+		t.Fatal("short option not detected")
+	}
+	if codexOptionPresent([]string{"--", "--model", "other"}, "--model", "-m") {
+		t.Fatal("option after -- must be treated as positional")
+	}
+}

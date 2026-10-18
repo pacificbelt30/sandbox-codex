@@ -12,6 +12,7 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 イメージがなければ自動ビルドします。テンプレートに対応するタグはそのテンプレートを使います。
 ディスク上のDockerfileが更新された場合の再ビルドは[auto_build](../configuration.md#auto_build)で設定します。
 独自タグやテンプレートは[build](build.md)を参照してください。
+リポジトリ直下に `codex-dock.toml` があれば、その `[run]` と `[build]` を読み込みます。`--project DIR` では `DIR/codex-dock.toml` を使います。[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
 
 ## Codex CLI を直接起動する
 

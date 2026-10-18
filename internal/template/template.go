@@ -102,6 +102,14 @@ func Get(name string) (Info, error) {
 			SourcePath:  srcPath,
 		}, nil
 	}
+	return BuiltIn(name)
+}
+
+// BuiltIn returns the version embedded in this CLI, ignoring user overrides.
+func BuiltIn(name string) (Info, error) {
+	if name == "" {
+		name = "plain"
+	}
 
 	if name == "plain" {
 		return plainTemplate(), nil

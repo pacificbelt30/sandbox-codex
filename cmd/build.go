@@ -28,7 +28,16 @@ var buildCmd = &cobra.Command{
 			return writeEntrypoint(os.Stdout)
 		}
 
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		projectCfg, err := loadProjectConfig(cwd)
+		if err != nil {
+			return err
+		}
 		applyBuildConfigDefaults(cmd)
+		applyProjectBuildConfig(cmd, projectCfg)
 
 		if buildTemplate == "list" {
 			return listTemplates()
@@ -39,12 +48,15 @@ var buildCmd = &cobra.Command{
 				return fmt.Errorf("--template and --dockerfile (-f) are mutually exclusive")
 			}
 			customTag := ""
-			if cmd.Flags().Changed("tag") || viper.GetString("build.tag") != "" {
+			if cmd.Flags().Changed("tag") || viper.GetString("build.tag") != "" || projectCfg != nil && projectCfg.Build.Tag != "" {
 				customTag = buildTag
 			}
 			return buildFromTemplate(cmd.Context(), buildTemplate, customTag)
 		}
 
+		if projectCfg != nil && projectCfg.Build.Dockerfile != "" && buildTemplate == "" && !cmd.Flags().Changed("dockerfile") {
+			return buildProjectImage(cmd.Context(), projectCfg, buildTag)
+		}
 		dockerfile, buildCtx, err := resolveDockerfile(buildDockerfile)
 		if err != nil {
 			return err

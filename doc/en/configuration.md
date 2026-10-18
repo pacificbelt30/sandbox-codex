@@ -6,6 +6,37 @@ User settings live in `~/.config/codex-dock/config.toml`.
 Use `codex-dock --config PATH COMMAND` to select another file.
 `make install-config` installs the example without overwriting an existing file.
 
+## Project settings
+
+Run `codex-dock project init` at the repository root to create a tracked `codex-dock.toml`, and `codex-dock project check` to validate it. `init`, `run`, `codex`, and `build` read the file from the current directory; `run --project DIR` reads `DIR/codex-dock.toml`. Parent directories are not searched.
+
+```toml
+[run]
+image = "codex-dock:latest"
+approval_mode = "suggest"
+
+[build]
+template = "plain"
+```
+
+For a custom image, commit a project Dockerfile and use matching `run.image` and `build.tag` values. The project root is the build context. A Dockerfile using `FROM codex-dock:latest` automatically builds the bundled base image on a fresh clone.
+
+```toml
+[run]
+image = "my-project:dev"
+model = "your-model"
+
+[build]
+dockerfile = "Dockerfile.codex-dock"
+tag = "my-project:dev"
+```
+
+`packages.dock` is also loaded automatically. Pin dependency versions in the project Dockerfile or package list when repeatability matters. Project templates must be built-in or unchanged copies of built-in templates; commit a Dockerfile instead of depending on a locally edited template. The project file accepts `run.image`, `run.template`, `run.model`, `run.approval_mode` (`suggest` or `auto-edit`), `run.watch_polling`, `run.read_only`, `run.no_internet`, `build.dockerfile`, `build.template`, and `build.tag`. Project `read_only` and `no_internet` can only be `true`, so a repository cannot relax host restrictions. Credentials, proxy endpoints, runtime selection, token lifetime and extra host mounts stay in the global config or explicit flags. Unknown keys fail validation.
+
+`init` and `run` build missing images. For an existing project image, automatic rebuilds check the Dockerfile timestamp; run `codex-dock build` after changing copied files or dependencies alone.
+
+Normal precedence: **explicit CLI flags > project config > global config > built-in defaults**. Project `read_only` and `no_internet` only add restrictions.
+
 ## Example
 
 ```toml

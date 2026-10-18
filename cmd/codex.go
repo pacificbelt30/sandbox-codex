@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/spf13/cobra"
 )
@@ -21,3 +23,17 @@ var codexCmd = &cobra.Command{
 }
 
 func init() { rootCmd.AddCommand(codexCmd) }
+
+func codexOptionPresent(args []string, names ...string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		for _, name := range names {
+			if arg == name || strings.HasPrefix(arg, name+"=") {
+				return true
+			}
+		}
+	}
+	return false
+}

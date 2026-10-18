@@ -33,6 +33,7 @@ codex-dock run --image codex-dock:codex-0.163.0 --agent codex
 `--template` and `-f` are mutually exclusive.
 Missing images are built from the corresponding template or default Dockerfile.
 Build arbitrary custom tags explicitly before using them.
+With a `[build]` section in the project's `codex-dock.toml`, `build`, `init`, and `run` use the same build source. Missing images are built after a fresh clone. See [project settings](../configuration.md#project-settings).
 
 ## Custom image
 

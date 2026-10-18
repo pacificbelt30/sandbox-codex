@@ -140,7 +140,24 @@ func init() {
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {
+	projectDir, err := resolveProjectDir(runOpts.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("resolving project directory: %w", err)
+	}
+	projectCfg, err := loadProjectConfig(projectDir)
+	if err != nil {
+		return err
+	}
 	applyRunConfigDefaults(cmd)
+	applyProjectRunConfig(cmd, projectCfg)
+	if runOpts.DirectAgent {
+		if codexOptionPresent(runOpts.AgentArgs, "--model", "-m") {
+			runOpts.Model = ""
+		}
+		if codexOptionPresent(runOpts.AgentArgs, "--ask-for-approval", "-a", "--full-auto", "--dangerously-bypass-approvals-and-sandbox") {
+			approvalModeFlag = "suggest"
+		}
+	}
 	image, commandArgs := resolveRunPositionals(args, cmd.ArgsLenAtDash(), cmd.Flags().Changed("image") || cmd.Flags().Changed("template"))
 	if image != "" {
 		runOpts.Image = image
@@ -172,10 +189,6 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		}
 	}
 	// Resolve project directory
-	projectDir, err := resolveProjectDir(runOpts.ProjectDir)
-	if err != nil {
-		return fmt.Errorf("resolving project directory: %w", err)
-	}
 	runOpts.ProjectDir = projectDir
 
 	// Resolve --user into uid[:gid] for the container
@@ -277,13 +290,21 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	// Auto-build the sandbox image when it is not present locally, or when it
 	// is stale relative to its template's Dockerfile (see imageNeedsBuild).
-	needsBuild, reason, err := imageNeedsBuild(sbMgr, runOpts.Image)
+	needsBuild, reason, err := imageNeedsBuild(sbMgr, runOpts.Image, projectCfg)
 	if err != nil {
 		return fmt.Errorf("checking image %s: %w", runOpts.Image, err)
 	}
 	if needsBuild {
 		fmt.Printf("%s, building...\n", reason)
-		if tmplName := template.MatchTag(runOpts.Image); tmplName != "" {
+		if projectCfg != nil && projectCfg.Build.Dockerfile != "" && projectCfg.Build.Tag == runOpts.Image {
+			if err := buildProjectImage(cmd.Context(), projectCfg, runOpts.Image); err != nil {
+				return fmt.Errorf("auto-build project image: %w", err)
+			}
+		} else if projectCfg != nil && projectCfg.Build.Template != "" && projectCfg.Build.Tag == runOpts.Image {
+			if err := buildFromTemplate(cmd.Context(), projectCfg.Build.Template, runOpts.Image); err != nil {
+				return fmt.Errorf("auto-build project template: %w", err)
+			}
+		} else if tmplName := template.MatchTag(runOpts.Image); tmplName != "" {
 			if err := buildFromTemplate(cmd.Context(), tmplName, runOpts.Image); err != nil {
 				return fmt.Errorf("auto-build template %q: %w", tmplName, err)
 			}
@@ -414,7 +435,7 @@ func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, 
 // (best-effort) staleness check are swallowed — only the initial existence
 // check can fail this function, so a transient node API hiccup while
 // checking staleness never blocks a run that would otherwise succeed.
-func imageNeedsBuild(sbMgr *sandbox.Manager, image string) (bool, string, error) {
+func imageNeedsBuild(sbMgr *sandbox.Manager, image string, projectConfigs ...*ProjectConfig) (bool, string, error) {
 	exists, err := sbMgr.ImageExists(image)
 	if err != nil {
 		return false, "", err
@@ -425,6 +446,19 @@ func imageNeedsBuild(sbMgr *sandbox.Manager, image string) (bool, string, error)
 
 	if !autoBuildEnabled() {
 		return false, "", nil
+	}
+	if len(projectConfigs) != 0 {
+		cfg := projectConfigs[0]
+		if cfg != nil && cfg.Build.Dockerfile != "" && cfg.Build.Tag == image {
+			createdAt, err := sbMgr.ImageCreatedAt(image)
+			if err == nil {
+				path, _, _ := cfg.dockerfile()
+				if info, statErr := os.Stat(path); statErr == nil && info.ModTime().After(createdAt) {
+					return true, fmt.Sprintf("Project Dockerfile for %s has changed since it was last built", image), nil
+				}
+			}
+			return false, "", nil
+		}
 	}
 
 	tmplName := template.MatchTag(image)
@@ -538,6 +572,15 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	}
 	flags := cmd.Flags()
 	applyRuntimeDefaults(cmd)
+	if !flags.Changed("model") && viper.IsSet("run.model") {
+		runOpts.Model = viper.GetString("run.model")
+	}
+	if !flags.Changed("read-only") && viper.IsSet("run.read_only") {
+		runOpts.ReadOnly = viper.GetBool("run.read_only")
+	}
+	if !flags.Changed("no-internet") && viper.IsSet("run.no_internet") {
+		runOpts.NoInternet = viper.GetBool("run.no_internet")
+	}
 
 	if !flags.Changed("image") {
 		if flags.Changed("template") {

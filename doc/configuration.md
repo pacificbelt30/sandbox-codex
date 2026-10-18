@@ -6,6 +6,47 @@
 別ファイルを使う場合は `codex-dock --config PATH COMMAND` と指定します。
 ソース配置では `make install-config` で例を配置できます。既存ファイルは上書きしません。
 
+## プロジェクト設定
+
+リポジトリ直下に `codex-dock.toml` を置くと、そのディレクトリからの `codex-dock init`、`codex-dock run`、`codex-dock codex`、`codex-dock build` が読み込みます。`run --project DIR` は `DIR/codex-dock.toml` を使います。親ディレクトリの設定は自動探索しないため、リポジトリのルートで実行してください。
+
+```bash
+codex-dock project init
+codex-dock project check
+git add codex-dock.toml
+```
+
+生成する最小構成は次のとおりです。組み込み `plain` イメージを使うため、クローン先では `codex-dock init` が不足するイメージをビルドできます。
+
+```toml
+[run]
+image = "codex-dock:latest"
+approval_mode = "suggest"
+
+[build]
+template = "plain"
+```
+
+独自環境はプロジェクト内のDockerfileを指定します。ビルドコンテキストはリポジトリのルートです。`FROM codex-dock:latest` を使う場合、クローン先で不足するベースイメージも先に作ります。
+
+```toml
+[run]
+image = "my-project:dev"
+model = "選択するモデル"
+watch_polling = true
+
+[build]
+dockerfile = "Dockerfile.codex-dock"
+tag = "my-project:dev"
+```
+
+`packages.dock` は従来どおり自動で読み込みます。依存パッケージやベースイメージを固定したい場合は、プロジェクトのDockerfileやパッケージ指定にもバージョンを記述してください。
+プロジェクトでテンプレートを指定する場合、組み込み版またはその未変更コピーだけを使えます。各利用者の編集済みテンプレートに依存する構成は、プロジェクトのDockerfileへ移してください。
+
+プロジェクト設定で使えるキーは `[run]` の `image`、`template`、`model`、`approval_mode`（`suggest` / `auto-edit`）、`watch_polling`、`read_only`、`no_internet` と、`[build]` の `dockerfile`、`template`、`tag` です。`read_only` と `no_internet` は `true` のみ指定でき、グローバル設定の制限を緩めることはできません。`run.image` と `build.tag` は同じ値にします。ホストの認証、proxy、runtime、token TTL、追加マウントなどはここには書けません。`project check` は不明なキーや設定の不一致をエラーにします。
+
+不足するイメージは `init` / `run` 時にビルドします。既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `codex-dock build` を実行してください。
+
 ## 最小の設定例
 
 ```toml
@@ -29,7 +70,7 @@ forward_allow_ports = [80, 443]
 
 ## 優先順位
 
-明示したCLIフラグが設定ファイルより優先します。
+通常の優先順位は **明示したCLIフラグ > プロジェクトの `codex-dock.toml` > グローバルの `config.toml` > 組み込み既定値** です。プロジェクトの `read_only` と `no_internet` は制限を追加する場合に限ります。
 `run`・`build` 専用の設定がある場合は、グローバル設定より優先します。
 環境変数は[下記の対応項目](#環境変数)を参照してください。
 すべての設定に `CODEX_DOCK_` を付ければ上書きできるわけではありません。
@@ -74,6 +115,9 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 | `auto_build` | `auto_build` | 設定ファイルで指定 |
 | `mounts` | 空配列 | `--mount` |
 | `watch_polling` | `false` | `--watch-polling` |
+| `model` | 未設定 | `--model` |
+| `read_only` | `false` | `--read-only` |
+| `no_internet` | `false` | `--no-internet` |
 
 明示した `--image` はテンプレートによるイメージ選択より優先します。
 `runtime = "runc"` は同じcontainerdノードの互換モードで、VM隔離はありません。

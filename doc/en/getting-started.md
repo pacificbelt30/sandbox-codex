@@ -65,6 +65,7 @@ Only the admin port is published to host loopback (`127.0.0.1:18081`).
 ## 4. Start a worker
 
 Run from the project directory, which is shared at `/workspace`.
+To share a repeatable worker image and defaults with a team, run `codex-dock project init` at the repository root and commit `codex-dock.toml`. Point `[build]` at a project Dockerfile for extra tools. After cloning, prepare the host and credentials, then run `codex-dock project check` and `codex-dock init`. See [project settings](configuration.md#project-settings).
 
 ```bash
 codex-dock codex

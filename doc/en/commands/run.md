@@ -11,6 +11,7 @@ The execution host is Linux x86_64. See [quick start](../getting-started.md) and
 Missing images are built automatically from the matching template or default Dockerfile.
 On-disk template rebuilds are controlled by [auto_build](../configuration.md#auto_build).
 See [build](build.md) for custom tags and templates.
+At a repository root, `run` reads `[run]` and `[build]` from `codex-dock.toml`; `--project DIR` uses `DIR/codex-dock.toml`. See [project settings](../configuration.md#project-settings).
 
 ## Launch Codex CLI directly
 

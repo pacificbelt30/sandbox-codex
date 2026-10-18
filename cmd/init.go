@@ -22,7 +22,16 @@ func init() {
 		if agent != "codex" && agent != "claude" {
 			return fmt.Errorf("choose --agent codex or claude")
 		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		projectCfg, err := loadProjectConfig(cwd)
+		if err != nil {
+			return err
+		}
 		applyRunConfigDefaults(runCmd)
+		applyProjectRunConfig(runCmd, projectCfg)
 		report := runtimeReport(cmd.Context())
 		if err := report.Write(cmd.OutOrStdout(), false); err != nil {
 			return err
@@ -46,19 +55,28 @@ func init() {
 			return err
 		}
 		defer func() { _ = m.Close() }()
-		needs, reason, err := imageNeedsBuild(m, runOpts.Image)
+		needs, reason, err := imageNeedsBuild(m, runOpts.Image, projectCfg)
 		if err != nil {
 			return err
 		}
 		if needs {
 			name := template.MatchTag(runOpts.Image)
-			if name == "" {
+			if projectCfg != nil && projectCfg.Build.Dockerfile != "" && projectCfg.Build.Tag == runOpts.Image {
+				if err = buildProjectImage(cmd.Context(), projectCfg, runOpts.Image); err != nil {
+					return err
+				}
+			} else if projectCfg != nil && projectCfg.Build.Template != "" && projectCfg.Build.Tag == runOpts.Image {
+				if err = buildFromTemplate(cmd.Context(), projectCfg.Build.Template, runOpts.Image); err != nil {
+					return err
+				}
+			} else if name == "" {
 				return fmt.Errorf("custom image %s is unavailable; build it first with codex-dock build -f Dockerfile --tag %s", runOpts.Image, runOpts.Image)
+			} else {
+				if err = buildFromTemplate(cmd.Context(), name, runOpts.Image); err != nil {
+					return err
+				}
 			}
 			if _, err = fmt.Fprintln(cmd.OutOrStdout(), reason); err != nil {
-				return err
-			}
-			if err = buildFromTemplate(cmd.Context(), name, runOpts.Image); err != nil {
 				return err
 			}
 		}

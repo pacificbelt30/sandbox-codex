@@ -12,6 +12,7 @@ codex-dock の全コマンドリファレンスです。各コマンドの詳細
 |---|---|---|
 | [`codex-dock codex`](commands/run.md#codex-cli-を直接起動する) | Codex CLIの引数をそのまま渡して起動 | カレントディレクトリを共有・直接exec |
 | [`codex-dock run`](commands/run.md) | サンドボックスコンテナの起動 | オプション・承認モード・並列実行・パッケージ管理 |
+| `codex-dock project init/check` | プロジェクト設定の作成と検証 | [設定リファレンス](configuration.md#プロジェクト設定) |
 | [`codex-dock setup`](setup.md) | ホスト導入・更新・復旧 | 計画表示 / --apply / --rollback |
 | [`codex-dock init`](getting-started.md) | 初回起動の準備 | 診断・認証確認・イメージ検査・プロキシ起動 |
 | [`codex-dock runtime-check`](troubleshooting.md#複数の前提条件をまとめて調べる) | 実行環境の診断 | doctor別名・--json・修正手順 |

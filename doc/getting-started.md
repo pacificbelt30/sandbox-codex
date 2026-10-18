@@ -91,6 +91,8 @@ codex-dock build
 カレントディレクトリをVM内の `/workspace` に共有します。
 [ファイル共有と所有者](workspace.md)で、双方向の反映とUID/GIDの扱いを説明しています。
 
+チームで同じワーカー環境を使う場合は、プロジェクトのルートで `codex-dock project init` を実行し、生成された `codex-dock.toml` をコミットします。独自のツールが必要なら、プロジェクトのDockerfileを `[build]` から指定します。クローン先ではホストの準備と認証を済ませてから `codex-dock project check`、`codex-dock init` を実行してください。[設定例](configuration.md#プロジェクト設定)を参照してください。
+
 ```bash
 codex-dock codex
 # または
