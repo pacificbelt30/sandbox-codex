@@ -83,6 +83,11 @@ class SetupTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'unavailable'):
                 setup.empty_node({'release': '/opt/test'})
 
+    def test_existing_vhost_device_needs_no_module_load(self):
+        with patch.object(Path, 'is_char_device', return_value=True), patch.object(setup, 'run') as command:
+            setup.ensure_module_device('vhost_vsock', '/dev/vhost-vsock')
+            command.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

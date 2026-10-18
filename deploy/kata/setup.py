@@ -114,6 +114,14 @@ def active(service):
     return subprocess.run(['systemctl', 'is-active', '--quiet', service]).returncode == 0
 
 
+def ensure_module_device(module, device):
+    if Path(device).is_char_device():
+        return
+    run(['modprobe', module])
+    if not Path(device).is_char_device():
+        raise ValueError(f'{module} did not provide {device}')
+
+
 def empty_node(current):
     """Called after stopping admission/builds, before stopping containerd."""
     if Path(SOCKET).exists():
@@ -433,9 +441,8 @@ def apply(args, record):
             run(['apt-get', 'update'])
             run(['apt-get', 'install', '-y', '--no-install-recommends', *missing])
         # CPU-specific modules are normally loaded by the host; vsock is shared transport.
-        for module in ['vhost_vsock', 'vhost_net']:
-            if not Path('/sys/module', module).exists():
-                run(['modprobe', module])
+        for module, device in [('vhost_vsock', '/dev/vhost-vsock'), ('vhost_net', '/dev/vhost-net')]:
+            ensure_module_device(module, device)
         if subprocess.run(['getent', 'group', 'codex-dock'], stdout=subprocess.DEVNULL).returncode:
             run(['groupadd', '--system', 'codex-dock'])
         run(['usermod', '-aG', 'codex-dock', args.operator])
