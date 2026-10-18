@@ -37,6 +37,27 @@ Kata 4.2.0 / Dragonballの実機試験では、ホストの変更はVM内のinot
 VM内で行った変更のinotify通知は届きます。
 ホスト側のエディターで保存し、VM内の開発サーバーで反映する用途では、監視ツールのポーリングを有効にしてください。
 
+Chokidar / Watchpackを使う開発ツールは、起動時に次の指定ができます。
+
+```bash
+codex-dock run --watch-polling -- npm run dev
+```
+
+`CHOKIDAR_USEPOLLING=true`、`CHOKIDAR_INTERVAL=1000`、`WATCHPACK_POLLING=1000` をワーカーへ渡します。
+設定ファイルの `[run] watch_polling = true` でも有効にできます。既定は無効です。
+1秒間隔の監視なので、変更の検知まで遅延があります。対象ディレクトリが多い場合はCPUとI/Oも増えます。
+[Chokidar](https://github.com/paulmillr/chokidar#performance)と[Watchpack](https://github.com/webpack/watchpack)の対応変数を使い、他ツールの設定は変更しません。
+
+Viteでは、利用版に応じて `server.watch` でも明示できます。
+
+```javascript
+export default {
+  server: { watch: { usePolling: true, interval: 1000 } }
+};
+```
+
+[設定の詳細はVite公式](https://vite.dev/config/server-options#server-watch)を確認してください。
+
 Nodeの `fs.watchFile` でホストの変更を検知できることを確認しています。
 
 ```javascript

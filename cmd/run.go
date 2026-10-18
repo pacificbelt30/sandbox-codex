@@ -102,6 +102,7 @@ func init() {
 		panic(err)
 	}
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
+	f.BoolVar(&runOpts.WatchPolling, "watch-polling", false, "Enable 1s polling for Chokidar/Watchpack to observe host edits across the VM boundary")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
 	f.StringArrayVar(&mountFlags, "mount", nil, `Additional host directory to bind-mount into the container (repeatable).
   Format: <host-path>:<container-path>[:ro|rw]
@@ -154,6 +155,9 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	runOpts.ExecCmd = execCmd
 
+	if runOpts.WatchPolling {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Host edit polling enabled for Chokidar/Watchpack (1s). Other watchers require their own polling settings.")
+	}
 	// Resolve project directory
 	projectDir, err := resolveProjectDir(runOpts.ProjectDir)
 	if err != nil {
@@ -500,6 +504,9 @@ func connectProxyWithRetry(adminURL, containerURL, secret string, attempts int) 
 }
 
 func applyRunConfigDefaults(cmd *cobra.Command) {
+	if !cmd.Flags().Changed("watch-polling") {
+		runOpts.WatchPolling = viper.GetBool("run.watch_polling")
+	}
 	flags := cmd.Flags()
 	applyRuntimeDefaults(cmd)
 
