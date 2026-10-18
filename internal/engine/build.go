@@ -8,7 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 )
+
+var codexVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 
 // Build retains Dockerfile/custom/template builds using standalone BuildKit.
 // OCI output is streamed into the same containerd namespace as workers. Neither
@@ -33,6 +36,12 @@ func Build(ctx context.Context, tag, dockerfile, buildContext string, log io.Wri
 		addr = "unix:///run/codex-dock-buildkit/buildkitd.sock"
 	}
 	c := exec.CommandContext(ctx, "buildctl", "--addr", addr, "build", "--progress=plain", "--frontend", "dockerfile.v0", "--local", "context="+dir, "--local", "dockerfile="+filepath.Dir(df), "--opt", "filename="+filepath.Base(df), "--opt", "image-resolve-mode=local", "--output", "type=oci,name="+name+",dest=-")
+	if version := os.Getenv("CODEX_DOCK_CODEX_VERSION"); version != "" {
+		if !codexVersionPattern.MatchString(version) {
+			return fmt.Errorf("invalid CODEX_DOCK_CODEX_VERSION %q: expected an exact semver", version)
+		}
+		c.Args = append(c.Args, "--opt", "build-arg:CODEX_CLI_VERSION="+version)
+	}
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy"} {
 		if value := os.Getenv(key); value != "" {
 			c.Args = append(c.Args, "--opt", "build-arg:"+key+"="+value)

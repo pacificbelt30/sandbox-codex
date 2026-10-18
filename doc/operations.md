@@ -75,6 +75,21 @@ codex-dock runtime-check
 Kataのshim・kernel・guest imageなどの固定資産を更新する場合は、別途[Kataの資産更新](kata.md#固定資産の更新)が必要です。
 `codex-dock update` はGoのインストール先にCLIを置く操作だけで、ホストサービスやイメージを更新しません。
 
+## ワーカー内のCodex CLIを更新する
+
+ホストの `codex` は現在、主に認証ファイルを作る役割で、ワーカー内のCodex CLIとは直接通信しません。そのため両者の版番号を常に一致させる必要はありません。互換性の境界は、ホストの認証ファイル形式、ワーカーの設定キー、認証プロキシの転送経路です。
+
+組み込みイメージのCodex CLIは版を固定しています。ゲストの起動時更新確認も無効にしており、実行中にnpmで書き換えません。更新は次の順で行います。
+
+1. 新版を `CODEX_DOCK_CODEX_VERSION=<版> codex-dock build --template plain --tag codex-dock:codex-<版>` で別タグにビルドする。
+2. `codex-dock image check codex-dock:codex-<版> --agent codex` で実行ファイルとイメージの基本要件を確認する。
+3. 検証用ホストで `codex-dock run --image codex-dock:codex-<版> --agent codex` を起動し、APIキーとChatGPT認証で実際の対話・SSE・OAuth更新を確認する。`image check` だけでは認証の互換性を確認できない。
+4. 問題がなければ新規ワーカーの `default_image` を候補タグに切り替える。既存ワーカーは古いイメージのまま完了させる。失敗したら以前のタグに戻す。
+
+将来の自動更新は、定期ジョブでnpmの新版を検出して候補タグを作り、上記の実環境ゲートを通過した後に新規ワーカー向け既定タグだけを切り替える形を推奨します。このリポジトリでは候補の自動検出・自動昇格はまだ行いません。
+
+認証プロキシは `/v1/*` と `/chatgpt/*` のパス・クエリ・本文をAPIごとに解釈せず転送します。上流認証ヘッダーの置換とOAuth更新時のrefresh token秘匿だけを担います。新しいCodexが別のベースURLや認証方法を使う場合は、設定と接続テストの更新が必要です。
+
 ## 後片付けする
 
 ワーカーを削除した後、プロキシと共通egressネットワークを止める場合は次を実行します。

@@ -72,7 +72,7 @@ type Manager struct {
 	execProbe      func(context.Context, string, []string) ([]byte, error)
 }
 
-// NewManager creates a new Manager connected to the local Docker daemon.
+// NewManager connects to the dedicated containerd node's compatibility API.
 func NewManager(cfg ManagerConfig) (*Manager, error) {
 	cli, err := engine.NewClient()
 	if err != nil {
@@ -537,7 +537,7 @@ func shellBinaryPath(t ShellType) string {
 	return "/bin/bash"
 }
 
-// ImageExists reports whether the named image tag is present in the local Docker daemon.
+// ImageExists reports whether the named image tag is present in the worker namespace.
 func (m *Manager) ImageExists(tag string) (bool, error) {
 	_, err := m.cli.ImageInspect(context.Background(), tag)
 	if err != nil {
@@ -842,6 +842,16 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 	}
 	if opts.Task != "" {
 		env = append(env, "CODEX_TASK="+opts.Task)
+	}
+	if opts.DirectAgent {
+		env = append(env, "DOCK_DIRECT_AGENT=1")
+	}
+	if len(opts.AgentArgs) != 0 {
+		argsJSON, err := json.Marshal(opts.AgentArgs)
+		if err != nil {
+			return nil, fmt.Errorf("encoding agent arguments: %w", err)
+		}
+		env = append(env, "DOCK_AGENT_ARGS_JSON="+string(argsJSON))
 	}
 	if opts.Model != "" {
 		env = append(env, "CODEX_MODEL="+opts.Model)

@@ -13,6 +13,16 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 ディスク上のDockerfileが更新された場合の再ビルドは[auto_build](../configuration.md#auto_build)で設定します。
 独自タグやテンプレートは[build](build.md)を参照してください。
 
+## Codex CLI を直接起動する
+
+```bash
+codex-dock codex
+codex-dock codex "このリポジトリを調べて"
+codex-dock codex exec --json "変更点を要約して"
+```
+
+引数は `codex` にそのまま渡します。カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。イメージ、worktree、追加マウント、detachなどのコンテナ指定には `codex-dock run --agent codex` を使います。新規VMの起動時間は通常のホスト上の `codex` より長くなります。
+
 ```bash
 codex-dock run [OPTIONS] [IMAGE [COMMAND...]]
 codex-dock run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行

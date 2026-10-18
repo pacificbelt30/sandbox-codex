@@ -21,9 +21,11 @@ RUN --mount=type=secret,id=proxy_ca \
 #   - @openai/codex          → `codex-dock run --agent codex`
 #   - @anthropic-ai/claude-code → `codex-dock run --agent claude`
 # Both are installed so a single sandbox image can run either agent.
+ARG CODEX_CLI_VERSION=0.163.0
+LABEL org.codex-dock.codex-cli-version="${CODEX_CLI_VERSION}"
 RUN --mount=type=secret,id=proxy_ca \
     if [ -r /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
-    npm install -g @openai/codex @anthropic-ai/claude-code
+    npm install -g "@openai/codex@${CODEX_CLI_VERSION}" @anthropic-ai/claude-code
 
 # Create non-root user (uid:1001; uid:1000 is reserved for the base image's node user)
 RUN useradd -m -u 1001 -s /bin/bash codex

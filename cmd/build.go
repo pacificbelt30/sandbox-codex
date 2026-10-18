@@ -22,7 +22,7 @@ var buildPrintEntrypoint bool
 
 var buildCmd = &cobra.Command{
 	Use:   "build",
-	Short: "Build the codex-dock base Docker image",
+	Short: "Build a worker OCI image with BuildKit and import it into containerd",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if buildPrintEntrypoint {
 			return writeEntrypoint(os.Stdout)

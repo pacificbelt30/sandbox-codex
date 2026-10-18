@@ -132,5 +132,5 @@ func connectionHint(err error) string {
 	if !strings.Contains(strings.ToLower(netErr.Err.Error()), "connection refused") {
 		return ""
 	}
-	return "\nHint: auth proxy is not running. Start it with `codex-dock proxy serve --listen 0.0.0.0:18080` or run the Docker quick-start command in doc/getting-started.md."
+	return "\nHint: auth proxy is not running. Run `codex-dock init` or `codex-dock proxy run` on the prepared containerd host."
 }

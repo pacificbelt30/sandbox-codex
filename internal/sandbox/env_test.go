@@ -1,9 +1,38 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestBuildEnvDirectCodexArguments(t *testing.T) {
+	args := []string{"exec", "two words", "--json", "quote'and$special"}
+	m := newTestManager(&fakeProxy{endpoint: "http://codex-auth-proxy:18080"})
+	env, err := m.buildEnv("direct", RunOptions{Agent: AgentCodex, DirectAgent: true, AgentArgs: args, TokenTTL: 60}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := envValue(env, "DOCK_DIRECT_AGENT"); got != "1" {
+		t.Errorf("DOCK_DIRECT_AGENT = %q; want 1", got)
+	}
+	raw, ok := envValue(env, "DOCK_AGENT_ARGS_JSON")
+	if !ok {
+		t.Fatal("DOCK_AGENT_ARGS_JSON missing")
+	}
+	var decoded []string
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != len(args) {
+		t.Fatalf("arguments = %q; want %q", decoded, args)
+	}
+	for i := range args {
+		if decoded[i] != args[i] {
+			t.Errorf("argument %d = %q; want %q", i, decoded[i], args[i])
+		}
+	}
+}
 
 // fakeProxy implements authproxy.Service for env-building tests.
 type fakeProxy struct {

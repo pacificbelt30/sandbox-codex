@@ -12,6 +12,16 @@ Missing images are built automatically from the matching template or default Doc
 On-disk template rebuilds are controlled by [auto_build](../configuration.md#auto_build).
 See [build](build.md) for custom tags and templates.
 
+## Launch Codex CLI directly
+
+```bash
+codex-dock codex
+codex-dock codex "Inspect this repository"
+codex-dock codex exec --json "Summarize the changes"
+```
+
+Arguments are forwarded verbatim to Codex. The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper. Configure worker defaults under `[run]`; use `codex-dock run --agent codex` for image, worktree, mount and detach options. Starting a fresh VM takes longer than running Codex on the host.
+
 ```bash
 codex-dock run [OPTIONS] [IMAGE [COMMAND...]]
 codex-dock run [OPTIONS] -- COMMAND...  # Run in the default image

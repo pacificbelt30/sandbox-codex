@@ -86,7 +86,11 @@ func init() {
 		if _, err = reconcileProxyAuthState(cmd.Context(), proxy, false); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: codex-dock run --agent %s\nFor host edit watchers add --watch-polling (Chokidar/Watchpack).\n", agent)
+		launch := "codex-dock codex"
+		if agent == "claude" {
+			launch = "codex-dock run --agent claude"
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: %s\nFor host edit watchers add --watch-polling to `codex-dock run` (Chokidar/Watchpack).\n", launch)
 		return err
 	}}
 	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude")

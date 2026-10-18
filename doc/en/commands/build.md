@@ -22,6 +22,14 @@ codex-dock run --image my-codex:v1
 | `--template`, `-T` | Template name, or `list` |
 | `--print-entrypoint` | Print embedded entrypoint.sh and exit without building |
 
+The built-in worker pins Codex CLI with `CODEX_CLI_VERSION` in its Dockerfile. To test another exact version, build a separate OCI image in the worker's containerd namespace:
+
+```bash
+CODEX_DOCK_CODEX_VERSION=0.163.0 codex-dock build --template plain --tag codex-dock:codex-0.163.0
+codex-dock image check codex-dock:codex-0.163.0 --agent codex
+codex-dock run --image codex-dock:codex-0.163.0 --agent codex
+```
+
 `--template` and `-f` are mutually exclusive.
 Missing images are built from the corresponding template or default Dockerfile.
 Build arbitrary custom tags explicitly before using them.

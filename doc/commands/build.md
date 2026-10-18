@@ -22,6 +22,17 @@ codex-dock run --image my-codex:v1
 | `--template`, `-T` | テンプレート名。`list` で一覧表示 |
 | `--print-entrypoint` | 組み込みentrypoint.shを出力し、ビルドせず終了 |
 
+組み込みワーカーのCodex CLIはDockerfile内の `CODEX_CLI_VERSION` に固定しています。
+別の版を試す場合は、そのビルドだけ `CODEX_DOCK_CODEX_VERSION` を指定します。
+
+```bash
+CODEX_DOCK_CODEX_VERSION=0.163.0 codex-dock build --template plain --tag codex-dock:codex-0.163.0
+codex-dock image check codex-dock:codex-0.163.0 --agent codex
+codex-dock run --image codex-dock:codex-0.163.0 --agent codex
+```
+
+BuildKitで作成したOCIイメージはワーカーと同じ専用containerd namespaceに取り込まれます。候補タグを使って試せるため、現在使っているイメージはそのまま残せます。
+
 `--template` と `-f` は同時に指定できません。
 `run` 時にイメージがない場合は、対応するテンプレートまたは既定Dockerfileから自動ビルドします。
 任意のイメージ名を指定する場合は、先にそのタグをビルドしてください。

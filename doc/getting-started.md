@@ -92,7 +92,7 @@ codex-dock build
 [ファイル共有と所有者](workspace.md)で、双方向の反映とUID/GIDの扱いを説明しています。
 
 ```bash
-codex-dock run --agent codex
+codex-dock codex
 # または
 codex-dock run --agent claude
 ```

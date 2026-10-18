@@ -67,7 +67,7 @@ Only the admin port is published to host loopback (`127.0.0.1:18081`).
 Run from the project directory, which is shared at `/workspace`.
 
 ```bash
-codex-dock run --agent codex
+codex-dock codex
 # Or:
 codex-dock run --agent claude
 

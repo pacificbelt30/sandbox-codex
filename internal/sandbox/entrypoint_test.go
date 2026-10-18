@@ -95,3 +95,20 @@ func TestEntrypointDisablesAppsInConfig(t *testing.T) {
 		t.Errorf("apps must be disabled in both OAuth and API-key modes, found %d occurrence(s)", n)
 	}
 }
+
+func TestEntrypointDirectCodexExec(t *testing.T) {
+	entrypoint, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(entrypoint)
+	if !strings.Contains(script, `exec codex "${CODEX_ARGS[@]}" "${CODEX_EXTRA_ARGS[@]}"`) {
+		t.Error("direct Codex path must exec argv without a shell")
+	}
+	if !strings.Contains(script, `json.loads(os.environ["DOCK_AGENT_ARGS_JSON"])`) {
+		t.Error("direct Codex path must decode structured argv")
+	}
+	if strings.Contains(script, "sleep 1") {
+		t.Error("entrypoint must not add an unconditional startup delay")
+	}
+}

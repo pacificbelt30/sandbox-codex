@@ -3,6 +3,7 @@ package authproxy
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -161,5 +162,104 @@ func TestIntegration_CodexSSEStreaming(t *testing.T) {
 	rest, _ := io.ReadAll(reader)
 	if !strings.Contains(string(rest), "response.completed") {
 		t.Errorf("second SSE event missing: %q", string(rest))
+	}
+}
+
+// A future Codex release may add paths, parameters or body fields. The proxy
+// must relay them without needing an endpoint-specific update.
+func TestIntegration_CodexOpaqueEndpoint(t *testing.T) {
+	const payload = `{"future_parameter":{"nested":true}}`
+	var gotPath, gotQuery, gotBody, gotHeader, gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		gotQuery = r.URL.RawQuery
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		gotHeader = r.Header.Get("X-Client-Feature")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("X-Upstream-Feature", "enabled")
+		w.WriteHeader(http.StatusMultiStatus)
+		_, _ = io.WriteString(w, `{"future_response":true}`)
+	}))
+	defer upstream.Close()
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	resp := doProxyRequest(t, p, http.MethodPost, "/v1/future/%2Fvariant?mode=new&mode=other", payload, map[string]string{
+		"Authorization":    "Bearer cdx-placeholder",
+		"X-Client-Feature": "new-value",
+		"Content-Type":     "application/json",
+	})
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if gotPath != "/future/%2Fvariant" || gotQuery != "mode=new&mode=other" || gotBody != payload || gotHeader != "new-value" || gotAuth != "Bearer sk-test-key-12345" {
+		t.Errorf("upstream request changed: path=%q query=%q body=%q feature=%q auth=%q", gotPath, gotQuery, gotBody, gotHeader, gotAuth)
+	}
+	if resp.StatusCode != http.StatusMultiStatus || resp.Header.Get("X-Upstream-Feature") != "enabled" || string(body) != `{"future_response":true}` {
+		t.Errorf("upstream response changed: status=%d feature=%q body=%q", resp.StatusCode, resp.Header.Get("X-Upstream-Feature"), body)
+	}
+}
+
+func TestIntegration_CodexRequestBodyStreams(t *testing.T) {
+	firstSeen := make(chan struct{}, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		first := make([]byte, 5)
+		if _, err := io.ReadFull(r.Body, first); err != nil {
+			t.Errorf("read first request chunk: %v", err)
+			return
+		}
+		firstSeen <- struct{}{}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+
+	p := newTestProxy(t)
+	p.apiUpstreamURL = upstream.URL
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	reader, writer := io.Pipe()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Endpoint()+"/v1/future-upload", reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizeTestRequest(t, p, req)
+	response := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			_, err = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				err = fmt.Errorf("status %d, want 204", resp.StatusCode)
+			}
+		}
+		response <- err
+	}()
+	if _, err := io.WriteString(writer, "first"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-firstSeen:
+	case <-ctx.Done():
+		_ = writer.CloseWithError(ctx.Err())
+		t.Fatal("upstream did not receive first chunk before request body finished")
+	}
+	if _, err := io.WriteString(writer, "second"); err != nil {
+		t.Fatal(err)
+	}
+	_ = writer.Close()
+	if err := <-response; err != nil {
+		t.Fatal(err)
 	}
 }

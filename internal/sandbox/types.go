@@ -112,7 +112,9 @@ type RunOptions struct {
 	NewBranch     bool
 	Name          string
 	Agent         Agent
-	ExecCmd       string // run this command instead of an interactive shell; ignored when Agent is set (the agent always takes priority)
+	DirectAgent   bool     // exec the agent directly, without the interactive shell wrapper
+	AgentArgs     []string // argv forwarded verbatim to the selected agent
+	ExecCmd       string   // run this command instead of an interactive shell; ignored when Agent is set (the agent always takes priority)
 	Task          string
 	ApprovalMode  ApprovalMode
 	Model         string

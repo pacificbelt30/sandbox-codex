@@ -31,7 +31,10 @@ APIキーを使う場合は、先に `OPENAI_API_KEY` または `ANTHROPIC_API_K
 
 ```bash
 codex-dock init
-codex-dock run --agent codex
+codex-dock codex
+
+# Codex CLI の引数もそのまま渡せる
+codex-dock codex "このリポジトリを調べて"
 
 # Claude Codeを使う場合
 codex-dock init --agent claude
@@ -40,6 +43,7 @@ codex-dock run --agent claude
 
 プロキシイメージを初めてビルドする際は、リポジトリのルートで `init` を実行します。
 `--agent` を省略すると、認証設定済みのシェルが開きます。
+`codex-dock codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
 通常の操作はoperator groupに属する利用者で行います。
 Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り替えません。
 

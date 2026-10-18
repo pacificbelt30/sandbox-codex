@@ -1,7 +1,6 @@
 package authproxy
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,7 +19,9 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 	}
 	defer done()
 	r = authenticated
-	path := strings.TrimPrefix(r.URL.Path, stripPrefix)
+	// Preserve the encoded path so a newly added upstream endpoint can use its
+	// own path syntax without the proxy decoding and re-encoding it.
+	path := strings.TrimPrefix(r.URL.EscapedPath(), stripPrefix)
 	target := targetBase + path
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
@@ -32,17 +33,14 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "reading request body", http.StatusBadRequest)
-		return
-	}
-
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
+	// Forward the body as it arrives. Buffering it here delays streamed uploads
+	// and makes the proxy depend on the request payload size and schema.
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, r.Body)
 	if err != nil {
 		http.Error(w, "creating upstream request", http.StatusInternalServerError)
 		return
 	}
+	req.ContentLength = r.ContentLength
 
 	// Copy headers, skipping hop-by-hop headers.
 	hopByHop := map[string]bool{

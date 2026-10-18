@@ -226,7 +226,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	// Network manager handles per-worker Internal networks. Each worker gets its
 	// own Internal bridge shared only with the proxy (created in sandbox.Run), so
-	// isolation is enforced by Docker without any iptables/sudo.
+	// isolation is enforced by the containerd node without any iptables/sudo.
 	netMgr, err := network.NewManager()
 	if err != nil {
 		return fmt.Errorf("creating network manager: %w", err)
@@ -412,7 +412,7 @@ func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, 
 // matches a known template, it also rebuilds when the template's on-disk
 // Dockerfile has been modified since the image was last built. Errors from the
 // (best-effort) staleness check are swallowed — only the initial existence
-// check can fail this function, so a transient Docker API hiccup while
+// check can fail this function, so a transient node API hiccup while
 // checking staleness never blocks a run that would otherwise succeed.
 func imageNeedsBuild(sbMgr *sandbox.Manager, image string) (bool, string, error) {
 	exists, err := sbMgr.ImageExists(image)

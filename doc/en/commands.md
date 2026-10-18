@@ -10,6 +10,7 @@ Full command reference for codex-dock. See the individual pages below for detail
 
 | Command | Description | Details |
 |---|---|---|
+| [`codex-dock codex`](commands/run.md#launch-codex-cli-directly) | Pass Codex CLI arguments through unchanged | Mount current directory and exec Codex |
 | [`codex-dock run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
 | [`codex-dock setup`](../setup.md) | Install, update or restore the node | Plan, --apply, --rollback (Japanese guide) |
 | [`codex-dock init`](../getting-started.md) | Prepare the first worker | Readiness, credentials, image and proxies |

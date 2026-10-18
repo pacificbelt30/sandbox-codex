@@ -113,6 +113,7 @@ print(json.dumps(out))
         # model requests, so it is insufficient on its own.
         cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
 openai_base_url = "${CODEX_AUTH_PROXY_URL}/v1"
+check_for_update_on_startup = false
 $(codex_sandbox_config)
 chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 
@@ -142,6 +143,7 @@ EOF
         mkdir -p "${CODEX_HOME}/.codex"
         cat > "${CODEX_HOME}/.codex/config.toml" <<EOF
 openai_base_url = "${CODEX_AUTH_PROXY_URL}/v1"
+check_for_update_on_startup = false
 $(codex_sandbox_config)
 
 [features]
@@ -260,14 +262,21 @@ fi
 
 cd /workspace
 
-# Give Docker networking/proxy sidecars a brief moment to settle before the
-# first agent request. Reduces flaky startup failures right after container boot.
-sleep 1
-
 # ── Launch the selected agent ─────────────────────────────────────────────────
 case "${DOCK_AGENT}" in
     codex)
         build_codex_args
+        if [[ "${DOCK_DIRECT_AGENT:-0}" == 1 ]]; then
+            CODEX_EXTRA_ARGS=()
+            if [[ -n "${DOCK_AGENT_ARGS_JSON:-}" ]]; then
+                mapfile -d '' -t CODEX_EXTRA_ARGS < <(python3 -c '
+import json, os, sys
+for arg in json.loads(os.environ["DOCK_AGENT_ARGS_JSON"]):
+    sys.stdout.buffer.write(arg.encode() + b"\0")
+')
+            fi
+            exec codex "${CODEX_ARGS[@]}" "${CODEX_EXTRA_ARGS[@]}"
+        fi
         log "Starting Codex CLI..."
         if [[ -n "${CODEX_TASK:-}" ]]; then
             log "Task: ${CODEX_TASK}"
