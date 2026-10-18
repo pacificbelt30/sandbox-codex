@@ -115,6 +115,7 @@ type RunOptions struct {
 	Task          string
 	ApprovalMode  ApprovalMode
 	Model         string
+	WatchPolling  bool
 	ReadOnly      bool
 	NoInternet    bool
 	TokenTTL      int

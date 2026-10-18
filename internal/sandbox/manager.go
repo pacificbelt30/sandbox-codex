@@ -814,6 +814,9 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		}
 	}
 
+	if opts.WatchPolling {
+		env = append(env, "CHOKIDAR_USEPOLLING=true", "CHOKIDAR_INTERVAL=1000", "WATCHPACK_POLLING=1000")
+	}
 	if opts.ExecCmd != "" {
 		env = append(env, "DOCK_EXEC_CMD="+opts.ExecCmd)
 	}

@@ -73,6 +73,7 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 | `shell_type` | `default_shell_type` | `--shell-type` |
 | `auto_build` | `auto_build` | 設定ファイルで指定 |
 | `mounts` | 空配列 | `--mount` |
+| `watch_polling` | `false` | `--watch-polling` |
 
 明示した `--image` はテンプレートによるイメージ選択より優先します。
 `runtime = "runc"` は同じcontainerdノードの互換モードで、VM隔離はありません。

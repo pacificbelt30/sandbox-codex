@@ -315,3 +315,22 @@ func TestValidAgent(t *testing.T) {
 		t.Error("ValidAgent(bogus) = true; want false")
 	}
 }
+
+func TestWatchPollingIsOptInAndDoesNotEnableEgress(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		m := newTestManager(&fakeProxy{endpoint: "http://auth:18080"})
+		env, err := m.buildEnv("polling", RunOptions{WatchPolling: enabled, NoInternet: true}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"CHOKIDAR_USEPOLLING", "CHOKIDAR_INTERVAL", "WATCHPACK_POLLING"} {
+			value, present := envValue(env, key)
+			if present != enabled || enabled && value == "" {
+				t.Fatalf("%s enabled=%v: %q %v", key, enabled, value, present)
+			}
+		}
+		if _, ok := envValue(env, "HTTP_PROXY"); ok {
+			t.Fatal("polling enabled egress")
+		}
+	}
+}
