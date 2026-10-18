@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -15,8 +16,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "codex-dock",
-	Short: "AI Sandbox Container Manager for Codex CLI",
+	Use:     "codex-dock",
+	Version: buildinfo.Version,
+	Short:   "AI Sandbox Container Manager for Codex CLI",
 	Long: `codex-dock runs Codex CLI and Claude Code in Kata VM-isolated workers
 managed through containerd and Dragonball, with auth proxy, network separation and parallel workers.
 Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,

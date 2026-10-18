@@ -3,6 +3,7 @@ package kataguard
 import (
 	"context"
 	"encoding/json"
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -51,4 +52,29 @@ func (f *fixtureNodeTransport) RoundTrip(r *http.Request) (*http.Response, error
 	}
 	request.URL = base.URL
 	return f.next.RoundTrip(request)
+}
+
+func TestReleaseClientRequiresMatchingNodeVersion(t *testing.T) {
+	original := buildinfo.Version
+	buildinfo.Version = "fixture-release-a"
+	t.Cleanup(func() { buildinfo.Version = original })
+	for _, version := range []string{"", "fixture-release-b", "fixture-release-a"} {
+		t.Run("node-"+version, func(t *testing.T) {
+			const endpoint = "unix:///run/fixture.sock"
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(nodeReply{Info: NodeInfo{Profile: Profile, Endpoint: endpoint, Stamp: strings.Repeat("a", 64), Launcher: "/opt/fixture/guard", Root: "/sys/fs/cgroup/fixture", SharedFSCache: "none", BuildVersion: version}})
+			}))
+			defer server.Close()
+			c := &Client{client: server.Client(), endpoint: endpoint}
+			c.client.Transport = &fixtureNodeTransport{target: server.URL, next: server.Client().Transport}
+			err := c.Validate(context.Background(), "io.containerd.kata.v2")
+			if version == buildinfo.Version {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "versions differ") {
+				t.Fatalf("node version %q accepted: %v", version, err)
+			}
+		})
+	}
 }

@@ -15,7 +15,7 @@ CONFIG_FILE   := $(CONFIG_DIR)/config.toml
 TEMPLATES_DIR := $(CONFIG_DIR)/templates
 
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS     := -ldflags "-X main.version=$(VERSION)"
+LDFLAGS     := -ldflags "-X $(MODULE)/internal/buildinfo.Version=$(VERSION)"
 
 .PHONY: all build worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e lint vet tidy help
 
