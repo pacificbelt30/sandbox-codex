@@ -119,3 +119,18 @@ HTTP/HTTPS/NO/ALL proxy環境変数と小文字版をbuild argsとして渡し�
 `CODEX_PROXY_CERT` は `proxy_ca` secretとして渡し、組み込みDockerfileはRUN中だけ使います。
 独自Dockerfileで必要な場合もsecretとして参照し、イメージへコピーしないでください。
 BuildKit daemonのregistry通信は、管理者が別途proxyとCAを設定します。
+
+## 起動前に互換性を調べる
+
+```bash
+codex-dock image check my-codex:v1 --agent codex
+codex-dock image check my-codex:v1 --agent claude --json
+```
+
+管理サービスがイメージの読み取り専用snapshotを検査します。イメージ内のコードはホストで実行しません。
+Linux amd64、bash・curl・python3・git、選択したagent、ENTRYPOINT/CMDの実行ファイルを確認します。
+`--agent shell` が既定で、エージェントの実行ファイルは要求しません。
+認証entrypointがCLIの組み込み版と違う場合は警告します。独自wrapperもあり得るため、この違いだけで拒否はしません。
+
+不足があれば非ゼロ終了します。通過しても、共有ライブラリ、実行ユーザー、認証・通信の動作までは保証しません。
+カスタムイメージは準備済みKataノードで `codex-dock run --image my-codex:v1 -- true` も実行してください。

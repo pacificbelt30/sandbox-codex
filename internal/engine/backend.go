@@ -680,6 +680,17 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(w, system.Info{OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
 		return
 	}
+	if path == "/images/check" && r.Method == "GET" {
+		probe, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		report, err := b.checkImage(probe, r.URL.Query().Get("name"), r.URL.Query().Get("agent"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		reply(w, report)
+		return
+	}
 	if path == "/images/load" && r.Method == "POST" {
 		b.importImages(w, r, ctx)
 		return
