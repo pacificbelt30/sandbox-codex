@@ -84,7 +84,7 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 	if err := node.Validate(ctx, sandbox.DefaultKataRuntime); err != nil {
 		_ = node.Close()
 		_ = mgr.Close()
-		return nil, classify(err)
+		return nil, fmt.Errorf("validating cxd node: %w", classify(err))
 	}
 	return &Client{manager: mgr, node: node, opts: opts}, nil
 }
@@ -104,6 +104,8 @@ type LaunchRequest struct {
 	Runtime        string
 	Agent          string
 	AgentArgs      []string
+	Model          string
+	ApprovalMode   string
 	Branch         string
 	UseWorktree    bool
 	NewBranch      bool
@@ -112,7 +114,16 @@ type LaunchRequest struct {
 	NoGitMetadata  bool
 	NoInternet     bool
 	User           string
+	Mounts         []Mount
 	TokenTTL       time.Duration
+}
+
+// Mount is an additional host bind mount. Node socket access already grants
+// equivalent host authority, so only trusted products may provide mounts.
+type Mount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
 }
 
 // Worker describes a managed worker without exposing Docker/containerd types.
@@ -141,6 +152,9 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	if !sandbox.ValidAgent(sandbox.Agent(req.Agent)) {
 		return Worker{}, fmt.Errorf("invalid agent %q", req.Agent)
+	}
+	if req.ApprovalMode != "" && !sandbox.ValidApprovalMode(sandbox.ApprovalMode(req.ApprovalMode)) {
+		return Worker{}, fmt.Errorf("invalid approval mode %q", req.ApprovalMode)
 	}
 	if req.TokenTTL < 0 || req.TokenTTL > time.Duration(math.MaxInt32)*time.Second {
 		return Worker{}, fmt.Errorf("invalid token TTL")
@@ -190,7 +204,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	if claim.State != "pending" || claim.Lease == "" {
 		return Worker{Name: claim.Name}, fmt.Errorf("%w: request %s is active or needs recovery", ErrInProgress, req.RequestID)
 	}
-	proxy, err := authproxy.NewRemoteProxy(c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
+	proxy, err := authproxy.NewRemoteProxyContext(ctx, c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
 	if err != nil {
 		abortErr := c.abortClaim(key, claim.Lease, "")
 		return Worker{}, errors.Join(fmt.Errorf("connecting auth proxy: %w", err), abortErr)
@@ -213,9 +227,13 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		ProjectDir: req.ProjectDir, Image: req.Image, ResourceProfile: req.Profile, Runtime: req.Runtime,
 		Name: claim.Name, RequestKey: key, RequestFingerprint: fingerprint, AllocationID: kataguard.RequestAllocation(key),
 		Agent: sandbox.Agent(req.Agent), DirectAgent: req.Agent != "", AgentArgs: req.AgentArgs,
+		Model: req.Model, ApprovalMode: sandbox.ApprovalMode(req.ApprovalMode),
 		Branch: req.Branch, UseWorktree: req.UseWorktree, NewBranch: req.NewBranch,
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
 		NoInternet: req.NoInternet, ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
+	}
+	for _, mount := range req.Mounts {
+		launch.Mounts = append(launch.Mounts, sandbox.MountSpec{Source: mount.Source, Target: mount.Target, ReadOnly: mount.ReadOnly})
 	}
 	if req.Agent == "" {
 		launch.ExecCmd = "exec sleep infinity"
@@ -312,4 +330,17 @@ func Profiles() []Profile {
 		result = append(result, Profile{p.Name, p.CPUCores, p.GuestMemoryBytes, p.HostMemoryBytes, p.PIDLimit})
 	}
 	return result
+}
+
+// Profiles queries the running node's supported resource reservations.
+func (c *Client) Profiles(ctx context.Context) ([]Profile, error) {
+	profiles, err := c.node.Profiles(ctx)
+	if err != nil {
+		return nil, classify(err)
+	}
+	result := make([]Profile, 0, len(profiles))
+	for _, p := range profiles {
+		result = append(result, Profile{p.Name, p.CPUCores, p.GuestMemoryBytes, p.HostMemoryBytes, p.PIDLimit})
+	}
+	return result, nil
 }

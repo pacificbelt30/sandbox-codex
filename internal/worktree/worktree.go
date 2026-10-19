@@ -19,12 +19,17 @@ type CreateOptions struct {
 // Create creates a git worktree and returns its path.
 // The worktree is created at ${project}/../${project_name}-dock-${branch}.
 func Create(opts CreateOptions) (string, error) {
+	return CreateContext(context.Background(), opts)
+}
+
+// CreateContext permits a caller to cancel Git's worktree preparation.
+func CreateContext(ctx context.Context, opts CreateOptions) (string, error) {
 	if opts.Branch == "" {
 		return "", fmt.Errorf("branch name is required for worktree")
 	}
 
 	// Verify git repository
-	if err := verifyGitRepo(opts.ProjectDir); err != nil {
+	if err := verifyGitRepoContext(ctx, opts.ProjectDir); err != nil {
 		return "", fmt.Errorf("not a git repository: %w", err)
 	}
 
@@ -53,12 +58,15 @@ func Create(opts CreateOptions) (string, error) {
 		args = append(args, opts.Branch)
 	}
 
-	cmd := exec.CommandContext(context.Background(), "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = projectAbs
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
+		if _, statErr := os.Lstat(wtPath); statErr == nil {
+			_ = Remove(wtPath)
+		}
 		return "", fmt.Errorf("git worktree add: %w", err)
 	}
 
@@ -107,7 +115,11 @@ func List(projectDir string) ([]string, error) {
 }
 
 func verifyGitRepo(dir string) error {
-	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", "--is-inside-work-tree")
+	return verifyGitRepoContext(context.Background(), dir)
+}
+
+func verifyGitRepoContext(ctx context.Context, dir string) error {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
 	cmd.Dir = dir
 	return cmd.Run()
 }

@@ -1,6 +1,7 @@
 package kataguard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
@@ -9,6 +10,22 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestValidationRequestKeepsOldNodeWireShape(t *testing.T) {
+	data, err := json.Marshal(nodeRequest{Action: "validate", Runtime: "io.containerd.kata.v2", Endpoint: "unix:///run/codex-dock-node.sock"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy struct {
+		Action, Runtime, Allocation, Worker, Endpoint, ResourceProfile string
+		Force                                                          bool
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&legacy); err != nil {
+		t.Fatalf("older node rejected validation request: %v", err)
+	}
+}
 
 func TestClientRejectsNodesWithoutCoherentSharedWorkspaces(t *testing.T) {
 	for _, cache := range []string{"", "auto", "always", "none"} {

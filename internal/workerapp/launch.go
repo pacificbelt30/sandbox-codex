@@ -22,7 +22,7 @@ func Launch(ctx context.Context, runner Runner, opts sandbox.RunOptions) (id str
 		return "", err
 	}
 	if opts.UseWorktree && opts.WorktreePath == "" {
-		path, err := worktree.Create(worktree.CreateOptions{
+		path, err := worktree.CreateContext(ctx, worktree.CreateOptions{
 			ProjectDir: opts.ProjectDir,
 			Branch:     opts.Branch,
 			NewBranch:  opts.NewBranch,

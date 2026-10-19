@@ -27,7 +27,10 @@ type NodeInfo struct {
 }
 type nodeRequest struct {
 	Action, Runtime, Allocation, Worker, Endpoint, ResourceProfile string
-	RequestKey, Fingerprint, Lease, WorkerID                       string
+	RequestKey                                                     string `json:"RequestKey,omitempty"`
+	Fingerprint                                                    string `json:"Fingerprint,omitempty"`
+	Lease                                                          string `json:"Lease,omitempty"`
+	WorkerID                                                       string `json:"WorkerID,omitempty"`
 	Force                                                          bool
 }
 type nodeReply struct {
@@ -35,6 +38,7 @@ type nodeReply struct {
 	Info                NodeInfo
 	Inventory           Inventory
 	Launch              LaunchRecord
+	Profiles            []ResourceProfile
 }
 
 // Serve hosts the containerd engine and fixed Kata verification profile.
@@ -140,6 +144,8 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 				reply.Info = NodeInfo{Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, SharedFSCache: "none", BuildVersion: buildinfo.Version, Protected: append(g.ProtectedPaths(), socket)}
 			case "inventory":
 				reply.Inventory, err = g.Inventory(ctx)
+			case "profiles":
+				reply.Profiles = ResourceProfiles()
 			case "recover-orphan":
 				err = g.RecoverOrphan(ctx, req.Allocation, req.Force)
 			case "reserve":
@@ -286,6 +292,11 @@ func (c *Client) Reserve(ctx context.Context, id string) (string, error) {
 func (c *Client) ClaimLaunch(ctx context.Context, key, fingerprint string) (LaunchRecord, error) {
 	r, err := c.call(ctx, nodeRequest{Action: "launch-claim", RequestKey: key, Fingerprint: fingerprint})
 	return r.Launch, err
+}
+
+func (c *Client) Profiles(ctx context.Context) ([]ResourceProfile, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "profiles"})
+	return r.Profiles, err
 }
 
 func (c *Client) FinishLaunch(ctx context.Context, key, lease, workerID string) (LaunchRecord, error) {

@@ -26,6 +26,11 @@ type RemoteProxy struct {
 }
 
 func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, error) {
+	return NewRemoteProxyContext(context.Background(), adminURL, containerURL, adminSecret)
+}
+
+// NewRemoteProxyContext lets embedding callers cancel the initial mode probe.
+func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSecret string) (*RemoteProxy, error) {
 	r := &RemoteProxy{
 		adminURL:          adminURL,
 		containerURL:      containerURL,
@@ -33,7 +38,7 @@ func NewRemoteProxy(adminURL, containerURL, adminSecret string) (*RemoteProxy, e
 		httpClient:        &http.Client{Timeout: 10 * time.Second},
 		adminSecretHeader: "X-Proxy-Admin-Secret",
 	}
-	mode, err := r.fetchMode()
+	mode, err := r.fetchMode(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +106,8 @@ func (r *RemoteProxy) RevokeTokenChecked(containerName string) error {
 	return nil
 }
 
-func (r *RemoteProxy) fetchMode() (map[string]bool, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.adminURL+"/admin/mode", nil)
+func (r *RemoteProxy) fetchMode(ctx context.Context) (map[string]bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.adminURL+"/admin/mode", nil)
 	if err != nil {
 		return nil, err
 	}
