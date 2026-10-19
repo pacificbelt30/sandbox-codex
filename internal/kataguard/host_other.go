@@ -13,7 +13,10 @@ type Config struct {
 	MaxWorkers                                       int
 	DNS                                              []string
 }
-type Guard struct{ manifest Manifest }
+type Guard struct {
+	config   Config
+	manifest Manifest
+}
 
 func trustedOwner(info os.FileInfo) bool { return false }
 func rootOwner(info os.FileInfo) bool    { return false }

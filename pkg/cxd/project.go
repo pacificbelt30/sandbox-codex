@@ -73,7 +73,7 @@ func (c *Client) buildTemplate(ctx context.Context, name, tag string, log io.Wri
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	dockerfile := filepath.Join(dir, "Dockerfile")
 	if err := os.WriteFile(dockerfile, tmpl.Dockerfile, 0600); err != nil {
 		return err

@@ -74,7 +74,7 @@ func (g *Guard) readLaunch(key string) (LaunchRecord, error) {
 	if err != nil {
 		return r, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	dec := json.NewDecoder(io.LimitReader(f, 4096))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&r); err != nil {
@@ -121,7 +121,7 @@ func (g *Guard) writeLaunch(r LaunchRecord) error {
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	return d.Sync()
 }
 
