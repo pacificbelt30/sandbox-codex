@@ -112,26 +112,31 @@ type RunOptions struct {
 	Branch          string
 	NewBranch       bool
 	Name            string
-	Agent           Agent
-	DirectAgent     bool     // exec the agent directly, without the interactive shell wrapper
-	AgentArgs       []string // argv forwarded verbatim to the selected agent
-	ExecCmd         string   // run this command instead of an interactive shell; ignored when Agent is set (the agent always takes priority)
-	Task            string
-	ApprovalMode    ApprovalMode
-	Model           string
-	WatchPolling    bool
-	ReadOnly        bool
-	ReadOnlyRootFS  bool
-	NoGitMetadata   bool
-	NoInternet      bool
-	TokenTTL        int
-	AgentsMD        string
-	Detach          bool
-	Parallel        int
-	ShellMode       bool
-	ShellType       ShellType // interactive shell binary; empty defaults to ShellBash
-	ContainerUser   string    // uid[:gid] to run as inside the container; empty = image default
-	Mounts          []MountSpec
+	// RequestKey and fingerprint are hashes of an embedding product's external
+	// request identity and immutable launch options; no raw task data is stored.
+	RequestKey         string
+	RequestFingerprint string
+	AllocationID       string
+	Agent              Agent
+	DirectAgent        bool     // exec the agent directly, without the interactive shell wrapper
+	AgentArgs          []string // argv forwarded verbatim to the selected agent
+	ExecCmd            string   // run this command instead of an interactive shell; ignored when Agent is set (the agent always takes priority)
+	Task               string
+	ApprovalMode       ApprovalMode
+	Model              string
+	WatchPolling       bool
+	ReadOnly           bool
+	ReadOnlyRootFS     bool
+	NoGitMetadata      bool
+	NoInternet         bool
+	TokenTTL           int
+	AgentsMD           string
+	Detach             bool
+	Parallel           int
+	ShellMode          bool
+	ShellType          ShellType // interactive shell binary; empty defaults to ShellBash
+	ContainerUser      string    // uid[:gid] to run as inside the container; empty = image default
+	Mounts             []MountSpec
 }
 
 // Worker represents a running or stopped codex-dock container.

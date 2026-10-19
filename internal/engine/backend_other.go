@@ -18,6 +18,10 @@ type Options struct {
 }
 type Backend struct{}
 
+func (*Backend) FindRequest(context.Context, string) (string, string, string, bool, error) {
+	return "", "", "", false, fmt.Errorf("node requests require Linux")
+}
+
 func Open(Options) (*Backend, error) {
 	return nil, fmt.Errorf("the containerd/Dragonball node requires Linux")
 }

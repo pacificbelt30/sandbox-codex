@@ -467,6 +467,22 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil //nolint:staticcheck
 }
 
+// FindRequest checks a deterministic worker name against the durable engine
+// record. The node uses this only to reconcile a lost launch response.
+func (b *Backend) FindRequest(ctx context.Context, name string) (id, key, fingerprint string, found bool, err error) {
+	r, _, err := b.load(ctx, name)
+	if errdefs.IsNotFound(err) {
+		return "", "", "", false, nil
+	}
+	if err != nil {
+		return "", "", "", false, err
+	}
+	if r.Name != name {
+		return "", "", "", false, fmt.Errorf("worker name resolves to another engine record")
+	}
+	return r.ID, r.Config.Labels["codex-dock.request-key"], r.Config.Labels["codex-dock.request-fingerprint"], true, nil
+}
+
 func (b *Backend) start(ctx context.Context, r *record, c cd.Container) error {
 	if t, err := c.Task(ctx, nil); err == nil {
 		status, e := t.Status(ctx)

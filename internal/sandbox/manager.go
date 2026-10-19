@@ -31,10 +31,12 @@ import (
 )
 
 const (
-	labelPrefix  = "codex-dock."
-	labelManaged = labelPrefix + "managed"
-	labelBranch  = labelPrefix + "branch"
-	labelTask    = labelPrefix + "task"
+	labelPrefix             = "codex-dock."
+	labelManaged            = labelPrefix + "managed"
+	labelBranch             = labelPrefix + "branch"
+	labelTask               = labelPrefix + "task"
+	labelRequest            = labelPrefix + "request-key"
+	labelRequestFingerprint = labelPrefix + "request-fingerprint"
 )
 
 // ManagerConfig holds configuration for the sandbox manager.
@@ -208,6 +210,8 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		if runErr == nil {
 			return
 		}
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cleanupCancel()
 		if tokenIssued && m.proxy != nil {
 			m.proxy.RevokeToken(name)
 		}
@@ -220,12 +224,12 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 			return // Durable removal also recovered the network/allocation/worktree.
 		}
 		if createdNetwork != "" {
-			if err := m.network.RemoveKataWorkerNetwork(ctx, createdNetwork, proxies); err != nil {
+			if err := m.network.RemoveKataWorkerNetwork(cleanupCtx, createdNetwork, proxies); err != nil {
 				runErr = errors.Join(runErr, fmt.Errorf("cleanup network %s: %w", createdNetwork, err))
 			}
 		}
 		if allocation != "" {
-			if err := m.releaseKataAllocation(context.Background(), allocation, createdID); err != nil {
+			if err := m.releaseKataAllocation(cleanupCtx, allocation, createdID); err != nil {
 				runErr = errors.Join(runErr, err)
 			}
 		}
@@ -243,6 +247,16 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		labelIsolation:                   isolation,
 		labelRuntime:                     registration,
 		labelPrefix + "resource-profile": profile.Name,
+	}
+	if opts.RequestKey != "" {
+		if len(opts.RequestKey) != 64 || len(opts.RequestFingerprint) != 64 || len(opts.AllocationID) != 32 {
+			return "", fmt.Errorf("invalid external request identity")
+		}
+		if _, err := hex.DecodeString(opts.RequestKey + opts.RequestFingerprint + opts.AllocationID); err != nil {
+			return "", fmt.Errorf("invalid external request identity: %w", err)
+		}
+		labels[labelRequest] = opts.RequestKey
+		labels[labelRequestFingerprint] = opts.RequestFingerprint
 	}
 	if opts.UseWorktree && opts.WorktreePath != "" {
 		labels[labelPrefix+"worktree"] = absWorkspace
@@ -348,9 +362,12 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	}
 	_ = codexArgs // passed via env
 	if isolation == RuntimeKata {
-		allocation, err = randomID(16)
-		if err != nil {
-			return "", err
+		allocation = opts.AllocationID
+		if allocation == "" {
+			allocation, err = randomID(16)
+			if err != nil {
+				return "", err
+			}
 		}
 		if err = m.prepareKataBootstrap(ctx, containerConfig, hostConfig, allocation, profile); err != nil {
 			return "", err

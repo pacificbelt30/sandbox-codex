@@ -27,12 +27,14 @@ type NodeInfo struct {
 }
 type nodeRequest struct {
 	Action, Runtime, Allocation, Worker, Endpoint, ResourceProfile string
+	RequestKey, Fingerprint, Lease, WorkerID                       string
 	Force                                                          bool
 }
 type nodeReply struct {
 	Error, Parent string
 	Info          NodeInfo
 	Inventory     Inventory
+	Launch        LaunchRecord
 }
 
 // Serve hosts the containerd engine and fixed Kata verification profile.
@@ -103,6 +105,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 		return err
 	}
 	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	var launchMu sync.Mutex
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/node" {
 			backend.ServeHTTP(w, r)
@@ -145,6 +148,17 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 				err = g.Verify(ctx, req.Allocation, req.Worker)
 			case "release":
 				err = g.Release(ctx, req.Allocation, req.Worker)
+			case "launch-claim", "launch-finish", "launch-abort":
+				launchMu.Lock()
+				switch req.Action {
+				case "launch-claim":
+					reply.Launch, err = g.claimLaunch(ctx, backend, req.RequestKey, req.Fingerprint)
+				case "launch-finish":
+					reply.Launch, err = g.finishLaunch(ctx, backend, req.RequestKey, req.Lease, req.WorkerID)
+				case "launch-abort":
+					reply.Launch, err = g.abortLaunch(req.RequestKey, req.Lease, req.WorkerID)
+				}
+				launchMu.Unlock()
 			default:
 				err = fmt.Errorf("unknown node action")
 			}
@@ -243,6 +257,21 @@ func (c *Client) Validate(ctx context.Context, runtime string) error {
 }
 func (c *Client) Reserve(ctx context.Context, id string) (string, error) {
 	return c.ReserveProfile(ctx, id, "standard")
+}
+
+func (c *Client) ClaimLaunch(ctx context.Context, key, fingerprint string) (LaunchRecord, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "launch-claim", RequestKey: key, Fingerprint: fingerprint})
+	return r.Launch, err
+}
+
+func (c *Client) FinishLaunch(ctx context.Context, key, lease, workerID string) (LaunchRecord, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "launch-finish", RequestKey: key, Lease: lease, WorkerID: workerID})
+	return r.Launch, err
+}
+
+func (c *Client) AbortLaunch(ctx context.Context, key, lease, workerID string) error {
+	_, err := c.call(ctx, nodeRequest{Action: "launch-abort", RequestKey: key, Lease: lease, WorkerID: workerID})
+	return err
 }
 
 func (c *Client) ReserveProfile(ctx context.Context, id, profile string) (string, error) {

@@ -5,6 +5,10 @@ package cxd
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -32,6 +36,7 @@ type Options struct {
 // Client is a handle to the local node. Close it when the product shuts down.
 type Client struct {
 	manager *sandbox.Manager
+	node    *kataguard.Client
 	opts    Options
 }
 
@@ -48,6 +53,9 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 	}
 	if opts.ProxyContainerURL == "" {
 		opts.ProxyContainerURL = "http://codex-auth-proxy:18080"
+	}
+	if opts.HTTPProxyURL == "" {
+		opts.HTTPProxyURL = "http://codex-http-proxy:18082"
 	}
 	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{
 		Socket: opts.NodeSocket, KataConfig: &kataguard.Config{Socket: opts.NodeSocket}, StateDir: opts.StateDir,
@@ -68,20 +76,27 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 		_ = mgr.Close()
 		return nil, fmt.Errorf("connecting to cxd node: %w", err)
 	}
-	return &Client{manager: mgr, opts: opts}, nil
+	node, err := kataguard.Connect(opts.NodeSocket, "unix://"+opts.NodeSocket)
+	if err != nil {
+		_ = mgr.Close()
+		return nil, err
+	}
+	return &Client{manager: mgr, node: node, opts: opts}, nil
 }
 
-func (c *Client) Close() error { return c.manager.Close() }
+func (c *Client) Close() error { return errors.Join(c.manager.Close(), c.node.Close()) }
 
 // LaunchRequest describes one worker. An image must already be built or
 // imported into the dedicated node. Agent may be "codex" or "claude"; when
 // empty the worker stays idle so the product can call Exec repeatedly.
 type LaunchRequest struct {
+	// RequestID is a stable, node-wide identifier for this launch attempt.
+	// Reuse it only with exactly the same immutable options.
+	RequestID      string
 	ProjectDir     string
 	Image          string
 	Profile        string
 	Runtime        string
-	Name           string
 	Agent          string
 	AgentArgs      []string
 	Branch         string
@@ -113,6 +128,9 @@ func fromWorker(w sandbox.Worker) Worker {
 // Launch creates and starts a detached worker. The returned ID remains useful
 // if cleanup fails after a canceled launch, so callers can retry Remove.
 func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) {
+	if len(req.RequestID) == 0 || len(req.RequestID) > 256 {
+		return Worker{}, fmt.Errorf("request ID must contain 1..256 bytes")
+	}
 	if req.ProjectDir == "" || !filepath.IsAbs(req.ProjectDir) {
 		return Worker{}, fmt.Errorf("project directory must be an absolute path")
 	}
@@ -125,12 +143,53 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	if req.TokenTTL == 0 {
 		req.TokenTTL = time.Hour
 	}
+	if req.Image == "" {
+		req.Image = "codex-dock:latest"
+	}
+	if req.Profile == "" {
+		req.Profile = "standard"
+	}
+	if req.Runtime == "" {
+		req.Runtime = sandbox.RuntimeKata
+	}
+	keyBytes := sha256.Sum256([]byte(req.RequestID))
+	key := hex.EncodeToString(keyBytes[:])
+	// Proxy location affects the resulting worker but the admin secret is never
+	// persisted or hashed into the node's request ledger.
+	fingerprintInput, err := json.Marshal(struct {
+		LaunchRequest
+		ProxyContainerURL string
+	}{req, c.opts.ProxyContainerURL})
+	if err != nil {
+		return Worker{}, err
+	}
+	fingerprintBytes := sha256.Sum256(fingerprintInput)
+	fingerprint := hex.EncodeToString(fingerprintBytes[:])
+	claim, err := c.node.ClaimLaunch(ctx, key, fingerprint)
+	if err != nil {
+		return Worker{}, err
+	}
+	if claim.State == "complete" {
+		w, err := c.Get(ctx, claim.WorkerID)
+		if err != nil {
+			return Worker{ID: claim.WorkerID, Name: claim.Name}, fmt.Errorf("completed request worker is unavailable: %w", err)
+		}
+		return w, nil
+	}
+	if claim.State == "cleanup-pending" {
+		return Worker{ID: claim.WorkerID, Name: claim.Name}, fmt.Errorf("request cleanup is pending for worker %s", claim.WorkerID)
+	}
+	if claim.State != "pending" || claim.Lease == "" {
+		return Worker{Name: claim.Name}, fmt.Errorf("request %s is already in progress or needs recovery", req.RequestID)
+	}
 	proxy, err := authproxy.NewRemoteProxy(c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
 	if err != nil {
+		c.abortClaim(key, claim.Lease, "")
 		return Worker{}, fmt.Errorf("connecting auth proxy: %w", err)
 	}
 	netMgr, err := network.NewManagerAt(c.opts.NodeSocket)
 	if err != nil {
+		c.abortClaim(key, claim.Lease, "")
 		return Worker{}, err
 	}
 	defer func() { _ = netMgr.Close() }()
@@ -140,12 +199,14 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		KataConfig: &kataguard.Config{Socket: c.opts.NodeSocket},
 	})
 	if err != nil {
+		c.abortClaim(key, claim.Lease, "")
 		return Worker{}, err
 	}
 	defer func() { _ = mgr.Close() }()
 	launch := sandbox.RunOptions{
 		ProjectDir: req.ProjectDir, Image: req.Image, ResourceProfile: req.Profile, Runtime: req.Runtime,
-		Name: req.Name, Agent: sandbox.Agent(req.Agent), DirectAgent: req.Agent != "", AgentArgs: req.AgentArgs,
+		Name: claim.Name, RequestKey: key, RequestFingerprint: fingerprint, AllocationID: kataguard.RequestAllocation(key),
+		Agent: sandbox.Agent(req.Agent), DirectAgent: req.Agent != "", AgentArgs: req.AgentArgs,
 		Branch: req.Branch, UseWorktree: req.UseWorktree, NewBranch: req.NewBranch,
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
 		NoInternet: req.NoInternet, ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
@@ -155,13 +216,26 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	id, err := workerapp.Launch(ctx, mgr, launch)
 	if err != nil {
-		return Worker{ID: id, Name: req.Name}, err
+		c.abortClaim(key, claim.Lease, id)
+		return Worker{ID: id, Name: claim.Name}, err
+	}
+	finishCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	_, finishErr := c.node.FinishLaunch(finishCtx, key, claim.Lease, id)
+	cancel()
+	if finishErr != nil {
+		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("worker started but launch confirmation failed: %w", finishErr)
 	}
 	w, err := mgr.InspectContext(ctx, id)
 	if err != nil {
-		return Worker{ID: id, Name: req.Name}, fmt.Errorf("worker started; inspect %s: %w", id, err)
+		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("worker started; inspect %s: %w", id, err)
 	}
 	return fromWorker(w), nil
+}
+
+func (c *Client) abortClaim(key, lease, id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = c.node.AbortLaunch(ctx, key, lease, id)
 }
 
 func (c *Client) Get(ctx context.Context, id string) (Worker, error) {
