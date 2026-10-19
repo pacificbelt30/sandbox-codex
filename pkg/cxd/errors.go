@@ -32,6 +32,8 @@ func classify(err error) error {
 	var node *kataguard.NodeError
 	if errors.As(err, &node) {
 		switch node.Code {
+		case "request_not_found":
+			return fmt.Errorf("%w: %w", ErrNotFound, err)
 		case "request_conflict":
 			return fmt.Errorf("%w: %w", ErrConflict, err)
 		case "capacity_exhausted":

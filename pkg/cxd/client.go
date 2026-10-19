@@ -150,8 +150,9 @@ func fromWorker(w sandbox.Worker) Worker {
 // Launch creates and starts a detached worker. The returned ID remains useful
 // if cleanup fails after a canceled launch, so callers can retry Remove.
 func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) {
-	if len(req.RequestID) == 0 || len(req.RequestID) > 256 {
-		return Worker{}, fmt.Errorf("request ID must contain 1..256 bytes")
+	key, err := requestKey(req.RequestID)
+	if err != nil {
+		return Worker{}, err
 	}
 	if req.ProjectDir == "" || !filepath.IsAbs(req.ProjectDir) {
 		return Worker{}, fmt.Errorf("project directory must be an absolute path")
@@ -177,8 +178,6 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	if req.Runtime == "" {
 		req.Runtime = sandbox.RuntimeKata
 	}
-	keyBytes := sha256.Sum256([]byte(req.RequestID))
-	key := hex.EncodeToString(keyBytes[:])
 	autoBranch := req.UseWorktree && req.Branch == ""
 	if autoBranch {
 		req.Branch = "cxd-" + key[:16]

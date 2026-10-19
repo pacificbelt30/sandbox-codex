@@ -166,6 +166,12 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 					reply.Launch, err = g.abortLaunch(req.RequestKey, req.Lease, req.WorkerID)
 				}
 				launchMu.Unlock()
+			case "launch-status":
+				launchMu.Lock()
+				reply.Launch, err = g.readLaunch(req.RequestKey)
+				// A status query never transfers the active launch lease.
+				reply.Launch.Lease = ""
+				launchMu.Unlock()
 			default:
 				err = fmt.Errorf("unknown node action")
 			}
@@ -174,6 +180,8 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 		if err != nil {
 			reply.Error = err.Error()
 			switch {
+			case errors.Is(err, os.ErrNotExist):
+				reply.Code = "request_not_found"
 			case errors.Is(err, ErrLaunchConflict):
 				reply.Code = "request_conflict"
 			case errors.Is(err, ErrCapacity):
@@ -298,6 +306,11 @@ func (c *Client) Reserve(ctx context.Context, id string) (string, error) {
 
 func (c *Client) ClaimLaunch(ctx context.Context, key, fingerprint string) (LaunchRecord, error) {
 	r, err := c.call(ctx, nodeRequest{Action: "launch-claim", RequestKey: key, Fingerprint: fingerprint})
+	return r.Launch, err
+}
+
+func (c *Client) LaunchStatus(ctx context.Context, key string) (LaunchRecord, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "launch-status", RequestKey: key})
 	return r.Launch, err
 }
 
