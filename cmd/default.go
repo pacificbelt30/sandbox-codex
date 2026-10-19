@@ -172,17 +172,17 @@ func writeRunAgent(path, value string, local bool) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 	if err := f.Chmod(mode); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if _, err := f.Write(updated); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
