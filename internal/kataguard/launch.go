@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,8 @@ import (
 const launchLeasePeriod = 5 * time.Minute
 
 var requestDigest = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+var ErrLaunchConflict = errors.New("launch request conflict")
 
 // LaunchRecord is the durable result of an externally identified launch.
 // Keys and fingerprints are hashes; raw job IDs and options stay in the caller.
@@ -135,7 +138,7 @@ func (g *Guard) claimLaunch(ctx context.Context, finder requestFinder, key, fing
 	} else if err != nil {
 		return LaunchRecord{}, err
 	} else if r.Fingerprint != fingerprint {
-		return LaunchRecord{}, fmt.Errorf("request ID was already used with different launch options")
+		return LaunchRecord{}, fmt.Errorf("%w: request ID was already used with different launch options", ErrLaunchConflict)
 	}
 	if r.State == "complete" || r.State == "cleanup-pending" {
 		return r, nil
@@ -146,7 +149,7 @@ func (g *Guard) claimLaunch(ctx context.Context, finder requestFinder, key, fing
 	}
 	if found {
 		if foundKey != key || foundFingerprint != fingerprint {
-			return LaunchRecord{}, fmt.Errorf("request worker name is occupied by another worker")
+			return LaunchRecord{}, fmt.Errorf("%w: request worker name is occupied by another worker", ErrLaunchConflict)
 		}
 		r.State, r.WorkerID, r.Lease, r.UpdatedAt = "complete", id, "", time.Now().UTC()
 		return r, g.writeLaunch(r)

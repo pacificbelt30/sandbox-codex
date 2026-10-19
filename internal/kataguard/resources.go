@@ -1,5 +1,9 @@
 package kataguard
 
+import "errors"
+
+var ErrCapacity = errors.New("kata capacity exhausted")
+
 // ResourceProfile is the pinned capacity contract for one Kata worker.
 // HostMemoryBytes is a reservation ceiling, not measured RSS.
 type ResourceProfile struct {

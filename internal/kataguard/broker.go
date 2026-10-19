@@ -31,10 +31,10 @@ type nodeRequest struct {
 	Force                                                          bool
 }
 type nodeReply struct {
-	Error, Parent string
-	Info          NodeInfo
-	Inventory     Inventory
-	Launch        LaunchRecord
+	Error, Code, Parent string
+	Info                NodeInfo
+	Inventory           Inventory
+	Launch              LaunchRecord
 }
 
 // Serve hosts the containerd engine and fixed Kata verification profile.
@@ -166,6 +166,12 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
 			reply.Error = err.Error()
+			switch {
+			case errors.Is(err, ErrLaunchConflict):
+				reply.Code = "request_conflict"
+			case errors.Is(err, ErrCapacity):
+				reply.Code = "capacity_exhausted"
+			}
 			w.WriteHeader(http.StatusConflict)
 		}
 		_ = json.NewEncoder(w).Encode(reply)
@@ -228,9 +234,27 @@ func (c *Client) call(ctx context.Context, req nodeRequest) (nodeReply, error) {
 		return result, err
 	}
 	if resp.StatusCode != 200 || result.Error != "" {
-		return result, fmt.Errorf("kata node: %s", result.Error)
+		return result, &NodeError{Code: result.Code, Message: result.Error}
 	}
 	return result, nil
+}
+
+// NodeError carries a stable error code for public API clients. Empty Code
+// means an older node or a failure without a specific classification.
+type NodeError struct {
+	Code    string
+	Message string
+}
+
+func (e *NodeError) Error() string { return "kata node: " + e.Message }
+
+type VersionMismatchError struct {
+	ClientVersion string
+	NodeVersion   string
+}
+
+func (e *VersionMismatchError) Error() string {
+	return fmt.Sprintf("CLI/node versions differ (%s / %s); update the matching node bundle with codex-dock setup", e.ClientVersion, e.NodeVersion)
 }
 
 func (c *Client) Validate(ctx context.Context, runtime string) error {
@@ -242,7 +266,7 @@ func (c *Client) Validate(ctx context.Context, runtime string) error {
 		return fmt.Errorf("kata node returned another profile")
 	}
 	if buildinfo.Version != "dev" && r.Info.BuildVersion != buildinfo.Version {
-		return fmt.Errorf("CLI/node versions differ (%s / %s); update the matching node bundle with codex-dock setup", buildinfo.Version, r.Info.BuildVersion)
+		return &VersionMismatchError{ClientVersion: buildinfo.Version, NodeVersion: r.Info.BuildVersion}
 	}
 	if r.Info.SharedFSCache != "none" {
 		return fmt.Errorf("kata node does not enforce coherent shared workspaces; update the node, regenerate its config with virtio_fs_cache=\"none\" and reseal the asset manifest")

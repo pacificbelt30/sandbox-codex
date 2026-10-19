@@ -251,7 +251,7 @@ func (g *Guard) ReserveProfile(ctx context.Context, id, profileName string) (str
 		}
 	}
 	if count >= g.config.MaxWorkers {
-		return "", fmt.Errorf("kata capacity exhausted (%d workers); stop/remove a worker or change the node limit", g.config.MaxWorkers)
+		return "", fmt.Errorf("%w (%d workers); stop/remove a worker or change the node limit", ErrCapacity, g.config.MaxWorkers)
 	}
 	// Persist the reservation before its cgroup exists, so interrupted creation
 	// remains discoverable and does not silently lose capacity.

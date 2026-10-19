@@ -62,6 +62,7 @@ nav:
       - TUI: commands/ui.md
       - CLIの更新: commands/update.md
       - 設定: configuration.md
+      - 製品組み込み用 Go API: go-api.md
       - 認証API: auth-proxy/endpoints.md
   - 仕組みと開発:
       - アーキテクチャ: architecture.md

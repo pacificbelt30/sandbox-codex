@@ -81,6 +81,11 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 		_ = mgr.Close()
 		return nil, err
 	}
+	if err := node.Validate(ctx, sandbox.DefaultKataRuntime); err != nil {
+		_ = node.Close()
+		_ = mgr.Close()
+		return nil, classify(err)
+	}
 	return &Client{manager: mgr, node: node, opts: opts}, nil
 }
 
@@ -167,30 +172,32 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	fingerprint := hex.EncodeToString(fingerprintBytes[:])
 	claim, err := c.node.ClaimLaunch(ctx, key, fingerprint)
 	if err != nil {
-		return Worker{}, err
+		return Worker{}, classify(err)
 	}
 	if claim.State == "complete" {
 		w, err := c.Get(ctx, claim.WorkerID)
 		if err != nil {
-			return Worker{ID: claim.WorkerID, Name: claim.Name}, fmt.Errorf("completed request worker is unavailable: %w", err)
+			if errors.Is(err, ErrNotFound) {
+				return Worker{ID: claim.WorkerID, Name: claim.Name}, fmt.Errorf("%w: %s", ErrRequestGone, claim.WorkerID)
+			}
+			return Worker{ID: claim.WorkerID, Name: claim.Name}, err
 		}
 		return w, nil
 	}
 	if claim.State == "cleanup-pending" {
-		return Worker{ID: claim.WorkerID, Name: claim.Name}, fmt.Errorf("request cleanup is pending for worker %s", claim.WorkerID)
+		return Worker{ID: claim.WorkerID, Name: claim.Name}, fmt.Errorf("%w for worker %s", ErrCleanupPending, claim.WorkerID)
 	}
 	if claim.State != "pending" || claim.Lease == "" {
-		return Worker{Name: claim.Name}, fmt.Errorf("request %s is already in progress or needs recovery", req.RequestID)
+		return Worker{Name: claim.Name}, fmt.Errorf("%w: request %s is active or needs recovery", ErrInProgress, req.RequestID)
 	}
 	proxy, err := authproxy.NewRemoteProxy(c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
 	if err != nil {
-		c.abortClaim(key, claim.Lease, "")
-		return Worker{}, fmt.Errorf("connecting auth proxy: %w", err)
+		abortErr := c.abortClaim(key, claim.Lease, "")
+		return Worker{}, errors.Join(fmt.Errorf("connecting auth proxy: %w", err), abortErr)
 	}
 	netMgr, err := network.NewManagerAt(c.opts.NodeSocket)
 	if err != nil {
-		c.abortClaim(key, claim.Lease, "")
-		return Worker{}, err
+		return Worker{}, errors.Join(err, c.abortClaim(key, claim.Lease, ""))
 	}
 	defer func() { _ = netMgr.Close() }()
 	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{
@@ -199,8 +206,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		KataConfig: &kataguard.Config{Socket: c.opts.NodeSocket},
 	})
 	if err != nil {
-		c.abortClaim(key, claim.Lease, "")
-		return Worker{}, err
+		return Worker{}, errors.Join(err, c.abortClaim(key, claim.Lease, ""))
 	}
 	defer func() { _ = mgr.Close() }()
 	launch := sandbox.RunOptions{
@@ -216,37 +222,37 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	id, err := workerapp.Launch(ctx, mgr, launch)
 	if err != nil {
-		c.abortClaim(key, claim.Lease, id)
-		return Worker{ID: id, Name: claim.Name}, err
+		abortErr := c.abortClaim(key, claim.Lease, id)
+		return Worker{ID: id, Name: claim.Name}, errors.Join(classify(err), abortErr)
 	}
 	finishCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	_, finishErr := c.node.FinishLaunch(finishCtx, key, claim.Lease, id)
 	cancel()
 	if finishErr != nil {
-		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("worker started but launch confirmation failed: %w", finishErr)
+		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker started but launch confirmation failed: %w", ErrOutcomeUnknown, finishErr)
 	}
 	w, err := mgr.InspectContext(ctx, id)
 	if err != nil {
-		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("worker started; inspect %s: %w", id, err)
+		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker started; inspect %s: %w", ErrOutcomeUnknown, id, err)
 	}
 	return fromWorker(w), nil
 }
 
-func (c *Client) abortClaim(key, lease, id string) {
+func (c *Client) abortClaim(key, lease, id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = c.node.AbortLaunch(ctx, key, lease, id)
+	return c.node.AbortLaunch(ctx, key, lease, id)
 }
 
 func (c *Client) Get(ctx context.Context, id string) (Worker, error) {
 	w, err := c.manager.InspectContext(ctx, id)
-	return fromWorker(w), err
+	return fromWorker(w), classify(err)
 }
 
 func (c *Client) List(ctx context.Context) ([]Worker, error) {
 	workers, err := c.manager.ListContext(ctx, true)
 	if err != nil {
-		return nil, err
+		return nil, classify(err)
 	}
 	result := make([]Worker, 0, len(workers))
 	for _, w := range workers {
@@ -265,27 +271,29 @@ type ExecRequest struct {
 
 // Exec returns the guest exit code separately from transport errors.
 func (c *Client) Exec(ctx context.Context, id string, req ExecRequest) (int64, error) {
-	return c.manager.Exec(ctx, id, req.Argv, req.Stdin, req.Stdout, req.Stderr)
+	code, err := c.manager.Exec(ctx, id, req.Argv, req.Stdin, req.Stdout, req.Stderr)
+	return code, classify(err)
 }
 
 // Wait waits for the main worker process. Canceling ctx only cancels the wait.
 func (c *Client) Wait(ctx context.Context, id string) (int64, error) {
-	return c.manager.WaitContext(ctx, id)
+	code, err := c.manager.WaitContext(ctx, id)
+	return code, classify(err)
 }
 
 func (c *Client) Start(ctx context.Context, id string) error {
-	return c.manager.StartContext(ctx, id)
+	return classify(c.manager.StartContext(ctx, id))
 }
 
 func (c *Client) Stop(ctx context.Context, id string, timeout time.Duration) error {
 	if timeout < 0 || timeout > time.Duration(math.MaxInt32)*time.Second {
 		return fmt.Errorf("invalid stop timeout")
 	}
-	return c.manager.StopContext(ctx, id, int(timeout/time.Second))
+	return classify(c.manager.StopContext(ctx, id, int(timeout/time.Second)))
 }
 
 func (c *Client) Remove(ctx context.Context, id string, force bool) error {
-	return c.manager.RemoveContext(ctx, id, force)
+	return classify(c.manager.RemoveContext(ctx, id, force))
 }
 
 // Profile reports the node's pinned reservation contract, not measured RSS.
