@@ -20,6 +20,7 @@ const managedLabel = "codex-dock.managed"
 const isolationLabel = "codex-dock.isolation"
 const allocationLabel = "codex-dock.allocation"
 const profileLabel = "codex-dock.verified-profile"
+const resourceProfileLabel = "codex-dock.resource-profile"
 
 func (g *Guard) engineClient() (*client.Client, error) {
 	return client.NewClientWithOpts(client.WithHost(g.config.Endpoint), client.WithAPIVersionNegotiation())
@@ -46,7 +47,7 @@ func (g *Guard) containerdVMs(ctx context.Context) ([]VM, error) {
 		if v.Config == nil || v.HostConfig == nil || v.Config.Labels[managedLabel] != "true" || v.Config.Labels[isolationLabel] != "kata" {
 			return nil, fmt.Errorf("worker identity changed while inspecting %s", row.ID)
 		}
-		profileName := v.Config.Labels["io.codex-dock.resource-profile"]
+		profileName := v.Config.Labels[resourceProfileLabel]
 		profile, profileOK := LookupResourceProfile(profileName)
 		vm := VM{ID: v.ID, ContainerID: v.ID, ContainerPresent: true, Name: strings.TrimPrefix(v.Name, "/"), Allocation: v.Config.Labels[allocationLabel], ResourceProfile: profile.Name}
 		if v.State != nil {

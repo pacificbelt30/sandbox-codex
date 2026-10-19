@@ -175,7 +175,7 @@ func (g *Guard) trackAllocation(ctx context.Context, id, worker string, requeste
 		}
 		parent, _ := g.Parent(id)
 		profile, _ := LookupResourceProfile(r.Profile)
-		if info.Config == nil || info.HostConfig == nil || info.Config.Labels[managedLabel] != "true" || info.Config.Labels[isolationLabel] != "kata" || info.Config.Labels[allocationLabel] != id || info.Config.Labels[profileLabel] != g.Stamp() || info.HostConfig.CgroupParent != parent || info.HostConfig.Runtime != g.manifest.Runtime || info.HostConfig.Memory != profile.GuestMemoryBytes {
+		if info.Config == nil || info.HostConfig == nil || info.Config.Labels[managedLabel] != "true" || info.Config.Labels[isolationLabel] != "kata" || info.Config.Labels[allocationLabel] != id || info.Config.Labels[profileLabel] != g.Stamp() || info.Config.Labels[resourceProfileLabel] != profile.Name || info.HostConfig.CgroupParent != parent || info.HostConfig.Runtime != g.manifest.Runtime || info.HostConfig.Memory != profile.GuestMemoryBytes {
 			return fmt.Errorf("containerd worker does not own the verified allocation")
 		}
 		r.Worker = worker

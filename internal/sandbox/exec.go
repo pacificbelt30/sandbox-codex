@@ -31,6 +31,9 @@ func (m *Manager) Exec(ctx context.Context, name string, argv []string, stdin io
 		return 0, fmt.Errorf("worker %s is not managed", name)
 	}
 	if v.Config.Labels[labelIsolation] == RuntimeKata {
+		if err := m.CheckRuntime(ctx, RunOptions{Runtime: RuntimeKata, KataRuntime: v.Config.Labels[labelRuntime], ResourceProfile: v.Config.Labels[labelPrefix+"resource-profile"]}); err != nil {
+			return 0, err
+		}
 		if err := m.validateKataWorker(ctx, id); err != nil {
 			return 0, err
 		}
