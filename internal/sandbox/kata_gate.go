@@ -46,11 +46,11 @@ func (m *Manager) kataNode() (kataNode, error) {
 		return m.guard, nil
 	}
 	socket := "/run/codex-dock-node.sock"
-	if m.kataConfig != nil && m.kataConfig.Socket != "" {
-		socket = m.kataConfig.Socket
-	}
 	if value, ok := os.LookupEnv("CODEX_DOCK_KATA_NODE_SOCKET"); ok {
 		socket = value
+	}
+	if m.kataConfig != nil && m.kataConfig.Socket != "" {
+		socket = m.kataConfig.Socket
 	}
 	guard, err := kataguard.Connect(socket, m.cli.DaemonHost())
 	if err != nil {

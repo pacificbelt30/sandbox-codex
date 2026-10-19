@@ -47,9 +47,20 @@ type Manager struct {
 	cli *client.Client
 }
 
+func (m *Manager) Close() error { return m.cli.Close() }
+
 // NewManager creates a new network Manager.
 func NewManager() (*Manager, error) {
 	cli, err := engine.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("connecting to containerd node: %w", err)
+	}
+	return &Manager{cli: cli}, nil
+}
+
+// NewManagerAt uses the same node socket as an embedding client.
+func NewManagerAt(socket string) (*Manager, error) {
+	cli, err := engine.NewClientAt(socket)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to containerd node: %w", err)
 	}

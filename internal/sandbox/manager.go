@@ -39,6 +39,7 @@ const (
 
 // ManagerConfig holds configuration for the sandbox manager.
 type ManagerConfig struct {
+	Socket  string
 	Proxy   authproxy.Service
 	Network *network.Manager
 	// HTTPProxyURL is the general-egress (forward) proxy URL workers use for
@@ -74,7 +75,13 @@ type Manager struct {
 
 // NewManager connects to the dedicated containerd node's compatibility API.
 func NewManager(cfg ManagerConfig) (*Manager, error) {
-	cli, err := engine.NewClient()
+	var cli *client.Client
+	var err error
+	if cfg.Socket == "" {
+		cli, err = engine.NewClient()
+	} else {
+		cli, err = engine.NewClientAt(cfg.Socket)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("connecting to containerd node: %w", err)
 	}
@@ -635,6 +642,32 @@ func (m *Manager) RemoveByName(name string, force bool) error {
 // List returns all codex-dock managed workers.
 func (m *Manager) List(all bool) ([]Worker, error) {
 	return m.ListContext(context.Background(), all)
+}
+
+// InspectContext returns one managed worker by its full ID or exact name.
+// An unmanaged node object is never returned through the worker API.
+func (m *Manager) InspectContext(ctx context.Context, reference string) (Worker, error) {
+	if reference == "" {
+		return Worker{}, fmt.Errorf("worker ID or name is required")
+	}
+	v, err := m.cli.ContainerInspect(ctx, reference)
+	if err != nil {
+		return Worker{}, err
+	}
+	if v.ContainerJSONBase == nil || v.Config == nil || v.Config.Labels[labelManaged] != "true" {
+		return Worker{}, fmt.Errorf("worker %q is not managed", reference)
+	}
+	w := Worker{ID: v.ID, Name: strings.TrimPrefix(v.Name, "/"), Image: v.Config.Image, Branch: v.Config.Labels[labelBranch], Task: v.Config.Labels[labelTask]}
+	if v.State != nil {
+		w.Status = v.State.Status
+		if t, err := time.Parse(time.RFC3339Nano, v.State.StartedAt); err == nil && !t.IsZero() {
+			w.StartedAt = &t
+		}
+		if t, err := time.Parse(time.RFC3339Nano, v.State.FinishedAt); err == nil && !t.IsZero() {
+			w.FinishedAt = &t
+		}
+	}
+	return w, nil
 }
 
 // ListContext lists workers with a caller-supplied deadline. Shell completion

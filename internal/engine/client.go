@@ -22,7 +22,11 @@ func Socket() string {
 }
 
 func NewClient() (*client.Client, error) {
-	p := Socket()
+	return NewClientAt(Socket())
+}
+
+// NewClientAt connects to an explicitly selected local node socket.
+func NewClientAt(p string) (*client.Client, error) {
 	if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 		return nil, fmt.Errorf("node socket must be an absolute clean path")
 	}

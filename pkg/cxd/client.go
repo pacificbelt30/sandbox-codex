@@ -1,0 +1,233 @@
+// Package cxd exposes a local Go API for products embedding codex-dock workers.
+// It talks to the existing root-owned node Unix socket; it does not start a
+// listener or grant access beyond the caller's node-socket permissions.
+package cxd
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"math"
+	"path/filepath"
+	"time"
+
+	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/internal/kataguard"
+	"github.com/pacificbelt30/codex-dock/internal/network"
+	"github.com/pacificbelt30/codex-dock/internal/sandbox"
+	"github.com/pacificbelt30/codex-dock/internal/workerapp"
+)
+
+// Options contains trusted host settings. A cloned project cannot set these.
+type Options struct {
+	NodeSocket        string
+	ProxyAdminURL     string
+	ProxyContainerURL string
+	ProxyAdminSecret  string
+	HTTPProxyURL      string
+	StateDir          string
+}
+
+// Client is a handle to the local node. Close it when the product shuts down.
+type Client struct {
+	manager *sandbox.Manager
+	opts    Options
+}
+
+// Open connects to the node without starting an auth proxy or a worker.
+func Open(ctx context.Context, opts Options) (*Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if opts.NodeSocket == "" {
+		opts.NodeSocket = engine.Socket()
+	}
+	if opts.ProxyAdminURL == "" {
+		opts.ProxyAdminURL = "http://127.0.0.1:18081"
+	}
+	if opts.ProxyContainerURL == "" {
+		opts.ProxyContainerURL = "http://codex-auth-proxy:18080"
+	}
+	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{
+		Socket: opts.NodeSocket, KataConfig: &kataguard.Config{Socket: opts.NodeSocket}, StateDir: opts.StateDir,
+		ProxyConnector: func(adminURL, containerURL string) (authproxy.Service, error) {
+			if adminURL == "" {
+				adminURL = opts.ProxyAdminURL
+			}
+			if containerURL == "" {
+				containerURL = opts.ProxyContainerURL
+			}
+			return authproxy.NewRemoteProxy(adminURL, containerURL, opts.ProxyAdminSecret)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := mgr.ListContext(ctx, true); err != nil {
+		_ = mgr.Close()
+		return nil, fmt.Errorf("connecting to cxd node: %w", err)
+	}
+	return &Client{manager: mgr, opts: opts}, nil
+}
+
+func (c *Client) Close() error { return c.manager.Close() }
+
+// LaunchRequest describes one worker. An image must already be built or
+// imported into the dedicated node. Agent may be "codex" or "claude"; when
+// empty the worker stays idle so the product can call Exec repeatedly.
+type LaunchRequest struct {
+	ProjectDir     string
+	Image          string
+	Profile        string
+	Runtime        string
+	Name           string
+	Agent          string
+	AgentArgs      []string
+	Branch         string
+	UseWorktree    bool
+	NewBranch      bool
+	ReadOnly       bool
+	ReadOnlyRootFS bool
+	NoGitMetadata  bool
+	NoInternet     bool
+	User           string
+	TokenTTL       time.Duration
+}
+
+// Worker describes a managed worker without exposing Docker/containerd types.
+type Worker struct {
+	ID         string
+	Name       string
+	Status     string
+	Image      string
+	Branch     string
+	StartedAt  *time.Time
+	FinishedAt *time.Time
+}
+
+func fromWorker(w sandbox.Worker) Worker {
+	return Worker{ID: w.ID, Name: w.Name, Status: w.Status, Image: w.Image, Branch: w.Branch, StartedAt: w.StartedAt, FinishedAt: w.FinishedAt}
+}
+
+// Launch creates and starts a detached worker. The returned ID remains useful
+// if cleanup fails after a canceled launch, so callers can retry Remove.
+func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) {
+	if req.ProjectDir == "" || !filepath.IsAbs(req.ProjectDir) {
+		return Worker{}, fmt.Errorf("project directory must be an absolute path")
+	}
+	if !sandbox.ValidAgent(sandbox.Agent(req.Agent)) {
+		return Worker{}, fmt.Errorf("invalid agent %q", req.Agent)
+	}
+	if req.TokenTTL < 0 || req.TokenTTL > time.Duration(math.MaxInt32)*time.Second {
+		return Worker{}, fmt.Errorf("invalid token TTL")
+	}
+	if req.TokenTTL == 0 {
+		req.TokenTTL = time.Hour
+	}
+	proxy, err := authproxy.NewRemoteProxy(c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
+	if err != nil {
+		return Worker{}, fmt.Errorf("connecting auth proxy: %w", err)
+	}
+	netMgr, err := network.NewManagerAt(c.opts.NodeSocket)
+	if err != nil {
+		return Worker{}, err
+	}
+	defer func() { _ = netMgr.Close() }()
+	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{
+		Socket: c.opts.NodeSocket, Proxy: proxy, Network: netMgr, HTTPProxyURL: c.opts.HTTPProxyURL,
+		ProxyAdminURL: c.opts.ProxyAdminURL, StateDir: c.opts.StateDir,
+		KataConfig: &kataguard.Config{Socket: c.opts.NodeSocket},
+	})
+	if err != nil {
+		return Worker{}, err
+	}
+	defer func() { _ = mgr.Close() }()
+	launch := sandbox.RunOptions{
+		ProjectDir: req.ProjectDir, Image: req.Image, ResourceProfile: req.Profile, Runtime: req.Runtime,
+		Name: req.Name, Agent: sandbox.Agent(req.Agent), DirectAgent: req.Agent != "", AgentArgs: req.AgentArgs,
+		Branch: req.Branch, UseWorktree: req.UseWorktree, NewBranch: req.NewBranch,
+		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
+		NoInternet: req.NoInternet, ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
+	}
+	if req.Agent == "" {
+		launch.ExecCmd = "exec sleep infinity"
+	}
+	id, err := workerapp.Launch(ctx, mgr, launch)
+	if err != nil {
+		return Worker{ID: id, Name: req.Name}, err
+	}
+	w, err := mgr.InspectContext(ctx, id)
+	if err != nil {
+		return Worker{ID: id, Name: req.Name}, fmt.Errorf("worker started; inspect %s: %w", id, err)
+	}
+	return fromWorker(w), nil
+}
+
+func (c *Client) Get(ctx context.Context, id string) (Worker, error) {
+	w, err := c.manager.InspectContext(ctx, id)
+	return fromWorker(w), err
+}
+
+func (c *Client) List(ctx context.Context) ([]Worker, error) {
+	workers, err := c.manager.ListContext(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Worker, 0, len(workers))
+	for _, w := range workers {
+		result = append(result, fromWorker(w))
+	}
+	return result, nil
+}
+
+// ExecRequest streams a command directly to and from an existing worker.
+type ExecRequest struct {
+	Argv   []string
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+// Exec returns the guest exit code separately from transport errors.
+func (c *Client) Exec(ctx context.Context, id string, req ExecRequest) (int64, error) {
+	return c.manager.Exec(ctx, id, req.Argv, req.Stdin, req.Stdout, req.Stderr)
+}
+
+// Wait waits for the main worker process. Canceling ctx only cancels the wait.
+func (c *Client) Wait(ctx context.Context, id string) (int64, error) {
+	return c.manager.WaitContext(ctx, id)
+}
+
+func (c *Client) Start(ctx context.Context, id string) error {
+	return c.manager.StartContext(ctx, id)
+}
+
+func (c *Client) Stop(ctx context.Context, id string, timeout time.Duration) error {
+	if timeout < 0 || timeout > time.Duration(math.MaxInt32)*time.Second {
+		return fmt.Errorf("invalid stop timeout")
+	}
+	return c.manager.StopContext(ctx, id, int(timeout/time.Second))
+}
+
+func (c *Client) Remove(ctx context.Context, id string, force bool) error {
+	return c.manager.RemoveContext(ctx, id, force)
+}
+
+// Profile reports the node's pinned reservation contract, not measured RSS.
+type Profile struct {
+	Name             string
+	CPUCores         int
+	GuestMemoryBytes int64
+	HostMemoryBytes  int64
+	PIDLimit         int64
+}
+
+func Profiles() []Profile {
+	profiles := kataguard.ResourceProfiles()
+	result := make([]Profile, 0, len(profiles))
+	for _, p := range profiles {
+		result = append(result, Profile{p.Name, p.CPUCores, p.GuestMemoryBytes, p.HostMemoryBytes, p.PIDLimit})
+	}
+	return result
+}
