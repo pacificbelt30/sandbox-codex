@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"os"
 	"path/filepath"
@@ -262,6 +263,13 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 			return fmt.Errorf("incomplete proxy record")
 		}
 		if v.Config.Labels[proxyLayoutLabel] != proxyLayoutVersion {
+			workers, listErr := c.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(filters.Arg("label", "codex-dock.managed=true"))})
+			if listErr != nil {
+				return fmt.Errorf("checking workers before proxy replacement: %w", listErr)
+			}
+			if len(workers) != 0 {
+				return fmt.Errorf("proxy %q uses an older layout; stop and remove %d retained workers before replacing it, because their proxy IPs and tokens are pinned", spec.name, len(workers))
+			}
 			if err = c.ContainerRemove(ctx, spec.name, container.RemoveOptions{Force: true}); err != nil {
 				return err
 			}
