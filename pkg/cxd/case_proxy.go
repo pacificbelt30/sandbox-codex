@@ -17,6 +17,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	dn "github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
@@ -27,7 +28,7 @@ import (
 )
 
 // CaseProxyOptions creates a distinct auth proxy for one credential case.
-// StoreSocket is served by credentialstore.Serve in the trusted host product.
+// StoreSocket is served for CaseID by credentialstore.Serve in the trusted host product.
 type CaseProxyOptions struct {
 	NodeSocket  string
 	Image       string
@@ -161,4 +162,42 @@ func waitCaseProxy(ctx context.Context, proxy CaseProxy, secret string) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+// RemoveCaseProxy removes a case proxy after every worker that references it
+// has been removed. Its case digest is checked before any destructive action.
+func RemoveCaseProxy(ctx context.Context, nodeSocket, name, caseID string) error {
+	if !caseProxyName.MatchString(name) || caseID == "" {
+		return fmt.Errorf("invalid case proxy identity")
+	}
+	if nodeSocket == "" {
+		nodeSocket = engine.Socket()
+	}
+	cli, err := engine.NewClientAt(nodeSocket)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cli.Close() }()
+	v, err := cli.ContainerInspect(ctx, name)
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256([]byte(caseID))
+	if v.Config == nil || v.Config.Labels["io.codex-dock.proxy-layout"] != "split-v3-oauth-state" || v.Config.Labels["io.codex-dock.credential-case"] != hex.EncodeToString(sum[:]) {
+		return fmt.Errorf("proxy %q does not belong to this credential case", name)
+	}
+	workers, err := cli.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(filters.Arg("label", "codex-dock.managed=true"))})
+	if err != nil {
+		return err
+	}
+	endpoint := "http://" + net.JoinHostPort(name, "18080")
+	for _, worker := range workers {
+		if worker.Labels["codex-dock.proxy-container-url"] == endpoint {
+			return fmt.Errorf("proxy %q still has a retained worker", name)
+		}
+	}
+	return cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
 }
