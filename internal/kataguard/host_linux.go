@@ -182,11 +182,17 @@ func (g *Guard) group(id string) (string, error) {
 	}
 	return filepath.Join(g.config.CgroupRoot, "cdx-"+id), nil
 }
-func groupLimits() map[string]string {
-	return map[string]string{"cpu.max": CPUQuota, "memory.max": strconv.FormatInt(HostMemory, 10), "memory.swap.max": "0", "pids.max": "512", "memory.oom.group": "1"}
+func groupLimitsFor(profile ResourceProfile) map[string]string {
+	return map[string]string{"cpu.max": CPUQuota, "memory.max": strconv.FormatInt(profile.HostMemoryBytes, 10), "memory.swap.max": "0", "pids.max": strconv.FormatInt(profile.PIDLimit, 10), "memory.oom.group": "1"}
 }
 func (g *Guard) checkLimits(path string) error {
-	for name, want := range groupLimits() {
+	id := strings.TrimPrefix(filepath.Base(path), "cdx-")
+	record, err := g.readRecord(id)
+	if err != nil {
+		return err
+	}
+	profile, _ := LookupResourceProfile(record.Profile)
+	for name, want := range groupLimitsFor(profile) {
 		b, err := os.ReadFile(filepath.Join(path, name))
 		if err != nil {
 			return err
@@ -199,6 +205,14 @@ func (g *Guard) checkLimits(path string) error {
 }
 
 func (g *Guard) Reserve(ctx context.Context, id string) (string, error) {
+	return g.ReserveProfile(ctx, id, "standard")
+}
+
+func (g *Guard) ReserveProfile(ctx context.Context, id, profileName string) (string, error) {
+	profile, ok := LookupResourceProfile(profileName)
+	if !ok {
+		return "", fmt.Errorf("unknown Kata resource profile %q", profileName)
+	}
 	path, err := g.group(id)
 	if err != nil {
 		return "", err
@@ -219,7 +233,7 @@ func (g *Guard) Reserve(ctx context.Context, id string) (string, error) {
 		if strings.Contains(string(data), "populated 1") {
 			return "", fmt.Errorf("kata allocation is already occupied")
 		}
-		if err := g.trackAllocation(ctx, id, ""); err != nil {
+		if err := g.trackAllocation(ctx, id, "", profile.Name); err != nil {
 			return "", err
 		}
 		return strings.TrimPrefix(path, "/sys/fs/cgroup"), nil
@@ -241,13 +255,13 @@ func (g *Guard) Reserve(ctx context.Context, id string) (string, error) {
 	}
 	// Persist the reservation before its cgroup exists, so interrupted creation
 	// remains discoverable and does not silently lose capacity.
-	if err = g.trackAllocation(ctx, id, ""); err != nil {
+	if err = g.trackAllocation(ctx, id, "", profile.Name); err != nil {
 		return "", err
 	}
 	if err = os.Mkdir(path, 0755); err != nil {
 		return "", err
 	}
-	for name, value := range groupLimits() {
+	for name, value := range groupLimitsFor(profile) {
 		if err = os.WriteFile(filepath.Join(path, name), []byte(value), 0600); err != nil {
 			_ = os.Remove(path)
 			return "", err

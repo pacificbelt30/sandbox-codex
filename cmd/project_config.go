@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/template"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
@@ -26,6 +27,7 @@ type ProjectConfig struct {
 		Template       string `toml:"template"`
 		Agent          string `toml:"agent"`
 		Model          string `toml:"model"`
+		ProfileSize    string `toml:"profile_size"`
 		ApprovalMode   string `toml:"approval_mode"`
 		WatchPolling   *bool  `toml:"watch_polling"`
 		ReadOnly       *bool  `toml:"read_only"`
@@ -42,7 +44,7 @@ type ProjectConfig struct {
 
 var projectKeys = map[string]map[string]bool{
 	"run": {
-		"image": true, "template": true, "agent": true, "model": true,
+		"image": true, "template": true, "agent": true, "model": true, "profile_size": true,
 		"approval_mode": true, "watch_polling": true,
 		"read_only": true, "read_only_rootfs": true, "no_git_metadata": true, "no_internet": true,
 	},
@@ -91,6 +93,11 @@ func loadProjectConfig(dir string) (*ProjectConfig, error) {
 	}
 	if cfg.Run.Agent != "" && !validAgentChoice(cfg.Run.Agent) {
 		return nil, fmt.Errorf("%s: run.agent must be shell, codex, or claude", path)
+	}
+	if cfg.Run.ProfileSize != "" {
+		if _, ok := kataguard.LookupResourceProfile(cfg.Run.ProfileSize); !ok {
+			return nil, fmt.Errorf("%s: run.profile_size must be standard or small", path)
+		}
 	}
 	if cfg.Build.Dockerfile != "" && cfg.Build.Template != "" {
 		return nil, fmt.Errorf("%s: choose either build.dockerfile or build.template", path)
@@ -195,6 +202,9 @@ func applyProjectRunConfig(cmd *cobra.Command, cfg *ProjectConfig) {
 	}
 	if !flags.Changed("model") && cfg.Run.Model != "" {
 		runOpts.Model = cfg.Run.Model
+	}
+	if !flags.Changed("profile-size") && cfg.Run.ProfileSize != "" {
+		runOpts.ResourceProfile = cfg.Run.ProfileSize
 	}
 	if !runOpts.DirectAgent && !flags.Changed("agent") && cfg.Run.Agent != "" {
 		agentFlag = cfg.Run.Agent

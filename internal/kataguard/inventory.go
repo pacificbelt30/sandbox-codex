@@ -12,6 +12,7 @@ import (
 type VM struct {
 	ID               string            `json:"id"`
 	Name             string            `json:"name,omitempty"`
+	ResourceProfile  string            `json:"resource_profile,omitempty"`
 	Allocation       string            `json:"allocation,omitempty"`
 	ContainerID      string            `json:"container_id,omitempty"`
 	ContainerPresent bool              `json:"container_present"`
@@ -114,6 +115,7 @@ func reconcileVMs(hosts map[string]VM, engine []VM, available bool) []VM {
 			vm = host
 			vm.ID = record.ID
 			vm.Name = record.Name
+			vm.ResourceProfile = record.ResourceProfile
 			vm.ContainerPresent = true
 			vm.EngineState = record.EngineState
 			vm.Problems = append(append([]string(nil), host.Problems...), record.Problems...)

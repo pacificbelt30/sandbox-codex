@@ -55,6 +55,21 @@ func TestReservationSurvivesManagerRestartAndRejectsChangedOwnership(t *testing.
 		t.Fatal("record removal is not idempotent:", err)
 	}
 }
+
+func TestSmallResourceProfileIsDurableAndCannotChange(t *testing.T) {
+	g := ledgerFixture(t)
+	id := strings.Repeat("d", 32)
+	if err := g.trackAllocation(context.Background(), id, "", "small"); err != nil {
+		t.Fatal(err)
+	}
+	record, err := g.readRecord(id)
+	if err != nil || record.Profile != "small" {
+		t.Fatalf("small profile was not persisted: %+v %v", record, err)
+	}
+	if err := g.trackAllocation(context.Background(), id, "", "standard"); err == nil {
+		t.Fatal("reservation profile changed during retry")
+	}
+}
 func TestAdmissionLockHonorsContext(t *testing.T) {
 	g := ledgerFixture(t)
 	unlock, err := g.admissionLock(context.Background())

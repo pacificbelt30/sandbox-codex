@@ -13,6 +13,7 @@ cxd の全コマンドリファレンスです。各コマンドの詳細は以�
 | [`cxd codex`](commands/run.md#codex-cli-を直接起動する) | Codex CLIの引数をそのまま渡して起動 | カレントディレクトリを共有・直接exec |
 | [`cxd run`](commands/run.md) | サンドボックスコンテナの起動 | オプション・承認モード・並列実行・パッケージ管理 |
 | [`cxd completion`](commands/completion.md) | Tab 補完スクリプトの生成 | Bash・Zsh・Fish・PowerShell |
+| [`cxd profile`](commands/run.md) | Kata VM の資源プロファイルを表示 | JSON 出力可 |
 | [`cxd default`](configuration.md#プロジェクト設定) | `cxd run` の既定エージェントを表示・変更 | グローバル設定または `--local` |
 | `cxd project init/check` | プロジェクト設定の作成と検証 | [設定リファレンス](configuration.md#プロジェクト設定) |
 | [`cxd setup`](setup.md) | ホスト導入・更新・復旧 | 計画表示 / --apply / --rollback |

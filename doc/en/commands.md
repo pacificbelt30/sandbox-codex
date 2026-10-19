@@ -13,6 +13,7 @@ Full command reference for codex-dock. See the individual pages below for detail
 | [`cxd codex`](commands/run.md#launch-codex-cli-directly) | Pass Codex CLI arguments through unchanged | Mount current directory and exec Codex |
 | [`cxd run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
 | [`cxd completion`](commands/completion.md) | Generate Tab completion scripts | Bash, Zsh, Fish, PowerShell |
+| [`cxd profile`](commands/run.md) | Show Kata VM resource profiles | JSON output |
 | [`cxd default`](configuration.md#project-settings) | Show or change the agent started by `cxd run` | Global config or `--local` |
 | `cxd project init/check` | Create and validate repository-local settings | [Configuration](configuration.md#project-settings) |
 | [`cxd setup`](../setup.md) | Install, update or restore the node | Plan, --apply, --rollback (Japanese guide) |

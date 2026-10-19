@@ -35,6 +35,10 @@ type kataNode interface {
 	Stamp() string
 }
 
+type kataProfileReserver interface {
+	ReserveProfile(context.Context, string, string) (string, error)
+}
+
 func (m *Manager) kataNode() (kataNode, error) {
 	m.guardMu.Lock()
 	defer m.guardMu.Unlock()
@@ -89,7 +93,7 @@ func (m *Manager) protectKataMounts(mounts []mount.Mount) error {
 	return nil
 }
 
-func (m *Manager) prepareKataBootstrap(ctx context.Context, c *container.Config, h *container.HostConfig, allocation string) error {
+func (m *Manager) prepareKataBootstrap(ctx context.Context, c *container.Config, h *container.HostConfig, allocation string, profile kataguard.ResourceProfile) error {
 	g, err := m.kataNode()
 	if err != nil {
 		return err
@@ -120,10 +124,16 @@ func (m *Manager) prepareKataBootstrap(ctx context.Context, c *container.Config,
 		h.Tmpfs = make(map[string]string)
 	}
 	h.Tmpfs["/run/codex-dock-control"] = "rw,noexec,nosuid,nodev,size=1048576,mode=1777"
-	h.Memory = kataguard.GuestMemory
-	h.MemorySwap = kataguard.GuestMemory
+	h.Memory = profile.GuestMemoryBytes
+	h.MemorySwap = profile.GuestMemoryBytes
 	h.NanoCPUs = 1_000_000_000
-	h.CgroupParent, err = g.Reserve(ctx, allocation)
+	if profile.Name == "standard" {
+		h.CgroupParent, err = g.Reserve(ctx, allocation)
+	} else if reserver, ok := g.(kataProfileReserver); ok {
+		h.CgroupParent, err = reserver.ReserveProfile(ctx, allocation, profile.Name)
+	} else {
+		return fmt.Errorf("kata node does not support %s resource profile", profile.Name)
+	}
 	return err
 }
 
@@ -161,7 +171,7 @@ func (m *Manager) execTrusted(ctx context.Context, id string, args []string) ([]
 	return out.Bytes(), nil
 }
 
-func verifyGuest(data []byte, nonce, hostBoot, user string, waiting bool) error {
+func verifyGuest(data []byte, nonce, hostBoot, user string, waiting bool, profile kataguard.ResourceProfile) error {
 	var probe map[string]string
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return err
@@ -169,7 +179,7 @@ func verifyGuest(data []byte, nonce, hostBoot, user string, waiting bool) error 
 	if probe["boot_id"] == "" || probe["boot_id"] == strings.TrimSpace(hostBoot) {
 		return fmt.Errorf("guest does not have a separate kernel boot identity")
 	}
-	if probe["pids"] != "512" || probe["memory"] != strconv.FormatInt(kataguard.GuestMemory, 10) || probe["cpu"] != kataguard.CPUQuota {
+	if probe["pids"] != strconv.FormatInt(profile.PIDLimit, 10) || probe["memory"] != strconv.FormatInt(profile.GuestMemoryBytes, 10) || probe["cpu"] != kataguard.CPUQuota {
 		return fmt.Errorf("guest resource limits do not match the Kata profile")
 	}
 	if waiting && !strings.Contains(probe["cmdline"], "\x00wait\x00"+nonce+"\x00") {
@@ -245,7 +255,11 @@ func (m *Manager) verifyKataGuest(ctx context.Context, id string, waiting bool) 
 	if err != nil {
 		return err
 	}
-	return verifyGuest(data, v.Config.Labels[labelAllocation], string(boot), v.Config.User, waiting)
+	profile, ok := kataguard.LookupResourceProfile(v.Config.Labels[labelPrefix+"resource-profile"])
+	if !ok {
+		return fmt.Errorf("unknown Kata resource profile")
+	}
+	return verifyGuest(data, v.Config.Labels[labelAllocation], string(boot), v.Config.User, waiting, profile)
 }
 
 func (m *Manager) releaseKataAllocation(ctx context.Context, allocation, id string) error {

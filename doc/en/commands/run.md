@@ -64,6 +64,7 @@ cxd run -- npm test -- --watch=false
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
 | `--read-only-rootfs` | | `false` | Make the image rootfs read-only; use tmpfs for HOME and temporary files |
+| `--profile-size` | | `standard` | Kata VM resource profile (`standard` or `small`) |
 | `--no-git-metadata` | | `false` | Do not automatically share linked worktree Git metadata |
 | `--mount` | | | Additional host directory to mount (repeatable): `<host-path>:<container-path>[:ro\|rw]` ([details](#--mount)) |
 | `--no-internet` | | `false` | Disconnect general egress; keep fixed AI API routes |
@@ -235,6 +236,8 @@ cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 > `--read-only` only affects the `/workspace` mount.
 
 `--read-only-rootfs` does not change `/workspace` or additional mount permissions. Install needed packages in the image first; startup package installation is rejected. HOME, `/tmp`, and `/var/tmp` are temporary tmpfs storage. With `--no-git-metadata`, a linked worktree's shared Git metadata is not mounted; provide private metadata and mounts if Git must run inside the VM.
+
+`cxd profile --json` reports the CPU, guest RAM, host limit, and PID limit of each profile. `small` provides 1 CPU, 1 GiB guest RAM, and a 2 GiB host limit; `standard` provides 1 CPU, 2 GiB guest RAM, and a 3 GiB host limit. `--profile-size small` requires Kata. Measure actual memory use and startup performance on the execution host.
 
 This can also be set as a default via `mounts` in the `[run]` section of the config
 file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.

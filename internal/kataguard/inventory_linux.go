@@ -46,13 +46,15 @@ func (g *Guard) containerdVMs(ctx context.Context) ([]VM, error) {
 		if v.Config == nil || v.HostConfig == nil || v.Config.Labels[managedLabel] != "true" || v.Config.Labels[isolationLabel] != "kata" {
 			return nil, fmt.Errorf("worker identity changed while inspecting %s", row.ID)
 		}
-		vm := VM{ID: v.ID, ContainerID: v.ID, ContainerPresent: true, Name: strings.TrimPrefix(v.Name, "/"), Allocation: v.Config.Labels[allocationLabel]}
+		profileName := v.Config.Labels["io.codex-dock.resource-profile"]
+		profile, profileOK := LookupResourceProfile(profileName)
+		vm := VM{ID: v.ID, ContainerID: v.ID, ContainerPresent: true, Name: strings.TrimPrefix(v.Name, "/"), Allocation: v.Config.Labels[allocationLabel], ResourceProfile: profile.Name}
 		if v.State != nil {
 			vm.EngineState = v.State.Status
 		}
 		vm.CreatedAt, _ = time.Parse(time.RFC3339Nano, v.Created)
 		parent, err := g.Parent(vm.Allocation)
-		if err != nil || v.HostConfig.CgroupParent != parent || v.HostConfig.Runtime != g.manifest.Runtime || v.Config.Labels[profileLabel] != g.Stamp() {
+		if err != nil || !profileOK || v.HostConfig.Memory != profile.GuestMemoryBytes || v.HostConfig.CgroupParent != parent || v.HostConfig.Runtime != g.manifest.Runtime || v.Config.Labels[profileLabel] != g.Stamp() {
 			vm.Problems = append(vm.Problems, "containerd worker does not match the node's allocation/profile")
 		}
 		vms = append(vms, vm)
@@ -66,6 +68,8 @@ func (g *Guard) observeEnvelope(ctx context.Context, id string) VM {
 	record, err := g.readRecord(id)
 	if err == nil {
 		vm.Tracked = true
+		profile, _ := LookupResourceProfile(record.Profile)
+		vm.ResourceProfile = profile.Name
 		vm.Name = record.Name
 		vm.ContainerID = record.Worker
 		vm.CreatedAt = record.CreatedAt

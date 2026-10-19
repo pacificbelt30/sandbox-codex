@@ -1,0 +1,41 @@
+package kataguard
+
+// ResourceProfile is the pinned capacity contract for one Kata worker.
+// HostMemoryBytes is a reservation ceiling, not measured RSS.
+type ResourceProfile struct {
+	Name             string `json:"name"`
+	CPUCores         int    `json:"cpu_cores"`
+	GuestMemoryBytes int64  `json:"guest_memory_bytes"`
+	HostMemoryBytes  int64  `json:"host_memory_bytes"`
+	PIDLimit         int64  `json:"pid_limit"`
+}
+
+const SmallGuestMemory = int64(1024 * 1024 * 1024)
+const SmallHostMemory = int64(2048 * 1024 * 1024)
+
+func CurrentResourceProfile() ResourceProfile {
+	return ResourceProfile{
+		Name:             "standard",
+		CPUCores:         1,
+		GuestMemoryBytes: GuestMemory,
+		HostMemoryBytes:  HostMemory,
+		PIDLimit:         512,
+	}
+}
+
+func LookupResourceProfile(name string) (ResourceProfile, bool) {
+	switch name {
+	case "", "standard":
+		return CurrentResourceProfile(), true
+	case "small":
+		return ResourceProfile{Name: "small", CPUCores: 1, GuestMemoryBytes: SmallGuestMemory, HostMemoryBytes: SmallHostMemory, PIDLimit: 512}, true
+	default:
+		return ResourceProfile{}, false
+	}
+}
+
+func ResourceProfiles() []ResourceProfile {
+	standard := CurrentResourceProfile()
+	small, _ := LookupResourceProfile("small")
+	return []ResourceProfile{standard, small}
+}

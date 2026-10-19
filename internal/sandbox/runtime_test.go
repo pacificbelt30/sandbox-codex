@@ -16,6 +16,7 @@ import (
 	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/system"
 	"github.com/docker/docker/client"
+	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 )
 
 func TestRuntimeSelectionFailsClosed(t *testing.T) {
@@ -43,6 +44,24 @@ func TestRuntimeSelectionFailsClosed(t *testing.T) {
 	info.OSType = "windows"
 	if err := validateRuntime(info, RuntimeKata, "kata"); err == nil {
 		t.Fatal("non-Linux daemon accepted")
+	}
+}
+
+func TestSmallKataProfileSetsAndVerifiesWorkerMemory(t *testing.T) {
+	f, m := newEngineFixture(t)
+	id, err := m.Run(RunOptions{Name: "small-worker", ProjectDir: t.TempDir(), Runtime: RuntimeKata, ResourceProfile: "small", Detach: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.worker.Config.Labels[labelPrefix+"resource-profile"] != "small" || f.worker.HostConfig.Memory != kataguard.SmallGuestMemory || f.worker.HostConfig.MemorySwap != kataguard.SmallGuestMemory {
+		t.Fatalf("small VM size was not applied: %+v", f.worker.HostConfig.Resources)
+	}
+	if err := m.validateKataWorker(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	f.worker.HostConfig.Memory = kataguard.GuestMemory
+	if err := m.validateKataWorker(context.Background(), id); err == nil {
+		t.Fatal("changed VM memory passed validation")
 	}
 }
 
@@ -88,7 +107,8 @@ func newEngineFixture(t *testing.T) (*engineFixture, *Manager) {
 		for _, key := range []string{"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"} {
 			status += key + ":\t0000000000000000\n"
 		}
-		return json.Marshal(map[string]string{"boot_id": "fixture-guest-kernel", "status": status, "cmdline": guestGuard + "\x00wait\x00" + f.worker.Config.Labels[labelAllocation] + "\x00", "pids": "512", "memory": "2147483648", "cpu": "100000 100000"})
+		profile, _ := kataguard.LookupResourceProfile(f.worker.Config.Labels[labelPrefix+"resource-profile"])
+		return json.Marshal(map[string]string{"boot_id": "fixture-guest-kernel", "status": status, "cmdline": guestGuard + "\x00wait\x00" + f.worker.Config.Labels[labelAllocation] + "\x00", "pids": "512", "memory": strconv.FormatInt(profile.GuestMemoryBytes, 10), "cpu": "100000 100000"})
 	}
 	return f, m
 }
@@ -98,6 +118,12 @@ type fakeKataNode struct{}
 func (*fakeKataNode) Validate(context.Context, string) error { return nil }
 func (*fakeKataNode) Reserve(_ context.Context, id string) (string, error) {
 	return "/codex-dock/cdx-" + id, nil
+}
+func (f *fakeKataNode) ReserveProfile(ctx context.Context, id, profile string) (string, error) {
+	if _, ok := kataguard.LookupResourceProfile(profile); !ok {
+		return "", fmt.Errorf("invalid profile")
+	}
+	return f.Reserve(ctx, id)
 }
 func (*fakeKataNode) Verify(context.Context, string, string) error  { return nil }
 func (*fakeKataNode) Release(context.Context, string, string) error { return nil }

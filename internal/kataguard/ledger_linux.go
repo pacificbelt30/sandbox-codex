@@ -15,9 +15,9 @@ import (
 )
 
 type allocationRecord struct {
-	Version                         int
-	Allocation, Worker, Stamp, Name string
-	CreatedAt                       time.Time
+	Version                                  int
+	Allocation, Worker, Stamp, Name, Profile string
+	CreatedAt                                time.Time
 }
 
 func (g *Guard) admissionLock(ctx context.Context) (func(), error) {
@@ -87,6 +87,9 @@ func (g *Guard) readRecord(id string) (allocationRecord, error) {
 	if r.Version != 1 || r.Allocation != id || r.Stamp != g.Stamp() || r.CreatedAt.IsZero() || r.Worker != "" && !containerID.MatchString(r.Worker) {
 		return r, fmt.Errorf("untrusted allocation record")
 	}
+	if _, ok := LookupResourceProfile(r.Profile); !ok {
+		return r, fmt.Errorf("unknown allocation resource profile")
+	}
 	return r, nil
 }
 func syncDirectory(dir string) error {
@@ -137,12 +140,25 @@ func (g *Guard) removeRecord(id string) error {
 	}
 	return syncDirectory(dir)
 }
-func (g *Guard) trackAllocation(ctx context.Context, id, worker string) error {
+func (g *Guard) trackAllocation(ctx context.Context, id, worker string, requested ...string) error {
 	r, err := g.readRecord(id)
 	if os.IsNotExist(err) {
-		r = allocationRecord{Version: 1, Allocation: id, Stamp: g.Stamp(), CreatedAt: time.Now().UTC()}
+		profile := "standard"
+		if len(requested) != 0 {
+			profile = requested[0]
+		}
+		if _, ok := LookupResourceProfile(profile); !ok {
+			return fmt.Errorf("unknown allocation resource profile")
+		}
+		r = allocationRecord{Version: 1, Allocation: id, Stamp: g.Stamp(), Profile: profile, CreatedAt: time.Now().UTC()}
 	} else if err != nil {
 		return err
+	}
+	if len(requested) != 0 && requested[0] != "" {
+		existing, _ := LookupResourceProfile(r.Profile)
+		if requested[0] != existing.Name {
+			return fmt.Errorf("allocation resource profile changed")
+		}
 	}
 	if r.Worker != "" && worker != "" && r.Worker != worker {
 		return fmt.Errorf("allocation is bound to another worker")
@@ -158,7 +174,8 @@ func (g *Guard) trackAllocation(ctx context.Context, id, worker string) error {
 			return err
 		}
 		parent, _ := g.Parent(id)
-		if info.Config == nil || info.HostConfig == nil || info.Config.Labels[managedLabel] != "true" || info.Config.Labels[isolationLabel] != "kata" || info.Config.Labels[allocationLabel] != id || info.Config.Labels[profileLabel] != g.Stamp() || info.HostConfig.CgroupParent != parent || info.HostConfig.Runtime != g.manifest.Runtime {
+		profile, _ := LookupResourceProfile(r.Profile)
+		if info.Config == nil || info.HostConfig == nil || info.Config.Labels[managedLabel] != "true" || info.Config.Labels[isolationLabel] != "kata" || info.Config.Labels[allocationLabel] != id || info.Config.Labels[profileLabel] != g.Stamp() || info.HostConfig.CgroupParent != parent || info.HostConfig.Runtime != g.manifest.Runtime || info.HostConfig.Memory != profile.GuestMemoryBytes {
 			return fmt.Errorf("containerd worker does not own the verified allocation")
 		}
 		r.Worker = worker

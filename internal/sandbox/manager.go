@@ -116,6 +116,7 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 	if err := m.CheckRuntime(ctx, opts); err != nil {
 		return "", err
 	}
+	profile, _ := kataguard.LookupResourceProfile(opts.ResourceProfile)
 	if m.proxy != nil {
 		for _, endpoint := range []string{m.proxyAdminURL, m.proxy.ContainerEndpoint()} {
 			if endpoint == "" {
@@ -222,11 +223,12 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 
 	// Container labels for identification
 	labels := map[string]string{
-		labelManaged:   "true",
-		labelBranch:    opts.Branch,
-		labelTask:      opts.Task,
-		labelIsolation: isolation,
-		labelRuntime:   registration,
+		labelManaged:                     "true",
+		labelBranch:                      opts.Branch,
+		labelTask:                        opts.Task,
+		labelIsolation:                   isolation,
+		labelRuntime:                     registration,
+		labelPrefix + "resource-profile": profile.Name,
 	}
 	if opts.UseWorktree && opts.WorktreePath != "" {
 		labels[labelPrefix+"worktree"] = absWorkspace
@@ -336,7 +338,7 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 		if err != nil {
 			return "", err
 		}
-		if err = m.prepareKataBootstrap(ctx, containerConfig, hostConfig, allocation); err != nil {
+		if err = m.prepareKataBootstrap(ctx, containerConfig, hostConfig, allocation, profile); err != nil {
 			return "", err
 		}
 	}
@@ -433,7 +435,18 @@ func (m *Manager) Start(containerID string) (startErr error) {
 		if err != nil {
 			return err
 		}
-		if _, err = g.Reserve(ctx, v.Config.Labels[labelAllocation]); err != nil {
+		profile, ok := kataguard.LookupResourceProfile(v.Config.Labels[labelPrefix+"resource-profile"])
+		if !ok {
+			return fmt.Errorf("unknown Kata resource profile")
+		}
+		if profile.Name == "standard" {
+			_, err = g.Reserve(ctx, v.Config.Labels[labelAllocation])
+		} else if reserver, ok := g.(kataProfileReserver); ok {
+			_, err = reserver.ReserveProfile(ctx, v.Config.Labels[labelAllocation], profile.Name)
+		} else {
+			return fmt.Errorf("kata node does not support %s resource profile", profile.Name)
+		}
+		if err != nil {
 			return err
 		}
 	} else if err = m.restoreWorkerToken(v); err != nil {

@@ -78,6 +78,7 @@ func init() {
 	f.StringVar(&runOpts.Runtime, "runtime", sandbox.RuntimeKata, "Worker isolation: kata (default, requires Linux/KVM) or explicit runc compatibility mode; never falls back automatically")
 	f.StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration on the dedicated containerd node")
 	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "OCI image for the sandbox")
+	f.StringVar(&runOpts.ResourceProfile, "profile-size", "standard", "Kata worker size: standard or small (1 GiB guest RAM)")
 	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "cxd build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
@@ -147,6 +148,7 @@ func init() {
 	registerCompletion(runCmd, "user", cobra.FixedCompletions([]cobra.Completion{"current", "codex", "dir"}, cobra.ShellCompDirectiveNoFileComp))
 	registerCompletion(runCmd, "template", completeTemplates)
 	registerCompletion(runCmd, "image", completeImageTags)
+	registerCompletion(runCmd, "profile-size", cobra.FixedCompletions([]cobra.Completion{"standard", "small"}, cobra.ShellCompDirectiveNoFileComp))
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {
@@ -595,6 +597,9 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	}
 	if !flags.Changed("model") && viper.IsSet("run.model") {
 		runOpts.Model = viper.GetString("run.model")
+	}
+	if !flags.Changed("profile-size") && viper.IsSet("run.profile_size") {
+		runOpts.ResourceProfile = viper.GetString("run.profile_size")
 	}
 	if !flags.Changed("read-only") && viper.IsSet("run.read_only") {
 		runOpts.ReadOnly = viper.GetBool("run.read_only")

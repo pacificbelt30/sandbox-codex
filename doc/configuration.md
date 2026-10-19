@@ -130,6 +130,7 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 | `read_only` | `false` | `--read-only` |
 | `read_only_rootfs` | `false` | `--read-only-rootfs` |
 | `no_git_metadata` | `false` | `--no-git-metadata` |
+| `profile_size` | `standard` | `--profile-size` |
 | `no_internet` | `false` | `--no-internet` |
 
 明示した `--image` はテンプレートによるイメージ選択より優先します。

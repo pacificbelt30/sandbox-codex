@@ -26,8 +26,8 @@ type NodeInfo struct {
 	Protected                                []string
 }
 type nodeRequest struct {
-	Action, Runtime, Allocation, Worker, Endpoint string
-	Force                                         bool
+	Action, Runtime, Allocation, Worker, Endpoint, ResourceProfile string
+	Force                                                          bool
 }
 type nodeReply struct {
 	Error, Parent string
@@ -140,7 +140,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 			case "recover-orphan":
 				err = g.RecoverOrphan(ctx, req.Allocation, req.Force)
 			case "reserve":
-				reply.Parent, err = g.Reserve(ctx, req.Allocation)
+				reply.Parent, err = g.ReserveProfile(ctx, req.Allocation, req.ResourceProfile)
 			case "verify":
 				err = g.Verify(ctx, req.Allocation, req.Worker)
 			case "release":
@@ -242,7 +242,11 @@ func (c *Client) Validate(ctx context.Context, runtime string) error {
 	return nil
 }
 func (c *Client) Reserve(ctx context.Context, id string) (string, error) {
-	r, err := c.call(ctx, nodeRequest{Action: "reserve", Allocation: id})
+	return c.ReserveProfile(ctx, id, "standard")
+}
+
+func (c *Client) ReserveProfile(ctx context.Context, id, profile string) (string, error) {
+	r, err := c.call(ctx, nodeRequest{Action: "reserve", Allocation: id, ResourceProfile: profile})
 	return r.Parent, err
 }
 func (c *Client) Verify(ctx context.Context, id, worker string) error {
