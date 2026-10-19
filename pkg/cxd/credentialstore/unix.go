@@ -31,11 +31,12 @@ type saveReply struct {
 	Version string `json:"version"`
 }
 
-// Serve exposes a Store only on a private Unix socket. The auth proxy container
-// may bind-mount this socket; worker containers must never mount it.
-func Serve(ctx context.Context, path string, store Store) error {
-	if store == nil || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return fmt.Errorf("credential store requires a clean absolute socket path and a store")
+// Serve exposes one case through a private Unix socket. Use a distinct socket
+// per case so a proxy cannot request another case's credentials. Only the
+// matching auth proxy may bind-mount this socket; workers must never mount it.
+func Serve(ctx context.Context, path, caseID string, store Store) error {
+	if store == nil || caseID == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return fmt.Errorf("credential store requires a clean absolute socket path, case ID and store")
 	}
 	parent := filepath.Dir(path)
 	info, err := os.Lstat(parent)
@@ -75,8 +76,8 @@ func Serve(ctx context.Context, path string, store Store) error {
 		if !decodeRequest(w, r, &in) {
 			return
 		}
-		if in.CaseID == "" {
-			http.Error(w, "case ID required", http.StatusBadRequest)
+		if in.CaseID != caseID {
+			http.Error(w, "credential case not found", http.StatusNotFound)
 			return
 		}
 		creds, err := store.Load(r.Context(), in.CaseID)
@@ -91,7 +92,11 @@ func Serve(ctx context.Context, path string, store Store) error {
 		if !decodeRequest(w, r, &in) {
 			return
 		}
-		if in.CaseID == "" || in.Version == "" || (in.Provider != "openai" && in.Provider != "anthropic") {
+		if in.CaseID != caseID {
+			http.Error(w, "credential case not found", http.StatusNotFound)
+			return
+		}
+		if in.Version == "" || (in.Provider != "openai" && in.Provider != "anthropic") {
 			http.Error(w, "invalid refresh request", http.StatusBadRequest)
 			return
 		}

@@ -43,7 +43,7 @@ func (s *memoryStore) SaveRefresh(_ context.Context, id, version, provider strin
 	return next.Version, nil
 }
 
-func TestUnixStoreIsPrivateAndSeparatesCases(t *testing.T) {
+func TestUnixStoreIsPrivateAndConfinedToCase(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestUnixStoreIsPrivateAndSeparatesCases(t *testing.T) {
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, path, store) }()
+	go func() { done <- Serve(ctx, path, "user-a", store) }()
 	defer func() {
 		cancel()
 		select {
@@ -97,8 +97,13 @@ func TestUnixStoreIsPrivateAndSeparatesCases(t *testing.T) {
 	if _, err := client.SaveRefresh(context.Background(), "user-a", "a1", "openai", a); err != nil {
 		t.Fatal(err)
 	}
-	b, err := client.Load(context.Background(), "user-b")
-	if err != nil || b.OpenAIAPIKey != "key-b" || b.Version != "b1" {
+	if _, err := client.Load(context.Background(), "user-b"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("B credentials were exposed: %v", err)
+	}
+	if _, err := client.SaveRefresh(context.Background(), "user-b", "b1", "openai", Credentials{OpenAIAPIKey: "changed"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("B credentials were writable: %v", err)
+	}
+	if b, err := store.Load(context.Background(), "user-b"); err != nil || b.OpenAIAPIKey != "key-b" || b.Version != "b1" {
 		t.Fatalf("B credentials changed: %+v, %v", b, err)
 	}
 }
