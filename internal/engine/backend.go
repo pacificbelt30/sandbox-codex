@@ -866,6 +866,11 @@ func (b *Backend) importImages(w http.ResponseWriter, r *http.Request, ctx conte
 	for _, img := range imgs {
 		im := cd.NewImage(b.client, img)
 		if err = im.Unpack(ctx, b.opts.Snapshotter); err != nil {
+			// Import registers the tag before Unpack. Keep a failed unpack from
+			// looking like a usable image to the next build or container create.
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			err = errors.Join(err, b.client.ImageService().Delete(cleanupCtx, img.Name))
+			cancel()
 			failure(w, err)
 			return
 		}

@@ -62,12 +62,30 @@ func buildProxyImageFromExecutable(ctx context.Context, tag string) (bool, error
 	if err = dst.Close(); err != nil {
 		return true, err
 	}
+	certSource, err := os.Open("/etc/ssl/certs/ca-certificates.crt")
+	if err != nil {
+		return true, fmt.Errorf("opening host CA bundle for static proxy image: %w", err)
+	}
+	defer func() { _ = certSource.Close() }()
+	certDest, err := os.OpenFile(filepath.Join(dir, "ca-certificates.crt"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return true, err
+	}
+	if _, err = io.Copy(certDest, certSource); err != nil {
+		_ = certDest.Close()
+		return true, err
+	}
+	if err = certDest.Close(); err != nil {
+		return true, err
+	}
 	dockerfile := filepath.Join(dir, "Dockerfile")
-	contents := fmt.Sprintf(`FROM gcr.io/distroless/base-debian12
+	contents := fmt.Sprintf(`FROM scratch
 ARG CODEX_DOCK_BUILD_VERSION=dev
 LABEL %s=%q
 LABEL %s=$CODEX_DOCK_BUILD_VERSION
 COPY codex-dock /codex-dock
+COPY ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENTRYPOINT ["/codex-dock"]
 CMD ["proxy", "serve", "--listen", "0.0.0.0:18080"]
 `, proxyImageProtocolLabel, proxyImageProtocolVersion, proxyImageBuildLabel)
