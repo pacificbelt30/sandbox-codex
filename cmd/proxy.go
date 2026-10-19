@@ -12,6 +12,7 @@ import (
 
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/spf13/cobra"
@@ -26,6 +27,9 @@ const (
 	defaultHTTPProxyPort          = 18082
 	proxyLayoutLabel              = "io.codex-dock.proxy-layout"
 	proxyLayoutVersion            = "split-v3-oauth-state"
+	proxyImageProtocolLabel       = "io.codex-dock.proxy-protocol"
+	proxyImageProtocolVersion     = "oauth-state-v1"
+	proxyImageBuildLabel          = "io.codex-dock.proxy-build"
 )
 
 var (
@@ -209,15 +213,26 @@ func ensureProxyImage(ctx context.Context, image string) error {
 		return err
 	}
 	defer func() { _ = c.Close() }()
-	if _, err := c.ImageInspect(ctx, image); err == nil {
-		return nil
+	if inspected, err := c.ImageInspect(ctx, image); err == nil {
+		if inspected.Config != nil && proxyImageCompatible(inspected.Config.Labels) {
+			return nil
+		}
+		if image != "codex-dock-proxy:latest" {
+			return fmt.Errorf("proxy image %s does not match CLI version/protocol; rebuild it with the current proxy Dockerfile", image)
+		}
+	} else if !errdefs.IsNotFound(err) {
+		return fmt.Errorf("inspecting proxy image %s: %w", image, err)
 	}
-	fmt.Printf("Proxy image %s not found locally, building...\n", image)
+	fmt.Printf("Proxy image %s not found or outdated; building...\n", image)
 	dockerfile, buildCtx, err := resolveProxyDockerfile("")
 	if err != nil {
 		return err
 	}
 	return executeProxyBuild(ctx, image, dockerfile, buildCtx)
+}
+
+func proxyImageCompatible(labels map[string]string) bool {
+	return labels[proxyImageProtocolLabel] == proxyImageProtocolVersion && labels[proxyImageBuildLabel] == buildinfo.Version
 }
 
 // ensureProxyContainer (re)starts one proxy container from its spec: a running

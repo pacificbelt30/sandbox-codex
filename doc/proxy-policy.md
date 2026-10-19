@@ -46,6 +46,8 @@ cxd proxy run \
 
 `proxy run`は既存egressコンテナのポリシー識別子と要求した設定を照合し、古い版や設定の不一致をエラーにする。既存コンテナへ設定を反映したことにはせず、稼働中プロキシも自動で削除しない。設定ファイルの編集だけでは稼働中プロキシは変化しない。
 
+既定のproxyイメージはCLIのビルド版とprotocolラベルを照合し、古い場合はソースcheckoutからBuildKitで再ビルドする。独自の `proxy_image` は自動で上書きせず、互換性が不明なら明示的な再ビルドを要求する。
+
 1. 稼働ワーカーを停止し、成果を保存する。
 2. 現行バイナリで `cxd proxy build` を実行する。
 3. `cxd proxy stop --name codex-http-proxy`、`cxd proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。

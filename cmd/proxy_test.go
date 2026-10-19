@@ -8,8 +8,24 @@ import (
 	"testing"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"github.com/spf13/viper"
 )
+
+func TestProxyImageRequiresMatchingBuildAndProtocol(t *testing.T) {
+	labels := map[string]string{proxyImageProtocolLabel: proxyImageProtocolVersion, proxyImageBuildLabel: buildinfo.Version}
+	if !proxyImageCompatible(labels) {
+		t.Fatal("matching image rejected")
+	}
+	labels[proxyImageBuildLabel] = "older"
+	if proxyImageCompatible(labels) {
+		t.Fatal("stale proxy image accepted")
+	}
+	delete(labels, proxyImageProtocolLabel)
+	if proxyImageCompatible(labels) {
+		t.Fatal("unlabeled image accepted")
+	}
+}
 
 // TestInitConfigDefaults ensures the proxy image (and other settings read via
 // viper) have a built-in default even with no config file or env override, so

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 )
 
 var codexVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
@@ -36,6 +38,7 @@ func Build(ctx context.Context, tag, dockerfile, buildContext string, log io.Wri
 		addr = "unix:///run/codex-dock-buildkit/buildkitd.sock"
 	}
 	c := exec.CommandContext(ctx, "buildctl", "--addr", addr, "build", "--progress=plain", "--frontend", "dockerfile.v0", "--local", "context="+dir, "--local", "dockerfile="+filepath.Dir(df), "--opt", "filename="+filepath.Base(df), "--opt", "image-resolve-mode=local", "--output", "type=oci,name="+name+",dest=-")
+	c.Args = append(c.Args, "--opt", "build-arg:CODEX_DOCK_BUILD_VERSION="+buildinfo.Version)
 	if version := os.Getenv("CODEX_DOCK_CODEX_VERSION"); version != "" {
 		if !codexVersionPattern.MatchString(version) {
 			return fmt.Errorf("invalid CODEX_DOCK_CODEX_VERSION %q: expected an exact semver", version)
