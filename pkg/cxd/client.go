@@ -23,6 +23,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/workerapp"
 	"github.com/pacificbelt30/codex-dock/internal/workeregress"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // Options contains trusted host settings. A cloned project cannot set these.
@@ -127,6 +128,7 @@ type LaunchRequest struct {
 	User               string
 	Mounts             []Mount
 	TokenTTL           time.Duration
+	Identity           identity.Identity
 }
 
 // Mount is an additional host bind mount. Node socket access already grants
@@ -170,6 +172,14 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	if req.TokenTTL < 0 || req.TokenTTL > time.Duration(math.MaxInt32)*time.Second {
 		return Worker{}, fmt.Errorf("invalid token TTL")
+	}
+	if !req.Identity.Empty() {
+		if err := req.Identity.Validate(); err != nil {
+			return Worker{}, err
+		}
+		if req.Agent == "codex" && req.Identity.Provider != "openai" || req.Agent == "claude" && req.Identity.Provider != "anthropic" {
+			return Worker{}, fmt.Errorf("token provider does not match selected agent")
+		}
 	}
 	if req.TokenTTL == 0 {
 		req.TokenTTL = time.Hour
@@ -248,6 +258,9 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		abortErr := c.abortClaim(key, claim.Lease, "")
 		return Worker{}, errors.Join(fmt.Errorf("connecting auth proxy: %w", err), abortErr)
 	}
+	if proxy.IsCaseProxy() && req.Identity.Empty() {
+		return Worker{}, errors.Join(fmt.Errorf("case proxy requires a token identity"), c.abortClaim(key, claim.Lease, ""))
+	}
 	netMgr, err := network.NewManagerAt(c.opts.NodeSocket)
 	if err != nil {
 		return Worker{}, errors.Join(err, c.abortClaim(key, claim.Lease, ""))
@@ -271,6 +284,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
 		NoInternet: req.NoInternet, WatchPolling: req.WatchPolling,
 		ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
+		TokenIdentity: req.Identity,
 	}
 	for _, mount := range req.Mounts {
 		launch.Mounts = append(launch.Mounts, sandbox.MountSpec{Source: mount.Source, Target: mount.Target, ReadOnly: mount.ReadOnly})
@@ -352,6 +366,22 @@ func (c *Client) Stop(ctx context.Context, id string, timeout time.Duration) err
 
 func (c *Client) Remove(ctx context.Context, id string, force bool) error {
 	return classify(c.manager.RemoveContext(ctx, id, force))
+}
+
+func (c *Client) RevokeRun(ctx context.Context, id identity.Identity) error {
+	proxy, err := authproxy.NewRemoteProxyContext(ctx, c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
+	if err != nil {
+		return err
+	}
+	return proxy.RevokeRun(ctx, id)
+}
+
+func (c *Client) RevokeCase(ctx context.Context) error {
+	proxy, err := authproxy.NewRemoteProxyContext(ctx, c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
+	if err != nil {
+		return err
+	}
+	return proxy.RevokeCase(ctx)
 }
 
 // Profile reports the node's pinned reservation contract, not measured RSS.

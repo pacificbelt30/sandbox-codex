@@ -11,20 +11,27 @@ import (
 	"time"
 
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // Proxy is the Auth Proxy server that issues short-lived tokens to containers.
 type Proxy struct {
-	cfg         Config
-	apiKey      string
-	oauthCreds  *OAuthCredentials // non-nil when operating in OAuth mode
-	listener    net.Listener
-	server      *http.Server
-	mu          sync.RWMutex
-	refreshMu   sync.Mutex              // serialize refreshes across both providers
-	oauthSource map[string]string       // hash of read-only login refresh token
-	tokens      map[string]*tokenRecord // containerName -> record
-	addr        string
+	cfg                   Config
+	apiKey                string
+	oauthCreds            *OAuthCredentials // non-nil when operating in OAuth mode
+	listener              net.Listener
+	server                *http.Server
+	mu                    sync.RWMutex
+	refreshMu             sync.Mutex                  // serialize refreshes across both providers
+	oauthSource           map[string]string           // hash of read-only login refresh token
+	storeCreds            credentialstore.Credentials // protected by refreshMu
+	storeVersion          string                      // protected by refreshMu
+	caseConnectionVersion string                      // immutable after initialization
+	tokens                map[string]*tokenRecord     // containerName -> record
+	revokedRuns           map[identity.Identity]bool
+	caseRevoked           bool
+	addr                  string
 
 	// Admin listener (only used when Config.AdminListenAddr is set).
 	adminListener net.Listener
@@ -70,10 +77,14 @@ func NewProxy(cfg Config) (*Proxy, error) {
 	if cfg.Role != "" && cfg.Role != RoleAuth && cfg.Role != RoleEgress {
 		return nil, fmt.Errorf("unknown proxy role %q", cfg.Role)
 	}
+	if cfg.CredentialStore != nil && (cfg.isEgress() || len(cfg.AdminSecret) < 32 || cfg.AdminListenAddr == "") {
+		return nil, fmt.Errorf("external credential store requires an auth proxy with a separate protected admin listener")
+	}
 	p := &Proxy{
 		cfg:                    cfg,
 		oauthSource:            make(map[string]string),
 		tokens:                 make(map[string]*tokenRecord),
+		revokedRuns:            make(map[identity.Identity]bool),
 		httpClient:             http.DefaultClient,
 		oauthTokenURL:          "https://auth.openai.com/oauth/token",
 		apiUpstreamURL:         "https://api.openai.com/v1",
@@ -107,6 +118,33 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		}
 		p.egressPolicy = policy
 		p.httpClient = &http.Client{Transport: newProxyTransport((networkpolicy.Dialer{Policy: policy}).DialContext)}
+		return p, nil
+	}
+	if cfg.CredentialStore != nil {
+		if cfg.CaseID == "" || cfg.OAuthStateDir != "" {
+			return nil, fmt.Errorf("external credential store requires a case ID and forbids local OAuth state")
+		}
+		loaded, err := cfg.CredentialStore.Load(context.Background(), cfg.CaseID)
+		if err != nil {
+			return nil, fmt.Errorf("loading case credentials: %w", err)
+		}
+		if loaded.Version == "" || loaded.ConnectionVersion == "" || loaded.OpenAIAPIKey != "" && loaded.OpenAIOAuth != nil || loaded.AnthropicAPIKey != "" && loaded.AnthropicOAuth != nil {
+			return nil, fmt.Errorf("invalid external credential generation")
+		}
+		if loaded.OpenAIAPIKey == "" && loaded.OpenAIOAuth == nil && loaded.AnthropicAPIKey == "" && loaded.AnthropicOAuth == nil {
+			return nil, fmt.Errorf("external credential generation has no enabled provider")
+		}
+		if loaded.OpenAIOAuth != nil && (loaded.OpenAIOAuth.AccessToken == "" || loaded.OpenAIOAuth.RefreshToken == "") || loaded.AnthropicOAuth != nil && (loaded.AnthropicOAuth.AccessToken == "" || loaded.AnthropicOAuth.RefreshToken == "") {
+			return nil, fmt.Errorf("external OAuth credential is incomplete")
+		}
+		p.storeCreds, p.storeVersion, p.caseConnectionVersion = loaded, loaded.Version, loaded.ConnectionVersion
+		p.apiKey, p.anthropicAPIKey = loaded.OpenAIAPIKey, loaded.AnthropicAPIKey
+		if v := loaded.OpenAIOAuth; v != nil {
+			p.oauthCreds = &OAuthCredentials{IDToken: v.IDToken, AccessToken: v.AccessToken, RefreshToken: v.RefreshToken, AccountID: v.AccountID, LastRefresh: v.LastRefresh, ExpiresAt: v.ExpiresAt, TokenType: v.TokenType}
+		}
+		if v := loaded.AnthropicOAuth; v != nil {
+			p.anthropicOAuth = &AnthropicOAuthCredentials{AccessToken: v.AccessToken, RefreshToken: v.RefreshToken, ExpiresAt: v.ExpiresAt, SubscriptionType: v.SubscriptionType, Scopes: append([]string(nil), v.Scopes...)}
+		}
 		return p, nil
 	}
 
@@ -228,6 +266,8 @@ func (p *Proxy) Start() error {
 	adminMux.HandleFunc("/admin/issue", p.handleAdminIssue)
 	adminMux.HandleFunc("/admin/restore", p.handleAdminRestore)
 	adminMux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
+	adminMux.HandleFunc("/admin/revoke-run", p.handleAdminRevokeRun)
+	adminMux.HandleFunc("/admin/revoke-case", p.handleAdminRevokeCase)
 	adminMux.HandleFunc("/admin/mode", p.handleAdminMode)
 
 	if p.cfg.AdminListenAddr != "" {
@@ -256,6 +296,8 @@ func (p *Proxy) Start() error {
 		mux.HandleFunc("/admin/issue", p.handleAdminIssue)
 		mux.HandleFunc("/admin/restore", p.handleAdminRestore)
 		mux.HandleFunc("/admin/revoke", p.handleAdminRevoke)
+		mux.HandleFunc("/admin/revoke-run", p.handleAdminRevokeRun)
+		mux.HandleFunc("/admin/revoke-case", p.handleAdminRevokeCase)
 		mux.HandleFunc("/admin/mode", p.handleAdminMode)
 	}
 

@@ -1,0 +1,164 @@
+package cxd
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/containerd/errdefs"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	dn "github.com/docker/docker/api/types/network"
+	"github.com/docker/go-connections/nat"
+	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/internal/network"
+)
+
+// CaseProxyOptions creates a distinct auth proxy for one credential case.
+// StoreSocket is served by credentialstore.Serve in the trusted host product.
+type CaseProxyOptions struct {
+	NodeSocket  string
+	Image       string
+	Name        string
+	CaseID      string
+	StoreSocket string
+	AdminPort   int
+	AdminSecret string
+}
+
+type CaseProxy struct {
+	Name         string
+	AdminURL     string
+	ContainerURL string
+}
+
+var caseProxyName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+
+// EnsureCaseProxy starts an auth proxy with no host HOME credential mounts.
+// The store socket is mounted only into this proxy, never into worker VMs.
+func EnsureCaseProxy(ctx context.Context, opts CaseProxyOptions) (CaseProxy, error) {
+	if !caseProxyName.MatchString(opts.Name) || opts.CaseID == "" || len(opts.CaseID) > 256 || strings.ContainsAny(opts.CaseID, "\x00\r\n") || len(opts.AdminSecret) < 32 || opts.AdminPort < 1 || opts.AdminPort > 65535 {
+		return CaseProxy{}, fmt.Errorf("case proxy requires name, case ID, admin secret and a valid admin port")
+	}
+	if !filepath.IsAbs(opts.StoreSocket) || filepath.Clean(opts.StoreSocket) != opts.StoreSocket {
+		return CaseProxy{}, fmt.Errorf("credential store socket must be a clean absolute path")
+	}
+	info, err := os.Lstat(opts.StoreSocket)
+	if err != nil {
+		return CaseProxy{}, err
+	}
+	owner, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || owner.Uid != uint32(os.Geteuid()) || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm()&0077 != 0 {
+		return CaseProxy{}, fmt.Errorf("credential store socket must be private")
+	}
+	if opts.NodeSocket == "" {
+		opts.NodeSocket = engine.Socket()
+	}
+	if opts.Image == "" {
+		opts.Image = "codex-dock-proxy:latest"
+	}
+	cli, err := engine.NewClientAt(opts.NodeSocket)
+	if err != nil {
+		return CaseProxy{}, err
+	}
+	defer func() { _ = cli.Close() }()
+	imageInfo, err := cli.ImageInspect(ctx, opts.Image)
+	if err != nil {
+		return CaseProxy{}, err
+	}
+	if imageInfo.Config == nil || imageInfo.Config.Labels["io.codex-dock.proxy-protocol"] != "external-store-v1" || imageInfo.Config.Labels["io.codex-dock.proxy-build"] != buildinfo.Version {
+		return CaseProxy{}, fmt.Errorf("case proxy image is incompatible with Go client; rebuild the proxy image")
+	}
+	if existing, err := cli.NetworkInspect(ctx, network.EgressNetworkName, dn.InspectOptions{}); err == nil {
+		if existing.Driver != "bridge" || existing.Labels["codex-dock.managed"] != "true" {
+			return CaseProxy{}, fmt.Errorf("egress network is not managed by cxd")
+		}
+	} else if errdefs.IsNotFound(err) {
+		_, err = cli.NetworkCreate(ctx, network.EgressNetworkName, dn.CreateOptions{Driver: "bridge", Options: map[string]string{"com.docker.network.bridge.name": network.EgressBridgeName}, Labels: map[string]string{"codex-dock.managed": "true"}})
+		if err != nil {
+			return CaseProxy{}, err
+		}
+	} else {
+		return CaseProxy{}, err
+	}
+	sum := sha256.Sum256([]byte(opts.CaseID))
+	caseHash := hex.EncodeToString(sum[:])
+	result := CaseProxy{Name: opts.Name, AdminURL: "http://127.0.0.1:" + strconv.Itoa(opts.AdminPort), ContainerURL: (&url.URL{Scheme: "http", Host: net.JoinHostPort(opts.Name, "18080")}).String()}
+	if existing, err := cli.ContainerInspect(ctx, opts.Name); err == nil {
+		if existing.Config == nil || existing.State == nil || existing.Config.Image != opts.Image || existing.Config.Labels["io.codex-dock.proxy-layout"] != "split-v3-oauth-state" || existing.Config.Labels["io.codex-dock.credential-case"] != caseHash {
+			return CaseProxy{}, fmt.Errorf("case proxy name already belongs to another image, layout or case")
+		}
+		mounted := false
+		if existing.HostConfig != nil {
+			for _, m := range existing.HostConfig.Mounts {
+				if m.Source == opts.StoreSocket && m.Target == "/run/cxd-credential-store.sock" && m.ReadOnly {
+					mounted = true
+				}
+			}
+		}
+		if !mounted {
+			return CaseProxy{}, fmt.Errorf("case proxy credential socket differs; drain workers before replacement")
+		}
+		port, err := nat.NewPort("tcp", strconv.Itoa(opts.AdminPort))
+		if err != nil {
+			return CaseProxy{}, err
+		}
+		bindings := existing.HostConfig.PortBindings[port]
+		if len(bindings) != 1 || bindings[0].HostIP != "127.0.0.1" || bindings[0].HostPort != strconv.Itoa(opts.AdminPort) {
+			return CaseProxy{}, fmt.Errorf("case proxy admin port differs; drain workers before replacement")
+		}
+		if !existing.State.Running {
+			if err := cli.ContainerStart(ctx, opts.Name, container.StartOptions{}); err != nil {
+				return CaseProxy{}, err
+			}
+		}
+		return result, waitCaseProxy(ctx, result, opts.AdminSecret)
+	} else if !errdefs.IsNotFound(err) {
+		return CaseProxy{}, err
+	}
+	port, err := nat.NewPort("tcp", strconv.Itoa(opts.AdminPort))
+	if err != nil {
+		return CaseProxy{}, err
+	}
+	cfg := &container.Config{
+		Image: opts.Image, User: fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid()),
+		Cmd:    []string{"proxy", "serve", "--listen", "0.0.0.0:18080", "--role", "auth", "--admin-listen", "egress:" + strconv.Itoa(opts.AdminPort), "--admin-secret", opts.AdminSecret, "--block-private", "--credential-store-socket", "/run/cxd-credential-store.sock", "--case-id", opts.CaseID},
+		Labels: map[string]string{"io.codex-dock.proxy-layout": "split-v3-oauth-state", "io.codex-dock.credential-case": caseHash},
+	}
+	host := &container.HostConfig{Runtime: "runc", CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, NetworkMode: container.NetworkMode(network.EgressNetworkName), Mounts: []mount.Mount{{Type: mount.TypeBind, Source: opts.StoreSocket, Target: "/run/cxd-credential-store.sock", ReadOnly: true}}, PortBindings: nat.PortMap{port: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: strconv.Itoa(opts.AdminPort)}}}}
+	created, err := cli.ContainerCreate(ctx, cfg, host, nil, nil, opts.Name)
+	if err != nil {
+		return CaseProxy{}, err
+	}
+	if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		return CaseProxy{}, err
+	}
+	return result, waitCaseProxy(ctx, result, opts.AdminSecret)
+}
+
+func waitCaseProxy(ctx context.Context, proxy CaseProxy, secret string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	for {
+		if remote, err := authproxy.NewRemoteProxyContext(waitCtx, proxy.AdminURL, proxy.ContainerURL, secret); err == nil && remote.IsCaseProxy() {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("case proxy did not become ready: %w", waitCtx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}

@@ -265,6 +265,13 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		labels[labelPrefix+"proxy-container-url"] = m.proxy.ContainerEndpoint()
 		labels[labelPrefix+"proxy-admin-url"] = m.proxyAdminURL
 		labels[labelPrefix+"token-ttl"] = strconv.Itoa(opts.TokenTTL)
+		if !opts.TokenIdentity.Empty() {
+			encoded, err := json.Marshal(opts.TokenIdentity)
+			if err != nil {
+				return "", err
+			}
+			labels[labelPrefix+"token-identity"] = string(encoded)
+		}
 	}
 	if opts.ReadOnlyRootFS {
 		labels[labelPrefix+"read-only-rootfs"] = "true"
@@ -863,7 +870,13 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		token := opts.pendingPlaceholder
 		if token == "" {
 			var err error
-			token, err = m.proxy.IssueToken(name, opts.TokenTTL)
+			if opts.TokenIdentity.Empty() {
+				token, err = m.proxy.IssueToken(name, opts.TokenTTL)
+			} else if issuer, ok := m.proxy.(authproxy.IdentityIssuer); ok {
+				token, err = issuer.IssueTokenWithIdentity(name, opts.TokenTTL, opts.TokenIdentity)
+			} else {
+				return nil, fmt.Errorf("auth proxy does not support token identity")
+			}
 			if err != nil {
 				return nil, fmt.Errorf("issuing auth token: %w", err)
 			}

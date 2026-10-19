@@ -1,5 +1,7 @@
 package authproxy
 
+import "github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
+
 // Service describes the minimal functionality required by sandbox manager.
 // Implementations can be in-process (Proxy) or external (RemoteProxy).
 type Service interface {
@@ -12,11 +14,21 @@ type Service interface {
 	ContainerEndpoint() string
 }
 
+// IdentityIssuer is optional so legacy CLI launches retain their original
+// token contract. A caller requesting identity must never silently downgrade.
+type IdentityIssuer interface {
+	IssueTokenWithIdentity(string, int, identity.Identity) (string, error)
+}
+
 // TokenRestorer is an admin-only capability for restarting a retained worker.
 // Docker cannot replace a saved container's environment. The same placeholder
 // is reauthorized explicitly on restart, and remains revoked while stopped.
 type TokenRestorer interface {
 	RestoreToken(containerName, token string, ttlSec int) error
+}
+
+type IdentityRestorer interface {
+	RestoreTokenWithIdentity(containerName, token string, ttlSec int, id identity.Identity) error
 }
 
 // TokenRevoker reports revocation failures so cleanup can retain its journal.

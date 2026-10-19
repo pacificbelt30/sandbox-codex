@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // RemoteProxy talks to an externally running auth proxy service.
@@ -21,6 +23,8 @@ type RemoteProxy struct {
 	oauthMode          bool
 	anthropicMode      bool
 	anthropicOAuthMode bool
+	identityMode       bool
+	caseProxy          bool
 	httpClient         *http.Client
 	adminSecretHeader  string
 }
@@ -48,16 +52,27 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 	r.oauthMode = mode["oauth_mode"]
 	r.anthropicMode = mode["anthropic_available"]
 	r.anthropicOAuthMode = mode["anthropic_oauth_mode"]
+	r.identityMode = mode["token_identity"]
+	r.caseProxy = mode["case_proxy"]
 	return r, nil
 }
 
-func (r *RemoteProxy) ContainerEndpoint() string  { return r.containerURL }
-func (r *RemoteProxy) IsOAuthMode() bool          { return r.oauthMode }
-func (r *RemoteProxy) IsAnthropicMode() bool      { return r.anthropicMode }
-func (r *RemoteProxy) IsAnthropicOAuthMode() bool { return r.anthropicOAuthMode }
+func (r *RemoteProxy) ContainerEndpoint() string   { return r.containerURL }
+func (r *RemoteProxy) IsOAuthMode() bool           { return r.oauthMode }
+func (r *RemoteProxy) IsAnthropicMode() bool       { return r.anthropicMode }
+func (r *RemoteProxy) IsAnthropicOAuthMode() bool  { return r.anthropicOAuthMode }
+func (r *RemoteProxy) IsCaseProxy() bool           { return r.caseProxy }
+func (r *RemoteProxy) SupportsTokenIdentity() bool { return r.identityMode }
 
 func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, error) {
-	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec})
+	return r.IssueTokenWithIdentity(containerName, ttlSec, identity.Identity{})
+}
+
+func (r *RemoteProxy) IssueTokenWithIdentity(containerName string, ttlSec int, id identity.Identity) (string, error) {
+	if !id.Empty() && !r.identityMode {
+		return "", fmt.Errorf("auth proxy does not support token identity; rebuild it before launching this worker")
+	}
+	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec, "identity": id})
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.adminURL+"/admin/issue", bytes.NewReader(body))
 	if err != nil {
 		return "", err
@@ -102,6 +117,46 @@ func (r *RemoteProxy) RevokeTokenChecked(containerName string) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("proxy token revocation failed: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (r *RemoteProxy) RevokeRun(ctx context.Context, id identity.Identity) error {
+	if err := id.Validate(); err != nil {
+		return err
+	}
+	data, err := json.Marshal(id)
+	if err != nil {
+		return err
+	}
+	return r.revokeIdentity(ctx, "/admin/revoke-run", data)
+}
+
+func (r *RemoteProxy) RevokeCase(ctx context.Context) error {
+	return r.revokeIdentity(ctx, "/admin/revoke-case", nil)
+}
+
+func (r *RemoteProxy) revokeIdentity(ctx context.Context, path string, body []byte) error {
+	if !r.identityMode {
+		return fmt.Errorf("auth proxy does not support identity revocation")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.adminURL+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	if r.adminSecret != "" {
+		req.Header.Set(r.adminSecretHeader, r.adminSecret)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("identity revocation failed: HTTP %d", resp.StatusCode)
 	}
 	return nil
 }

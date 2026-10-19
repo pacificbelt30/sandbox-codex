@@ -50,7 +50,7 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	}
 	p.mu.RUnlock()
 
-	if found == nil || time.Now().After(found.ExpiresAt) {
+	if found == nil || time.Now().After(found.ExpiresAt) || found.Identity.Provider == "anthropic" {
 		http.Error(w, "token invalid or expired", http.StatusUnauthorized)
 		return
 	}

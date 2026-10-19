@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
@@ -16,6 +18,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -29,18 +32,21 @@ const (
 	proxyLayoutLabel              = "io.codex-dock.proxy-layout"
 	proxyLayoutVersion            = "split-v3-oauth-state"
 	proxyImageProtocolLabel       = "io.codex-dock.proxy-protocol"
-	proxyImageProtocolVersion     = "oauth-state-v1"
+	proxyImageProtocolVersion     = "external-store-v1"
 	proxyImageBuildLabel          = "io.codex-dock.proxy-build"
+	proxyCaseLabel                = "io.codex-dock.credential-case"
 )
 
 var (
-	proxyListenAddr      string
-	proxyAdminListenAddr string
-	proxyAdminSecret     string
-	proxyForwardAllow    []string
-	proxyRole            string
-	proxyBlockPrivate    bool
-	proxyOAuthStateDir   string
+	proxyListenAddr       string
+	proxyAdminListenAddr  string
+	proxyAdminSecret      string
+	proxyForwardAllow     []string
+	proxyRole             string
+	proxyBlockPrivate     bool
+	proxyOAuthStateDir    string
+	proxyCredentialSocket string
+	proxyCaseID           string
 
 	proxyBuildTag        string
 	proxyBuildDockerfile string
@@ -76,7 +82,17 @@ var proxyServeCmd = &cobra.Command{
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		applyForwardPolicyDefaults(cmd)
+		var store credentialstore.Store
+		if proxyCredentialSocket != "" {
+			var err error
+			store, err = credentialstore.NewUnixClient(proxyCredentialSocket)
+			if err != nil {
+				return err
+			}
+		}
 		p, err := authproxy.NewProxy(authproxy.Config{
+			CredentialStore: store,
+			CaseID:          proxyCaseID,
 			TokenTTL:        3600,
 			Verbose:         verbose,
 			Role:            proxyRole,
@@ -161,12 +177,19 @@ func startProxyContainer(ctx context.Context) error {
 	if err != nil {
 		home = ""
 	}
-	stateDir := filepath.Join(home, ".local", "state", "codex-dock", "oauth")
-	if err := os.MkdirAll(stateDir, 0700); err != nil {
-		return err
-	}
-	if info, err := os.Lstat(stateDir); err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return fmt.Errorf("OAuth state directory %s must be private (0700)", stateDir)
+	stateDir := ""
+	if proxyCredentialSocket == "" {
+		stateDir = filepath.Join(home, ".local", "state", "codex-dock", "oauth")
+		if err := os.MkdirAll(stateDir, 0700); err != nil {
+			return err
+		}
+		if info, err := os.Lstat(stateDir); err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+			return fmt.Errorf("OAuth state directory %s must be private (0700)", stateDir)
+		}
+	} else if proxyCaseID == "" {
+		return fmt.Errorf("--credential-store-socket requires --case-id")
+	} else if len(proxyAdminSecret) < 32 {
+		return fmt.Errorf("external credential store requires --admin-secret with at least 32 bytes")
 	}
 
 	// 1) Auth proxy: holds credentials, admin published, no forwarding.
@@ -180,7 +203,7 @@ func startProxyContainer(ctx context.Context) error {
 		adminListenAddr:  fmt.Sprintf("%s:%d", authproxy.AdminBindEgress, proxyRunAdminPort),
 		adminSecret:      proxyAdminSecret,
 		blockPrivate:     true, // defense-in-depth on its fixed upstreams
-		mountCreds:       true,
+		mountCreds:       proxyCredentialSocket == "",
 		apiKeyEnv:        os.Getenv("OPENAI_API_KEY"),
 		storedKeyPath:    filepath.Join(home, ".config", "codex-dock", "apikey"),
 		oauthJSONPath:    filepath.Join(home, ".codex", "auth.json"),
@@ -188,6 +211,8 @@ func startProxyContainer(ctx context.Context) error {
 		anthropicKeyPath: filepath.Join(home, ".config", "codex-dock", "anthropic-apikey"),
 		claudeCredsPath:  filepath.Join(home, ".claude", ".credentials.json"),
 		oauthStateDir:    stateDir,
+		credentialSocket: proxyCredentialSocket,
+		caseID:           proxyCaseID,
 	}
 	if err := ensureProxyContainer(ctx, auth); err != nil {
 		return err
@@ -274,6 +299,22 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 				return err
 			}
 		} else {
+			if spec.role == authproxy.RoleAuth && v.Config.Labels[proxyCaseLabel] != caseDigest(spec.caseID) {
+				return fmt.Errorf("proxy %q belongs to another credential case; use a separate proxy name", spec.name)
+			}
+			if spec.credentialSocket != "" {
+				mounted := false
+				if v.HostConfig != nil {
+					for _, mount := range v.HostConfig.Mounts {
+						if mount.Source == spec.credentialSocket && mount.Target == "/run/cxd-credential-store.sock" && mount.ReadOnly {
+							mounted = true
+						}
+					}
+				}
+				if !mounted {
+					return fmt.Errorf("proxy %q uses another credential store socket; drain workers before replacing it", spec.name)
+				}
+			}
 			if spec.role == authproxy.RoleEgress {
 				if err = checkProxyPolicy(v.Config.Labels[proxyPolicyLabel], spec); err != nil {
 					return err
@@ -355,6 +396,8 @@ func init() {
 	bindForwardPolicyFlags(proxyServeCmd)
 	proxyServeCmd.Flags().BoolVar(&proxyBlockPrivate, "block-private", false, "Refuse outbound connections to private/LAN/link-local addresses (RFC1918, 127/8, 169.254/16, ULA, CGNAT)")
 	proxyServeCmd.Flags().StringVar(&proxyOAuthStateDir, "oauth-state-dir", "", "Writable private directory for rotated OAuth credentials")
+	proxyServeCmd.Flags().StringVar(&proxyCredentialSocket, "credential-store-socket", "", "Private Unix socket for a host-managed credential store")
+	proxyServeCmd.Flags().StringVar(&proxyCaseID, "case-id", "", "Credential case selected for this auth proxy instance")
 
 	// build flags
 	proxyBuildCmd.Flags().StringVarP(&proxyBuildTag, "tag", "t", "", "Image tag (default: proxy_image from config)")
@@ -368,6 +411,8 @@ func init() {
 	proxyRunCmd.Flags().IntVar(&proxyRunHTTPPort, "http-port", defaultHTTPProxyPort, "Egress (http) proxy internal forward port (not host-published)")
 	proxyRunCmd.Flags().StringVar(&proxyRunNetwork, "network", network.ProxyNetworkName, "Node egress network to attach the proxy containers to")
 	proxyRunCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
+	proxyRunCmd.Flags().StringVar(&proxyCredentialSocket, "credential-store-socket", "", "Private host credential store Unix socket (requires --case-id)")
+	proxyRunCmd.Flags().StringVar(&proxyCaseID, "case-id", "", "Credential case for this auth proxy instance")
 	bindForwardPolicyFlags(proxyRunCmd)
 
 	// stop flags
@@ -404,6 +449,16 @@ type proxyRunArgs struct {
 	anthropicKeyPath string // ~/.config/codex-dock/anthropic-apikey
 	claudeCredsPath  string // ~/.claude/.credentials.json
 	oauthStateDir    string // private writable host directory
+	credentialSocket string // private host Unix socket, mounted only into auth proxy
+	caseID           string
+}
+
+func caseDigest(id string) string {
+	if id == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:])
 }
 
 // buildProxyRunArgs constructs the "docker run" argument list for one proxy
@@ -419,6 +474,8 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	}
 	if a.role == authproxy.RoleEgress {
 		args = append(args, "--label", proxyPolicyLabel+"="+forwardPolicyID(a))
+	} else if a.caseID != "" {
+		args = append(args, "--label", proxyCaseLabel+"="+caseDigest(a.caseID))
 	}
 	if a.adminPort > 0 {
 		args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", a.adminPort, a.adminPort))
@@ -447,6 +504,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 			args = append(args, "-v", a.oauthStateDir+":/root/.local/state/codex-dock/oauth:rw")
 		}
 	}
+	if a.credentialSocket != "" {
+		args = append(args, "-v", a.credentialSocket+":/run/cxd-credential-store.sock:ro")
+	}
 
 	args = append(args, a.image, "proxy", "serve", "--listen", a.listenAddr)
 	if a.role != "" {
@@ -463,6 +523,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	}
 	if a.oauthStateDir != "" {
 		args = append(args, "--oauth-state-dir", proxyCredentialHome+"/.local/state/codex-dock/oauth")
+	}
+	if a.credentialSocket != "" {
+		args = append(args, "--credential-store-socket", "/run/cxd-credential-store.sock", "--case-id", a.caseID)
 	}
 	rules := effectiveForwardRules(a)
 	for _, d := range rules.AllowDomains {

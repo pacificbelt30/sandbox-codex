@@ -1,12 +1,17 @@
 package authproxy
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 )
 
 type oauthState struct {
@@ -69,6 +74,40 @@ func secureStateDir(path string) error {
 // persistOAuthState is called before publishing a refreshed credential in memory.
 // Callers hold refreshMu. An atomic rename ensures restart sees either generation.
 func (p *Proxy) persistOAuthState(provider string, credentials any) error {
+	if store := p.cfg.CredentialStore; store != nil {
+		next := p.storeCreds
+		switch provider {
+		case "openai":
+			v, ok := credentials.(*OAuthCredentials)
+			if !ok || v == nil {
+				return fmt.Errorf("invalid OpenAI OAuth refresh")
+			}
+			next.OpenAIOAuth = &credentialstore.OpenAIOAuth{IDToken: v.IDToken, AccessToken: v.AccessToken, RefreshToken: v.RefreshToken, AccountID: v.AccountID, LastRefresh: v.LastRefresh, ExpiresAt: v.ExpiresAt, TokenType: v.TokenType}
+		case "anthropic":
+			v, ok := credentials.(*AnthropicOAuthCredentials)
+			if !ok || v == nil {
+				return fmt.Errorf("invalid Anthropic OAuth refresh")
+			}
+			next.AnthropicOAuth = &credentialstore.AnthropicOAuth{AccessToken: v.AccessToken, RefreshToken: v.RefreshToken, ExpiresAt: v.ExpiresAt, SubscriptionType: v.SubscriptionType, Scopes: append([]string(nil), v.Scopes...)}
+		default:
+			return fmt.Errorf("unknown OAuth provider")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		version, err := store.SaveRefresh(ctx, p.cfg.CaseID, p.storeVersion, provider, next)
+		if err != nil {
+			if errors.Is(err, credentialstore.ErrConflict) || errors.Is(err, credentialstore.ErrNotFound) {
+				p.revokeCaseTokens()
+			}
+			return err
+		}
+		if version == "" {
+			return fmt.Errorf("external credential store returned empty version")
+		}
+		next.Version = version
+		p.storeCreds, p.storeVersion = next, version
+		return nil
+	}
 	if p.cfg.OAuthStateDir == "" {
 		return nil
 	}

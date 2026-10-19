@@ -21,7 +21,7 @@ const (
 	proxyLayoutVersion = "split-v3-oauth-state"
 	proxyPolicyLabel   = "io.codex-dock.forward-policy"
 	imageProtocolLabel = "io.codex-dock.proxy-protocol"
-	imageProtocol      = "oauth-state-v1"
+	imageProtocol      = "external-store-v1"
 	imageBuildLabel    = "io.codex-dock.proxy-build"
 	proxyPort          = 18082
 )

@@ -29,6 +29,9 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
 		c.Env = append(c.Env, "HOME="+proxyCredentialHome)
 	}
+	if a.credentialSocket != "" {
+		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
+	}
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if arg == "-d" {
@@ -58,6 +61,18 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 			c.Env = append(c.Env, value)
 		case "-v":
 			parts := strings.Split(value, ":")
+			if len(parts) == 3 && parts[1] == "/run/cxd-credential-store.sock" && parts[2] == "ro" {
+				info, err := os.Lstat(parts[0])
+				if err != nil {
+					return nil, nil, err
+				}
+				owner, ok := info.Sys().(*syscall.Stat_t)
+				if !ok || owner.Uid != uint32(os.Geteuid()) || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm()&0077 != 0 {
+					return nil, nil, fmt.Errorf("credential store socket must be private")
+				}
+				h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: parts[0], Target: parts[1], ReadOnly: true})
+				continue
+			}
 			if len(parts) != 3 || (parts[2] != "ro" && (parts[2] != "rw" || parts[1] != "/root/.local/state/codex-dock/oauth")) {
 				return nil, nil, fmt.Errorf("invalid proxy bind mount mode")
 			}

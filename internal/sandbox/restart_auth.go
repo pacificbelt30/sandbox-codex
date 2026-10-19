@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 func (m *Manager) workerProxy(v container.InspectResponse) (authproxy.Service, error) {
@@ -49,6 +51,20 @@ func (m *Manager) restoreWorkerToken(v container.InspectResponse) error {
 	ttl, _ := strconv.Atoi(v.Config.Labels[labelPrefix+"token-ttl"])
 	if ttl <= 0 {
 		ttl = 3600
+	}
+	if raw := v.Config.Labels[labelPrefix+"token-identity"]; raw != "" {
+		var id identity.Identity
+		if err := json.Unmarshal([]byte(raw), &id); err != nil {
+			return fmt.Errorf("invalid saved worker token identity: %w", err)
+		}
+		if err := id.Validate(); err != nil {
+			return err
+		}
+		identityRestorer, ok := p.(authproxy.IdentityRestorer)
+		if !ok {
+			return fmt.Errorf("auth proxy does not support token identity restore")
+		}
+		return identityRestorer.RestoreTokenWithIdentity(strings.TrimPrefix(v.Name, "/"), token, ttl, id)
 	}
 	return r.RestoreToken(strings.TrimPrefix(v.Name, "/"), token, ttl)
 }

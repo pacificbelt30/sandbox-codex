@@ -41,6 +41,9 @@ func (p *Proxy) workerRequest(r *http.Request, allowAPIKey bool) (*http.Request,
 	var lease context.Context
 	for _, rec := range p.tokens {
 		if rec.Token == token && time.Now().Before(rec.ExpiresAt) && rec.context != nil && rec.context.Err() == nil {
+			if !providerRouteAllowed(rec.Identity.Provider, r.URL.Path) {
+				break
+			}
 			lease = rec.context
 			break
 		}
@@ -52,4 +55,17 @@ func (p *Proxy) workerRequest(r *http.Request, allowAPIKey bool) (*http.Request,
 	ctx, cancel := context.WithCancel(r.Context())
 	stop := context.AfterFunc(lease, cancel)
 	return r.WithContext(ctx), func() { stop(); cancel() }, true
+}
+
+func providerRouteAllowed(provider, path string) bool {
+	switch provider {
+	case "", "any":
+		return true
+	case "openai":
+		return strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/chatgpt/")
+	case "anthropic":
+		return strings.HasPrefix(path, "/anthropic/")
+	default:
+		return false
+	}
 }

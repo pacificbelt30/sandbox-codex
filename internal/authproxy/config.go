@@ -1,6 +1,9 @@
 package authproxy
 
-import "github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+import (
+	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
+)
 
 // Proxy roles. The credential-injecting reverse proxy and the general-traffic
 // forward proxy run as two separate containers so the one holding real
@@ -17,6 +20,11 @@ const (
 
 // Config configures the Auth Proxy.
 type Config struct {
+	// CredentialStore and CaseID opt into credentials supplied by a host product.
+	// Each case must run in a distinct auth proxy instance. The default nil
+	// store retains the existing host-file behavior.
+	CredentialStore credentialstore.Store
+	CaseID          string
 	// OAuthStateDir stores rotated credentials outside the read-only login files.
 	// Empty keeps the previous in-memory behavior (mainly useful in tests).
 	OAuthStateDir string

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // tokenRecord holds a single issued token and its metadata.
@@ -16,6 +18,7 @@ type tokenRecord struct {
 	ContainerName string
 	ExpiresAt     time.Time
 	IssuedAt      time.Time
+	Identity      identity.Identity
 	context       context.Context
 	cancel        context.CancelFunc
 }
@@ -29,14 +32,36 @@ func newTokenRecord(name, token string, ttl int) *tokenRecord {
 
 // IssueToken creates and stores a short-lived token for a container.
 func (p *Proxy) IssueToken(containerName string, ttlSec int) (string, error) {
+	return p.IssueTokenWithIdentity(containerName, ttlSec, identity.Identity{})
+}
+
+func (p *Proxy) IssueTokenWithIdentity(containerName string, ttlSec int, id identity.Identity) (string, error) {
+	if err := p.checkCaseGeneration(); err != nil {
+		return "", err
+	}
+	if p.cfg.CaseID != "" {
+		if err := id.Validate(); err != nil || id.CaseID != p.cfg.CaseID || id.ConnectionVersion != p.caseConnectionVersion {
+			return "", fmt.Errorf("token identity does not match credential case")
+		}
+	} else if !id.Empty() {
+		if err := id.Validate(); err != nil {
+			return "", err
+		}
+	}
 	token, err := generateToken()
 	if err != nil {
 		return "", err
 	}
 
 	rec := newTokenRecord(containerName, token, ttlSec)
+	rec.Identity = id
 
 	p.mu.Lock()
+	if p.caseRevoked || p.revokedRuns[id] {
+		p.mu.Unlock()
+		rec.cancel()
+		return "", fmt.Errorf("credential case or run was revoked")
+	}
 	if old := p.tokens[containerName]; old != nil && old.cancel != nil {
 		old.cancel()
 	}

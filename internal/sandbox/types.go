@@ -3,6 +3,8 @@ package sandbox
 import (
 	"io"
 	"time"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // ApprovalMode controls how Codex CLI asks for approval when executing actions.
@@ -131,6 +133,7 @@ type RunOptions struct {
 	NoGitMetadata      bool
 	NoInternet         bool
 	TokenTTL           int
+	TokenIdentity      identity.Identity
 	AgentsMD           string
 	Detach             bool
 	Parallel           int
