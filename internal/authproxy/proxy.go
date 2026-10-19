@@ -15,14 +15,16 @@ import (
 
 // Proxy is the Auth Proxy server that issues short-lived tokens to containers.
 type Proxy struct {
-	cfg        Config
-	apiKey     string
-	oauthCreds *OAuthCredentials // non-nil when operating in OAuth mode
-	listener   net.Listener
-	server     *http.Server
-	mu         sync.RWMutex
-	tokens     map[string]*tokenRecord // containerName -> record
-	addr       string
+	cfg         Config
+	apiKey      string
+	oauthCreds  *OAuthCredentials // non-nil when operating in OAuth mode
+	listener    net.Listener
+	server      *http.Server
+	mu          sync.RWMutex
+	refreshMu   sync.Mutex              // serialize refreshes across both providers
+	oauthSource map[string]string       // hash of read-only login refresh token
+	tokens      map[string]*tokenRecord // containerName -> record
+	addr        string
 
 	// Admin listener (only used when Config.AdminListenAddr is set).
 	adminListener net.Listener
@@ -70,6 +72,7 @@ func NewProxy(cfg Config) (*Proxy, error) {
 	}
 	p := &Proxy{
 		cfg:                    cfg,
+		oauthSource:            make(map[string]string),
 		tokens:                 make(map[string]*tokenRecord),
 		httpClient:             http.DefaultClient,
 		oauthTokenURL:          "https://auth.openai.com/oauth/token",
@@ -113,6 +116,10 @@ func NewProxy(cfg Config) (*Proxy, error) {
 			return nil, fmt.Errorf("loading OAuth credentials: %w", err)
 		}
 		p.oauthCreds = creds
+		p.oauthSource["openai"] = oauthSourceHash(creds.RefreshToken)
+		if err := p.restoreOAuthState("openai", creds.RefreshToken, creds); err != nil {
+			return nil, err
+		}
 		if cfg.Verbose {
 			fmt.Fprintln(os.Stderr, "Auth Proxy: OpenAI OAuth mode (placeholder tokens issued to containers; proxy injects real credentials on outbound requests)")
 		}
@@ -132,6 +139,10 @@ func NewProxy(cfg Config) (*Proxy, error) {
 			return nil, fmt.Errorf("loading Anthropic OAuth credentials: %w", err)
 		}
 		p.anthropicOAuth = creds
+		p.oauthSource["anthropic"] = oauthSourceHash(creds.RefreshToken)
+		if err := p.restoreOAuthState("anthropic", creds.RefreshToken, creds); err != nil {
+			return nil, err
+		}
 		if cfg.Verbose {
 			fmt.Fprintln(os.Stderr, "Auth Proxy: Anthropic OAuth mode (Claude subscription; proxy injects real bearer token on outbound requests)")
 		}

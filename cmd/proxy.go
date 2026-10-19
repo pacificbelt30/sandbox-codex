@@ -25,7 +25,7 @@ const (
 	defaultAuthAdminPort          = 18081
 	defaultHTTPProxyPort          = 18082
 	proxyLayoutLabel              = "io.codex-dock.proxy-layout"
-	proxyLayoutVersion            = "split-v2-owner-auth"
+	proxyLayoutVersion            = "split-v3-oauth-state"
 )
 
 var (
@@ -35,6 +35,7 @@ var (
 	proxyForwardAllow    []string
 	proxyRole            string
 	proxyBlockPrivate    bool
+	proxyOAuthStateDir   string
 
 	proxyBuildTag        string
 	proxyBuildDockerfile string
@@ -79,6 +80,7 @@ var proxyServeCmd = &cobra.Command{
 			AdminSecret:     proxyAdminSecret,
 			ForwardPolicy:   forwardPolicyRules(),
 			BlockPrivate:    proxyBlockPrivate,
+			OAuthStateDir:   proxyOAuthStateDir,
 		})
 		if err != nil {
 			return err
@@ -154,6 +156,13 @@ func startProxyContainer(ctx context.Context) error {
 	if err != nil {
 		home = ""
 	}
+	stateDir := filepath.Join(home, ".local", "state", "codex-dock", "oauth")
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(stateDir); err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return fmt.Errorf("OAuth state directory %s must be private (0700)", stateDir)
+	}
 
 	// 1) Auth proxy: holds credentials, admin published, no forwarding.
 	auth := proxyRunArgs{
@@ -173,6 +182,7 @@ func startProxyContainer(ctx context.Context) error {
 		anthropicKeyEnv:  os.Getenv("ANTHROPIC_API_KEY"),
 		anthropicKeyPath: filepath.Join(home, ".config", "codex-dock", "anthropic-apikey"),
 		claudeCredsPath:  filepath.Join(home, ".claude", ".credentials.json"),
+		oauthStateDir:    stateDir,
 	}
 	if err := ensureProxyContainer(ctx, auth); err != nil {
 		return err
@@ -318,6 +328,7 @@ func init() {
 	proxyServeCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
 	bindForwardPolicyFlags(proxyServeCmd)
 	proxyServeCmd.Flags().BoolVar(&proxyBlockPrivate, "block-private", false, "Refuse outbound connections to private/LAN/link-local addresses (RFC1918, 127/8, 169.254/16, ULA, CGNAT)")
+	proxyServeCmd.Flags().StringVar(&proxyOAuthStateDir, "oauth-state-dir", "", "Writable private directory for rotated OAuth credentials")
 
 	// build flags
 	proxyBuildCmd.Flags().StringVarP(&proxyBuildTag, "tag", "t", "", "Image tag (default: proxy_image from config)")
@@ -366,6 +377,7 @@ type proxyRunArgs struct {
 	anthropicKeyEnv  string // ANTHROPIC_API_KEY env value
 	anthropicKeyPath string // ~/.config/codex-dock/anthropic-apikey
 	claudeCredsPath  string // ~/.claude/.credentials.json
+	oauthStateDir    string // private writable host directory
 }
 
 // buildProxyRunArgs constructs the "docker run" argument list for one proxy
@@ -405,6 +417,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 		if _, err := os.Stat(a.claudeCredsPath); err == nil {
 			args = append(args, "-v", a.claudeCredsPath+":/root/.claude/.credentials.json:ro")
 		}
+		if a.oauthStateDir != "" {
+			args = append(args, "-v", a.oauthStateDir+":/root/.local/state/codex-dock/oauth:rw")
+		}
 	}
 
 	args = append(args, a.image, "proxy", "serve", "--listen", a.listenAddr)
@@ -419,6 +434,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	}
 	if a.blockPrivate {
 		args = append(args, "--block-private")
+	}
+	if a.oauthStateDir != "" {
+		args = append(args, "--oauth-state-dir", proxyCredentialHome+"/.local/state/codex-dock/oauth")
 	}
 	rules := effectiveForwardRules(a)
 	for _, d := range rules.AllowDomains {

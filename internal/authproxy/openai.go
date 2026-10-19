@@ -54,6 +54,16 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "token invalid or expired", http.StatusUnauthorized)
 		return
 	}
+	p.refreshMu.Lock()
+	defer p.refreshMu.Unlock()
+	// A refresh queued behind another request must recheck revocation.
+	p.mu.RLock()
+	current := p.tokens[found.ContainerName]
+	p.mu.RUnlock()
+	if current == nil || current.Token != cdxToken || time.Now().After(current.ExpiresAt) {
+		http.Error(w, "token invalid or expired", http.StatusUnauthorized)
+		return
+	}
 
 	p.mu.RLock()
 	if p.oauthCreds == nil {
@@ -125,18 +135,26 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Update the host's cached credentials with the new tokens.
-	p.mu.Lock()
+	// Persist the next generation before exposing it to other requests.
+	p.mu.RLock()
+	next := *p.oauthCreds
+	p.mu.RUnlock()
 	if newAccess, ok := tokenResp["access_token"].(string); ok && newAccess != "" {
-		p.oauthCreds.AccessToken = newAccess
+		next.AccessToken = newAccess
 	}
 	if newID, ok := tokenResp["id_token"].(string); ok && newID != "" {
-		p.oauthCreds.IDToken = newID
+		next.IDToken = newID
 	}
 	// Rotate the host's refresh_token if the server issued a new one (RFC 6749 §6).
 	if newRefresh, ok := tokenResp["refresh_token"].(string); ok && newRefresh != "" {
-		p.oauthCreds.RefreshToken = newRefresh
+		next.RefreshToken = newRefresh
 	}
+	if err := p.persistOAuthState("openai", &next); err != nil {
+		http.Error(w, "saving OAuth refresh failed", http.StatusBadGateway)
+		return
+	}
+	p.mu.Lock()
+	*p.oauthCreds = next
 	p.mu.Unlock()
 
 	// Strip refresh_token before returning to the container.

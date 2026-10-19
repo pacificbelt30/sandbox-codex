@@ -73,3 +73,17 @@ func TestProxyCredentialAccessRejectsUnreadableIdentity(t *testing.T) {
 		t.Fatal("directory accepted as a credential")
 	}
 }
+
+func TestNativeProxyMountsOnlyOAuthStateWritable(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "oauth")
+	if err := os.Mkdir(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	c, h, err := proxyConfiguration(proxyRunArgs{image: "proxy:dev", role: authproxy.RoleAuth, mountCreds: true, oauthStateDir: state})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Mounts) != 1 || h.Mounts[0].ReadOnly || h.Mounts[0].Source != state || !slices.Contains(c.Cmd, "--oauth-state-dir") {
+		t.Fatal("OAuth state mount or CLI path missing")
+	}
+}

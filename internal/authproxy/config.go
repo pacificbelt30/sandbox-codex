@@ -17,10 +17,13 @@ const (
 
 // Config configures the Auth Proxy.
 type Config struct {
-	TokenTTL    int
-	Verbose     bool
-	ListenAddr  string // worker-facing TCP address. Defaults to "0.0.0.0:0".
-	AdminSecret string
+	// OAuthStateDir stores rotated credentials outside the read-only login files.
+	// Empty keeps the previous in-memory behavior (mainly useful in tests).
+	OAuthStateDir string
+	TokenTTL      int
+	Verbose       bool
+	ListenAddr    string // worker-facing TCP address. Defaults to "0.0.0.0:0".
+	AdminSecret   string
 
 	// Role selects what this instance serves: RoleAuth (reverse + token + admin,
 	// no forwarding) or RoleEgress (forward proxy only, no credentials). Empty is

@@ -70,6 +70,8 @@ func mergeBetaHeader(h http.Header, value string) {
 // when it is missing an expiry or within 60s of expiring. The refresh token stays
 // on the host; only the resulting access token is ever injected into requests.
 func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
+	p.refreshMu.Lock()
+	defer p.refreshMu.Unlock()
 	p.mu.RLock()
 	if p.anthropicOAuth == nil {
 		p.mu.RUnlock()
@@ -124,16 +126,24 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 		return
 	}
 
-	p.mu.Lock()
-	if p.anthropicOAuth != nil {
-		p.anthropicOAuth.AccessToken = tr.AccessToken
-		if tr.RefreshToken != "" {
-			p.anthropicOAuth.RefreshToken = tr.RefreshToken
-		}
-		if tr.ExpiresIn > 0 {
-			p.anthropicOAuth.ExpiresAt = time.Now().UnixMilli() + tr.ExpiresIn*1000
-		}
+	p.mu.RLock()
+	next := *p.anthropicOAuth
+	p.mu.RUnlock()
+	next.AccessToken = tr.AccessToken
+	if tr.RefreshToken != "" {
+		next.RefreshToken = tr.RefreshToken
 	}
+	if tr.ExpiresIn > 0 {
+		next.ExpiresAt = time.Now().UnixMilli() + tr.ExpiresIn*1000
+	}
+	if err := p.persistOAuthState("anthropic", &next); err != nil {
+		if p.cfg.Verbose {
+			fmt.Printf("Anthropic OAuth refresh state save failed: %v\n", err)
+		}
+		return
+	}
+	p.mu.Lock()
+	*p.anthropicOAuth = next
 	p.mu.Unlock()
 	if p.cfg.Verbose {
 		fmt.Println("Anthropic OAuth access token refreshed")

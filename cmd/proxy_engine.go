@@ -58,17 +58,27 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 			c.Env = append(c.Env, value)
 		case "-v":
 			parts := strings.Split(value, ":")
-			if len(parts) != 3 || parts[2] != "ro" {
-				return nil, nil, fmt.Errorf("proxy credentials require read-only bind mounts")
+			if len(parts) != 3 || (parts[2] != "ro" && (parts[2] != "rw" || parts[1] != "/root/.local/state/codex-dock/oauth")) {
+				return nil, nil, fmt.Errorf("invalid proxy bind mount mode")
 			}
 			if !strings.HasPrefix(parts[1], "/root/") {
 				return nil, nil, fmt.Errorf("invalid proxy credential destination")
 			}
-			if err := checkProxyCredentialAccess(parts[0], os.Geteuid(), os.Getegid()); err != nil {
-				return nil, nil, err
+			if parts[2] == "ro" {
+				if err := checkProxyCredentialAccess(parts[0], os.Geteuid(), os.Getegid()); err != nil {
+					return nil, nil, err
+				}
+			} else {
+				info, err := os.Lstat(parts[0])
+				if err != nil {
+					return nil, nil, err
+				}
+				if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+					return nil, nil, fmt.Errorf("OAuth state directory must be private")
+				}
 			}
 			target := filepath.Join(proxyCredentialHome, strings.TrimPrefix(parts[1], "/root/"))
-			h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: parts[0], Target: target, ReadOnly: true})
+			h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: parts[0], Target: target, ReadOnly: parts[2] == "ro"})
 		case "-p":
 			parts := strings.Split(value, ":")
 			if len(parts) != 3 || parts[0] != "127.0.0.1" {
