@@ -100,9 +100,6 @@ func (c *Client) PrepareProject(ctx context.Context, dir, requestID string, log 
 	}
 	req := LaunchRequest{RequestID: requestID, ProjectDir: root, Image: "codex-dock:latest"}
 	if cfg != nil {
-		if len(cfg.Run.EgressAllowDomains) != 0 {
-			return LaunchRequest{}, fmt.Errorf("project egress_allow_domains requires the CLI-managed policy proxy")
-		}
 		if cfg.Run.Image != "" {
 			req.Image = cfg.Run.Image
 		} else if cfg.Run.Template != "" {
@@ -120,6 +117,7 @@ func (c *Client) PrepareProject(ctx context.Context, dir, requestID string, log 
 		req.ReadOnlyRootFS = cfg.Run.ReadOnlyRootFS != nil && *cfg.Run.ReadOnlyRootFS
 		req.NoGitMetadata = cfg.Run.NoGitMetadata != nil && *cfg.Run.NoGitMetadata
 		req.NoInternet = cfg.Run.NoInternet != nil && *cfg.Run.NoInternet
+		req.EgressAllowDomains = append([]string(nil), cfg.Run.EgressAllowDomains...)
 		req.WatchPolling = cfg.Run.WatchPolling != nil && *cfg.Run.WatchPolling
 	}
 	exists, err := c.manager.ImageExistsContext(ctx, req.Image)

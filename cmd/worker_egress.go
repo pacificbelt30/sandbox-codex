@@ -3,11 +3,10 @@ package cmd
 import (
 	"fmt"
 	"net/url"
-	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/network"
-	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,33 +18,12 @@ func workerEgressSpec(cmd *cobra.Command, domains []string) (proxyRunArgs, error
 		return proxyRunArgs{}, fmt.Errorf("empty worker egress allowlist")
 	}
 	applyForwardPolicyDefaults(cmd)
-	rules := forwardPolicyRules()
-	for _, domain := range domains {
-		clean := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(domain)), ".")
-		if clean == "" {
-			return proxyRunArgs{}, fmt.Errorf("empty egress domain")
-		}
-		if len(rules.AllowDomains) > 0 {
-			withinHostPolicy := false
-			for _, hostDomain := range rules.AllowDomains {
-				hostDomain = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(hostDomain)), ".")
-				if clean == hostDomain || strings.HasSuffix(clean, "."+hostDomain) {
-					withinHostPolicy = true
-					break
-				}
-			}
-			if !withinHostPolicy {
-				return proxyRunArgs{}, fmt.Errorf("worker domain %q exceeds host egress allowlist", domain)
-			}
-		}
-	}
-	rules.AllowDomains = append([]string(nil), domains...)
-	rules.BlockPrivate = true
-	if _, err := networkpolicy.Compile(rules); err != nil {
+	rules, err := workeregress.Rules(forwardPolicyRules(), domains)
+	if err != nil {
 		return proxyRunArgs{}, err
 	}
 	spec := proxyRunArgs{role: authproxy.RoleEgress, networkName: proxyRunNetwork, image: viper.GetString("proxy_image"), listenAddr: "0.0.0.0:18082", blockPrivate: true, forwardPolicy: rules}
-	spec.name = "codex-http-policy-" + forwardPolicyID(spec)[:16]
+	spec.name = workeregress.Name(rules)
 	return spec, nil
 }
 

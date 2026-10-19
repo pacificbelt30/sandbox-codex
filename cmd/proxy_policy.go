@@ -1,15 +1,11 @@
 package cmd
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"slices"
-	"sort"
 )
 
 var proxyForwardRules networkpolicy.Rules
@@ -26,23 +22,7 @@ func effectiveForwardRules(a proxyRunArgs) networkpolicy.Rules {
 }
 
 func forwardPolicyID(a proxyRunArgs) string {
-	rules := effectiveForwardRules(a)
-	for _, values := range []*[]string{&rules.AllowDomains, &rules.DenyDomains, &rules.AllowCIDRs, &rules.DenyCIDRs} {
-		*values = append([]string(nil), *values...)
-		sort.Strings(*values)
-	}
-	for _, values := range []*[]int{&rules.AllowPorts, &rules.DenyPorts} {
-		*values = append([]int(nil), *values...)
-		slices.Sort(*values)
-	}
-	// The version also distinguishes older proxy binaries that do not enforce
-	// the shared policy on HTTP redirects and CONNECT.
-	encoded, _ := json.Marshal(struct {
-		Version string
-		Rules   networkpolicy.Rules
-	}{"policy-v1", rules})
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:])
+	return workeregress.ID(effectiveForwardRules(a))
 }
 
 func checkProxyPolicy(actual string, a proxyRunArgs) error {

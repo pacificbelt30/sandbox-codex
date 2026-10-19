@@ -19,8 +19,10 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/network"
+	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/workerapp"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 )
 
 // Options contains trusted host settings. A cloned project cannot set these.
@@ -30,6 +32,8 @@ type Options struct {
 	ProxyContainerURL string
 	ProxyAdminSecret  string
 	HTTPProxyURL      string
+	EgressProxyImage  string
+	EgressPolicy      EgressPolicy
 	StateDir          string
 }
 
@@ -102,26 +106,27 @@ func (c *Client) Close() error { return errors.Join(c.manager.Close(), c.node.Cl
 type LaunchRequest struct {
 	// RequestID is a stable, node-wide identifier for this launch attempt.
 	// Reuse it only with exactly the same immutable options.
-	RequestID      string
-	ProjectDir     string
-	Image          string
-	Profile        string
-	Runtime        string
-	Agent          string
-	AgentArgs      []string
-	Model          string
-	ApprovalMode   string
-	Branch         string
-	UseWorktree    bool
-	NewBranch      bool
-	ReadOnly       bool
-	ReadOnlyRootFS bool
-	NoGitMetadata  bool
-	NoInternet     bool
-	WatchPolling   bool
-	User           string
-	Mounts         []Mount
-	TokenTTL       time.Duration
+	RequestID          string
+	ProjectDir         string
+	Image              string
+	Profile            string
+	Runtime            string
+	Agent              string
+	AgentArgs          []string
+	Model              string
+	ApprovalMode       string
+	Branch             string
+	UseWorktree        bool
+	NewBranch          bool
+	ReadOnly           bool
+	ReadOnlyRootFS     bool
+	NoGitMetadata      bool
+	NoInternet         bool
+	EgressAllowDomains []string
+	WatchPolling       bool
+	User               string
+	Mounts             []Mount
+	TokenTTL           time.Duration
 }
 
 // Mount is an additional host bind mount. Node socket access already grants
@@ -178,6 +183,18 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	if req.Runtime == "" {
 		req.Runtime = sandbox.RuntimeKata
 	}
+	if req.NoInternet && len(req.EgressAllowDomains) != 0 {
+		return Worker{}, fmt.Errorf("egress allowlist cannot be combined with no-internet")
+	}
+	var egressRules networkpolicy.Rules
+	var egressPolicyID string
+	if len(req.EgressAllowDomains) != 0 {
+		egressRules, err = workeregress.Rules(c.opts.EgressPolicy.rules(), req.EgressAllowDomains)
+		if err != nil {
+			return Worker{}, err
+		}
+		egressPolicyID = workeregress.ID(egressRules)
+	}
 	autoBranch := req.UseWorktree && req.Branch == ""
 	if autoBranch {
 		req.Branch = "cxd-" + key[:16]
@@ -188,7 +205,11 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	fingerprintInput, err := json.Marshal(struct {
 		LaunchRequest
 		ProxyContainerURL string
-	}{req, c.opts.ProxyContainerURL})
+		ProxyAdminURL     string
+		HTTPProxyURL      string
+		EgressProxyImage  string
+		EgressPolicyID    string
+	}{req, c.opts.ProxyContainerURL, c.opts.ProxyAdminURL, c.opts.HTTPProxyURL, c.opts.EgressProxyImage, egressPolicyID})
 	if err != nil {
 		return Worker{}, err
 	}
@@ -214,6 +235,14 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	if claim.State != "pending" || claim.Lease == "" {
 		return Worker{Name: claim.Name}, fmt.Errorf("%w: request %s is active or needs recovery", ErrInProgress, req.RequestID)
 	}
+	httpProxyURL := c.opts.HTTPProxyURL
+	if len(req.EgressAllowDomains) != 0 {
+		var policyErr error
+		httpProxyURL, policyErr = workeregress.Ensure(ctx, c.opts.NodeSocket, c.opts.EgressProxyImage, egressRules)
+		if policyErr != nil {
+			return Worker{}, errors.Join(policyErr, c.abortClaim(key, claim.Lease, ""))
+		}
+	}
 	proxy, err := authproxy.NewRemoteProxyContext(ctx, c.opts.ProxyAdminURL, c.opts.ProxyContainerURL, c.opts.ProxyAdminSecret)
 	if err != nil {
 		abortErr := c.abortClaim(key, claim.Lease, "")
@@ -225,7 +254,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	defer func() { _ = netMgr.Close() }()
 	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{
-		Socket: c.opts.NodeSocket, Proxy: proxy, Network: netMgr, HTTPProxyURL: c.opts.HTTPProxyURL,
+		Socket: c.opts.NodeSocket, Proxy: proxy, Network: netMgr, HTTPProxyURL: httpProxyURL,
 		ProxyAdminURL: c.opts.ProxyAdminURL, StateDir: c.opts.StateDir,
 		KataConfig: &kataguard.Config{Socket: c.opts.NodeSocket},
 	})
