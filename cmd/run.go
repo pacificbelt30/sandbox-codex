@@ -50,6 +50,7 @@ var (
 	runKeep             bool
 	forceRecreateProxy  bool
 	mountFlags          []string
+	runEgressAllow      []string
 )
 
 var runCmd = &cobra.Command{
@@ -116,6 +117,7 @@ func init() {
   <container-path> must be absolute and cannot be /workspace (use --project/--read-only for that).
   Trailing ":ro" mounts it read-only; ":rw" (default) mounts it read-write.`)
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable general egress for the worker: do not set HTTP(S)_PROXY, so only the auth proxy's API routes are reachable (no git/npm/pip egress through the router)")
+	f.StringArrayVar(&runEgressAllow, "egress-allow-domain", nil, "Allow general egress only to these domains and subdomains (repeatable; per-worker)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
 	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18081", "External auth proxy admin URL (host-published admin port)")
@@ -276,6 +278,16 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if runOpts.Agent == sandbox.AgentClaude && !proxy.IsAnthropicMode() {
 		return fmt.Errorf("--agent claude requires Anthropic credentials on the auth proxy; " +
 			"set ANTHROPIC_API_KEY or run `claude` OAuth login (~/.claude/.credentials.json) before starting the proxy")
+	}
+	if len(runEgressAllow) > 0 && !runOpts.NoInternet {
+		if cmd.Flags().Changed("http-proxy-url") || httpProxyURL != "http://codex-http-proxy:18082" {
+			return fmt.Errorf("--egress-allow-domain requires the managed egress proxy")
+		}
+		policyURL, err := ensureWorkerEgressProxy(cmd, runEgressAllow)
+		if err != nil {
+			return err
+		}
+		httpProxyURL = policyURL
 	}
 
 	// Load packages.dock if present and no --pkg-file given
@@ -612,6 +624,9 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	}
 	if !flags.Changed("no-internet") && viper.IsSet("run.no_internet") {
 		runOpts.NoInternet = viper.GetBool("run.no_internet")
+	}
+	if !flags.Changed("egress-allow-domain") && viper.IsSet("run.egress_allow_domains") {
+		runEgressAllow = viper.GetStringSlice("run.egress_allow_domains")
 	}
 
 	if !flags.Changed("image") {

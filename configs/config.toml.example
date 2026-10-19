@@ -113,6 +113,7 @@ approval_mode = "suggest"
 # model = "..."
 # read_only = false
 # no_internet = false
+# egress_allow_domains = ["api.github.com"]  # per-worker general egress allowlist
 
 # Additional host directories to bind-mount into the worker, beyond
 # /workspace (--project).                              flag: --mount

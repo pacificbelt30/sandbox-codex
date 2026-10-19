@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
+	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/pacificbelt30/codex-dock/internal/template"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
@@ -23,17 +24,18 @@ const projectConfigName = "codex-dock.toml"
 type ProjectConfig struct {
 	Root string `toml:"-"`
 	Run  struct {
-		Image          string `toml:"image"`
-		Template       string `toml:"template"`
-		Agent          string `toml:"agent"`
-		Model          string `toml:"model"`
-		ProfileSize    string `toml:"profile_size"`
-		ApprovalMode   string `toml:"approval_mode"`
-		WatchPolling   *bool  `toml:"watch_polling"`
-		ReadOnly       *bool  `toml:"read_only"`
-		ReadOnlyRootFS *bool  `toml:"read_only_rootfs"`
-		NoGitMetadata  *bool  `toml:"no_git_metadata"`
-		NoInternet     *bool  `toml:"no_internet"`
+		Image              string   `toml:"image"`
+		Template           string   `toml:"template"`
+		Agent              string   `toml:"agent"`
+		Model              string   `toml:"model"`
+		ProfileSize        string   `toml:"profile_size"`
+		ApprovalMode       string   `toml:"approval_mode"`
+		WatchPolling       *bool    `toml:"watch_polling"`
+		ReadOnly           *bool    `toml:"read_only"`
+		ReadOnlyRootFS     *bool    `toml:"read_only_rootfs"`
+		NoGitMetadata      *bool    `toml:"no_git_metadata"`
+		NoInternet         *bool    `toml:"no_internet"`
+		EgressAllowDomains []string `toml:"egress_allow_domains"`
 	} `toml:"run"`
 	Build struct {
 		Dockerfile string `toml:"dockerfile"`
@@ -46,7 +48,7 @@ var projectKeys = map[string]map[string]bool{
 	"run": {
 		"image": true, "template": true, "agent": true, "model": true, "profile_size": true,
 		"approval_mode": true, "watch_polling": true,
-		"read_only": true, "read_only_rootfs": true, "no_git_metadata": true, "no_internet": true,
+		"read_only": true, "read_only_rootfs": true, "no_git_metadata": true, "no_internet": true, "egress_allow_domains": true,
 	},
 	"build": {"dockerfile": true, "template": true, "tag": true},
 }
@@ -132,6 +134,11 @@ func loadProjectConfig(dir string) (*ProjectConfig, error) {
 	}
 	if cfg.Run.NoInternet != nil && !*cfg.Run.NoInternet {
 		return nil, fmt.Errorf("%s: project no_internet can only be true; a project cannot loosen a host restriction", path)
+	}
+	if len(cfg.Run.EgressAllowDomains) > 0 {
+		if _, err := networkpolicy.Compile(networkpolicy.Rules{AllowDomains: cfg.Run.EgressAllowDomains}); err != nil {
+			return nil, fmt.Errorf("%s: run.egress_allow_domains: %w", path, err)
+		}
 	}
 	for _, entry := range []struct{ section, name string }{{"run", cfg.Run.Template}, {"build", cfg.Build.Template}} {
 		if entry.name != "" {
@@ -226,6 +233,9 @@ func applyProjectRunConfig(cmd *cobra.Command, cfg *ProjectConfig) {
 	}
 	if !flags.Changed("no-internet") && cfg.Run.NoInternet != nil && *cfg.Run.NoInternet {
 		runOpts.NoInternet = true
+	}
+	if !flags.Changed("egress-allow-domain") && len(cfg.Run.EgressAllowDomains) > 0 {
+		runEgressAllow = cfg.Run.EgressAllowDomains
 	}
 }
 
