@@ -259,8 +259,8 @@ func (m *Manager) RetryCleanup(force bool) error {
 	return failures
 }
 
-func (m *Manager) removeDurably(value string, force bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+func (m *Manager) removeDurably(parent context.Context, value string, force bool) error {
+	ctx, cancel := context.WithTimeout(parent, 90*time.Second)
 	defer cancel()
 	v, err := m.cli.ContainerInspect(ctx, value)
 	var record cleanupRecord

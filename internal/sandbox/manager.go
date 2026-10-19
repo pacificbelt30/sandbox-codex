@@ -104,10 +104,17 @@ func (m *Manager) Close() error {
 
 // Run creates and starts a sandboxed Codex container.
 func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
+	return m.RunContext(context.Background(), opts)
+}
+
+// RunContext creates and starts a worker with a caller-controlled deadline.
+// Failure cleanup uses its own bounded context so cancellation cannot leave
+// the worker running merely because the caller stopped waiting.
+func (m *Manager) RunContext(parent context.Context, opts RunOptions) (containerID string, runErr error) {
 	if opts.Image == "" {
 		opts.Image = "codex-dock:latest"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	defer cancel()
 	isolation, registration, err := ResolveRuntime(opts.Runtime, opts.KataRuntime)
 	if err != nil {
@@ -396,7 +403,12 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 
 // Start (re)starts a stopped container by ID. Used by the TUI to restart exited workers (F-UI-02).
 func (m *Manager) Start(containerID string) (startErr error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	return m.StartContext(context.Background(), containerID)
+}
+
+// StartContext restarts a retained worker and honors the caller's deadline.
+func (m *Manager) StartContext(parent context.Context, containerID string) (startErr error) {
+	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	defer cancel()
 	v, err := m.cli.ContainerInspect(ctx, containerID)
 	if err != nil {
@@ -516,7 +528,12 @@ func (m *Manager) Wait(containerID string) <-chan error {
 
 // Stop gracefully stops a container by ID and revokes its auth token (F-AUTH-04).
 func (m *Manager) Stop(containerID string, timeoutSec int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	return m.StopContext(context.Background(), containerID, timeoutSec)
+}
+
+// StopContext stops a managed worker and revokes its proxy token.
+func (m *Manager) StopContext(parent context.Context, containerID string, timeoutSec int) error {
+	ctx, cancel := context.WithTimeout(parent, 120*time.Second)
 	defer cancel()
 	v, err := m.cli.ContainerInspect(ctx, containerID)
 	if err != nil {
@@ -594,7 +611,12 @@ func (m *Manager) ImageCreatedAt(tag string) (time.Time, error) {
 
 // Remove removes a container by ID and tears down its per-worker network.
 func (m *Manager) Remove(containerID string, force bool) error {
-	return m.removeDurably(containerID, force)
+	return m.RemoveContext(context.Background(), containerID, force)
+}
+
+// RemoveContext durably records cleanup before deleting a managed worker.
+func (m *Manager) RemoveContext(ctx context.Context, containerID string, force bool) error {
+	return m.removeDurably(ctx, containerID, force)
 }
 
 // RemoveByName also finds an interrupted cleanup after its Docker object is gone.

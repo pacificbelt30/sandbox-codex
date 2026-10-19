@@ -17,7 +17,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/template"
-	"github.com/pacificbelt30/codex-dock/internal/worktree"
+	"github.com/pacificbelt30/codex-dock/internal/workerapp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -710,37 +710,10 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 
 func runSingle(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 	opts := runOpts
-	worktreeHandedOff := false
-
-	// Handle worktree
-	if opts.UseWorktree {
-		wtPath, err := worktree.Create(worktree.CreateOptions{
-			ProjectDir: opts.ProjectDir,
-			Branch:     opts.Branch,
-			NewBranch:  opts.NewBranch,
-		})
-		if err != nil {
-			return fmt.Errorf("creating worktree: %w", err)
-		}
-		opts.WorktreePath = wtPath
-		defer func() {
-			if worktreeHandedOff {
-				return
-			}
-			if err := worktree.Remove(wtPath); err != nil && verbose {
-				fmt.Fprintf(os.Stderr, "warning: removing worktree %s: %v\n", wtPath, err)
-			}
-		}()
-	}
-
-	containerID, err := mgr.Run(opts)
+	containerID, err := workerapp.Launch(context.Background(), mgr, opts)
 	if err != nil {
-		if containerID != "" {
-			worktreeHandedOff = true
-		}
 		return fmt.Errorf("starting container: %w", err)
 	}
-	worktreeHandedOff = true // Manager.Remove owns cleanup, including detached workers.
 
 	if opts.Detach {
 		fmt.Printf("Container started: %s\n", containerID[:12])
@@ -796,24 +769,14 @@ func runParallel(mgr *sandbox.Manager, sigCh <-chan os.Signal) error {
 		o.Name = fmt.Sprintf("%s-%d", opts.Name, i)
 
 		if opts.UseWorktree {
-			wtPath, err := worktree.Create(worktree.CreateOptions{
-				ProjectDir: opts.ProjectDir,
-				Branch:     branch,
-				NewBranch:  true,
-			})
-			if err != nil {
-				cleanupFailedBatch()
-				return fmt.Errorf("creating worktree %d: %w", i, err)
-			}
-			o.WorktreePath = wtPath
+			o.NewBranch = true
 		}
-
-		containerID, err := mgr.Run(o)
+		containerID, err := workerapp.Launch(context.Background(), mgr, o)
 		if err != nil {
-			cleanupFailedBatch()
-			if containerID == "" && o.WorktreePath != "" {
-				_ = worktree.Remove(o.WorktreePath)
+			if containerID != "" {
+				containerIDs = append(containerIDs, containerID)
 			}
+			cleanupFailedBatch()
 			return fmt.Errorf("starting worker %d: %w", i, err)
 		}
 		containerIDs = append(containerIDs, containerID)
