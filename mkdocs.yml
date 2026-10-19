@@ -89,6 +89,7 @@ nav:
           - TUI: en/commands/ui.md
           - Update: en/commands/update.md
       - Configuration: en/configuration.md
+      - Go API: en/go-api.md
       - Architecture: en/architecture.md
       - Auth proxy: en/auth-proxy.md
       - Auth API: en/auth-proxy/endpoints.md

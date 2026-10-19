@@ -28,6 +28,7 @@ Docker EngineとDocker CLIは不要です。
 | プロキシだけを使う | [単体利用](proxy-standalone.md) |
 | 起動や通信の問題を調べる | [トラブルシューティング](troubleshooting.md) |
 | フラグや設定名を調べる | [コマンド](commands.md)・[設定](configuration.md) |
+| 製品からワーカーを操作する | [製品組み込み用 Go API](go-api.md) |
 
 ## 仕組みと開発
 

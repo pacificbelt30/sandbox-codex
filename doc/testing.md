@@ -11,7 +11,7 @@ Go 1.24.7以上を使います。race検査にはCコンパイラーも必要で
 go test ./...
 make test
 make vet
-gofmt -l cmd internal
+gofmt -l cmd internal pkg
 ```
 
 `make test` はrace検査とcoverageを有効にします。
@@ -26,6 +26,9 @@ gofmt -l cmd internal
 | ストリーミング | SSEの逐次受信、WebSocketの転送 |
 | 通信ポリシー | ドメイン・IP・ポート、DNS応答、redirect、CONNECTの判定 |
 | 実行管理 | 資産・cgroup・所有権検証、起動失敗の回収、VM一覧、削除の再試行 |
+| 製品組み込み用 Go API | 公開エラー分類と要求IDの入力検査、node台帳での競合・再送・応答消失時の照合 |
+
+[Go API](go-api.md)の実Kata環境での製品経由の一連の起動・実行・取消・回収は、現時点の自動受入試験には含まれていません。上記の単体テストとCLI経由の実Kata受入結果を区別してください。
 
 ## 実Kataで確認する
 

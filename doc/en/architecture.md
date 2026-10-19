@@ -8,6 +8,7 @@ Docker Engine and Docker CLI are not used. Images keep the OCI/Dockerfile format
 ```mermaid
 flowchart LR
   CLI[CLI / TUI] --> Node[Root node service / Unix socket]
+  SDK[Host product / pkg/cxd] --> Node
   Node --> CD[Dedicated containerd / codex-dock namespace]
   CD --> Kata[Kata shim / embedded Dragonball]
   Kata --> Worker[Guest bootstrap / worker]
@@ -24,6 +25,7 @@ flowchart LR
 | Component | Purpose |
 |---|---|
 | `cmd/`, `internal/ui` | CLI and TUI |
+| `pkg/cxd` | [Local Go API](go-api.md) for product integration: idempotent launch reconciliation, execution, cleanup, and image preparation through BuildKit |
 | `internal/sandbox` | Worker lifecycle, bootstrap gate, tokens, mounts, worktrees, deletion journal |
 | `internal/engine` | Containerd SDK, image/snapshot/task management, native networks, persistent console I/O |
 | `internal/kataguard` | Pinned assets, VM allocations, host process and resource verification, orphan recovery |
@@ -32,6 +34,7 @@ flowchart LR
 | `internal/template`, `internal/worktree` | Image templates and Git worktrees |
 
 The CLI connects to `/run/codex-dock-node.sock`.
+The Go API uses the same socket and starts no extra listener. A durable node ledger reconciles launch request IDs after lost responses or retries to prevent duplicate workers.
 `CODEX_DOCK_KATA_NODE_SOCKET` selects another absolute socket path; `DOCKER_HOST` and Docker contexts are not used.
 The Docker SDK remains an internal DTO/HTTP compatibility dependency, not a Docker daemon dependency.
 

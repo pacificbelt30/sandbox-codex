@@ -3,12 +3,13 @@
 **日本語** | [English](en/architecture.md)
 
 実行経路は **containerd → Kata runtime-rs → Dragonball** です。
-CLIとTUIはroot管理サービスへ接続し、サービスが専用containerdを操作します。
+CLI・TUIと[製品組み込み用 Go API](go-api.md)はroot管理サービスへ接続し、サービスが専用containerdを操作します。
 イメージの作成には独立したBuildKitを使います。
 
 ```mermaid
 flowchart LR
   CLI[CLI / TUI] --> Node[管理サービス / Unix socket]
+  SDK[ホスト製品 / pkg/cxd] --> Node
   Node --> CD[専用containerd / codex-dock namespace]
   CD --> Kata[Kata shim / 組み込みDragonball]
   Kata --> VM[guest bootstrap / worker]
@@ -27,6 +28,7 @@ flowchart LR
 | 場所 | 責務 |
 |---|---|
 | `cmd/`、`internal/ui` | CLI、VM管理、TUI |
+| `pkg/cxd` | 同じホストの製品向け Go API。起動IDの再送・照合、実行・停止・削除、BuildKitによるイメージ準備 |
 | `internal/sandbox` | ワーカー起動、検証ゲート、認証復元、mount、worktree、削除記録 |
 | `internal/engine` | containerd SDKによるimage・snapshot・task管理、ネットワーク、継続するconsole I/O |
 | `internal/kataguard` | 固定資産、予約台帳、ホストプロセス・資源制限の検証、孤児回収 |
@@ -37,6 +39,7 @@ flowchart LR
 | `deploy/kata/` | ホスト配置、サービス設定、guest準備 |
 
 CLIの既定接続先は `/run/codex-dock-node.sock` です。
+Go APIもこのソケットを使い、別の公開サーバーは起動しません。`Launch` の要求IDはnodeの永続台帳で照合し、応答消失や再送時の二重起動を抑止します。
 Docker SDKの型とHTTPクライアントを内部互換層で利用しますが、Docker daemonには接続しません。
 接続先は `CODEX_DOCK_KATA_NODE_SOCKET` で変更します。
 

@@ -71,6 +71,7 @@ cxd runtime-check
 `proxy build` だけでは既存コンテナは更新されません。
 新しいCLIは `worker_token_auth: true` を返さない旧プロキシを拒否します。
 新しいイメージからプロキシを作り直してからワーカーを起動してください。
+[Go API](go-api.md)を組み込んだ製品がある場合は、受付を止めてから製品に組み込んだ Go パッケージも同じソース版へ更新し、再接続を確認してください。対応しない node には `Open` が `ErrVersionMismatch` を返します。
 
 Kataのshim・kernel・guest imageなどの固定資産を更新する場合は、別途[Kataの資産更新](kata.md#固定資産の更新)が必要です。
 `cxd update` はGoのインストール先にCLIを置く操作だけで、ホストサービスやイメージを更新しません。

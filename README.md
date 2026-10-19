@@ -90,6 +90,7 @@ cxd ui
 | 独自イメージを作る | [buildコマンド](doc/commands/build.md) |
 | 外部通信を制限する | [通信ポリシー](doc/proxy-policy.md) |
 | 設定・オプションを調べる | [設定](doc/configuration.md)・[コマンド](doc/commands.md) |
+| 製品にワーカー管理を組み込む | [Go API](doc/go-api.md) |
 | 問題を調べる | [トラブルシューティング](doc/troubleshooting.md) |
 | 仕組みと確認範囲を知る | [構成](doc/architecture.md)・[セキュリティ](doc/security.md)・[検証](doc/testing.md) |
 

@@ -1,6 +1,16 @@
 # 製品組み込み用 Go API
 
+**日本語** | [English](en/go-api.md)
+
 `github.com/pacificbelt30/codex-dock/pkg/cxd` は、同じホストの製品からワーカーを操作する Go パッケージです。新しいサーバーを公開しません。内部では既存の `cxd node serve` が提供する root 管理の Unix ソケットを使用します。呼び出し元にはそのソケットへの権限が必要です。この権限では任意のイメージ、コマンド、ホストマウントを指定できるため、信頼したホストプロセスだけに付与してください。
+
+## 利用前の準備
+
+1. [実行ホスト](setup.md)に node、containerd、Kata、BuildKit を配置し、製品プロセスから node の Unix ソケットへ接続できるようにする。既定のソケットは `/run/codex-dock-node.sock`。別の場所では `Options.NodeSocket` を指定する。
+2. [認証プロキシ](getting-started.md#3-プロキシとイメージを用意する)を起動し、製品から使うイメージをビルドまたは import する。`Open` はプロキシやイメージを起動・作成しない。
+3. 製品と node を対応する版で配置する。`Open` は node の接続・検証と Go クライアント用プロトコルの確認を行い、不一致を `ErrVersionMismatch` で返す。CLI と node を更新するときは、製品に組み込んだ Go パッケージも同じソース版へ更新する。
+
+プロキシの既定接続先は、ホスト側管理 API が `http://127.0.0.1:18081`、ワーカー側認証 API が `http://codex-auth-proxy:18080`、一般通信プロキシが `http://codex-http-proxy:18082` です。配置が異なる場合は `Options.ProxyAdminURL`、`ProxyContainerURL`、`HTTPProxyURL` を指定します。管理 API にシークレットを設定している場合は `Options.ProxyAdminSecret` にホスト側だけで渡してください。
 
 ## 実行例
 
@@ -51,11 +61,21 @@ func main() {
 
 `Agent` を指定しない `Launch` は、`Exec` を複数回呼べるよう待機状態のワーカーを起動します。`Agent: "codex"` または `"claude"` を指定すると、その CLI をメインプロセスとして起動します。`Exec` はコマンドの終了コードと通信エラーを別々に返します。`Wait` はメインプロセスの終了待ちです。待機状態のワーカーに対する個々の `Exec` の終了待ちではありません。
 
-`client.Profiles(ctx)` は稼働中ノードが提供する CPU、guest RAM、ホスト側予約メモリ、PID 上限を返します。`LaunchRequest` ではモデル、承認モード、追加マウントも指定できます。
+| 操作 | 契約 |
+|---|---|
+| `Launch(ctx, request)` | `RequestID` を使ってワーカーを作成・起動し、ID を返す。`ProjectDir` は絶対パス。現時点では作成と初回起動を分離しない |
+| `Get` / `List` | ワーカーの状態を照会する |
+| `Exec` / `Wait` | 既存ワーカーでコマンドを実行する／メインプロセスの終了を待つ |
+| `Start` / `Stop` / `Remove` | 停止済みワーカーの再起動／停止／回収。`Stop` は認証トークンを失効させる |
+| `Profiles(ctx)` | 稼働中ノードの CPU、guest RAM、ホスト側予約メモリ、PID 上限を取得する。値は予約・制限の契約であり、実測 RSS ではない |
+
+`LaunchRequest` ではモデル、承認モード、追加マウント、read-only rootfs、Git metadata の非共有なども指定できます。指定しないイメージは `codex-dock:latest`、資源プロファイルは `standard` です。小型の `small` を選ぶ前に `client.Profiles(ctx)` で稼働中ノードの値を確認してください。
 
 `Open` はソケットとノードのバージョンを確認します。`Launch` には、ビルド済みのイメージと起動中の認証プロキシが必要です。`client.PrepareProject(ctx, dir, requestID, log)` は CLI と共通の `codex-dock.toml` 検証を使い、必要なイメージを BuildKit で作成して `LaunchRequest` を返します。`client.Build` と `client.BuildTemplate` も個別に利用できます。製品側で設定を確認・補足してから `Launch` を呼べます。
 
 `PrepareProject` はグローバル設定や実認証情報を読みません。プロジェクトの `egress_allow_domains` は、現時点では API で通信ポリシーを設定する方法がないため明示的にエラーにします。CLI の対話的なプロキシ起動も行いません。実 API キーや OAuth トークンを `LaunchRequest` や VM に渡さないでください。プロキシの管理シークレットはホスト側の `Options` のみで扱います。
+
+`PrepareProject` が返す設定を製品側で確認し、必要なホスト側の制約を加えてから `Launch` に渡してください。組織・利用者・接続バージョンの認可、認証情報の保存と更新、ワーカーごとの通信ルールはこの API には含まれません。
 
 ## 再送と復旧
 
