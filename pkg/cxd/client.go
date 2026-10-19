@@ -86,6 +86,11 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 		_ = mgr.Close()
 		return nil, fmt.Errorf("validating cxd node: %w", classify(err))
 	}
+	if node.ProtocolVersion() != 1 {
+		_ = node.Close()
+		_ = mgr.Close()
+		return nil, fmt.Errorf("%w: node does not support Go client protocol v1", ErrVersionMismatch)
+	}
 	return &Client{manager: mgr, node: node, opts: opts}, nil
 }
 

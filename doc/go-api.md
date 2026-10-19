@@ -73,4 +73,4 @@ func main() {
 
 `errors.Is` で `ErrNotFound`、`ErrConflict`、`ErrInProgress`、`ErrCleanupPending`、`ErrRequestGone`、`ErrCapacity`、`ErrVersionMismatch`、`ErrOutcomeUnknown` を判定できます。`context.Canceled` と `context.DeadlineExceeded` も保持します。元のエラーは `errors.Unwrap` で参照できます。
 
-公開 Go パッケージは node の内部 DTO をシグネチャに出しません。現時点では CLI・ライブラリ・ノードを同じビルドで配置してください。版が違う場合、`Open` は `ErrVersionMismatch` を返します。ノードの Unix ソケット上の HTTP/JSON は内部プロトコルであり、外部向けの互換性を約束しません。
+公開 Go パッケージは node の内部 DTO をシグネチャに出しません。現時点では CLI・ライブラリ・ノードを同じビルドで配置してください。版または Go API 用プロトコルが違う場合、`Open` は `ErrVersionMismatch` を返します。ノードの Unix ソケット上の HTTP/JSON は内部プロトコルであり、外部向けの互換性を約束しません。

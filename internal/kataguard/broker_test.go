@@ -38,7 +38,7 @@ func TestClientRejectsNodesWithoutCoherentSharedWorkspaces(t *testing.T) {
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
-				_ = json.NewEncoder(w).Encode(nodeReply{Info: NodeInfo{Profile: Profile, Endpoint: endpoint, Stamp: strings.Repeat("a", 64), Launcher: "/opt/fixture/guard", Root: "/sys/fs/cgroup/fixture", SharedFSCache: cache}})
+				_ = json.NewEncoder(w).Encode(nodeReply{Info: NodeInfo{ProtocolVersion: 1, Profile: Profile, Endpoint: endpoint, Stamp: strings.Repeat("a", 64), Launcher: "/opt/fixture/guard", Root: "/sys/fs/cgroup/fixture", SharedFSCache: cache}})
 			}))
 			defer s.Close()
 			c := &Client{client: s.Client(), endpoint: endpoint}
@@ -46,7 +46,7 @@ func TestClientRejectsNodesWithoutCoherentSharedWorkspaces(t *testing.T) {
 			c.client.Transport = &fixtureNodeTransport{target: s.URL, next: s.Client().Transport}
 			err := c.Validate(context.Background(), "io.containerd.kata.v2")
 			if cache == "none" {
-				if err != nil || c.Stamp() != strings.Repeat("a", 64) {
+				if err != nil || c.Stamp() != strings.Repeat("a", 64) || c.ProtocolVersion() != 1 {
 					t.Fatalf("current node rejected: %v", err)
 				}
 			} else if err == nil || !strings.Contains(err.Error(), "shared workspaces") || c.Stamp() != "" {

@@ -20,6 +20,7 @@ import (
 )
 
 type NodeInfo struct {
+	ProtocolVersion                          int
 	BuildVersion                             string
 	Profile, Endpoint, Stamp, Launcher, Root string
 	SharedFSCache                            string
@@ -141,7 +142,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 			switch req.Action {
 			case "validate":
 				err = g.Validate(ctx, req.Runtime)
-				reply.Info = NodeInfo{Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, SharedFSCache: "none", BuildVersion: buildinfo.Version, Protected: append(g.ProtectedPaths(), socket)}
+				reply.Info = NodeInfo{ProtocolVersion: 1, Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, SharedFSCache: "none", BuildVersion: buildinfo.Version, Protected: append(g.ProtectedPaths(), socket)}
 			case "inventory":
 				reply.Inventory, err = g.Inventory(ctx)
 			case "profiles":
@@ -284,6 +285,12 @@ func (c *Client) Validate(ctx context.Context, runtime string) error {
 	}
 	c.info = r.Info
 	return nil
+}
+
+func (c *Client) ProtocolVersion() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.info.ProtocolVersion
 }
 func (c *Client) Reserve(ctx context.Context, id string) (string, error) {
 	return c.ReserveProfile(ctx, id, "standard")
