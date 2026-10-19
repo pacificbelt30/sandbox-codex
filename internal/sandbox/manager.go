@@ -582,7 +582,12 @@ func (m *Manager) RemoveByName(name string, force bool) error {
 
 // List returns all codex-dock managed workers.
 func (m *Manager) List(all bool) ([]Worker, error) {
-	ctx := context.Background()
+	return m.ListContext(context.Background(), all)
+}
+
+// ListContext lists workers with a caller-supplied deadline. Shell completion
+// uses a short deadline so a stalled node cannot hang an interactive prompt.
+func (m *Manager) ListContext(ctx context.Context, all bool) ([]Worker, error) {
 	f := filters.NewArgs()
 	f.Add("label", labelManaged+"=true")
 

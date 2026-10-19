@@ -50,6 +50,11 @@ install: build
 	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
 	install -m 0755 $(BINARY) $(BINDIR)/codex-dock
 	install -m 0755 $(IO_LOGGER) $(BINDIR)/$(IO_LOGGER)
+	install -d $(PREFIX)/share/bash-completion/completions $(PREFIX)/share/zsh/site-functions $(PREFIX)/share/fish/vendor_completions.d
+	./$(BINARY) completion bash > $(PREFIX)/share/bash-completion/completions/cxd
+	./$(BINARY) completion zsh > $(PREFIX)/share/zsh/site-functions/_cxd
+	./$(BINARY) completion fish > $(PREFIX)/share/fish/vendor_completions.d/cxd.fish
+	chmod 0644 $(PREFIX)/share/bash-completion/completions/cxd $(PREFIX)/share/zsh/site-functions/_cxd $(PREFIX)/share/fish/vendor_completions.d/cxd.fish
 	@echo "Installed $(BINDIR)/$(BINARY)"
 
 ## install-config: place the default config file (skips if already exists)
@@ -100,6 +105,7 @@ proxy-docker: proxy-image
 ## uninstall: remove the installed binary
 uninstall:
 	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/codex-dock
+	rm -f $(PREFIX)/share/bash-completion/completions/cxd $(PREFIX)/share/zsh/site-functions/_cxd $(PREFIX)/share/fish/vendor_completions.d/cxd.fish
 	@echo "Removed $(BINDIR)/$(BINARY)"
 
 ## clean: remove build artifacts

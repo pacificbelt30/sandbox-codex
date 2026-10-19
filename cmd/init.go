@@ -122,5 +122,6 @@ func init() {
 		return err
 	}}
 	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude (default: configured agent, otherwise codex)")
+	registerCompletion(prepare, "agent", cobra.FixedCompletions([]cobra.Completion{"codex", "claude"}, cobra.ShellCompDirectiveNoFileComp))
 	rootCmd.AddCommand(prepare)
 }

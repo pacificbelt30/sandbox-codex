@@ -138,6 +138,13 @@ func init() {
 	  ""        image default user
 	  "dir"     project directory owner (uid:gid)
 	  "uid"     explicit uid (e.g. "1000" or "1000:1000")`)
+	registerCompletion(runCmd, "agent", cobra.FixedCompletions([]cobra.Completion{"shell", "codex", "claude"}, cobra.ShellCompDirectiveNoFileComp))
+	registerCompletion(runCmd, "runtime", cobra.FixedCompletions([]cobra.Completion{"kata", "runc"}, cobra.ShellCompDirectiveNoFileComp))
+	registerCompletion(runCmd, "approval-mode", cobra.FixedCompletions([]cobra.Completion{"suggest", "auto-edit", "full-auto", "danger"}, cobra.ShellCompDirectiveNoFileComp))
+	registerCompletion(runCmd, "shell-type", cobra.FixedCompletions([]cobra.Completion{"bash", "zsh"}, cobra.ShellCompDirectiveNoFileComp))
+	registerCompletion(runCmd, "user", cobra.FixedCompletions([]cobra.Completion{"current", "codex", "dir"}, cobra.ShellCompDirectiveNoFileComp))
+	registerCompletion(runCmd, "template", completeTemplates)
+	registerCompletion(runCmd, "image", completeImageTags)
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {

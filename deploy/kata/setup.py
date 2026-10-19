@@ -26,9 +26,15 @@ LOCK = json.loads((HERE / 'assets.lock.json').read_text())
 STATE = Path('/var/lib/codex-dock-setup')
 SOCKET = '/run/codex-dock-containerd/containerd.sock'
 SERVICES = ['codex-dock-node', 'codex-dock-buildkit', 'codex-dock-containerd']
+COMPLETIONS = {
+    'bash': Path('/usr/local/share/bash-completion/completions/cxd'),
+    'zsh': Path('/usr/local/share/zsh/site-functions/_cxd'),
+    'fish': Path('/usr/local/share/fish/vendor_completions.d/cxd.fish'),
+}
 MANAGED = [Path('/etc/systemd/system') / (s + '.service') for s in SERVICES] + [
     Path('/usr/local/bin/codex-dock'), Path('/usr/local/bin/cxd'), Path('/usr/local/bin/buildctl'),
-    Path('/etc/sysctl.d/80-codex-dock.conf'), Path('/etc/modules-load.d/codex-dock.conf')]
+    Path('/etc/sysctl.d/80-codex-dock.conf'), Path('/etc/modules-load.d/codex-dock.conf'),
+    *COMPLETIONS.values()]
 BUNDLE_FILES = ['codex-dock', 'codex-dock-worker-guard', 'codex-dock-io-logger']
 PACKAGES = {'ip': 'iproute2', 'nft': 'nftables', 'sysctl': 'procps',
             'gcc': 'gcc', 'debugfs': 'e2fsprogs', 'zstd': 'zstd',
@@ -39,6 +45,10 @@ PACKAGES = {'ip': 'iproute2', 'nft': 'nftables', 'sysctl': 'procps',
 def run(args, **kwargs):
     kwargs.setdefault('check', True)
     return subprocess.run([str(a) for a in args], text=True, **kwargs)
+
+
+def completion_script(cli, shell):
+    return run([cli, 'completion', shell], capture_output=True).stdout.encode()
 
 
 def sha(path):
@@ -471,6 +481,8 @@ def apply(args, record):
         for name in ['codex-dock', 'buildctl']:
             atomic(Path('/usr/local/bin') / name, (binary / name).read_bytes(), 0o755)
         atomic(Path('/usr/local/bin/cxd'), (binary / 'codex-dock').read_bytes(), 0o755)
+        for shell, path in COMPLETIONS.items():
+            atomic(path, completion_script(binary / 'codex-dock', shell))
         atomic(Path('/etc/sysctl.d/80-codex-dock.conf'), b'net.ipv4.ip_forward = 1\n')
         atomic(Path('/etc/modules-load.d/codex-dock.conf'), b'vhost_vsock\nvhost_net\n')
         run(['sysctl', '-q', '-w', 'net.ipv4.ip_forward=1'])

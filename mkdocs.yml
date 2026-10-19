@@ -52,6 +52,7 @@ nav:
       - トラブルシューティング: troubleshooting.md
   - リファレンス:
       - コマンド一覧: commands.md
+      - シェル補完: commands/completion.md
       - ワーカー起動: commands/run.md
       - ワーカー管理: commands/worker.md
       - イメージの作成: commands/build.md
@@ -77,6 +78,7 @@ nav:
       - Quick start: en/getting-started.md
       - Commands:
           - Overview: en/commands.md
+          - Completion: en/commands/completion.md
           - Run: en/commands/run.md
           - Workers: en/commands/worker.md
           - Build: en/commands/build.md

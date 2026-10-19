@@ -1,0 +1,88 @@
+package cmd
+
+import (
+	"context"
+	"sort"
+	"time"
+
+	"github.com/pacificbelt30/codex-dock/internal/sandbox"
+	"github.com/pacificbelt30/codex-dock/internal/template"
+	"github.com/spf13/cobra"
+)
+
+const completionTimeout = 500 * time.Millisecond
+
+func registerCompletion(cmd *cobra.Command, flag string, fn cobra.CompletionFunc) {
+	if err := cmd.RegisterFlagCompletionFunc(flag, fn); err != nil {
+		panic(err)
+	}
+}
+
+func completeTemplates(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	items, err := template.List()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names := make([]cobra.Completion, 0, len(items))
+	for _, item := range items {
+		names = append(names, item.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeImageTags(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	items, err := template.List()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	tags := make([]cobra.Completion, 0, len(items))
+	for _, item := range items {
+		tags = append(tags, item.Tag(""))
+	}
+	return tags, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeWorkers(accept func(sandbox.Worker) bool) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{})
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		defer func() { _ = mgr.Close() }()
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		defer cancel()
+		workers, err := mgr.ListContext(ctx, true)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return workerCompletionNames(workers, args, accept), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+func workerCompletionNames(workers []sandbox.Worker, args []string, accept func(sandbox.Worker) bool) []cobra.Completion {
+	used := make(map[string]bool, len(args))
+	for _, arg := range args {
+		used[arg] = true
+	}
+	names := make([]cobra.Completion, 0, len(workers))
+	for _, worker := range workers {
+		if worker.Name != "" && accept(worker) && !used[worker.Name] {
+			names = append(names, worker.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func init() {
+	defaultCmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return []cobra.Completion{"shell", "codex", "claude"}, cobra.ShellCompDirectiveNoFileComp
+	}
+	startCmd.ValidArgsFunction = completeWorkers(func(w sandbox.Worker) bool { return w.Status != "running" })
+	stopCmd.ValidArgsFunction = completeWorkers(func(w sandbox.Worker) bool { return w.Status == "running" })
+	rmCmd.ValidArgsFunction = completeWorkers(func(sandbox.Worker) bool { return true })
+	logsCmd.ValidArgsFunction = completeWorkers(func(sandbox.Worker) bool { return true })
+}

@@ -44,6 +44,7 @@ cxd run --agent claude
 
 プロキシイメージを初めてビルドする際は、リポジトリのルートで `init` を実行します。
 `cxd run` は組み込み既定値では認証済みシェルを開きます。`cxd default codex` で既定を Codex に、`cxd default codex --local` でこのプロジェクトだけ Codex に変更できます。`cxd default` で有効な値を確認できます。
+導入スクリプトと `make install` は Bash・Zsh・Fish の Tab 補完も配置します。[手動で有効にする方法](doc/commands/completion.md)もあります。
 `cxd codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
 通常の操作はoperator groupに属する利用者で行います。
 Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り替えません。

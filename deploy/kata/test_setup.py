@@ -10,6 +10,14 @@ import setup
 
 
 class SetupTests(unittest.TestCase):
+    def test_completion_script_uses_cli_and_installer_tracks_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cli = Path(tmp) / 'cxd'
+            cli.write_text('#!/bin/sh\nprintf "completion:%s\\n" "$2"\n')
+            cli.chmod(0o755)
+            self.assertEqual(setup.completion_script(cli, 'bash'), b'completion:bash\n')
+        self.assertTrue(set(setup.COMPLETIONS.values()).issubset(set(setup.MANAGED)))
+
     def test_existing_cxd_is_not_overwritten_by_first_named_upgrade(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'cxd'
