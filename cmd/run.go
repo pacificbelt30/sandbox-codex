@@ -484,7 +484,7 @@ func imageNeedsBuild(sbMgr *sandbox.Manager, image string, projectConfigs ...*Pr
 		if cfg != nil && cfg.Build.Dockerfile != "" && cfg.Build.Tag == image {
 			createdAt, err := sbMgr.ImageCreatedAt(image)
 			if err == nil {
-				path, _, _ := cfg.dockerfile()
+				path, _, _ := projectDockerfile(cfg)
 				if info, statErr := os.Stat(path); statErr == nil && info.ModTime().After(createdAt) {
 					return true, fmt.Sprintf("Project Dockerfile for %s has changed since it was last built", image), nil
 				}

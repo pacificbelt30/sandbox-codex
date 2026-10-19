@@ -19,6 +19,11 @@ var codexVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Z
 // OCI output is streamed into the same containerd namespace as workers. Neither
 // Docker Engine nor its CLI is involved, and no large archive is left on disk.
 func Build(ctx context.Context, tag, dockerfile, buildContext string, log io.Writer) error {
+	return BuildAt(ctx, Socket(), tag, dockerfile, buildContext, log)
+}
+
+// BuildAt imports the built image into an explicitly selected local node.
+func BuildAt(ctx context.Context, socket, tag, dockerfile, buildContext string, log io.Writer) error {
 	name, err := normalizeBuildName(tag)
 	if err != nil {
 		return err
@@ -58,7 +63,7 @@ func Build(ctx context.Context, tag, dockerfile, buildContext string, log io.Wri
 	if err != nil {
 		return err
 	}
-	client, err := NewClient()
+	client, err := NewClientAt(socket)
 	if err != nil {
 		return err
 	}

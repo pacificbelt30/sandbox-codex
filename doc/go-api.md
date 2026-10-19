@@ -53,7 +53,9 @@ func main() {
 
 `client.Profiles(ctx)` は稼働中ノードが提供する CPU、guest RAM、ホスト側予約メモリ、PID 上限を返します。`LaunchRequest` ではモデル、承認モード、追加マウントも指定できます。
 
-`Open` はソケットとノードのバージョンを確認します。`Launch` には、ビルド済みのイメージと起動中の認証プロキシが必要です。CLI の対話的なプロキシ起動、イメージの自動ビルド、`codex-dock.toml` の読み込みは行いません。製品側が実行条件を決めて `LaunchRequest` に渡します。実 API キーや OAuth トークンを `LaunchRequest` や VM に渡さないでください。プロキシの管理シークレットはホスト側の `Options` のみで扱います。
+`Open` はソケットとノードのバージョンを確認します。`Launch` には、ビルド済みのイメージと起動中の認証プロキシが必要です。`client.PrepareProject(ctx, dir, requestID, log)` は CLI と共通の `codex-dock.toml` 検証を使い、必要なイメージを BuildKit で作成して `LaunchRequest` を返します。`client.Build` と `client.BuildTemplate` も個別に利用できます。製品側で設定を確認・補足してから `Launch` を呼べます。
+
+`PrepareProject` はグローバル設定や実認証情報を読みません。プロジェクトの `egress_allow_domains` は、現時点では API で通信ポリシーを設定する方法がないため明示的にエラーにします。CLI の対話的なプロキシ起動も行いません。実 API キーや OAuth トークンを `LaunchRequest` や VM に渡さないでください。プロキシの管理シークレットはホスト側の `Options` のみで扱います。
 
 ## 再送と復旧
 

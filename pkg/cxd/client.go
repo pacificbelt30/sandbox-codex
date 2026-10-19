@@ -113,6 +113,7 @@ type LaunchRequest struct {
 	ReadOnlyRootFS bool
 	NoGitMetadata  bool
 	NoInternet     bool
+	WatchPolling   bool
 	User           string
 	Mounts         []Mount
 	TokenTTL       time.Duration
@@ -235,7 +236,8 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		Model: req.Model, ApprovalMode: sandbox.ApprovalMode(req.ApprovalMode),
 		Branch: req.Branch, UseWorktree: req.UseWorktree, NewBranch: req.NewBranch, ReuseBranchOnRetry: autoBranch && claim.Attempt > 1,
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
-		NoInternet: req.NoInternet, ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
+		NoInternet: req.NoInternet, WatchPolling: req.WatchPolling,
+		ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
 	}
 	for _, mount := range req.Mounts {
 		launch.Mounts = append(launch.Mounts, sandbox.MountSpec{Source: mount.Source, Target: mount.Target, ReadOnly: mount.ReadOnly})

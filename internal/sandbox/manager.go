@@ -610,7 +610,11 @@ func shellBinaryPath(t ShellType) string {
 
 // ImageExists reports whether the named image tag is present in the worker namespace.
 func (m *Manager) ImageExists(tag string) (bool, error) {
-	_, err := m.cli.ImageInspect(context.Background(), tag)
+	return m.ImageExistsContext(context.Background(), tag)
+}
+
+func (m *Manager) ImageExistsContext(ctx context.Context, tag string) (bool, error) {
+	_, err := m.cli.ImageInspect(ctx, tag)
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return false, nil
@@ -623,7 +627,11 @@ func (m *Manager) ImageExists(tag string) (bool, error) {
 // ImageCreatedAt returns the creation timestamp recorded in the named image's
 // metadata (the same value "docker inspect" reports as .Created).
 func (m *Manager) ImageCreatedAt(tag string) (time.Time, error) {
-	info, err := m.cli.ImageInspect(context.Background(), tag)
+	return m.ImageCreatedAtContext(context.Background(), tag)
+}
+
+func (m *Manager) ImageCreatedAtContext(ctx context.Context, tag string) (time.Time, error) {
+	info, err := m.cli.ImageInspect(ctx, tag)
 	if err != nil {
 		return time.Time{}, err
 	}
