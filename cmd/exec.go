@@ -45,6 +45,10 @@ var execCmd = &cobra.Command{
 	Short: "Run a command in an existing worker",
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		argv := execArguments(args)
+		if len(argv) == 0 {
+			return fmt.Errorf("exec requires a command after NAME")
+		}
 		mgr, err := sandbox.NewManager(managementConfig())
 		if err != nil {
 			return err
@@ -66,7 +70,7 @@ var execCmd = &cobra.Command{
 		if execJSON {
 			out, errOut = &stdoutBuf, &stderrBuf
 		}
-		code, runErr := mgr.Exec(ctx, args[0], args[1:], in, out, errOut)
+		code, runErr := mgr.Exec(ctx, args[0], argv, in, out, errOut)
 		if execJSON {
 			result := struct {
 				ExitCode int64  `json:"exit_code"`
@@ -95,6 +99,17 @@ var execCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func execArguments(args []string) []string {
+	if len(args) < 2 {
+		return nil
+	}
+	argv := args[1:]
+	if argv[0] == "--" {
+		argv = argv[1:]
+	}
+	return argv
 }
 
 var waitTimeout time.Duration
