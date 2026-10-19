@@ -24,6 +24,7 @@ type ProjectConfig struct {
 	Run  struct {
 		Image        string `toml:"image"`
 		Template     string `toml:"template"`
+		Agent        string `toml:"agent"`
 		Model        string `toml:"model"`
 		ApprovalMode string `toml:"approval_mode"`
 		WatchPolling *bool  `toml:"watch_polling"`
@@ -39,7 +40,7 @@ type ProjectConfig struct {
 
 var projectKeys = map[string]map[string]bool{
 	"run": {
-		"image": true, "template": true, "model": true,
+		"image": true, "template": true, "agent": true, "model": true,
 		"approval_mode": true, "watch_polling": true,
 		"read_only": true, "no_internet": true,
 	},
@@ -85,6 +86,9 @@ func loadProjectConfig(dir string) (*ProjectConfig, error) {
 	cfg.Root = root
 	if cfg.Run.Image != "" && cfg.Run.Template != "" {
 		return nil, fmt.Errorf("%s: choose either run.image or run.template", path)
+	}
+	if cfg.Run.Agent != "" && !validAgentChoice(cfg.Run.Agent) {
+		return nil, fmt.Errorf("%s: run.agent must be shell, codex, or claude", path)
 	}
 	if cfg.Build.Dockerfile != "" && cfg.Build.Template != "" {
 		return nil, fmt.Errorf("%s: choose either build.dockerfile or build.template", path)
@@ -190,6 +194,9 @@ func applyProjectRunConfig(cmd *cobra.Command, cfg *ProjectConfig) {
 	if !flags.Changed("model") && cfg.Run.Model != "" {
 		runOpts.Model = cfg.Run.Model
 	}
+	if !runOpts.DirectAgent && !flags.Changed("agent") && cfg.Run.Agent != "" {
+		agentFlag = cfg.Run.Agent
+	}
 	if !flags.Changed("approval-mode") && cfg.Run.ApprovalMode != "" {
 		approvalModeFlag = cfg.Run.ApprovalMode
 	}
@@ -278,6 +285,9 @@ func projectSettingsSummary(cfg *ProjectConfig) string {
 	}
 	if cfg.Run.Template != "" {
 		rows = append(rows, "run.template = "+cfg.Run.Template)
+	}
+	if cfg.Run.Agent != "" {
+		rows = append(rows, "run.agent = "+cfg.Run.Agent)
 	}
 	if cfg.Build.Dockerfile != "" {
 		rows = append(rows, "build.dockerfile = "+cfg.Build.Dockerfile)

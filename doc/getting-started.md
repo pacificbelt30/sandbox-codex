@@ -61,6 +61,7 @@ cxd init --agent claude
 プロキシイメージがない場合はGoソースから作成するため、リポジトリのルートで実行してください。
 別のプロジェクトから `init` を実行してソースが見つからない場合は、リポジトリのルートで一度 `cxd proxy build` を実行してから戻ってください。
 準備が終わったら、プロジェクトへ移動して `cxd run --agent codex` を実行します。
+`cxd default codex`（または `cxd default codex --local`）を設定すれば、次回から `cxd run` だけで Codex が起動します。`cxd init` も `--agent` 省略時は設定したエージェントを準備します。既定がシェルの場合は Codex を準備します。
 
 手動で分けて準備する場合は、次の手順を使います。
 

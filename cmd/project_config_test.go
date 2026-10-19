@@ -129,6 +129,7 @@ func TestProjectConfigRejectsHostSettingsAndMismatchedBuild(t *testing.T) {
 		{"mounts", "[run]\nmounts = ['/home/user:/host']\n", "unsupported project setting"},
 		{"proxy", "[proxy]\nadmin_secret = 'secret'\n", "host setting"},
 		{"approval", "[run]\napproval_mode = 'danger'\n", "approval_mode"},
+		{"agent", "[run]\nagent = 'unsupported'\n", "run.agent"},
 		{"writable", "[run]\nread_only = false\n", "read_only can only be true"},
 		{"internet", "[run]\nno_internet = false\n", "no_internet can only be true"},
 		{"mismatch", "[run]\nimage = 'other:dev'\n[build]\ntemplate = 'plain'\n", "must match"},

@@ -9,6 +9,7 @@ The default is `--runtime kata`. Dedicated Linux bridges, namespaces and nftable
 The execution host is Linux x86_64. See [quick start](../getting-started.md) and [network](../network.md).
 
 Missing images are built automatically from the matching template or default Dockerfile.
+A plain `cxd run` starts the configured default agent. The built-in default is the authenticated shell. Use `cxd default codex` globally or `cxd default codex --local` for this project; `cxd default` shows the effective setting.
 On-disk template rebuilds are controlled by [auto_build](../configuration.md#auto_build).
 See [build](build.md) for custom tags and templates.
 At a repository root, `run` reads `[run]` and `[build]` from `codex-dock.toml`; `--project DIR` uses `DIR/codex-dock.toml`. See [project settings](../configuration.md#project-settings).
@@ -55,9 +56,9 @@ cxd run -- npm test -- --watch=false
 | `--branch` | `-b` | | Branch name to check out (requires `--worktree`) |
 | `--new-branch` | `-B` | `false` | Create a new branch (requires `--worktree` and `--branch`) |
 | `--name` | `-n` | auto-generated | Container name (defaults to `codex-<adj>-<noun>`) |
-| `--agent` | | `""` (shell) | AI agent to launch inside the sandbox: `""` (auth-configured shell), `codex`, or `claude` |
+| `--agent` | | `shell` (configurable) | AI agent to launch: `shell` (auth-configured shell), `codex`, or `claude` |
 | `--task` | `-t` | | Initial task prompt passed to Codex |
-| `--exec` | `-e` | | Command to run once instead of an interactive shell when `--agent` is omitted ([details](#--exec)) |
+| `--exec` | `-e` | | Command to run once instead of the authenticated shell ([details](#--exec)) |
 | `--approval-mode` | | `suggest` | Codex CLI approval mode ([details](#--approval-mode)) |
 | `--full-auto` | | `false` | **Deprecated**: use `--approval-mode full-auto` |
 | `--model` | `-m` | | Model name to pass to Codex |
@@ -110,12 +111,14 @@ Shared files remain writable according to mount permissions. See [security](../s
 
 ## `--exec`
 
+The configured default agent does not apply to `cxd run IMAGE COMMAND`, `cxd run -- COMMAND`, or `--exec`; these run the command. An explicit `--agent codex` or `--agent claude` takes priority over the command. Use `--agent shell` to request the authenticated shell when a different default is configured.
+
 Runs a single command inside the sandbox instead of an interactive shell.
 Passed into the container as the `DOCK_EXEC_CMD` environment variable, which
 `entrypoint.sh` only consults in its no-agent branch (the auth-configured
 shell case).
 
-- If `--agent` is given, the agent **always takes priority** and `--exec` is ignored.
+- If `--agent codex` or `--agent claude` is given, the agent takes priority and `--exec` is ignored. With `--agent shell`, the command runs.
 - Combining it with `--shell` (the raw debug shell that bypasses `entrypoint.sh`
   entirely) is an error, since `entrypoint.sh` — and therefore `--exec` — never runs.
 - The command runs via the shell selected by `--shell-type` (default `bash`), through its `-c` flag.

@@ -87,11 +87,12 @@ func init() {
 	f.BoolVarP(&runOpts.NewBranch, "new-branch", "B", false, "Create new branch (requires --worktree and --branch)")
 	f.StringVarP(&runOpts.Name, "name", "n", "", "Container name (auto-generated if omitted)")
 	f.StringVar(&agentFlag, "agent", "", `AI agent to launch inside the sandbox.
-  ""       interactive shell with auth configured (default; codex and claude both available)
+  shell    interactive shell with auth configured (built-in default)
   codex    launch OpenAI Codex CLI
-  claude   launch Anthropic Claude Code`)
+  claude   launch Anthropic Claude Code
+  Configure the default with "cxd default codex" or "cxd default shell".`)
 	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for the agent")
-	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", `Run this command instead of an interactive shell. Only takes effect when --agent is omitted (and --shell is not set) — an agent, if selected, always takes priority.
+	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", `Run this command instead of an interactive shell. An explicit --agent codex/claude takes priority; the configured default agent does not apply.
   Mutually exclusive with a "-- command..." trailing on the command line (see the "run" command's usage), which is usually easier for multi-word commands since it avoids having to quote the whole thing as one string.`)
 	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Approval mode for Codex CLI.
   suggest   ask for approval on every action (default, safest)
@@ -219,13 +220,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	runOpts.ApprovalMode = mode
 
-	// Resolve agent. --shell forces the plain-shell agent (no auto-launch).
-	agent := sandbox.Agent(agentFlag)
-	if runOpts.ShellMode {
-		agent = sandbox.AgentNone
-	}
-	if !sandbox.ValidAgent(agent) {
-		return fmt.Errorf("invalid --agent %q; valid values: codex, claude, or empty (shell)", agentFlag)
+	// An implicit agent default applies only to an interactive run. Explicit
+	// commands and the native `cxd codex` entry point keep their own behavior.
+	agent, err := resolveSelectedAgent(cmd, runOpts.ExecCmd)
+	if err != nil {
+		return err
 	}
 	runOpts.Agent = agent
 
@@ -582,6 +581,9 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	}
 	flags := cmd.Flags()
 	applyRuntimeDefaults(cmd)
+	if !runOpts.DirectAgent && !flags.Changed("agent") && viper.IsSet("run.agent") {
+		agentFlag = viper.GetString("run.agent")
+	}
 	if !flags.Changed("model") && viper.IsSet("run.model") {
 		runOpts.Model = viper.GetString("run.model")
 	}

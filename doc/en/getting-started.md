@@ -49,6 +49,7 @@ cxd init --agent claude
 ```
 
 It checks host readiness and credentials, builds a missing worker image, checks image compatibility, and starts the proxies. If the proxy image is missing, its build needs the Go source in the repository root. After building it once, you can return to your project directory.
+Set `cxd default codex` (or `cxd default codex --local`) to make a plain `cxd run` start Codex. Without an explicit `--agent`, `cxd init` prepares the configured agent; the shell default prepares Codex.
 
 To perform those steps separately:
 

@@ -16,6 +16,16 @@ cxd project check
 git add codex-dock.toml
 ```
 
+`cxd run` で起動するエージェントの既定値は CLI からも設定できます。`cxd default` は現在有効な値と設定元を表示します。
+
+```bash
+cxd default codex          # グローバル設定
+cxd default claude --local # このプロジェクトだけ
+cxd default shell          # 認証済みシェルへ戻す
+```
+
+`--local` はこのディレクトリの `codex-dock.toml` を作成または更新します。共有したい場合はコミットしてください。明示した `--agent`、`--exec`、`IMAGE COMMAND`、`-- COMMAND` は既定値より優先されます。`cxd codex` は設定に関係なく Codex を起動します。
+
 生成する最小構成は次のとおりです。組み込み `plain` イメージを使うため、クローン先では `cxd init` が不足するイメージをビルドできます。
 
 ```toml
@@ -43,7 +53,7 @@ tag = "my-project:dev"
 `packages.dock` は従来どおり自動で読み込みます。依存パッケージやベースイメージを固定したい場合は、プロジェクトのDockerfileやパッケージ指定にもバージョンを記述してください。
 プロジェクトでテンプレートを指定する場合、組み込み版またはその未変更コピーだけを使えます。各利用者の編集済みテンプレートに依存する構成は、プロジェクトのDockerfileへ移してください。
 
-プロジェクト設定で使えるキーは `[run]` の `image`、`template`、`model`、`approval_mode`（`suggest` / `auto-edit`）、`watch_polling`、`read_only`、`no_internet` と、`[build]` の `dockerfile`、`template`、`tag` です。`read_only` と `no_internet` は `true` のみ指定でき、グローバル設定の制限を緩めることはできません。`run.image` と `build.tag` は同じ値にします。ホストの認証、proxy、runtime、token TTL、追加マウントなどはここには書けません。`project check` は不明なキーや設定の不一致をエラーにします。
+プロジェクト設定で使えるキーは `[run]` の `image`、`template`、`agent`（`shell` / `codex` / `claude`）、`model`、`approval_mode`（`suggest` / `auto-edit`）、`watch_polling`、`read_only`、`no_internet` と、`[build]` の `dockerfile`、`template`、`tag` です。`read_only` と `no_internet` は `true` のみ指定でき、グローバル設定の制限を緩めることはできません。`run.image` と `build.tag` は同じ値にします。ホストの認証、proxy、runtime、token TTL、追加マウントなどはここには書けません。`project check` は不明なキーや設定の不一致をエラーにします。
 
 不足するイメージは `init` / `run` 時にビルドします。既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `cxd build` を実行してください。
 
@@ -108,6 +118,7 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 | `kata_runtime` | `io.containerd.kata.v2` | `--kata-runtime` |
 | `image` | `default_image` | `--image` |
 | `template` | `default_template` | `--template` |
+| `agent` | `shell` | `--agent` |
 | `token_ttl` | `default_token_ttl` | `--token-ttl` |
 | `approval_mode` | `suggest` | `--approval-mode` |
 | `user` | `current` | `--user` |

@@ -13,6 +13,7 @@ const projectConfigExample = `# Commit this file with the project. Host credenti
 [run]
 image = "codex-dock:latest"
 approval_mode = "suggest"
+# agent = "codex" # cxd default codex --local also sets this
 # model = "..."
 # watch_polling = true
 # read_only = true

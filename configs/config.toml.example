@@ -69,6 +69,10 @@ debug = false
 # -----------------------------------------------------------------------------
 [run]
 
+# Agent started by a plain `cxd run`: shell, codex, or claude.
+# Change it with `cxd default codex` (or `cxd default codex --local`).
+# agent = "shell"
+
 # Worker isolation. Kata is the default; missing Kata/KVM is an error.
 # Explicit compatibility mode: runtime = "runc" (no VM isolation).
 # Environment overrides: CODEX_DOCK_RUNTIME / CODEX_DOCK_KATA_RUNTIME.

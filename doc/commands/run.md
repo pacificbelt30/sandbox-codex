@@ -10,6 +10,7 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 実行ホストはLinux x86_64です。[導入](../getting-started.md)と[ネットワーク](../network.md)を参照してください。
 
 イメージがなければ自動ビルドします。テンプレートに対応するタグはそのテンプレートを使います。
+`cxd run` 単体では既定のエージェントを起動します。組み込み既定値は認証済みシェルです。`cxd default codex` でグローバル、`cxd default codex --local` でプロジェクト単位の既定値を変更できます。`cxd default` は現在有効な設定を表示します。
 ディスク上のDockerfileが更新された場合の再ビルドは[auto_build](../configuration.md#auto_build)で設定します。
 独自タグやテンプレートは[build](build.md)を参照してください。
 リポジトリ直下に `codex-dock.toml` があれば、その `[run]` と `[build]` を読み込みます。`--project DIR` では `DIR/codex-dock.toml` を使います。[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
@@ -56,9 +57,9 @@ cxd run -- npm test -- --watch=false
 | `--branch` | `-b` | | チェックアウトするブランチ名（`--worktree` が必要） |
 | `--new-branch` | `-B` | `false` | 新規ブランチを作成する（`--worktree` と `--branch` が必要） |
 | `--name` | `-n` | 自動生成 | コンテナ名（省略すると `codex-<形容詞>-<名詞>` 形式で自動生成） |
-| `--agent` | | `""`（シェル） | 起動するエージェント（[詳細](#--agent--エージェントの選択)） |
+| `--agent` | | `shell`（設定で変更可） | 起動するエージェント（[詳細](#--agent--エージェントの選択)） |
 | `--task` | `-t` | | エージェントに渡す初期タスクプロンプト |
-| `--exec` | `-e` | | エージェント未指定時に、対話シェルの代わりに実行するコマンド（[詳細](#--exec--コマンドの実行)） |
+| `--exec` | `-e` | | 認証済みシェルの代わりに実行するコマンド（[詳細](#--exec--コマンドの実行)） |
 | `--approval-mode` | | `suggest` | 承認モード（[詳細](#--approval-mode--承認モードの指定)） |
 | `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
 | `--model` | `-m` | | エージェントに渡すモデル名 |
@@ -94,7 +95,8 @@ cxd run -- npm test -- --watch=false
 
 | 値 | 動作 | 注入される認証情報 |
 |---|---|---|
-| _（省略）_ | 認証設定済みの対話シェルを起動（`codex` / `claude` 両方が PATH 上にある） | Codex と Anthropic の両方（利用可能なもの） |
+| _（省略）_ | 設定した既定値を使う（組み込み既定値は認証済みシェル） | 選ばれたエージェントに応じる |
+| `shell` | 認証設定済みの対話シェルを起動（`codex` / `claude` 両方が PATH 上にある） | Codex と Anthropic の両方（利用可能なもの） |
 | `codex` | OpenAI Codex CLI を起動 | `CODEX_AUTH_PROXY_URL`, `CODEX_TOKEN`, `OPENAI_BASE_URL` ほか |
 | `claude` | Anthropic Claude Code を起動 | `ANTHROPIC_BASE_URL`(`…/anthropic`), `ANTHROPIC_API_KEY`（プレースホルダ） |
 
@@ -104,12 +106,14 @@ cxd run -- npm test -- --watch=false
   稼働中ワーカーがある場合は、それらの認証を失効させないようエラーで停止します。意図的に再作成する場合は
   `--force-recreate-proxy` を指定し、プロキシIPが変わった既存ワーカーは新規作成してください。
 - `--shell` は `entrypoint.sh` を完全にバイパスして**認証なし**の素のシェルを起動します（デバッグ用）。
-  認証済みシェルが欲しい場合は `--agent` を省略してください。
+  認証済みシェルが欲しい場合は `--agent shell` を指定してください。
+
+設定した既定エージェントは、`cxd run IMAGE COMMAND`、`cxd run -- COMMAND`、`--exec` のコマンド実行時には適用しません。明示した `--agent codex` / `--agent claude` はコマンドより優先します。
 
 ```bash
 cxd run --agent codex  --approval-mode full-auto
 cxd run --agent claude --approval-mode full-auto --task "Refactor the auth module"
-cxd run                # 認証済みシェル（codex / claude 両方利用可）
+cxd run --agent shell  # 認証済みシェル（codex / claude 両方利用可）
 ```
 
 ---
@@ -120,7 +124,7 @@ cxd run                # 認証済みシェル（codex / claude 両方利用可�
 コンテナ内では `DOCK_EXEC_CMD` 環境変数として渡され、`entrypoint.sh` の「エージェント未指定」
 分岐（認証設定済みシェルを起動する分岐）でのみ参照されます。
 
-- `--agent` を指定した場合は**エージェントが常に優先され**、`--exec` は無視されます。
+- `--agent codex` / `--agent claude` を指定した場合は**エージェントが優先され**、`--exec` は無視されます。`--agent shell` ではコマンドを実行します。
 - `--shell`（`entrypoint.sh` を完全にバイパスする素のデバッグシェル）と併用するとエラーになります
   （`--shell` では `entrypoint.sh` 自体が実行されないため `--exec` が効きません）。
 - コマンドは `--shell-type` で選んだシェル（既定は bash）の `-c` 経由で実行されます。

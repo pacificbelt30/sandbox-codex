@@ -10,6 +10,16 @@ Use `cxd --config PATH COMMAND` to select another file.
 
 Run `cxd project init` at the repository root to create a tracked `codex-dock.toml`, and `cxd project check` to validate it. `init`, `run`, `codex`, and `build` read the file from the current directory; `run --project DIR` reads `DIR/codex-dock.toml`. Parent directories are not searched.
 
+You can also change the agent started by a plain `cxd run` from the CLI. `cxd default` shows the effective value and where it came from.
+
+```bash
+cxd default codex          # global config
+cxd default claude --local # this project only
+cxd default shell          # restore the authenticated shell
+```
+
+`--local` creates or updates `codex-dock.toml` in this directory. Commit the file to share it. An explicit `--agent`, `--exec`, `IMAGE COMMAND`, or `-- COMMAND` overrides the default. `cxd codex` always starts Codex.
+
 ```toml
 [run]
 image = "codex-dock:latest"
@@ -31,7 +41,7 @@ dockerfile = "Dockerfile.codex-dock"
 tag = "my-project:dev"
 ```
 
-`packages.dock` is also loaded automatically. Pin dependency versions in the project Dockerfile or package list when repeatability matters. Project templates must be built-in or unchanged copies of built-in templates; commit a Dockerfile instead of depending on a locally edited template. The project file accepts `run.image`, `run.template`, `run.model`, `run.approval_mode` (`suggest` or `auto-edit`), `run.watch_polling`, `run.read_only`, `run.no_internet`, `build.dockerfile`, `build.template`, and `build.tag`. Project `read_only` and `no_internet` can only be `true`, so a repository cannot relax host restrictions. Credentials, proxy endpoints, runtime selection, token lifetime and extra host mounts stay in the global config or explicit flags. Unknown keys fail validation.
+`packages.dock` is also loaded automatically. Pin dependency versions in the project Dockerfile or package list when repeatability matters. Project templates must be built-in or unchanged copies of built-in templates; commit a Dockerfile instead of depending on a locally edited template. The project file accepts `run.image`, `run.template`, `run.agent` (`shell`, `codex`, or `claude`), `run.model`, `run.approval_mode` (`suggest` or `auto-edit`), `run.watch_polling`, `run.read_only`, `run.no_internet`, `build.dockerfile`, `build.template`, and `build.tag`. Project `read_only` and `no_internet` can only be `true`, so a repository cannot relax host restrictions. Credentials, proxy endpoints, runtime selection, token lifetime and extra host mounts stay in the global config or explicit flags. Unknown keys fail validation.
 
 `init` and `run` build missing images. For an existing project image, automatic rebuilds check the Dockerfile timestamp; run `cxd build` after changing copied files or dependencies alone.
 
@@ -93,6 +103,7 @@ Under `[run]`:
 | `kata_runtime` | `io.containerd.kata.v2` | `--kata-runtime` |
 | `image` | `default_image` | `--image` |
 | `template` | `default_template` | `--template` |
+| `agent` | `shell` | `--agent` |
 | `token_ttl` | `default_token_ttl` | `--token-ttl` |
 | `approval_mode` | `suggest` | `--approval-mode` |
 | `user` | `current` | `--user` |

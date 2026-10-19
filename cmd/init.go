@@ -19,9 +19,6 @@ func init() {
 		if os.Geteuid() == 0 {
 			return fmt.Errorf("run init as the normal operator after host setup, so the proxy uses that account's credentials")
 		}
-		if agent != "codex" && agent != "claude" {
-			return fmt.Errorf("choose --agent codex or claude")
-		}
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
@@ -32,6 +29,19 @@ func init() {
 		}
 		applyRunConfigDefaults(runCmd)
 		applyProjectRunConfig(runCmd, projectCfg)
+		if _, err := parseAgentChoice(agentFlag); err != nil {
+			return fmt.Errorf("configured run agent: %w", err)
+		}
+		if !cmd.Flags().Changed("agent") {
+			// Match the configured default when it starts an agent. The
+			// authenticated shell still prepares Codex as the baseline.
+			if agentFlag == "codex" || agentFlag == "claude" {
+				agent = agentFlag
+			}
+		}
+		if agent != "codex" && agent != "claude" {
+			return fmt.Errorf("choose --agent codex or claude")
+		}
 		report := runtimeReport(cmd.Context())
 		if err := report.Write(cmd.OutOrStdout(), false); err != nil {
 			return err
@@ -111,6 +121,6 @@ func init() {
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: %s\nFor host edit watchers add --watch-polling to `cxd run` (Chokidar/Watchpack).\n", launch)
 		return err
 	}}
-	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude")
+	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude (default: configured agent, otherwise codex)")
 	rootCmd.AddCommand(prepare)
 }
