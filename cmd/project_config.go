@@ -22,14 +22,16 @@ const projectConfigName = "codex-dock.toml"
 type ProjectConfig struct {
 	Root string `toml:"-"`
 	Run  struct {
-		Image        string `toml:"image"`
-		Template     string `toml:"template"`
-		Agent        string `toml:"agent"`
-		Model        string `toml:"model"`
-		ApprovalMode string `toml:"approval_mode"`
-		WatchPolling *bool  `toml:"watch_polling"`
-		ReadOnly     *bool  `toml:"read_only"`
-		NoInternet   *bool  `toml:"no_internet"`
+		Image          string `toml:"image"`
+		Template       string `toml:"template"`
+		Agent          string `toml:"agent"`
+		Model          string `toml:"model"`
+		ApprovalMode   string `toml:"approval_mode"`
+		WatchPolling   *bool  `toml:"watch_polling"`
+		ReadOnly       *bool  `toml:"read_only"`
+		ReadOnlyRootFS *bool  `toml:"read_only_rootfs"`
+		NoGitMetadata  *bool  `toml:"no_git_metadata"`
+		NoInternet     *bool  `toml:"no_internet"`
 	} `toml:"run"`
 	Build struct {
 		Dockerfile string `toml:"dockerfile"`
@@ -42,7 +44,7 @@ var projectKeys = map[string]map[string]bool{
 	"run": {
 		"image": true, "template": true, "agent": true, "model": true,
 		"approval_mode": true, "watch_polling": true,
-		"read_only": true, "no_internet": true,
+		"read_only": true, "read_only_rootfs": true, "no_git_metadata": true, "no_internet": true,
 	},
 	"build": {"dockerfile": true, "template": true, "tag": true},
 }
@@ -205,6 +207,12 @@ func applyProjectRunConfig(cmd *cobra.Command, cfg *ProjectConfig) {
 	}
 	if !flags.Changed("read-only") && cfg.Run.ReadOnly != nil && *cfg.Run.ReadOnly {
 		runOpts.ReadOnly = true
+	}
+	if !flags.Changed("read-only-rootfs") && cfg.Run.ReadOnlyRootFS != nil && *cfg.Run.ReadOnlyRootFS {
+		runOpts.ReadOnlyRootFS = true
+	}
+	if !flags.Changed("no-git-metadata") && cfg.Run.NoGitMetadata != nil && *cfg.Run.NoGitMetadata {
+		runOpts.NoGitMetadata = true
 	}
 	if !flags.Changed("no-internet") && cfg.Run.NoInternet != nil && *cfg.Run.NoInternet {
 		runOpts.NoInternet = true

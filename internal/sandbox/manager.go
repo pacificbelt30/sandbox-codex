@@ -163,10 +163,17 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 		allPkgs = append(allPkgs, filePkgs...)
 	}
 	installScript := BuildInstallScript(allPkgs)
+	if opts.ReadOnlyRootFS && installScript != "" {
+		return "", fmt.Errorf("package installation requires a writable rootfs; build packages into the image before using --read-only-rootfs")
+	}
 	mounts := buildMounts(opts, absWorkspace)
-	gitMounts, gitEnv, err := linkedWorktreeMounts(ctx, absWorkspace, opts.ReadOnly, mounts)
-	if err != nil {
-		return "", err
+	var gitMounts []mount.Mount
+	var gitEnv []string
+	if !opts.NoGitMetadata {
+		gitMounts, gitEnv, err = linkedWorktreeMounts(ctx, absWorkspace, opts.ReadOnly, mounts)
+		if err != nil {
+			return "", err
+		}
 	}
 	mounts = append(mounts, gitMounts...)
 	if isolation == RuntimeKata {
@@ -229,6 +236,9 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 		labels[labelPrefix+"proxy-admin-url"] = m.proxyAdminURL
 		labels[labelPrefix+"token-ttl"] = strconv.Itoa(opts.TokenTTL)
 	}
+	if opts.ReadOnlyRootFS {
+		labels[labelPrefix+"read-only-rootfs"] = "true"
+	}
 
 	// Per-worker Internal network: create it and attach the proxy so the worker
 	// can reach the proxy/router but nothing else (no other worker, host, or
@@ -266,6 +276,13 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 
 	// Security: drop all capabilities, non-root user, isolated Internal network.
 	hostConfig := buildHostConfig(mounts, netName)
+	if opts.ReadOnlyRootFS {
+		hostConfig.ReadonlyRootfs = true
+		hostConfig.Tmpfs = map[string]string{
+			"/tmp":     "rw,nosuid,nodev,size=268435456,mode=1777",
+			"/var/tmp": "rw,nosuid,nodev,size=268435456,mode=1777",
+		}
+	}
 	var proxyHosts []string
 	if isolation == RuntimeKata {
 		proxyHosts, err = m.network.KataProxyHosts(ctx, createdNetwork, "", proxies)
@@ -874,8 +891,11 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 	// When a custom container user is specified, the uid may not exist in the
 	// image's /etc/passwd, causing Docker to set HOME="/".
 	// Use a writable non-workspace home to avoid permission errors and avoid creating extra directories under /workspace.
-	if opts.ContainerUser != "" {
+	if opts.ContainerUser != "" || opts.ReadOnlyRootFS {
 		env = append(env, "HOME=/var/tmp/codex-home")
+	}
+	if opts.ReadOnlyRootFS {
+		env = append(env, "XDG_CACHE_HOME=/var/tmp/codex-home/.cache")
 	}
 
 	return env, nil

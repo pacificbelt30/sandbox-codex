@@ -116,7 +116,10 @@ func (m *Manager) prepareKataBootstrap(ctx context.Context, c *container.Config,
 	c.Labels[labelAllocation] = allocation
 	c.Labels[labelProfile] = g.Stamp()
 	h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: g.Launcher(), Target: guestGuard, ReadOnly: true})
-	h.Tmpfs = map[string]string{"/run/codex-dock-control": "rw,noexec,nosuid,nodev,size=1048576,mode=1777"}
+	if h.Tmpfs == nil {
+		h.Tmpfs = make(map[string]string)
+	}
+	h.Tmpfs["/run/codex-dock-control"] = "rw,noexec,nosuid,nodev,size=1048576,mode=1777"
 	h.Memory = kataguard.GuestMemory
 	h.MemorySwap = kataguard.GuestMemory
 	h.NanoCPUs = 1_000_000_000

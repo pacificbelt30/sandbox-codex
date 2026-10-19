@@ -63,6 +63,8 @@ cxd run -- npm test -- --watch=false
 | `--full-auto` | | `false` | **Deprecated**: use `--approval-mode full-auto` |
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
+| `--read-only-rootfs` | | `false` | Make the image rootfs read-only; use tmpfs for HOME and temporary files |
+| `--no-git-metadata` | | `false` | Do not automatically share linked worktree Git metadata |
 | `--mount` | | | Additional host directory to mount (repeatable): `<host-path>:<container-path>[:ro\|rw]` ([details](#--mount)) |
 | `--no-internet` | | `false` | Disconnect general egress; keep fixed AI API routes |
 | `--keep` | | `false` | Keep the container and its per-worker network after a foreground run exits (default: remove them so networks don't accumulate) |
@@ -231,6 +233,8 @@ cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 
 > Additional mounts can be independently read-only regardless of `/workspace`.
 > `--read-only` only affects the `/workspace` mount.
+
+`--read-only-rootfs` does not change `/workspace` or additional mount permissions. Install needed packages in the image first; startup package installation is rejected. HOME, `/tmp`, and `/var/tmp` are temporary tmpfs storage. With `--no-git-metadata`, a linked worktree's shared Git metadata is not mounted; provide private metadata and mounts if Git must run inside the VM.
 
 This can also be set as a default via `mounts` in the `[run]` section of the config
 file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.

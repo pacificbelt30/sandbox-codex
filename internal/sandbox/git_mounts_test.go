@@ -82,3 +82,27 @@ func TestLinkedWorktreeReadOnlyMetadata(t *testing.T) {
 		t.Fatal("review workspace received writable Git metadata")
 	}
 }
+
+func TestKataOptInPrivateGitAndReadOnlyRootFS(t *testing.T) {
+	repo, wt := gitFixture(t)
+	f, m := newEngineFixture(t)
+	_, err := m.Run(RunOptions{Name: "isolated", ProjectDir: wt, NoGitMetadata: true, ReadOnlyRootFS: true, Detach: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mount := range f.worker.HostConfig.Mounts {
+		if mount.Source == filepath.Join(repo, ".git") {
+			t.Fatal("common Git metadata was shared")
+		}
+	}
+	if _, ok := envValue(f.worker.Config.Env, "GIT_DIR"); ok {
+		t.Fatal("shared Git directory was configured")
+	}
+	host := f.worker.HostConfig
+	if !host.ReadonlyRootfs || host.Tmpfs["/tmp"] == "" || host.Tmpfs["/var/tmp"] == "" || host.Tmpfs["/run/codex-dock-control"] == "" {
+		t.Fatalf("read-only rootfs missing writable temporary areas: %+v", host)
+	}
+	if value, _ := envValue(f.worker.Config.Env, "HOME"); value != "/var/tmp/codex-home" {
+		t.Fatalf("HOME = %q", value)
+	}
+}

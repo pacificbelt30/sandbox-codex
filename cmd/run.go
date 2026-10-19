@@ -108,6 +108,8 @@ func init() {
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
 	f.BoolVar(&runOpts.WatchPolling, "watch-polling", false, "Enable 1s polling for Chokidar/Watchpack to observe host edits across the VM boundary")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
+	f.BoolVar(&runOpts.ReadOnlyRootFS, "read-only-rootfs", false, "Make the image rootfs read-only; use tmpfs for temporary files and agent HOME")
+	f.BoolVar(&runOpts.NoGitMetadata, "no-git-metadata", false, "Do not automatically share linked worktree Git metadata with the worker")
 	f.StringArrayVar(&mountFlags, "mount", nil, `Additional host directory to bind-mount into the container (repeatable).
   Format: <host-path>:<container-path>[:ro|rw]
   <container-path> must be absolute and cannot be /workspace (use --project/--read-only for that).
@@ -596,6 +598,12 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 	}
 	if !flags.Changed("read-only") && viper.IsSet("run.read_only") {
 		runOpts.ReadOnly = viper.GetBool("run.read_only")
+	}
+	if !flags.Changed("read-only-rootfs") && viper.IsSet("run.read_only_rootfs") {
+		runOpts.ReadOnlyRootFS = viper.GetBool("run.read_only_rootfs")
+	}
+	if !flags.Changed("no-git-metadata") && viper.IsSet("run.no_git_metadata") {
+		runOpts.NoGitMetadata = viper.GetBool("run.no_git_metadata")
 	}
 	if !flags.Changed("no-internet") && viper.IsSet("run.no_internet") {
 		runOpts.NoInternet = viper.GetBool("run.no_internet")

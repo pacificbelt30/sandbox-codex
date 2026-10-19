@@ -54,6 +54,11 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 	if !launcher || h.Tmpfs["/run/codex-dock-control"] == "" {
 		return fmt.Errorf("trusted Kata bootstrap mount is missing")
 	}
+	if v.Config.Labels[labelPrefix+"read-only-rootfs"] == "true" {
+		if !h.ReadonlyRootfs || h.Tmpfs["/tmp"] == "" || h.Tmpfs["/var/tmp"] == "" {
+			return fmt.Errorf("read-only rootfs setting changed")
+		}
+	}
 	if h.Privileged || len(h.CapAdd) != 0 || !slices.Contains(h.CapDrop, "ALL") || !slices.Contains(h.SecurityOpt, "no-new-privileges:true") {
 		return fmt.Errorf("kata worker security settings changed")
 	}

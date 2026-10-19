@@ -64,6 +64,8 @@ cxd run -- npm test -- --watch=false
 | `--full-auto` | | `false` | **非推奨**: `--approval-mode full-auto` を使用してください |
 | `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
+| `--read-only-rootfs` | | `false` | イメージの rootfs を読み取り専用にし、HOME と一時ファイルには tmpfs を使用 |
+| `--no-git-metadata` | | `false` | linked worktree の共通 Git metadata を自動共有しない |
 | `--mount` | | | 追加のホストディレクトリをマウント（繰り返し指定可）`<host-path>:<container-path>[:ro\|rw]`（[詳細](#--mount--任意ディレクトリの追加マウント)） |
 | `--no-internet` | | `false` | 一般egressプロキシを接続せず、AI API経路だけを維持 |
 | `--keep` | | `false` | フォアグラウンド実行の終了時にコンテナと専用ネットワークを削除しない（既定では削除し、ネットワークの蓄積を防ぐ） |
@@ -271,6 +273,8 @@ cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 
 > 追加マウントされたディレクトリはプロジェクトディレクトリ本体（`/workspace`）とは
 > 独立して読み取り専用を指定できます。`--read-only` は `/workspace` のみに適用されます。
+
+`--read-only-rootfs` はイメージの rootfs に適用され、`/workspace` と追加 mount の読み書き設定は変えません。起動時のパッケージ追加は使えないため、必要なパッケージはイメージに入れてください。HOME と `/tmp`・`/var/tmp` は一時的な tmpfs になり、ワーカー削除後には残りません。`--no-git-metadata` を指定した linked worktree では共通 Git metadata をマウントしません。VM 内で Git を使う場合は私有の metadata と mount を別途用意してください。
 
 設定ファイル（`~/.config/codex-dock/config.toml`）の `[run]` セクションでも
 `mounts` として既定値を指定できます（`--mount` を指定した場合はそちらが優先）。

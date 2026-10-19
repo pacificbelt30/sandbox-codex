@@ -128,6 +128,8 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 | `watch_polling` | `false` | `--watch-polling` |
 | `model` | 未設定 | `--model` |
 | `read_only` | `false` | `--read-only` |
+| `read_only_rootfs` | `false` | `--read-only-rootfs` |
+| `no_git_metadata` | `false` | `--no-git-metadata` |
 | `no_internet` | `false` | `--no-internet` |
 
 明示した `--image` はテンプレートによるイメージ選択より優先します。
