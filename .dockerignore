@@ -1,5 +1,6 @@
 .git
 .kata-verification
+dist
 codex-dock-worker-guard
 site
 codex-dock

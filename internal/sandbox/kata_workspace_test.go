@@ -42,6 +42,9 @@ func TestKataWorkspaceSharing(t *testing.T) {
 	}
 	// Never bind credentials or alter state from the operator's real home.
 	privateHome := t.TempDir()
+	if err := os.Chmod(privateHome, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", privateHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(privateHome, "config"))
 	t.Setenv("CODEX_DOCK_STATE_DIR", filepath.Join(privateHome, "state"))
