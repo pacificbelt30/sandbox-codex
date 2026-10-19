@@ -2,14 +2,14 @@
 
 **日本語** | [English](../en/commands/proxy.md)
 
-`codex-dock proxy` は、認証用と一般通信用の2つのプロキシを管理します。
+`cxd proxy` は、認証用と一般通信用の2つのプロキシを管理します。
 仕組みは[認証プロキシ](../auth-proxy.md)、更新は[運用手順](../operations.md#cliプロキシを更新する)を参照してください。
 
 ## ビルドする
 
 ```bash
-codex-dock proxy build
-codex-dock proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
+cxd proxy build
+cxd proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
 | フラグ | 内容 |
@@ -24,7 +24,7 @@ Dockerfileは `docker/proxy/Dockerfile`、旧配置の `auth-proxy.Dockerfile` /
 ## 起動する
 
 ```bash
-codex-dock proxy run
+cxd proxy run
 ```
 
 | フラグ | 既定値 | 内容 |
@@ -49,12 +49,12 @@ codex-dock proxy run
 
 ```bash
 # 名前を省略すると既定の2つが対象
-codex-dock proxy stop
-codex-dock proxy rm
+cxd proxy stop
+cxd proxy rm
 
 # 個別に指定
-codex-dock proxy stop --name codex-http-proxy
-codex-dock proxy rm --name codex-http-proxy
+cxd proxy stop --name codex-http-proxy
+cxd proxy rm --name codex-http-proxy
 ```
 
 `proxy rm --force` は実行中でも削除します。
@@ -66,7 +66,7 @@ codex-dock proxy rm --name codex-http-proxy
 開発や単体利用には、内部コマンドの `proxy serve` を使えます。
 
 ```bash
-codex-dock proxy serve --role auth \
+cxd proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
   --admin-secret "$PROXY_ADMIN_SECRET"
 ```

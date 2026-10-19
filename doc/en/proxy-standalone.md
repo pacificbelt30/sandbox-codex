@@ -2,7 +2,7 @@
 
 [日本語](../proxy-standalone.md) | **English**
 
-This developer guide runs a local client without `codex-dock run`.
+This developer guide runs a local client without `cxd run`.
 It does not create Kata isolation or worker networks. For normal use, follow the [quick start](getting-started.md).
 
 ## 1. Start a local proxy
@@ -15,7 +15,7 @@ read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
 printf '\n'
 export PROXY_ADMIN_SECRET
 
-codex-dock proxy serve --role auth \
+cxd proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
   --admin-secret "$PROXY_ADMIN_SECRET" &
 PROXY_PID=$!

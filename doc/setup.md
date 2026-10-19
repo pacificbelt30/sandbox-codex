@@ -21,7 +21,7 @@
 
 ```bash
 make node-bundle
-./dist/node-bundle/codex-dock setup
+./dist/node-bundle/cxd setup
 ```
 
 最初は計画だけを表示します。対象アカウントは既存の通常利用者を指定します。
@@ -31,7 +31,7 @@ make node-bundle
 計画を確認したら、同じバンドルのCLIで適用します。
 
 ```bash
-sudo ./dist/node-bundle/codex-dock setup \
+sudo ./dist/node-bundle/cxd setup \
   --operator "$USER" --apply
 ```
 
@@ -41,9 +41,9 @@ sudo ./dist/node-bundle/codex-dock setup \
 再ログインしてグループを反映した後、ホストのAI認証を用意して実行します。
 
 ```bash
-codex-dock init
+cxd init
 # Claude Codeを使う場合
-codex-dock init --agent claude
+cxd init --agent claude
 ```
 
 `init` のプロキシイメージを新規ビルドする場合は、このリポジトリのルートで実行します。
@@ -73,7 +73,7 @@ KVMと `cpu memory pids` のcgroup v2 controllerが必要です。ホスト自�
 2. 旧版CLIでワーカーを停止・削除し、プロキシも停止・削除する。
 3. 新しいソースで `./scripts/install.sh` を実行し、計画を確認する。
 4. `./scripts/install.sh --apply` で新しいバンドルを適用する。
-5. 再ログインし、通常利用者で `codex-dock init` と実Kata受入試験を実行する。
+5. 再ログインし、通常利用者で `cxd init` と実Kata受入試験を実行する。
 
 更新時は、受付サービスとBuildKitを止めた後、停止済みを含む全コンテナ・task・VM予約・VM cgroupが空であることを確認します。
 接続不能なcontainerdを「空」として扱いません。作業中のVMやworktreeを自動削除することはありません。
@@ -92,8 +92,8 @@ OSパッケージの追加、グループの作成・所属追加、ダウンロ
 前の成功した配置へ戻す操作もできます。先にワーカーとプロキシを削除してください。
 
 ```bash
-codex-dock setup --rollback
-sudo codex-dock setup --rollback --apply
+cxd setup --rollback
+sudo cxd setup --rollback --apply
 ```
 
 導入状態と復旧記録は `/var/lib/codex-dock-setup` に保存します。

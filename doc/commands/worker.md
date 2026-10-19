@@ -6,12 +6,12 @@
 
 ---
 
-## `codex-dock ps` — ワーカー一覧
+## `cxd ps` — ワーカー一覧
 
 実行中のコンテナを一覧表示します。
 
 ```bash
-codex-dock ps [OPTIONS]
+cxd ps [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -28,23 +28,23 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
-## `codex-dock start` — ワーカーの再起動
+## `cxd start` — ワーカーの再起動
 
 ```bash
-codex-dock start NAME_OR_ID
+cxd start NAME_OR_ID
 ```
 
 停止済みワーカーを同じID・workspaceで再起動します。
 Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
 プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
-Kata VM の台帳を指定して復旧する場合は、従来の `codex-dock vm start` も使えます。
+Kata VM の台帳を指定して復旧する場合は、従来の `cxd vm start` も使えます。
 
-## `codex-dock stop` — コンテナの停止
+## `cxd stop` — コンテナの停止
 
 実行中のコンテナを停止します。
 
 ```bash
-codex-dock stop [NAME|ID...] [OPTIONS]
+cxd stop [NAME|ID...] [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -56,13 +56,13 @@ codex-dock stop [NAME|ID...] [OPTIONS]
 
 ```bash
 # 特定のコンテナを停止
-codex-dock stop codex-brave-atlas
+cxd stop codex-brave-atlas
 
 # 複数のコンテナを停止
-codex-dock stop codex-brave-atlas codex-calm-beacon
+cxd stop codex-brave-atlas codex-calm-beacon
 
 # 全コンテナを停止
-codex-dock stop --all
+cxd stop --all
 ```
 
 > コンテナ停止時に Auth Proxy の短命トークンも自動的に失効します。
@@ -70,12 +70,12 @@ codex-dock stop --all
 
 ---
 
-## `codex-dock rm` — コンテナの削除
+## `cxd rm` — コンテナの削除
 
 停止済みのコンテナを削除します。
 
 ```bash
-codex-dock rm [NAME|ID...] [OPTIONS]
+cxd rm [NAME|ID...] [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -86,20 +86,20 @@ codex-dock rm [NAME|ID...] [OPTIONS]
 
 ```bash
 # 停止済みコンテナを削除
-codex-dock rm codex-brave-atlas
+cxd rm codex-brave-atlas
 
 # 実行中のコンテナを強制削除
-codex-dock rm --force codex-brave-atlas
+cxd rm --force codex-brave-atlas
 ```
 
 ---
 
-## `codex-dock logs` — ログの表示
+## `cxd logs` — ログの表示
 
 コンテナのログを表示します。
 
 ```bash
-codex-dock logs NAME|ID [OPTIONS]
+cxd logs NAME|ID [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -111,13 +111,13 @@ codex-dock logs NAME|ID [OPTIONS]
 
 ```bash
 # 直近 100 行を表示
-codex-dock logs codex-brave-atlas
+cxd logs codex-brave-atlas
 
 # リアルタイムでログを追跡
-codex-dock logs codex-brave-atlas --follow
+cxd logs codex-brave-atlas --follow
 
 # 直近 50 行を表示
-codex-dock logs codex-brave-atlas --tail 50
+cxd logs codex-brave-atlas --tail 50
 ```
 
 ---
@@ -125,7 +125,7 @@ codex-dock logs codex-brave-atlas --tail 50
 ## 関連ドキュメント
 
 - [TUI ダッシュボード](ui.md) — コンテナの一元管理
-- [`codex-dock run`](run.md) — コンテナの起動
+- [`cxd run`](run.md) — コンテナの起動
 - [クイックスタート](../getting-started.md) — 後片付けの手順
 
 VMの実プロセス・cgroupと台帳の照合は[VM管理](../vm.md)を参照してください。

@@ -1,7 +1,8 @@
-# codex-dock
+# cxd
 
 Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです。
 ワーカーごとに独立したカーネルを使い、認証情報と外部通信はプロキシで管理します。
+コマンド名は `cxd` です。既存の `codex-dock` コマンドも引き続き使えます。設定ファイルやサービス名は従来の名前を維持します。
 
 実行には **Linux x86_64・KVM・containerd・Kata runtime-rs・Dragonball** が必要です。
 イメージはBuildKitで作成します。Docker Engine、Docker CLI、QEMUは実行時に使いません。
@@ -30,20 +31,20 @@ ChatGPT認証を使う場合は、同じ利用者の `~/.codex/auth.json` を参
 APIキーを使う場合は、先に `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` を設定してください。
 
 ```bash
-codex-dock init
-codex-dock codex
+cxd init
+cxd codex
 
 # Codex CLI の引数もそのまま渡せる
-codex-dock codex "このリポジトリを調べて"
+cxd codex "このリポジトリを調べて"
 
 # Claude Codeを使う場合
-codex-dock init --agent claude
-codex-dock run --agent claude
+cxd init --agent claude
+cxd run --agent claude
 ```
 
 プロキシイメージを初めてビルドする際は、リポジトリのルートで `init` を実行します。
 `--agent` を省略すると、認証設定済みのシェルが開きます。
-`codex-dock codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
+`cxd codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
 通常の操作はoperator groupに属する利用者で行います。
 Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り替えません。
 
@@ -51,16 +52,16 @@ Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り
 
 ```bash
 # 独立したブランチでバックグラウンド実行
-codex-dock run --agent codex --task "テストを追加して" \
+cxd run --agent codex --task "テストを追加して" \
   --worktree --branch add-tests --new-branch -d
 
-codex-dock ps -a
-codex-dock vm ps -a
-codex-dock logs WORKER --follow
-codex-dock stop WORKER
-codex-dock start WORKER
-codex-dock rm WORKER
-codex-dock ui
+cxd ps -a
+cxd vm ps -a
+cxd logs WORKER --follow
+cxd stop WORKER
+cxd start WORKER
+cxd rm WORKER
+cxd ui
 ```
 
 `ps` はワーカーの状態、`vm ps` は台帳・containerd・ホストプロセスを照合したVMの状態を表示します。
@@ -69,7 +70,7 @@ codex-dock ui
 
 ## プロジェクトごとの設定
 
-リポジトリのルートで `codex-dock project init` を実行すると、コミット可能な `codex-dock.toml` ができます。`codex-dock project check` で内容を検証できます。クローン先ではホストのセットアップと認証を済ませ、リポジトリのルートで `codex-dock init`、`codex-dock codex` を実行します。
+リポジトリのルートで `cxd project init` を実行すると、コミット可能な `codex-dock.toml` ができます。`cxd project check` で内容を検証できます。クローン先ではホストのセットアップと認証を済ませ、リポジトリのルートで `cxd init`、`cxd codex` を実行します。
 
 プロジェクト設定にはイメージ、ビルド元、モデルなどを記述します。`packages.dock` もコミットすれば追加パッケージを共有できます。認証情報、containerd/Kataの接続先、プロキシ、追加ホストマウントはグローバル設定または明示したCLI引数で管理します。[設定例と優先順位](doc/configuration.md#プロジェクト設定)を参照してください。
 

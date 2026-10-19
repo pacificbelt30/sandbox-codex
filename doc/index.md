@@ -1,8 +1,8 @@
-# codex-dock ドキュメント
+# cxd ドキュメント
 
 **日本語** | [English](en/index.md)
 
-codex-dockは、Codex CLIとClaude CodeをKataのVMで隔離して実行します。
+cxdは、Codex CLIとClaude CodeをKataのVMで隔離して実行します。
 containerdがワーカーを管理し、DragonballがVMを動かします。
 Docker EngineとDocker CLIは不要です。
 

@@ -20,7 +20,7 @@ forward_deny_cidrs = []
 `proxy run`には同名の単数形フラグがある。ドメイン・CIDRは繰り返し指定、ポートは繰り返しまたはカンマ区切りで指定する。明示したフラグは対応する設定ファイル項目を上書きする。
 
 ```bash
-codex-dock proxy run \
+cxd proxy run \
   --forward-allow-domain github.com \
   --forward-deny-domain blocked.github.com \
   --forward-allow-port 80,443 \
@@ -45,9 +45,9 @@ codex-dock proxy run \
 `proxy run`は既存egressコンテナのポリシー識別子と要求した設定を照合し、古い版や設定の不一致をエラーにする。既存コンテナへ設定を反映したことにはせず、稼働中プロキシも自動で削除しない。設定ファイルの編集だけでは稼働中プロキシは変化しない。
 
 1. 稼働ワーカーを停止し、成果を保存する。
-2. 現行バイナリで `codex-dock proxy build` を実行する。
-3. `codex-dock proxy stop --name codex-http-proxy`、`codex-dock proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。
-4. `codex-dock proxy run` で新しい設定の一般通信用proxyを作成する。
+2. 現行バイナリで `cxd proxy build` を実行する。
+3. `cxd proxy stop --name codex-http-proxy`、`cxd proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。
+4. `cxd proxy run` で新しい設定の一般通信用proxyを作成する。
 5. ワーカーを新規作成する。KataワーカーはproxyのIPを固定しており、IP変更時は保存済みワーカーの再起動を拒否する。
 
 改造版proxyではトークンと既存認証protocolを維持する。auth proxyも更新する場合は、同じ停止期間に[更新手順](operations.md#cliプロキシを更新する)を適用する。

@@ -1,4 +1,4 @@
-# `codex-dock ui` — TUI ダッシュボード
+# `cxd ui` — TUI ダッシュボード
 
 > **日本語** | [English](../en/commands/ui.md)
 >
@@ -7,7 +7,7 @@
 全ワーカーをリアルタイムで監視・管理するターミナル UI を起動します。
 
 ```bash
-codex-dock ui
+cxd ui
 ```
 
 ---
@@ -48,4 +48,4 @@ codex-dock ui
 ## 関連ドキュメント
 
 - [ワーカー管理コマンド](worker.md) — ps / stop / rm / logs
-- [`codex-dock run`](run.md) — 並列ワーカーの起動
+- [`cxd run`](run.md) — 並列ワーカーの起動

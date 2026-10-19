@@ -27,7 +27,7 @@ STATE = Path('/var/lib/codex-dock-setup')
 SOCKET = '/run/codex-dock-containerd/containerd.sock'
 SERVICES = ['codex-dock-node', 'codex-dock-buildkit', 'codex-dock-containerd']
 MANAGED = [Path('/etc/systemd/system') / (s + '.service') for s in SERVICES] + [
-    Path('/usr/local/bin/codex-dock'), Path('/usr/local/bin/buildctl'),
+    Path('/usr/local/bin/codex-dock'), Path('/usr/local/bin/cxd'), Path('/usr/local/bin/buildctl'),
     Path('/etc/sysctl.d/80-codex-dock.conf'), Path('/etc/modules-load.d/codex-dock.conf')]
 BUNDLE_FILES = ['codex-dock', 'codex-dock-worker-guard', 'codex-dock-io-logger']
 PACKAGES = {'ip': 'iproute2', 'nft': 'nftables', 'sysctl': 'procps',
@@ -392,12 +392,19 @@ def main():
         apply(args, record)
 
 
+def check_new_cli_collision(current, path=Path('/usr/local/bin/cxd')):
+    if current and not current.get('cxd_cli') and (path.exists() or path.is_symlink()):
+        raise ValueError(f'unmanaged cxd command exists: {path}; preserve it before updating the node')
+
+
 def apply(args, record):
     trusted(STATE)
     STATE.mkdir(mode=0o755, parents=True, exist_ok=True)
     current_path = STATE / 'installed.json'
     trusted(current_path)
     current = json.loads(current_path.read_text()) if current_path.exists() else None
+    if not args.rollback:
+        check_new_cli_collision(current)
     for path in MANAGED:
         trusted(path)
         if not current and path.exists():
@@ -463,14 +470,16 @@ def apply(args, record):
         binary = Path(release['release']) / 'bin'
         for name in ['codex-dock', 'buildctl']:
             atomic(Path('/usr/local/bin') / name, (binary / name).read_bytes(), 0o755)
+        atomic(Path('/usr/local/bin/cxd'), (binary / 'codex-dock').read_bytes(), 0o755)
         atomic(Path('/etc/sysctl.d/80-codex-dock.conf'), b'net.ipv4.ip_forward = 1\n')
         atomic(Path('/etc/modules-load.d/codex-dock.conf'), b'vhost_vsock\nvhost_net\n')
         run(['sysctl', '-q', '-w', 'net.ipv4.ip_forward=1'])
         start_and_check(release['release'])
         run(['systemctl', 'enable', *SERVICES])
         release['rollback'] = str(journal)
+        release['cxd_cli'] = True
         atomic(current_path, json.dumps(release, indent=2).encode())
-        print('Node ready. Log in again for codex-dock group membership, then run codex-dock init as the operator. Existing firewall policy is unchanged; forwarding must allow proxy egress.', flush=True)
+        print('Node ready. Log in again for codex-dock group membership, then run cxd init as the operator. Existing firewall policy is unchanged; forwarding must allow proxy egress.', flush=True)
     except Exception:
         if transaction:
             subprocess.run(['systemctl', 'stop', *SERVICES])

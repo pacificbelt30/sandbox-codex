@@ -60,7 +60,7 @@ func init() {
 			return err
 		}
 		if cfg == nil {
-			return fmt.Errorf("no %s in %s; run `codex-dock project init`", projectConfigName, cwd)
+			return fmt.Errorf("no %s in %s; run `cxd project init`", projectConfigName, cwd)
 		}
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), projectSettingsSummary(cfg))
 		return err

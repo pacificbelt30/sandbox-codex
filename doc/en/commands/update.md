@@ -1,27 +1,28 @@
-# `codex-dock update` — Update codex-dock itself
+# `cxd update` — Update cxd itself
 
 > [日本語](../../commands/update.md) | **English**
 >
 > [← Command Reference](../commands.md)
 
-Updates the `codex-dock` binary to the latest version.
+Updates `cxd` installations managed by `go install`.
 
 ```bash
-codex-dock update
+cxd update
 ```
 
 ---
 
 ## Behavior
 
-This is a thin wrapper that runs:
+This runs the following command and creates or maintains `cxd` in the same Go bin directory:
 
 ```bash
 go install github.com/pacificbelt30/codex-dock@latest
 ```
 
 - Fails with an error if `go` is not found on `PATH`.
-- The built binary is placed in `$(go env GOPATH)/bin` (usually `~/go/bin`).
+- The `codex-dock` binary and `cxd` command are placed in `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when GOBIN is unset.
+- An unrelated file named `cxd` in that directory is left untouched and causes an error.
 
 > **Note**: This command only works for installs done via `go install`.
 > If you installed with `make install` (e.g. into `/usr/local/bin`) or a

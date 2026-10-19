@@ -2,7 +2,7 @@
 
 **日本語** | [English](en/proxy-standalone.md)
 
-`codex-dock run` を使わず、ホスト上のクライアントから認証プロキシを使う開発者向けの手順です。
+`cxd run` を使わず、ホスト上のクライアントから認証プロキシを使う開発者向けの手順です。
 この構成はKata VMやワーカー用のネットワーク隔離を用意しません。
 通常利用は[クイックスタート](getting-started.md)を参照してください。
 
@@ -16,7 +16,7 @@ read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
 printf '\n'
 export PROXY_ADMIN_SECRET
 
-codex-dock proxy serve --role auth \
+cxd proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
   --admin-secret "$PROXY_ADMIN_SECRET" &
 PROXY_PID=$!

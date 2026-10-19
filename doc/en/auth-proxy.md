@@ -19,8 +19,8 @@ General egress rules do not control the fixed AI routes.
 Prepare the [Kata host](../kata.md) and credentials first. Build from the repository root.
 
 ```bash
-codex-dock proxy build
-codex-dock proxy run
+cxd proxy build
+cxd proxy run
 ```
 
 Both proxies run as runc containers on containerd. Workers use Kata VMs.

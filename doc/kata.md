@@ -75,7 +75,7 @@ sudo cp -a guest-assets /opt/codex-dock-kata
 sudo chown -R root:root /opt/kata /opt/codex-dock-kata
 sudo chmod -R go-w /opt/kata /opt/codex-dock-kata
 sudo install -d -m 0755 /etc/codex-dock /opt/codex-dock /usr/local/libexec/codex-dock
-sudo install -m 0755 codex-dock codex-dock-io-logger /usr/local/bin/
+sudo install -m 0755 cxd codex-dock-io-logger /usr/local/bin/
 sudo install -m 0755 codex-dock-worker-guard /opt/codex-dock/worker-guard
 sudo install -m 0755 deploy/kata/prepare-node.sh /usr/local/libexec/codex-dock/
 sudo install -m 0644 kata.toml /etc/codex-dock/kata.toml
@@ -94,10 +94,10 @@ containerdとruncは公式配布物または対応ディストリビューショ
 sudo sysctl -w net.ipv4.ip_forward=1
 sudo systemctl daemon-reload
 sudo systemctl enable --now codex-dock-containerd
-sudo /usr/local/bin/codex-dock runtime-lock
+sudo /usr/local/bin/cxd runtime-lock
 sudo systemctl enable --now codex-dock-node codex-dock-buildkit
 # 新しいグループが反映されたログインセッションで実行する。
-codex-dock runtime-check
+cxd runtime-check
 ```
 
 `runtime-lock` は既存manifestを上書きせず、Kata config・shim・kernel・guest image・bootstrap・IO logger・containerd本体と設定・ip/nft/sysctl/runcを固定する。署名の代わりではないため、公式配布物の検証とroot所有・書き換え不可の配置を先に行う。更新はworkerのdrain、サービス停止、資産検証、新manifestの順で行う。
@@ -138,7 +138,7 @@ CLI・プロキシだけの更新は[運用手順](operations.md#cliプロキシ
 配置後は通常利用者で次を実行します。
 
 ```bash
-codex-dock runtime-check
+cxd runtime-check
 make kata-e2e
 ```
 

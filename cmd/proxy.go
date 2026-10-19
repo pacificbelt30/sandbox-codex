@@ -135,7 +135,7 @@ At least one credential source must be configured before running.`,
 //     private/LAN blocked.
 //
 // It builds the proxy image / egress network when missing and restarts existing
-// (stopped) containers. Shared by `proxy run` and `codex-dock run`'s auto-start.
+// (stopped) containers. Shared by `proxy run` and `cxd run`'s auto-start.
 func startProxyContainer(ctx context.Context) error {
 	rules := forwardPolicyRules()
 	rules.BlockPrivate = true

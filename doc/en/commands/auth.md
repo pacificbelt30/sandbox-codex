@@ -1,4 +1,4 @@
-# `codex-dock auth` — Authentication Management
+# `cxd auth` — Authentication Management
 
 > [日本語](../../commands/auth.md) | **English**
 >
@@ -9,7 +9,7 @@
 ## `auth show`
 
 ```bash
-codex-dock auth show
+cxd auth show
 ```
 
 Displays the current auth source (actual keys/tokens are not shown).
@@ -20,7 +20,7 @@ Displays the current auth source (actual keys/tokens are not shown).
 
 ```bash
 export OPENAI_API_KEY=sk-...
-codex-dock auth set
+cxd auth set
 ```
 
 Saves `OPENAI_API_KEY` to `~/.config/codex-dock/apikey` with permissions `0600`.
@@ -30,7 +30,7 @@ Saves `OPENAI_API_KEY` to `~/.config/codex-dock/apikey` with permissions `0600`.
 ## `auth rotate`
 
 ```bash
-codex-dock auth rotate
+cxd auth rotate
 ```
 
 The current implementation only writes a local `.rotate` marker. It does not immediately revoke tokens in a running proxy.

@@ -1,4 +1,4 @@
-# `codex-dock network` — Network Management
+# `cxd network` — Network Management
 
 > [日本語](../../commands/network-cmd.md) | **English**
 >
@@ -6,24 +6,24 @@
 
 Manages the egress network (`dock-net-proxy`, used for the proxy's internet reachability). Per-worker `Internal` networks are created and removed automatically with each worker, so no manual management is needed.
 
-> The old `codex-dock firewall` (iptables) command has been removed; isolation is enforced by the root node service with Linux bridges, namespaces and nftables.
+> The old `cxd firewall` (iptables) command has been removed; isolation is enforced by the root node service with Linux bridges, namespaces and nftables.
 
 ---
 
 ## `network create`
 
 ```bash
-codex-dock network create
+cxd network create
 ```
 
-> Also auto-created by `codex-dock proxy run` if missing.
+> Also auto-created by `cxd proxy run` if missing.
 
 ---
 
 ## `network rm`
 
 ```bash
-codex-dock network rm
+cxd network rm
 ```
 
 > Stop/remove the proxy container first if it is still attached.
@@ -33,7 +33,7 @@ codex-dock network rm
 ## `network status`
 
 ```bash
-codex-dock network status
+cxd network status
 ```
 
 ```

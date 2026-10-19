@@ -18,8 +18,8 @@ systemctl status codex-dock-containerd codex-dock-node
 ## Kataの起動検証に失敗する
 
 ```bash
-codex-dock runtime-check
-codex-dock vm ps -a
+cxd runtime-check
+cxd vm ps -a
 journalctl -u codex-dock-node -u codex-dock-containerd --since "10 minutes ago"
 ```
 
@@ -30,8 +30,8 @@ journalctl -u codex-dock-node -u codex-dock-containerd --since "10 minutes ago"
 ## 認証プロキシに接続できない
 
 ```bash
-codex-dock proxy run
-codex-dock logs codex-auth-proxy
+cxd proxy run
+cxd logs codex-auth-proxy
 ```
 
 管理APIの既定URLは `http://127.0.0.1:18081` です。
@@ -56,7 +56,7 @@ ls -l ~/.codex/auth.json
 ## AI APIが401を返す
 
 プロキシが返す `worker token invalid or expired` は、短命トークンの欠落・失効・期限切れを示します。
-停止後の再起動には `codex-dock start WORKER` を使い、認証を復元します。
+停止後の再起動には `cxd start WORKER` を使い、認証を復元します。
 TTLを超えるタスクでは `run --token-ttl SECONDS` を調整してください。
 
 上流API由来の認証エラーは、ホストのログイン状態やAPIキーを確認します。
@@ -65,8 +65,8 @@ TTLを超えるタスクでは `run --token-ttl SECONDS` を調整してくだ�
 ## 一般通信ができない
 
 ```bash
-codex-dock network status
-codex-dock logs codex-http-proxy
+cxd network status
+cxd logs codex-http-proxy
 ```
 
 `--no-internet` の有無と[通信ポリシー](proxy-policy.md)を確認します。
@@ -94,9 +94,9 @@ BuildKitのソケットと `BUILDKIT_HOST`、利用者のソケット権限を�
 ## VMや削除途中の資源が残っている
 
 ```bash
-codex-dock vm ps -a
-codex-dock vm inspect WORKER
-codex-dock rm WORKER
+cxd vm ps -a
+cxd vm inspect WORKER
+cxd rm WORKER
 ```
 
 containerdに接続できない場合は `unknown` と表示し、孤立資源として削除しません。
@@ -138,8 +138,8 @@ VMでファイルを読み直した内容が最新なら、変更通知の方式
 ## 複数の前提条件をまとめて調べる
 
 ```bash
-codex-dock doctor
-codex-dock runtime-check --json
+cxd doctor
+cxd runtime-check --json
 ```
 
 KVM、cgroup、管理サービスの固定資産検証、BuildKit、IPv4 forwardingを個別に表示します。

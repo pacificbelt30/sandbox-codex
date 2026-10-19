@@ -2,17 +2,17 @@
 
 [日本語](../../commands/build.md) | **English**
 
-`codex-dock build` uses standalone BuildKit and imports OCI output into the worker's containerd namespace.
+`cxd build` uses standalone BuildKit and imports OCI output into the worker's containerd namespace.
 Dockerfile format is supported without Docker Engine or Docker CLI.
 
 ## Commands
 
 ```bash
-codex-dock build
-codex-dock build --template list
-codex-dock build --template pwn
-codex-dock build -f ./Dockerfile --tag my-codex:v1
-codex-dock run --image my-codex:v1
+cxd build
+cxd build --template list
+cxd build --template pwn
+cxd build -f ./Dockerfile --tag my-codex:v1
+cxd run --image my-codex:v1
 ```
 
 | Option | Purpose |
@@ -25,9 +25,9 @@ codex-dock run --image my-codex:v1
 The built-in worker pins Codex CLI with `CODEX_CLI_VERSION` in its Dockerfile. To test another exact version, build a separate OCI image in the worker's containerd namespace:
 
 ```bash
-CODEX_DOCK_CODEX_VERSION=0.163.0 codex-dock build --template plain --tag codex-dock:codex-0.163.0
-codex-dock image check codex-dock:codex-0.163.0 --agent codex
-codex-dock run --image codex-dock:codex-0.163.0 --agent codex
+CODEX_DOCK_CODEX_VERSION=0.163.0 cxd build --template plain --tag codex-dock:codex-0.163.0
+cxd image check codex-dock:codex-0.163.0 --agent codex
+cxd run --image codex-dock:codex-0.163.0 --agent codex
 ```
 
 `--template` and `-f` are mutually exclusive.
@@ -37,7 +37,7 @@ With a `[build]` section in the project's `codex-dock.toml`, `build`, `init`, an
 
 ## Custom image
 
-First build the base image with `codex-dock build`.
+First build the base image with `cxd build`.
 Create this Dockerfile in a new working directory:
 
 ```dockerfile
@@ -52,8 +52,8 @@ USER codex
 Then build and run it from that directory:
 
 ```bash
-codex-dock build -f ./Dockerfile --tag my-codex:jq
-codex-dock run --image my-codex:jq -- jq --version
+cxd build -f ./Dockerfile --tag my-codex:jq
+cxd run --image my-codex:jq -- jq --version
 ```
 
 The image inherits the agents and auth entrypoint.
@@ -66,7 +66,7 @@ Install the selected agent and entrypoint dependencies, using `docker/sandbox/Do
 Get the matching entrypoint from your CLI:
 
 ```bash
-codex-dock build --print-entrypoint > entrypoint.sh
+cxd build --print-entrypoint > entrypoint.sh
 ```
 
 After creating the non-root user and installing dependencies, include:
@@ -89,8 +89,8 @@ User templates override built-ins with the same name.
 ```bash
 mkdir -p ~/.config/codex-dock/templates/mytool
 cp Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
-codex-dock build --template mytool
-codex-dock run --template mytool
+cxd build --template mytool
+cxd run --template mytool
 ```
 
 `plain` uses `codex-dock:latest`; other names use `codex-dock:<name>`.

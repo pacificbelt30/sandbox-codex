@@ -27,7 +27,8 @@ go.work.sum
 # env file
 .env
 
-# codex-dock binary
+# CLI binaries
+/cxd
 /codex-dock
 /codex-dock-*
 

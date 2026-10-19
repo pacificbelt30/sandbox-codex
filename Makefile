@@ -1,6 +1,6 @@
-# codex-dock Makefile
+# cxd Makefile
 
-BINARY      := codex-dock
+BINARY      := cxd
 WORKER_GUARD := codex-dock-worker-guard
 IO_LOGGER := codex-dock-io-logger
 MODULE      := github.com/pacificbelt30/codex-dock
@@ -25,6 +25,7 @@ all: build image proxy-image
 ## build: compile the binary for the current platform
 build: worker-guard io-logger
 	go build $(LDFLAGS) -o $(BINARY) .
+	ln -sfn $(BINARY) codex-dock
 
 ## worker-guard: build the static Linux x86_64 Kata bootstrap
 worker-guard:
@@ -38,6 +39,7 @@ io-logger:
 node-bundle:
 	mkdir -p dist/node-bundle
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/node-bundle/codex-dock .
+	ln -sfn codex-dock dist/node-bundle/cxd
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-worker-guard ./cmd/worker-guard
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-io-logger ./cmd/io-logger
 	python3 deploy/kata/bundle.py dist/node-bundle "$(VERSION)"
@@ -46,6 +48,7 @@ node-bundle:
 install: build
 	install -d $(BINDIR)
 	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
+	install -m 0755 $(BINARY) $(BINDIR)/codex-dock
 	install -m 0755 $(IO_LOGGER) $(BINDIR)/$(IO_LOGGER)
 	@echo "Installed $(BINDIR)/$(BINARY)"
 
@@ -96,12 +99,12 @@ proxy-docker: proxy-image
 
 ## uninstall: remove the installed binary
 uninstall:
-	rm -f $(BINDIR)/$(BINARY)
+	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/codex-dock
 	@echo "Removed $(BINDIR)/$(BINARY)"
 
 ## clean: remove build artifacts
 clean:
-	rm -f $(BINARY) codex-dock-* coverage.out
+	rm -f $(BINARY) codex-dock codex-dock-* coverage.out
 
 ## test: run tests with race detection and coverage
 test:

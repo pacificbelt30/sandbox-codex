@@ -10,7 +10,7 @@ The host needs Linux x86_64, KVM, cgroup v2, dedicated containerd, Kata runtime-
 Run as a member of the operator group. Use the same account for credentials and normal CLI operations.
 
 ```bash
-codex-dock runtime-check
+cxd runtime-check
 ```
 
 To build from a source checkout, use Go 1.24.7 or later and Make:
@@ -43,9 +43,9 @@ Real API keys and OAuth access/refresh tokens are not passed to workers.
 From the repository root, run the guided preparation command as your normal account:
 
 ```bash
-codex-dock init
+cxd init
 # For Claude Code:
-codex-dock init --agent claude
+cxd init --agent claude
 ```
 
 It checks host readiness and credentials, builds a missing worker image, checks image compatibility, and starts the proxies. If the proxy image is missing, its build needs the Go source in the repository root. After building it once, you can return to your project directory.
@@ -53,9 +53,9 @@ It checks host readiness and credentials, builds a missing worker image, checks 
 To perform those steps separately:
 
 ```bash
-codex-dock proxy build
-codex-dock proxy run
-codex-dock build
+cxd proxy build
+cxd proxy run
+cxd build
 ```
 
 `proxy run` creates the network and starts two proxies:
@@ -65,16 +65,16 @@ Only the admin port is published to host loopback (`127.0.0.1:18081`).
 ## 4. Start a worker
 
 Run from the project directory, which is shared at `/workspace`.
-To share a repeatable worker image and defaults with a team, run `codex-dock project init` at the repository root and commit `codex-dock.toml`. Point `[build]` at a project Dockerfile for extra tools. After cloning, prepare the host and credentials, then run `codex-dock project check` and `codex-dock init`. See [project settings](configuration.md#project-settings).
+To share a repeatable worker image and defaults with a team, run `cxd project init` at the repository root and commit `codex-dock.toml`. Point `[build]` at a project Dockerfile for extra tools. After cloning, prepare the host and credentials, then run `cxd project check` and `cxd init`. See [project settings](configuration.md#project-settings).
 
 ```bash
-codex-dock codex
+cxd codex
 # Or:
-codex-dock run --agent claude
+cxd run --agent claude
 
 # Omit --agent for a shell with proxy authentication configured.
-codex-dock run
-codex-dock run -- ls -la
+cxd run
+cxd run -- ls -la
 ```
 
 The default runtime is Kata. A failed isolation check stops startup; it never falls back to runc automatically.
@@ -82,12 +82,12 @@ The default runtime is Kata. A failed isolation check stops startup; it never fa
 ## 5. Run in the background
 
 ```bash
-codex-dock run --agent codex --name add-tests \
+cxd run --agent codex --name add-tests \
   --task "Add unit tests" --approval-mode full-auto \
   --worktree --branch add-tests --new-branch -d
 
-codex-dock ps -a
-codex-dock logs add-tests --follow
+cxd ps -a
+cxd logs add-tests --follow
 ```
 
 `full-auto` disables agent approval prompts. Shared files remain writable according to their mount permissions.
@@ -95,9 +95,9 @@ codex-dock logs add-tests --follow
 ## 6. Stop, restart and remove
 
 ```bash
-codex-dock stop add-tests
-codex-dock start add-tests
-codex-dock rm add-tests --force
+cxd stop add-tests
+cxd start add-tests
+cxd rm add-tests --force
 ```
 
 Stop revokes the worker token and keeps the container and snapshot for restart.

@@ -44,21 +44,24 @@ jobs:
 
       - name: Build binary
         run: |
-          go build -v -o codex-dock .
+          go build -v -o cxd .
+          ln -s cxd codex-dock
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o codex-dock-worker-guard ./cmd/worker-guard
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o codex-dock-io-logger ./cmd/io-logger
 
       - name: Verify binary runs
-        run: ./codex-dock --help
+        run: |
+          ./cxd --help
+          ./codex-dock --help
 
       - name: Cross-compile (macOS arm64)
-        run: GOOS=darwin GOARCH=arm64 go build -o codex-dock-darwin-arm64 .
+        run: GOOS=darwin GOARCH=arm64 go build -o cxd-darwin-arm64 .
 
       - name: Cross-compile (macOS amd64)
-        run: GOOS=darwin GOARCH=amd64 go build -o codex-dock-darwin-amd64 .
+        run: GOOS=darwin GOARCH=amd64 go build -o cxd-darwin-amd64 .
 
       - name: Cross-compile (Linux arm64)
-        run: GOOS=linux GOARCH=arm64 go build -o codex-dock-linux-arm64 .
+        run: GOOS=linux GOARCH=arm64 go build -o cxd-linux-arm64 .
 
   # ── Test ────────────────────────────────────────────────────────────────
   test:

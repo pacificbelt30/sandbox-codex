@@ -145,7 +145,7 @@ X-Proxy-Admin-Secret: <管理secret>
 
 停止ワーカーの保存済みplaceholderを再有効化します。成功は204です。
 不正な名前・形式・TTL、別ワーカーに割り当て済みのトークンは400です。
-実APIキーは受け付けません。通常は `codex-dock vm start` が行います。
+実APIキーは受け付けません。通常は `cxd vm start` が行います。
 
 ### `POST /admin/revoke`
 

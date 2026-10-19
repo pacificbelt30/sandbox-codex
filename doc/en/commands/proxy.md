@@ -2,14 +2,14 @@
 
 [日本語](../../commands/proxy.md) | **English**
 
-`codex-dock proxy` manages the auth and general egress proxies on containerd.
+`cxd proxy` manages the auth and general egress proxies on containerd.
 See [auth proxy](../auth-proxy.md) and [update procedure](../../operations.md#cliプロキシを更新する) (Japanese).
 
 ## Build
 
 ```bash
-codex-dock proxy build
-codex-dock proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
+cxd proxy build
+cxd proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
 `--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
@@ -19,7 +19,7 @@ The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / 
 ## Start
 
 ```bash
-codex-dock proxy run
+cxd proxy run
 ```
 
 | Flag | Default | Purpose |
@@ -43,12 +43,12 @@ Old layouts, policy mismatches and missing worker-auth capability are rejected r
 
 ```bash
 # Both default proxies
-codex-dock proxy stop
-codex-dock proxy rm
+cxd proxy stop
+cxd proxy rm
 
 # One named proxy
-codex-dock proxy stop --name codex-http-proxy
-codex-dock proxy rm --name codex-http-proxy
+cxd proxy stop --name codex-http-proxy
+cxd proxy rm --name codex-http-proxy
 ```
 
 Use `--name` for custom names. `proxy rm --force` removes a running container.
@@ -59,7 +59,7 @@ Finish worker tasks first; these proxies are shared services.
 The internal `proxy serve` command is available for development and standalone use:
 
 ```bash
-codex-dock proxy serve --role auth \
+cxd proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
   --admin-secret "$PROXY_ADMIN_SECRET"
 ```

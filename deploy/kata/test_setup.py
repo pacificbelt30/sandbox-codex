@@ -10,6 +10,15 @@ import setup
 
 
 class SetupTests(unittest.TestCase):
+    def test_existing_cxd_is_not_overwritten_by_first_named_upgrade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'cxd'
+            path.write_text('another program')
+            with self.assertRaisesRegex(ValueError, 'unmanaged cxd command'):
+                setup.check_new_cli_collision({'release': '/opt/old'}, path)
+            setup.check_new_cli_collision({'release': '/opt/new', 'cxd_cli': True}, path)
+            setup.check_new_cli_collision(None, path)
+
     def test_plan_shows_bundle_version_and_operator_before_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = Path(tmp)

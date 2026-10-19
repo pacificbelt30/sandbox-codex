@@ -1,4 +1,4 @@
-# `codex-dock auth` — 認証管理
+# `cxd auth` — 認証管理
 
 > **日本語** | [English](../en/commands/auth.md)
 >
@@ -11,7 +11,7 @@ API キーや OAuth の認証情報を管理します。
 ## `auth show` — 認証状態の確認
 
 ```bash
-codex-dock auth show
+cxd auth show
 ```
 
 現在の認証ソースを表示します（実際のキーやトークンは表示されません）。
@@ -43,7 +43,7 @@ Configured:  no
 
 ```bash
 export OPENAI_API_KEY=sk-...
-codex-dock auth set
+cxd auth set
 ```
 
 `OPENAI_API_KEY` 環境変数の値を `~/.config/codex-dock/apikey` に保存します。
@@ -54,7 +54,7 @@ codex-dock auth set
 ## `auth rotate` — トークンのローテーション
 
 ```bash
-codex-dock auth rotate
+cxd auth rotate
 ```
 
 現行実装はローカルに `.rotate` マーカーを作成するだけで、稼働中プロキシのトークンを即時失効させません。
@@ -66,7 +66,7 @@ codex-dock auth rotate
 
 | ファイル | 場所 | 説明 |
 |---|---|---|
-| API キー | `~/.config/codex-dock/apikey` | `codex-dock auth set` で保存 |
+| API キー | `~/.config/codex-dock/apikey` | `cxd auth set` で保存 |
 | OAuth クレデンシャル | `~/.codex/auth.json` | Codex CLI が生成（`codex login` で作成） |
 
 詳細は [設定リファレンス — 認証ファイル](../configuration.md#認証ファイルの場所) を参照してください。

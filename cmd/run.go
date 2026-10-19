@@ -63,9 +63,9 @@ A positional IMAGE and optional COMMAND work like "docker run IMAGE COMMAND".
 Without an image, use "-- COMMAND..." to run a command in the default image.
 Both forms are equivalent to --exec without quoting the whole command:
 
-  codex-dock run -d --agent codex codex-dock:latest
-  codex-dock run codex-dock:latest npm test -- --watch=false
-  codex-dock run -- npm test -- --watch=false`,
+  cxd run -d --agent codex codex-dock:latest
+  cxd run codex-dock:latest npm test -- --watch=false
+  cxd run -- npm test -- --watch=false`,
 	Args: cobra.ArbitraryArgs,
 	RunE: runWorker,
 }
@@ -78,7 +78,7 @@ func init() {
 	f.StringVar(&runOpts.Runtime, "runtime", sandbox.RuntimeKata, "Worker isolation: kata (default, requires Linux/KVM) or explicit runc compatibility mode; never falls back automatically")
 	f.StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration on the dedicated containerd node")
 	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "OCI image for the sandbox")
-	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "codex-dock build --template list" to see available templates.`)
+	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "cxd build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
 	f.StringVar(&runOpts.ProjectDir, "project", ".", "Project directory to mount as /workspace")
@@ -420,8 +420,8 @@ func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, 
 		return nil, fmt.Errorf("removing stale auth proxy container %q: %w", proxyRunName, err)
 	}
 
-	// `codex-dock run` has its own admin-secret flag; propagate it to the shared
-	// proxy startup path used by `codex-dock proxy run`.
+	// `cxd run` has its own admin-secret flag; propagate it to the shared
+	// proxy startup path used by `cxd proxy run`.
 	proxyAdminSecret = runProxyAdminSecret
 	if err := startProxyContainer(ctx); err != nil {
 		return nil, fmt.Errorf("recreating auth proxy: %w", err)

@@ -1,6 +1,6 @@
 # Removed firewall feature
 
-The old `codex-dock firewall` and `--allow-host` / `--block-host` / `--no-firewall` / `--sudo` flags have been removed.
+The old `cxd firewall` and `--allow-host` / `--block-host` / `--no-firewall` / `--sudo` flags have been removed.
 
 The root node service now enforces isolation with dedicated Linux bridges, namespaces and nftables tables.
 Host setup requires administrator privileges. Normal CLI use goes through the operator group.

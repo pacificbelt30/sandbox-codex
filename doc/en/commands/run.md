@@ -1,4 +1,4 @@
-# `codex-dock run` — Start a Sandbox Container
+# `cxd run` — Start a Sandbox Container
 
 > [日本語](../../commands/run.md) | **English**
 >
@@ -16,16 +16,16 @@ At a repository root, `run` reads `[run]` and `[build]` from `codex-dock.toml`; 
 ## Launch Codex CLI directly
 
 ```bash
-codex-dock codex
-codex-dock codex "Inspect this repository"
-codex-dock codex exec --json "Summarize the changes"
+cxd codex
+cxd codex "Inspect this repository"
+cxd codex exec --json "Summarize the changes"
 ```
 
-Arguments are forwarded verbatim to Codex. The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper. Configure worker defaults under `[run]`; use `codex-dock run --agent codex` for image, worktree, mount and detach options. Starting a fresh VM takes longer than running Codex on the host.
+Arguments are forwarded verbatim to Codex. The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper. Configure worker defaults under `[run]`; use `cxd run --agent codex` for image, worktree, mount and detach options. Starting a fresh VM takes longer than running Codex on the host.
 
 ```bash
-codex-dock run [OPTIONS] [IMAGE [COMMAND...]]
-codex-dock run [OPTIONS] -- COMMAND...  # Run in the default image
+cxd run [OPTIONS] [IMAGE [COMMAND...]]
+cxd run [OPTIONS] -- COMMAND...  # Run in the default image
 ```
 
 IMAGE and COMMAND follow Docker's positional order. Put codex-dock flags before IMAGE.
@@ -33,9 +33,9 @@ With `--image` or `--template`, positional arguments are treated as the command.
 The command is equivalent to `--exec` without quoting it as one string.
 
 ```bash
-codex-dock run -d --name worker codex-dock:latest
-codex-dock run codex-dock:latest npm test -- --watch=false
-codex-dock run -- npm test -- --watch=false
+cxd run -d --name worker codex-dock:latest
+cxd run codex-dock:latest npm test -- --watch=false
+cxd run -- npm test -- --watch=false
 ```
 
 ---
@@ -124,16 +124,16 @@ shell case).
 
 ```bash
 # Run one command in the auth-configured environment, then exit
-codex-dock run --exec "ls -la"
+cxd run --exec "ls -la"
 
 # Equivalent, without needing to quote the whole command as one string
-codex-dock run -- ls -la
+cxd run -- ls -la
 
 # Run in the background
-codex-dock run --exec "npm test" --detach
+cxd run --exec "npm test" --detach
 
 # --agent takes priority over --exec, so this launches Codex CLI, not `ls -la`
-codex-dock run --agent codex --exec "ls -la"
+cxd run --agent codex --exec "ls -la"
 ```
 
 ---
@@ -177,10 +177,10 @@ container outright.
 
 ```bash
 # Launch the interactive shell with zsh
-codex-dock run --shell-type zsh
+cxd run --shell-type zsh
 
 # Raw debug shell with zsh (bypasses entrypoint.sh)
-codex-dock run --shell --shell-type zsh
+cxd run --shell --shell-type zsh
 ```
 
 The default can be changed via `default_shell_type` (global) / `run.shell_type`
@@ -196,7 +196,7 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 | Value | Behavior |
 |---|---|
 | `""` (omitted) | Image default user (`codex` uid:1001) |
-| `current` | Automatically uses the uid:gid of the user running `codex-dock` |
+| `current` | Automatically uses the uid:gid of the user running `cxd` |
 | `dir` | Automatically uses the uid:gid of the `--project` directory owner |
 | `uid` or `uid:gid` | Explicit value (e.g., `1000`, `1000:1000`) |
 
@@ -212,7 +212,7 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 ```
 
 - `<host-path>`: directory on the host (relative paths are resolved against the current
-  working directory when `codex-dock run` is invoked)
+  working directory when `cxd run` is invoked)
 - `<container-path>`: absolute path inside the container; `/workspace` is reserved for
   `--project` and cannot be used here
 - `:ro` / `:rw`: read-only / read-write (defaults to `rw` when omitted)
@@ -220,10 +220,10 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 
 ```bash
 # Mount a shared dataset directory read-only
-codex-dock run --mount /home/user/datasets:/data:ro
+cxd run --mount /home/user/datasets:/data:ro
 
 # Mount multiple directories, mixing read-write and read-only
-codex-dock run --mount ./cache:/cache --mount /opt/models:/models:ro
+cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 ```
 
 > Additional mounts can be independently read-only regardless of `/workspace`.
@@ -254,7 +254,7 @@ libssl-dev              # no prefix → treated as apt (default)
 ## Parallel Workers
 
 ```bash
-codex-dock run --parallel 2 --worktree --branch myfeature
+cxd run --parallel 2 --worktree --branch myfeature
 ```
 
 The default node limit is 2 simultaneous workers. Creates branches: `myfeature-1`, `myfeature-2`.
@@ -265,34 +265,34 @@ The default node limit is 2 simultaneous workers. Creates branches: `myfeature-1
 
 ```bash
 # Basic run (mount current directory)
-codex-dock run
+cxd run
 
 # Run with task in full-auto mode
-codex-dock run --agent codex --task "Write unit tests" --approval-mode full-auto
+cxd run --agent codex --task "Write unit tests" --approval-mode full-auto
 
 # Use git worktree on a feature branch
-codex-dock run --worktree --branch feature-auth --new-branch
+cxd run --worktree --branch feature-auth --new-branch
 
 # Run 2 parallel workers
-codex-dock run --parallel 2 --worktree
+cxd run --parallel 2 --worktree
 
 # Install additional packages
-codex-dock run --pkg "apt:libssl-dev" --pkg "pip:requests"
+cxd run --pkg "apt:libssl-dev" --pkg "pip:requests"
 
 # Run in background
-codex-dock run --agent codex --task "Refactor" --approval-mode full-auto --detach
+cxd run --agent codex --task "Refactor" --approval-mode full-auto --detach
 
 # Secure run: read-only, no internet
-codex-dock run --agent codex --read-only --no-internet --task "Code review"
+cxd run --agent codex --read-only --no-internet --task "Code review"
 
 # Use a template image (auto-built if not present)
-codex-dock run --image codex-dock:pwn
+cxd run --image codex-dock:pwn
 
 # Same thing via --template
-codex-dock run --template pwn
+cxd run --template pwn
 
 # Works for your own templates under ~/.config/codex-dock/templates/ too
-codex-dock run --template mytool
+cxd run --template mytool
 ```
 
 ---

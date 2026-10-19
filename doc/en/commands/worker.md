@@ -6,10 +6,10 @@
 
 ---
 
-## `codex-dock ps`
+## `cxd ps`
 
 ```bash
-codex-dock ps [--all]
+cxd ps [--all]
 ```
 
 Lists running (and optionally stopped) containers.
@@ -22,21 +22,21 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
-## `codex-dock start`
+## `cxd start`
 
 ```bash
-codex-dock start NAME_OR_ID
+cxd start NAME_OR_ID
 ```
 
 Restart a retained worker with the same ID and workspace.
 Kata checks run again and the saved placeholder is restored before user code is released.
 If a pinned proxy IP changed, create a new worker instead.
-`codex-dock vm start` remains available for Kata VM inventory recovery.
+`cxd vm start` remains available for Kata VM inventory recovery.
 
-## `codex-dock stop`
+## `cxd stop`
 
 ```bash
-codex-dock stop [NAME|ID...] [--all] [--timeout 10]
+cxd stop [NAME|ID...] [--all] [--timeout 10]
 ```
 
 > Stopping a container also immediately revokes its Auth Proxy token.
@@ -44,18 +44,18 @@ codex-dock stop [NAME|ID...] [--all] [--timeout 10]
 
 ---
 
-## `codex-dock rm`
+## `cxd rm`
 
 ```bash
-codex-dock rm [NAME|ID...] [--force]
+cxd rm [NAME|ID...] [--force]
 ```
 
 ---
 
-## `codex-dock logs`
+## `cxd logs`
 
 ```bash
-codex-dock logs NAME|ID [--tail 100] [--follow]
+cxd logs NAME|ID [--tail 100] [--follow]
 ```
 
 ---
@@ -63,7 +63,7 @@ codex-dock logs NAME|ID [--tail 100] [--follow]
 ## Related Documentation
 
 - [TUI Dashboard](ui.md)
-- [`codex-dock run`](run.md)
+- [`cxd run`](run.md)
 - [Quick Start](../getting-started.md)
 
 See [VM management](../../vm.md) (Japanese) for host process and allocation reconciliation.

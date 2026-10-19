@@ -1,19 +1,19 @@
 # Kata VMの管理
 
-`codex-dock vm`は、本プロダクトのKataワーカーを名前またはIDで管理する。既存のroot管理サービスを利用し、containerdの記録、永続的なVM予約台帳、ホストの専用cgroupと実プロセスを照合する。通常CLIへroot権限を追加しない。[Kataの配置手順](kata.md)でCLIと`codex-dock-node`を同じ版へ更新する。
+`cxd vm`は、本プロダクトのKataワーカーを名前またはIDで管理する。既存のroot管理サービスを利用し、containerdの記録、永続的なVM予約台帳、ホストの専用cgroupと実プロセスを照合する。通常CLIへroot権限を追加しない。[Kataの配置手順](kata.md)でCLIと`codex-dock-node`を同じ版へ更新する。
 
 ```bash
-codex-dock vm ps
-codex-dock vm ps -a
-codex-dock vm ps --watch 5s
-codex-dock vm ps -a --json
-codex-dock vm inspect worker-name
-codex-dock vm stop worker-name
-codex-dock vm start worker-name
-codex-dock vm rm worker-name
+cxd vm ps
+cxd vm ps -a
+cxd vm ps --watch 5s
+cxd vm ps -a --json
+cxd vm inspect worker-name
+cxd vm stop worker-name
+cxd vm start worker-name
+cxd vm rm worker-name
 ```
 
-新規VMの作成は既存の`codex-dock run`を使う。`vm ps`は実行中のVMに加え、不明・不整合・孤立資源を表示する。`-a`では停止済み・未起動のcontainerdワーカーも表示する。IDにはコンテナIDと予約IDの両方を使用でき、12文字以上の一意な前方一致も扱う。名前とIDの衝突や曖昧な前方一致は拒否する。`--watch`は指定間隔で照合を繰り返し、結果を順に出力する。常駐の自動削除処理は追加しない。
+新規VMの作成は既存の`cxd run`を使う。`vm ps`は実行中のVMに加え、不明・不整合・孤立資源を表示する。`-a`では停止済み・未起動のcontainerdワーカーも表示する。IDにはコンテナIDと予約IDの両方を使用でき、12文字以上の一意な前方一致も扱う。名前とIDの衝突や曖昧な前方一致は拒否する。`--watch`は指定間隔で照合を繰り返し、結果を順に出力する。常駐の自動削除処理は追加しない。
 
 `inspect`と`--json`には、containerd状態、予約ID、cgroupパス、観測したDragonball shim / IO loggerのPID、実際のCPU・メモリ・PID制限、メモリ使用量、照合上の問題を含む。APIキー、環境変数、タスク本文は含めない。
 
@@ -40,13 +40,13 @@ containerdオブジェクトが既に消えていても、削除途中の記録�
 
 ```bash
 # 空の孤立予約だけを回収する。停止済みcontainerdワーカーは削除しない。
-codex-dock vm prune
+cxd vm prune
 
 # 特定の孤立予約を回収する。
-codex-dock vm rm ALLOCATION_ID
+cxd vm rm ALLOCATION_ID
 
 # 実行中の孤立VMは、全占有プロセスを再検証してから明示的に停止する。
-codex-dock vm stop --force ALLOCATION_ID
+cxd vm stop --force ALLOCATION_ID
 ```
 
 containerdへ問い合わせできない場合は孤立と判定せず、停止・回収を拒否する。予約台帳がない古いgroupや、別プロセスの混入、変更された資産・制限は自動で採用しない。コンテナIDが分かる場合は、操作直前にもその正確なIDがcontainerdに存在しないことを確認する。

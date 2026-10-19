@@ -1,11 +1,11 @@
-# `codex-dock ui` — TUI Dashboard
+# `cxd ui` — TUI Dashboard
 
 > [日本語](../../commands/ui.md) | **English**
 >
 > [← Command Reference](../commands.md)
 
 ```bash
-codex-dock ui
+cxd ui
 ```
 
 Launches a terminal UI for real-time monitoring and management of all workers.
@@ -31,4 +31,4 @@ Launches a terminal UI for real-time monitoring and management of all workers.
 ## Related Documentation
 
 - [Worker Management](worker.md)
-- [`codex-dock run`](run.md)
+- [`cxd run`](run.md)

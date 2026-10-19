@@ -11,7 +11,7 @@
 形式は `cdx-` + 64桁の16進数、合計68文字です。
 
 ```bash
-codex-dock run --agent codex --token-ttl 7200
+cxd run --agent codex --token-ttl 7200
 ```
 
 TTLの既定は3600秒です。
@@ -29,7 +29,7 @@ TTLの既定は3600秒です。
 | 削除 | 失効と資源回収を行う。失敗は再試行記録に残す |
 | プロキシ停止 | 全トークンと接続を取り消す。発行台帳はメモリ上にある |
 
-停止済みワーカーは `codex-dock start NAME` で再起動してください。
+停止済みワーカーは `cxd start NAME` で再起動してください。
 管理APIのrestoreは、保存済みplaceholderを再有効化するための操作です。
 実APIキーや、別の稼働ワーカーに割り当て済みのトークンは受け付けません。
 

@@ -42,7 +42,7 @@ func init() {
 		state := hostProxyAuthState()
 		info, authErr := authproxy.GetAuthInfo()
 		if agent == "codex" && (authErr != nil || !info.KeyConfigured) {
-			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run codex-dock auth set; then rerun init")
+			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run cxd auth set; then rerun init")
 		}
 		if agent == "claude" && !state.anthropicAvailable {
 			return fmt.Errorf("anthropic credentials missing: run claude login or set ANTHROPIC_API_KEY; then rerun init --agent claude")
@@ -70,7 +70,7 @@ func init() {
 					return err
 				}
 			} else if name == "" {
-				return fmt.Errorf("custom image %s is unavailable; build it first with codex-dock build -f Dockerfile --tag %s", runOpts.Image, runOpts.Image)
+				return fmt.Errorf("custom image %s is unavailable; build it first with cxd build -f Dockerfile --tag %s", runOpts.Image, runOpts.Image)
 			} else {
 				if err = buildFromTemplate(cmd.Context(), name, runOpts.Image); err != nil {
 					return err
@@ -104,11 +104,11 @@ func init() {
 		if _, err = reconcileProxyAuthState(cmd.Context(), proxy, false); err != nil {
 			return err
 		}
-		launch := "codex-dock codex"
+		launch := "cxd codex"
 		if agent == "claude" {
-			launch = "codex-dock run --agent claude"
+			launch = "cxd run --agent claude"
 		}
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: %s\nFor host edit watchers add --watch-polling to `codex-dock run` (Chokidar/Watchpack).\n", launch)
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: %s\nFor host edit watchers add --watch-polling to `cxd run` (Chokidar/Watchpack).\n", launch)
 		return err
 	}}
 	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude")

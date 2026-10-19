@@ -10,7 +10,7 @@
 operator groupに属する利用者で実行します。通常の `run` や `proxy run` に `sudo` は使いません。
 
 ```bash
-codex-dock runtime-check
+cxd runtime-check
 ```
 
 Linux x86_64、KVM、cgroup v2、専用containerd、Kata runtime-rs、Dragonballが必要です。
@@ -37,8 +37,8 @@ make install-templates
 | Codex | `OPENAI_API_KEY`、保存済みAPIキー、`~/.codex/auth.json` |
 | Claude Code | `ANTHROPIC_API_KEY`、保存済みAPIキー、`~/.claude/.credentials.json` |
 
-既存のログインファイルは、`codex-dock` を実行する利用者のホームに置きます。
-APIキーを使う場合は環境変数を設定します。OpenAIのキーは `codex-dock auth set` で保存することもできます。
+既存のログインファイルは、`cxd` を実行する利用者のホームに置きます。
+APIキーを使う場合は環境変数を設定します。OpenAIのキーは `cxd auth set` で保存することもできます。
 [認証の優先順位](auth-proxy.md#認証ソース)も確認してください。
 
 認証プロキシは同じ利用者のUID/GIDでファイルを読み取ります。
@@ -50,17 +50,17 @@ APIキーを使う場合は環境変数を設定します。OpenAIのキーは `
 ホストの準備と認証設定を終えたら、通常利用者で次を実行できます。
 
 ```bash
-codex-dock init
+cxd init
 # Claude Codeを使う場合
-codex-dock init --agent claude
+cxd init --agent claude
 ```
 
 診断、認証ソースの存在確認、必要なワーカーイメージのビルド、イメージ互換性検査、プロキシ起動を順に行います。
 認証の本文は表示せず、既存設定は書き換えません。認証確認は上流APIへの疎通・推論試験ではありません。
 既存プロキシの認証方式が違い、ワーカーが稼働中の場合は強制変更せず停止します。
 プロキシイメージがない場合はGoソースから作成するため、リポジトリのルートで実行してください。
-別のプロジェクトから `init` を実行してソースが見つからない場合は、リポジトリのルートで一度 `codex-dock proxy build` を実行してから戻ってください。
-準備が終わったら、プロジェクトへ移動して `codex-dock run --agent codex` を実行します。
+別のプロジェクトから `init` を実行してソースが見つからない場合は、リポジトリのルートで一度 `cxd proxy build` を実行してから戻ってください。
+準備が終わったら、プロジェクトへ移動して `cxd run --agent codex` を実行します。
 
 手動で分けて準備する場合は、次の手順を使います。
 
@@ -69,9 +69,9 @@ codex-dock init --agent claude
 プロキシイメージはGoソースから作成します。
 
 ```bash
-codex-dock proxy build
-codex-dock proxy run
-codex-dock build
+cxd proxy build
+cxd proxy run
+cxd build
 ```
 
 `proxy run` はネットワークを自動作成し、次の2つを起動します。
@@ -91,20 +91,20 @@ codex-dock build
 カレントディレクトリをVM内の `/workspace` に共有します。
 [ファイル共有と所有者](workspace.md)で、双方向の反映とUID/GIDの扱いを説明しています。
 
-チームで同じワーカー環境を使う場合は、プロジェクトのルートで `codex-dock project init` を実行し、生成された `codex-dock.toml` をコミットします。独自のツールが必要なら、プロジェクトのDockerfileを `[build]` から指定します。クローン先ではホストの準備と認証を済ませてから `codex-dock project check`、`codex-dock init` を実行してください。[設定例](configuration.md#プロジェクト設定)を参照してください。
+チームで同じワーカー環境を使う場合は、プロジェクトのルートで `cxd project init` を実行し、生成された `codex-dock.toml` をコミットします。独自のツールが必要なら、プロジェクトのDockerfileを `[build]` から指定します。クローン先ではホストの準備と認証を済ませてから `cxd project check`、`cxd init` を実行してください。[設定例](configuration.md#プロジェクト設定)を参照してください。
 
 ```bash
-codex-dock codex
+cxd codex
 # または
-codex-dock run --agent claude
+cxd run --agent claude
 ```
 
 `--agent` を省略すると、利用可能な認証を設定したシェルが開きます。
 コマンドを1回だけ実行することもできます。
 
 ```bash
-codex-dock run
-codex-dock run -- ls -la
+cxd run
+cxd run -- ls -la
 ```
 
 Kataでは、独立したカーネルと権限・資源の制限を確認してから処理を始めます。
@@ -113,12 +113,12 @@ Kataでは、独立したカーネルと権限・資源の制限を確認して�
 ## 5. バックグラウンドで実行する
 
 ```bash
-codex-dock run --agent codex --name add-tests \
+cxd run --agent codex --name add-tests \
   --task "ユニットテストを追加して" --approval-mode full-auto \
   --worktree --branch add-tests --new-branch -d
 
-codex-dock ps -a
-codex-dock logs add-tests --follow
+cxd ps -a
+cxd logs add-tests --follow
 ```
 
 `--approval-mode full-auto` はエージェントの承認確認を省略します。
@@ -127,9 +127,9 @@ codex-dock logs add-tests --follow
 ## 6. 停止・再起動・削除する
 
 ```bash
-codex-dock stop add-tests
-codex-dock start add-tests
-codex-dock rm add-tests --force
+cxd stop add-tests
+cxd start add-tests
+cxd rm add-tests --force
 ```
 
 停止すると短命トークンが失効します。再起動では同じワーカーIDとworkspaceを使い、認証を復元します。

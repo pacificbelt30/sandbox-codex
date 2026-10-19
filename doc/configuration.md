@@ -3,20 +3,20 @@
 **日本語** | [English](en/configuration.md)
 
 利用者の設定は `~/.config/codex-dock/config.toml` に記述します。
-別ファイルを使う場合は `codex-dock --config PATH COMMAND` と指定します。
+別ファイルを使う場合は `cxd --config PATH COMMAND` と指定します。
 ソース配置では `make install-config` で例を配置できます。既存ファイルは上書きしません。
 
 ## プロジェクト設定
 
-リポジトリ直下に `codex-dock.toml` を置くと、そのディレクトリからの `codex-dock init`、`codex-dock run`、`codex-dock codex`、`codex-dock build` が読み込みます。`run --project DIR` は `DIR/codex-dock.toml` を使います。親ディレクトリの設定は自動探索しないため、リポジトリのルートで実行してください。
+リポジトリ直下に `codex-dock.toml` を置くと、そのディレクトリからの `cxd init`、`cxd run`、`cxd codex`、`cxd build` が読み込みます。`run --project DIR` は `DIR/codex-dock.toml` を使います。親ディレクトリの設定は自動探索しないため、リポジトリのルートで実行してください。
 
 ```bash
-codex-dock project init
-codex-dock project check
+cxd project init
+cxd project check
 git add codex-dock.toml
 ```
 
-生成する最小構成は次のとおりです。組み込み `plain` イメージを使うため、クローン先では `codex-dock init` が不足するイメージをビルドできます。
+生成する最小構成は次のとおりです。組み込み `plain` イメージを使うため、クローン先では `cxd init` が不足するイメージをビルドできます。
 
 ```toml
 [run]
@@ -45,7 +45,7 @@ tag = "my-project:dev"
 
 プロジェクト設定で使えるキーは `[run]` の `image`、`template`、`model`、`approval_mode`（`suggest` / `auto-edit`）、`watch_polling`、`read_only`、`no_internet` と、`[build]` の `dockerfile`、`template`、`tag` です。`read_only` と `no_internet` は `true` のみ指定でき、グローバル設定の制限を緩めることはできません。`run.image` と `build.tag` は同じ値にします。ホストの認証、proxy、runtime、token TTL、追加マウントなどはここには書けません。`project check` は不明なキーや設定の不一致をエラーにします。
 
-不足するイメージは `init` / `run` 時にビルドします。既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `codex-dock build` を実行してください。
+不足するイメージは `init` / `run` 時にビルドします。既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `cxd build` を実行してください。
 
 ## 最小の設定例
 
@@ -189,7 +189,7 @@ private IP等の遮断は、許可ルールでは解除できません。
 
 | 対象 | 設定場所・方法 |
 |---|---|
-| ノード | `codex-dock node serve --help`。socket、state、cgroup、DNS、同時実行上限 |
+| ノード | `cxd node serve --help`。socket、state、cgroup、DNS、同時実行上限 |
 | 専用containerd | `/etc/codex-dock/containerd.toml` |
 | Kata | `/etc/codex-dock/kata.toml` |
 | 固定資産manifest | `/etc/codex-dock/kata-assets.json` |

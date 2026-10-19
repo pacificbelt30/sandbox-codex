@@ -81,7 +81,7 @@ if "$apply"; then
     command -v sudo >/dev/null 2>&1 || fail 'sudo is required for --apply'
     sudo -- "$cli" "${setup_args[@]}" --apply
   fi
-  printf 'Node installed. Log in again as %s, then run codex-dock init.\n' "$operator"
+  printf 'Node installed. Log in again as %s, then run cxd init.\n' "$operator"
 else
   printf 'Plan only. Re-run scripts/install.sh --apply after reviewing it.\n'
 fi

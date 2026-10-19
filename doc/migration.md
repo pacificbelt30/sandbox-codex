@@ -18,7 +18,7 @@ Docker Engine・Docker CLI・QEMUは実行時に使いません。
 1. 旧版のCLIで、必要なログと成果を保存する。
 2. 旧ワーカーと旧プロキシを停止・削除する。旧版が管理していたworktreeやネットワークも確認する。
 3. [Kata実行ホストの準備](kata.md)に従い、専用containerd・Kata・Dragonball・BuildKit・管理サービスを配置する。
-4. 通常利用者で `codex-dock runtime-check` を実行する。
+4. 通常利用者で `cxd runtime-check` を実行する。
 5. [クイックスタート](getting-started.md)に沿ってプロキシとイメージを再ビルドし、新しいワーカーを作成する。
 
 旧イメージを残す必要がある場合は、移行元で `docker save` したarchiveを専用containerdの `codex-dock` namespaceへimportする方法もあります。

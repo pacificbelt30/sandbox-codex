@@ -40,7 +40,7 @@ PASS=0; FAIL=0
 ok(){ echo "PASS: $1"; PASS=$((PASS+1)); }
 no(){ echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
-BIN="$(mktemp -d)/codex-dock"
+BIN="$(mktemp -d)/cxd"
 cleanup(){
   # Remove every container attached to the per-worker nets BEFORE removing the
   # nets. The proxies are multi-homed onto W1NET/W2NET, so the nets can't be
@@ -52,7 +52,7 @@ cleanup(){
 }
 trap cleanup EXIT
 
-echo "=== build codex-dock ==="
+echo "=== build cxd ==="
 go build -o "$BIN" . || { echo "build failed"; exit 1; }
 
 # Worker (curl) image — pulled on the host before attaching to an Internal net.
@@ -67,10 +67,10 @@ if [ -n "$WORKER_IMAGE" ] && ! docker pull "$LISTENER_IMAGE" >/dev/null 2>&1; th
   LISTENER_IMAGE=""
 fi
 
-echo "=== start proxies (codex-dock proxy run) ==="
+echo "=== start proxies (cxd proxy run) ==="
 "$BIN" proxy rm -f >/dev/null 2>&1 || true
 if ! "$BIN" proxy run >/dev/null 2>&1; then
-  echo "FAIL: codex-dock proxy run failed (proxy image build needs registry access?)"
+  echo "FAIL: cxd proxy run failed (proxy image build needs registry access?)"
   exit 1
 fi
 
@@ -92,7 +92,7 @@ if [ -z "$WORKER_IMAGE" ]; then
   [ "$FAIL" = 0 ] && exit 0 || exit 1
 fi
 
-echo "=== build worker topology (mirrors codex-dock run) ==="
+echo "=== build worker topology (mirrors cxd run) ==="
 docker network create --internal "$W1NET" >/dev/null
 docker network create --internal "$W2NET" >/dev/null
 docker network connect "$W1NET" "$AUTH" >/dev/null; docker network connect "$W1NET" "$HTTP" >/dev/null

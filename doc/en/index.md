@@ -1,8 +1,8 @@
-# codex-dock documentation
+# cxd documentation
 
 [日本語](../index.md) | **English**
 
-codex-dock runs Codex CLI and Claude Code in separate Kata VMs.
+cxd runs Codex CLI and Claude Code in separate Kata VMs.
 Containerd manages workers, and Dragonball runs the VMs. Images are built with BuildKit.
 Docker Engine, Docker CLI and QEMU are not runtime requirements.
 

@@ -1,4 +1,4 @@
-# `codex-dock run` — サンドボックスコンテナの起動
+# `cxd run` — サンドボックスコンテナの起動
 
 > **日本語** | [English](../en/commands/run.md)
 >
@@ -17,16 +17,16 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 ## Codex CLI を直接起動する
 
 ```bash
-codex-dock codex
-codex-dock codex "このリポジトリを調べて"
-codex-dock codex exec --json "変更点を要約して"
+cxd codex
+cxd codex "このリポジトリを調べて"
+cxd codex exec --json "変更点を要約して"
 ```
 
-引数は `codex` にそのまま渡します。カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。イメージ、worktree、追加マウント、detachなどのコンテナ指定には `codex-dock run --agent codex` を使います。新規VMの起動時間は通常のホスト上の `codex` より長くなります。
+引数は `codex` にそのまま渡します。カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。イメージ、worktree、追加マウント、detachなどのコンテナ指定には `cxd run --agent codex` を使います。新規VMの起動時間は通常のホスト上の `codex` より長くなります。
 
 ```bash
-codex-dock run [OPTIONS] [IMAGE [COMMAND...]]
-codex-dock run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
+cxd run [OPTIONS] [IMAGE [COMMAND...]]
+cxd run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
 ```
 
 イメージとコマンドの位置は `docker run IMAGE COMMAND` と同じです。フラグはイメージの前に置きます。
@@ -34,9 +34,9 @@ codex-dock run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを�
 コマンドは `--exec` と同等ですが、全体を1つの文字列にクォートする必要はありません。
 
 ```bash
-codex-dock run -d --name worker codex-dock:latest
-codex-dock run codex-dock:latest npm test -- --watch=false
-codex-dock run -- npm test -- --watch=false
+cxd run -d --name worker codex-dock:latest
+cxd run codex-dock:latest npm test -- --watch=false
+cxd run -- npm test -- --watch=false
 ```
 
 ---
@@ -107,9 +107,9 @@ codex-dock run -- npm test -- --watch=false
   認証済みシェルが欲しい場合は `--agent` を省略してください。
 
 ```bash
-codex-dock run --agent codex  --approval-mode full-auto
-codex-dock run --agent claude --approval-mode full-auto --task "Refactor the auth module"
-codex-dock run                # 認証済みシェル（codex / claude 両方利用可）
+cxd run --agent codex  --approval-mode full-auto
+cxd run --agent claude --approval-mode full-auto --task "Refactor the auth module"
+cxd run                # 認証済みシェル（codex / claude 両方利用可）
 ```
 
 ---
@@ -129,16 +129,16 @@ codex-dock run                # 認証済みシェル（codex / claude 両方利
 
 ```bash
 # 認証設定済みの環境でコマンドを1つ実行して終了
-codex-dock run --exec "ls -la"
+cxd run --exec "ls -la"
 
 # 同じことを、コマンド全体をクォートせずに
-codex-dock run -- ls -la
+cxd run -- ls -la
 
 # バックグラウンドでコマンドを実行
-codex-dock run --exec "npm test" --detach
+cxd run --exec "npm test" --detach
 
 # --agent を指定すると --exec は無視され、エージェントが起動する
-codex-dock run --agent codex --exec "ls -la"   # → Codex CLI が起動する
+cxd run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 ```
 
 ---
@@ -177,10 +177,10 @@ codex-dock run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 
 ```bash
 # zsh で対話シェルを起動
-codex-dock run --shell-type zsh
+cxd run --shell-type zsh
 
 # zsh の素のデバッグシェル（entrypoint.sh をバイパス）
-codex-dock run --shell --shell-type zsh
+cxd run --shell --shell-type zsh
 ```
 
 設定ファイル（`~/.config/codex-dock/config.toml`）の `default_shell_type`（グローバル）/
@@ -209,16 +209,16 @@ VM内の入れ子namespaceとseccompの不整合を避けるためです。承�
 
 ```bash
 # エージェント既定の承認設定
-codex-dock run --agent codex --task "テストを書いて"
+cxd run --agent codex --task "テストを書いて"
 
 # Codexはモデル判断で承認要求、Claudeは編集を自動許可
-codex-dock run --agent codex --approval-mode auto-edit --task "リファクタリング"
+cxd run --agent codex --approval-mode auto-edit --task "リファクタリング"
 
 # 完全自動実行（承認なし）
-codex-dock run --agent codex --approval-mode full-auto --task "バグ修正"
+cxd run --agent codex --approval-mode full-auto --task "バグ修正"
 
 # エージェントの承認・内側sandboxを無効化
-codex-dock run --agent codex --approval-mode danger --task "ビルドスクリプトを実行"
+cxd run --agent codex --approval-mode danger --task "ビルドスクリプトを実行"
 ```
 
 ---
@@ -230,14 +230,14 @@ codex-dock run --agent codex --approval-mode danger --task "ビルドスクリ�
 
 | 値 | 動作 |
 |---|---|
-| `current` (省略時のデフォルト) | `codex-dock` コマンドを実行しているユーザの uid:gid を自動取得 |
+| `current` (省略時のデフォルト) | `cxd` コマンドを実行しているユーザの uid:gid を自動取得 |
 | `codex` | 従来のデフォルト挙動。コンテナ内 `codex` ユーザ（`1001:1001`）で実行 |
 | `""` | イメージのデフォルトユーザを使用 |
 | `dir` | `--project` で指定したディレクトリ所有者の uid:gid を自動取得 |
 | `uid` または `uid:gid` | 明示的に指定（例: `1000`, `1000:1000`） |
 
 > **注意**: カスタムユーザを指定した場合、そのユーザがコンテナの `/etc/passwd` に存在しない
-> ことがあります。`codex-dock` は `HOME=/var/tmp/codex-home` を自動注入します。認証ファイルや
+> ことがあります。`cxd` は `HOME=/var/tmp/codex-home` を自動注入します。認証ファイルや
 > Codex CLI 設定はその `HOME` 配下に作成され、`/workspace` 配下に補助ディレクトリは作成しません。
 
 ---
@@ -259,10 +259,10 @@ codex-dock run --agent codex --approval-mode danger --task "ビルドスクリ�
 
 ```bash
 # ホストの共有データディレクトリを読み取り専用でマウント
-codex-dock run --mount /home/user/datasets:/data:ro
+cxd run --mount /home/user/datasets:/data:ro
 
 # 複数のディレクトリをマウント（読み書き・読み取り専用を混在）
-codex-dock run --mount ./cache:/cache --mount /opt/models:/models:ro
+cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 ```
 
 > 追加マウントされたディレクトリはプロジェクトディレクトリ本体（`/workspace`）とは
@@ -308,7 +308,7 @@ npm:typescript
 `--parallel N` を指定すると、N 個のコンテナが同時に起動します。
 
 ```bash
-codex-dock run --parallel 2 --worktree --branch myfeature
+cxd run --parallel 2 --worktree --branch myfeature
 ```
 
 ノードの既定上限は同時2台です。自動的に以下のブランチが作成されます：
@@ -324,61 +324,61 @@ codex-dock run --parallel 2 --worktree --branch myfeature
 
 ```bash
 # 基本的な実行（カレントディレクトリをマウント）
-codex-dock run
+cxd run
 
 # タスクを指定して完全自動実行
-codex-dock run --agent codex --task "ユニットテストを書いて" --approval-mode full-auto
+cxd run --agent codex --task "ユニットテストを書いて" --approval-mode full-auto
 
 # git worktree を使って feature ブランチで作業
-codex-dock run --worktree --branch feature-auth --new-branch
+cxd run --worktree --branch feature-auth --new-branch
 
 # 並列ワーカー2つを起動（各ワーカーに別ブランチ）
-codex-dock run --parallel 2 --worktree
+cxd run --parallel 2 --worktree
 
 # 追加パッケージをインストールして実行
-codex-dock run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
+cxd run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
 
 # packages.dock ファイルを使用
-codex-dock run --pkg-file ./packages.dock
+cxd run --pkg-file ./packages.dock
 
 # バックグラウンドで完全自動実行
-codex-dock run --agent codex --task "リファクタリング" --approval-mode full-auto --detach
+cxd run --agent codex --task "リファクタリング" --approval-mode full-auto --detach
 
 # 読み取り専用・インターネットなしでセキュアに実行
-codex-dock run --agent codex --read-only --no-internet --task "コードレビュー"
+cxd run --agent codex --read-only --no-internet --task "コードレビュー"
 
 # 特定のOCIイメージを使用
-codex-dock run --image my-custom-codex:v2
+cxd run --image my-custom-codex:v2
 
 # テンプレートイメージを使用（未ビルドなら自動ビルド）
-codex-dock run --image codex-dock:pwn
+cxd run --image codex-dock:pwn
 
 # --template でテンプレート名から直接指定（--image codex-dock:pwn と同じ）
-codex-dock run --template pwn
+cxd run --template pwn
 
 # ~/.config/codex-dock/templates/ に置いた自作テンプレートも同様に使える
-codex-dock run --template mytool
+cxd run --template mytool
 
 # カスタムモデルを指定
-codex-dock run --model "o3"
+cxd run --model "o3"
 
 # エージェントを使わずコマンドを1つ実行して終了
-codex-dock run --exec "ls -la"
+cxd run --exec "ls -la"
 
 # デフォルトで、コマンド実行ユーザと同じ uid:gid でコンテナを起動
-codex-dock run
+cxd run
 
 # 従来どおり codex(1001:1001) ユーザで実行
-codex-dock run --user codex
+cxd run --user codex
 
 # 明示的にコマンド実行ユーザを指定
-codex-dock run --user current
+cxd run --user current
 
 # プロジェクトディレクトリの所有者と同じ uid:gid でコンテナを起動
-codex-dock run --user dir --project /srv/myapp
+cxd run --user dir --project /srv/myapp
 
 # uid:gid を明示指定
-codex-dock run --user 1000:1000
+cxd run --user 1000:1000
 ```
 
 ---

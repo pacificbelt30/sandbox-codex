@@ -1,4 +1,4 @@
-# `codex-dock network` — ネットワーク管理
+# `cxd network` — ネットワーク管理
 
 > **日本語** | [English](../en/commands/network-cmd.md)
 >
@@ -6,24 +6,24 @@
 
 egress ネットワーク（`dock-net-proxy`、プロキシのインターネット到達用）を管理します。ワーカー用の `Internal` ネットワークはワーカーのライフサイクルに合わせて自動で作成・削除されるため、手動管理は不要です。
 
-> 旧 `codex-dock firewall`（iptables）は廃止されました。隔離はroot管理サービスの専用bridge・namespace・nftablesで実現します。
+> 旧 `cxd firewall`（iptables）は廃止されました。隔離はroot管理サービスの専用bridge・namespace・nftablesで実現します。
 
 ---
 
 ## `network create` — egress ネットワーク作成
 
 ```bash
-codex-dock network create
+cxd network create
 ```
 
-> `codex-dock proxy run` 実行時にも未作成なら自動的に作成されます。
+> `cxd proxy run` 実行時にも未作成なら自動的に作成されます。
 
 ---
 
 ## `network rm` — egress ネットワーク削除
 
 ```bash
-codex-dock network rm
+cxd network rm
 ```
 
 > プロキシコンテナが接続中の場合は先に停止・削除してください。
@@ -33,7 +33,7 @@ codex-dock network rm
 ## `network status` — ネットワーク状態確認
 
 ```bash
-codex-dock network status
+cxd network status
 ```
 
 **出力例：**
