@@ -224,6 +224,9 @@ func ensureProxyImage(ctx context.Context, image string) error {
 		return fmt.Errorf("inspecting proxy image %s: %w", image, err)
 	}
 	fmt.Printf("Proxy image %s not found or outdated; building...\n", image)
+	if built, err := buildProxyImageFromExecutable(ctx, image); built || err != nil {
+		return err
+	}
 	dockerfile, buildCtx, err := resolveProxyDockerfile("")
 	if err != nil {
 		return err
@@ -508,6 +511,18 @@ func resolveProxyDockerfile(flagValue string) (string, string, error) {
 		}
 	}
 
+	// A development CLI can be launched from a project directory. Its own
+	// checkout remains a valid source for a matching proxy build.
+	if executable, err := os.Executable(); err == nil {
+		dir := filepath.Dir(executable)
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "cmd", "proxy.go")); err == nil {
+				if _, err := os.Stat(filepath.Join(dir, "docker", "proxy", "Dockerfile")); err == nil {
+					return filepath.Join(dir, "docker", "proxy", "Dockerfile"), dir, nil
+				}
+			}
+		}
+	}
 	// Fall back to the default Dockerfile written into the config directory.
 	// It compiles the current directory's Go source, so fail with a useful
 	// instruction before starting a BuildKit build from an unrelated project.
