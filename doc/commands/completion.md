@@ -19,4 +19,4 @@ mkdir -p ~/.local/share/bash-completion/completions
 cxd completion bash > ~/.local/share/bash-completion/completions/cxd
 ```
 
-サブコマンドとフラグに加え、`default` のエージェント、`run` のエージェント・runtime・承認モード・テンプレート・`--image`、`start`・`stop`・`rm`・`logs` のワーカー名を補完します。ワーカー名は専用ノードから最大 500 ms で取得します。ノードが停止中でも、ほかの補完は使えます。
+サブコマンドとフラグに加え、`default` のエージェント、`run` のエージェント・runtime・承認モード・テンプレート・`--image`、`start`・`stop`・`rm`・`logs` のワーカー名を補完します。`vm inspect/start/stop/rm` では専用ノードの VM 台帳から、コマンドに応じた候補を表示します。通常は VM 名、名前が重複する場合や孤立 VM では ID を使います。ワーカー名の取得は最大 500 ms、VM 台帳の取得は最大 2 秒で打ち切ります。ノードが停止中でも、ほかの補完は使えます。

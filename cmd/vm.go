@@ -76,6 +76,7 @@ func newVMCommand() *cobra.Command {
 		enc.SetIndent("", "  ")
 		return enc.Encode(row)
 	}}
+	inspect.ValidArgsFunction = completeVMs("inspect")
 	for _, action := range []string{"start", "stop", "rm"} {
 		action := action
 		var force bool
@@ -115,6 +116,7 @@ func newVMCommand() *cobra.Command {
 		if action == "stop" {
 			c.Flags().IntVarP(&timeout, "timeout", "t", 10, "Seconds to wait for normal worker shutdown")
 		}
+		c.ValidArgsFunction = completeVMs(action)
 		vm.AddCommand(c)
 	}
 	prune := &cobra.Command{Use: "prune", Short: "Recover empty orphan reservations; retain live VMs and stopped workers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {

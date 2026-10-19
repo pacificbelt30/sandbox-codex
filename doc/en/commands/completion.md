@@ -19,4 +19,4 @@ mkdir -p ~/.local/share/bash-completion/completions
 cxd completion bash > ~/.local/share/bash-completion/completions/cxd
 ```
 
-Completion covers commands and flags, agent choices for `default`, agent/runtime/approval/template/`--image` values for `run`, and worker names for `start`, `stop`, `rm`, and `logs`. Worker names are fetched from the dedicated node with a 500 ms deadline. Other completion remains available if the node is stopped.
+Completion covers commands and flags, agent choices for `default`, agent/runtime/approval/template/`--image` values for `run`, and worker names for `start`, `stop`, `rm`, and `logs`. For `vm inspect/start/stop/rm`, candidates come from the dedicated node's VM inventory and reflect the action. Completion uses VM names when unambiguous and IDs for duplicate names or orphans. Worker lookups have a 500 ms deadline; VM inventory lookups have a 2 second deadline. Other completion remains available if the node is stopped.

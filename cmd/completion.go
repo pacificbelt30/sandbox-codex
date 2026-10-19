@@ -5,12 +5,14 @@ import (
 	"sort"
 	"time"
 
+	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/template"
 	"github.com/spf13/cobra"
 )
 
 const completionTimeout = 500 * time.Millisecond
+const vmCompletionTimeout = 2 * time.Second
 
 func registerCompletion(cmd *cobra.Command, flag string, fn cobra.CompletionFunc) {
 	if err := cmd.RegisterFlagCompletionFunc(flag, fn); err != nil {
@@ -72,6 +74,70 @@ func workerCompletionNames(workers []sandbox.Worker, args []string, accept func(
 	}
 	sort.Strings(names)
 	return names
+}
+
+func completeVMs(action string) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if action == "inspect" && len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{})
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		defer func() { _ = mgr.Close() }()
+		ctx, cancel := context.WithTimeout(cmd.Context(), vmCompletionTimeout)
+		defer cancel()
+		inventory, err := mgr.VMInventory(ctx)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return vmCompletionNames(inventory, args, action), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+func vmCompletionNames(inventory kataguard.Inventory, args []string, action string) []cobra.Completion {
+	if action != "inspect" && !inventory.EngineAvailable {
+		return nil
+	}
+	used := make(map[string]bool, len(args))
+	for _, arg := range args {
+		used[arg] = true
+	}
+	names := make([]cobra.Completion, 0, len(inventory.VMs))
+	for _, vm := range inventory.VMs {
+		if !vmSelectable(vm, action) {
+			continue
+		}
+		value := vm.Name
+		resolved, err := kataguard.ResolveVM(inventory, value)
+		if err != nil || resolved.ID != vm.ID {
+			value = vm.ID
+		}
+		if value == "" {
+			value = vm.Allocation
+		}
+		resolved, err = kataguard.ResolveVM(inventory, value)
+		if err == nil && resolved.ID == vm.ID && !used[value] {
+			names = append(names, value)
+			used[value] = true
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func vmSelectable(vm kataguard.VM, action string) bool {
+	switch action {
+	case "start":
+		return vm.ContainerPresent && vm.EngineState != "running" && vm.EngineState != "paused" && !vm.Populated
+	case "stop":
+		return vm.Orphan || vm.ContainerPresent && (vm.EngineState == "running" || vm.EngineState == "paused" || vm.Populated)
+	case "inspect", "rm":
+		return true
+	default:
+		return false
+	}
 }
 
 func init() {
