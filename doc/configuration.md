@@ -57,7 +57,7 @@ tag = "my-project:dev"
 
 不足するイメージは `init` / `run` 時にビルドします。既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `cxd build` を実行してください。
 
-製品から使う場合は[Go API](go-api.md)の `PrepareProject` で同じプロジェクトファイルを検証し、必要なイメージを作成できます。Go API はグローバル設定を自動で読み込まないため、ホスト設定と認可は製品側で適用してください。`egress_allow_domains` を含むプロジェクト設定は現在の Go API ではエラーになります。
+製品から使う場合は[Go API](go-api.md)の `PrepareProject` で同じプロジェクトファイルを検証し、必要なイメージを作成できます。Go API はグローバル設定を自動で読み込まないため、ホスト設定と認可は製品側で適用してください。`egress_allow_domains` は `LaunchRequest.EgressAllowDomains` に反映されます。
 
 ## 最小の設定例
 

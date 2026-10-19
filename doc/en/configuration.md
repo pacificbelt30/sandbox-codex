@@ -45,7 +45,7 @@ tag = "my-project:dev"
 
 `init` and `run` build missing images. For an existing project image, automatic rebuilds check the Dockerfile timestamp; run `cxd build` after changing copied files or dependencies alone.
 
-Products can use [`PrepareProject` in the Go API](go-api.md) to validate the same project file and build missing images. The Go API does not load global settings; the product must apply host settings and authorization. It currently rejects project files containing `egress_allow_domains`.
+Products can use [`PrepareProject` in the Go API](go-api.md) to validate the same project file and build missing images. The Go API does not load global settings; the product must apply host settings and authorization. It copies `egress_allow_domains` into `LaunchRequest.EgressAllowDomains`.
 
 Normal precedence: **explicit CLI flags > project config > global config > built-in defaults**. Project `read_only` and `no_internet` only add restrictions.
 

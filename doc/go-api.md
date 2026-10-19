@@ -67,19 +67,21 @@ func main() {
 | `Get` / `List` | ワーカーの状態を照会する |
 | `Exec` / `Wait` | 既存ワーカーでコマンドを実行する／メインプロセスの終了を待つ |
 | `Start` / `Stop` / `Remove` | 停止済みワーカーの再起動／停止／回収。`Stop` は認証トークンを失効させる |
+| `Request` / `RemoveRequest` | 要求IDから永続起動状態を照会する／応答消失後も同じ要求IDで回収を再試行する |
 | `Profiles(ctx)` | 稼働中ノードの CPU、guest RAM、ホスト側予約メモリ、PID 上限を取得する。値は予約・制限の契約であり、実測 RSS ではない |
+| `Capabilities()` / `ProxyCapabilities(ctx)` | nodeのビルド版・プロトコル・対応機能／接続先認証Proxyの対応機能を調べる |
 
 `LaunchRequest` ではモデル、承認モード、追加マウント、read-only rootfs、Git metadata の非共有なども指定できます。指定しないイメージは `codex-dock:latest`、資源プロファイルは `standard` です。小型の `small` を選ぶ前に `client.Profiles(ctx)` で稼働中ノードの値を確認してください。
 
 `Open` はソケットとノードのバージョンを確認します。`Launch` には、ビルド済みのイメージと起動中の認証プロキシが必要です。`client.PrepareProject(ctx, dir, requestID, log)` は CLI と共通の `codex-dock.toml` 検証を使い、必要なイメージを BuildKit で作成して `LaunchRequest` を返します。`client.Build` と `client.BuildTemplate` も個別に利用できます。製品側で設定を確認・補足してから `Launch` を呼べます。
 
-`PrepareProject` はグローバル設定や実認証情報を読みません。プロジェクトの `egress_allow_domains` は、現時点では API で通信ポリシーを設定する方法がないため明示的にエラーにします。CLI の対話的なプロキシ起動も行いません。実 API キーや OAuth トークンを `LaunchRequest` や VM に渡さないでください。プロキシの管理シークレットはホスト側の `Options` のみで扱います。
+`PrepareProject` はグローバル設定や実認証情報を読みません。プロジェクトの `egress_allow_domains` は `LaunchRequest.EgressAllowDomains` に反映されます。Go API は既存のCLIと同じ識別子の専用egress proxyを、互換イメージから起動・再利用します。`Options.EgressPolicy` にホストの上限ルールを設定でき、ワーカーの許可ドメインはその範囲を広げられません。プロキシイメージは事前にビルドしてください。CLI の対話的なプロキシ起動は行いません。実 API キーや OAuth トークンを `LaunchRequest` や VM に渡さないでください。プロキシの管理シークレットはホスト側の `Options` のみで扱います。
 
-`PrepareProject` が返す設定を製品側で確認し、必要なホスト側の制約を加えてから `Launch` に渡してください。組織・利用者・接続バージョンの認可、認証情報の保存と更新、ワーカーごとの通信ルールはこの API には含まれません。
+`PrepareProject` が返す設定を製品側で確認し、必要なホスト側の制約を加えてから `Launch` に渡してください。利用者・ケース・実行の認可と業務状態は製品側で管理します。ケース別の資格情報と実行identityを扱う場合は[ケース別認証](credential-store.md)を参照してください。
 
 ## 再送と復旧
 
-`RequestID` はノード全体で一意にし、組織・プロジェクト・実行 ID・試行番号・接続バージョンなど、製品が区別したい情報を含めてください。同じ ID を別のオプションで再利用すると `ErrConflict` です。ID と設定内容はハッシュ化してノードの永続台帳に記録されます。元の ID、タスク本文、プロキシ管理シークレットは記録しません。
+`RequestID` はノード全体で一意にし、利用者またはケース・プロジェクト・実行 ID・試行番号・接続バージョンなど、製品が区別したい情報を含めてください。同じ ID を別のオプションで再利用すると `ErrConflict` です。ID と設定内容はハッシュ化してノードの永続台帳に記録されます。元の ID、タスク本文、プロキシ管理シークレットは記録しません。
 
 `UseWorktree: true` でブランチを省略すると、要求 ID から専用ブランチ名を作ります。起動に失敗して worktree が回収された後も、同じ要求の再送ならそのブランチを再利用できます。
 
@@ -87,10 +89,12 @@ func main() {
 
 `Launch` がエラーとともに `Worker.ID` を返した場合、VM または削除記録が残っている可能性があります。`Get` と `Remove` で照合・回収してください。`ErrOutcomeUnknown` は起動後の確認応答が失われたことを示し、同じ ID で再送できます。`ErrCleanupPending` は `Remove` の再試行が必要です。
 
+`Request(ctx, requestID)` は `pending`、`complete`、`failed`、`cleanup-pending` の台帳状態を返し、起動中のleaseは公開しません。`RemoveRequest(ctx, requestID, true)` は既存ワーカーと削除記録の回収を試み、前回の回収応答だけが失われた場合も成功として扱えます。製品再起動後も同じ `Options.StateDir` を使ってください。
+
 `context.Context` の取消は `Exec` 中のゲストプロセスを止めます。`Wait` の取消は待機のみを止めます。`Launch` は取消後も回収を試みます。VM を止めて認証トークンを失効させるには `Stop`、関連資源を削除するには `Remove` を呼んでください。
 
 ## エラーと互換性
 
 `errors.Is` で `ErrNotFound`、`ErrConflict`、`ErrInProgress`、`ErrCleanupPending`、`ErrRequestGone`、`ErrCapacity`、`ErrVersionMismatch`、`ErrOutcomeUnknown` を判定できます。`context.Canceled` と `context.DeadlineExceeded` も保持します。元のエラーは `errors.Unwrap` で参照できます。
 
-公開 Go パッケージは node の内部 DTO をシグネチャに出しません。現時点では CLI・ライブラリ・ノードを同じビルドで配置してください。版または Go API 用プロトコルが違う場合、`Open` は `ErrVersionMismatch` を返します。ノードの Unix ソケット上の HTTP/JSON は内部プロトコルであり、外部向けの互換性を約束しません。
+公開 Go パッケージは node の内部 DTO をシグネチャに出しません。現時点では CLI・ライブラリ・node・proxyイメージを対応するビルドで配置してください。Go API 用nodeプロトコルはv2です。版またはプロトコルが違う場合、`Open` は `ErrVersionMismatch` を返します。`Capabilities()` は検証済みnode、`ProxyCapabilities(ctx)` は現在の認証Proxyを報告します。nodeの Unix ソケット上の HTTP/JSON は内部プロトコルであり、外部向けの互換性を約束しません。

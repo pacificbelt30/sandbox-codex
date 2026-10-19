@@ -67,17 +67,19 @@ With no `Agent`, `Launch` starts an idle worker for repeated `Exec` calls. `Agen
 | `Get` / `List` | Inspect worker state |
 | `Exec` / `Wait` | Execute a command in a worker / wait for its main process |
 | `Start` / `Stop` / `Remove` | Restart a stopped worker / stop it and revoke its auth token / remove its resources |
+| `Request` / `RemoveRequest` | Query durable launch state by request ID / retry cleanup after a lost response |
 | `Profiles(ctx)` | Query the running node's CPU, guest RAM, host memory reservation, and PID limits. These are reservation limits, not measured RSS |
+| `Capabilities()` / `ProxyCapabilities(ctx)` | Query node build, protocol, and features / connected auth proxy features |
 
 `LaunchRequest` also supports model, approval mode, extra mounts, read-only rootfs, and disabling shared Git metadata. Its default image is `codex-dock:latest` and default resource profile is `standard`. Query `client.Profiles(ctx)` before selecting the smaller `small` profile.
 
 `client.PrepareProject(ctx, dir, requestID, log)` validates the portable `codex-dock.toml`, builds a missing or stale image through BuildKit, and returns a `LaunchRequest` for the product to review and submit. `client.Build` and `client.BuildTemplate` are available separately. `Launch` itself requires a built image and a running auth proxy.
 
-`PrepareProject` does not load global settings or real credentials. A project with `egress_allow_domains` returns an explicit error because this API cannot set that policy yet. It does not interactively start the proxy. Keep real API keys and OAuth tokens out of `LaunchRequest` and the VM. The product must apply its own host restrictions to the returned request. Organization authorization, credential storage and refresh, and per-worker egress policy are outside this API.
+`PrepareProject` does not load global settings or real credentials. It copies project `egress_allow_domains` into `LaunchRequest.EgressAllowDomains`. The Go API starts or reuses a dedicated egress proxy identified by the same policy ID as the CLI. `Options.EgressPolicy` sets host limits that a worker allowlist cannot expand. Build the matching proxy image before launch. The API does not interactively start the auth proxy. Keep real API keys and OAuth tokens out of `LaunchRequest` and the VM; keep the admin secret in host `Options` only. The product applies its own host restrictions and authorizes users, cases, and runs. For case credentials and execution identity, see [case-scoped credentials](credential-store.md).
 
 ## Retries and recovery
 
-Make each `RequestID` unique across the node. Include the organization, project, run, attempt, and connection version when those distinctions matter to your product. Reusing an ID with different immutable options returns `ErrConflict`. The node stores hashes of the ID and settings in a durable ledger, not the original ID, task text, or proxy admin secret.
+Make each `RequestID` unique across the node. Include the user or case, project, run, attempt, and connection version when those distinctions matter to your product. Reusing an ID with different immutable options returns `ErrConflict`. The node stores hashes of the ID and settings in a durable ledger, not the original ID, task text, or proxy admin secret.
 
 With `UseWorktree: true` and no branch name, the API derives a branch name from the request ID. A safe retry can reuse that branch after cleanup of a failed launch.
 
@@ -85,10 +87,12 @@ Concurrent launches with the same ID allow only one launcher to proceed; the oth
 
 If `Launch` returns an error and a `Worker.ID`, inspect it with `Get` and clean it up with `Remove`. `ErrOutcomeUnknown` means launch confirmation was lost; retry with the same ID. `ErrCleanupPending` means cleanup must be retried.
 
+`Request(ctx, requestID)` reports the durable `pending`, `complete`, `failed`, or `cleanup-pending` state without exposing the live lease. `RemoveRequest(ctx, requestID, true)` retries cleanup of the associated worker and deletion journal. It also succeeds if only the prior cleanup response was lost. Keep `Options.StateDir` stable across product restarts.
+
 Canceling the `Exec` context stops the guest command. Canceling `Wait` stops only the wait. After a canceled `Launch`, the API still attempts cleanup. Call `Stop` to stop a VM and revoke its token; call `Remove` to release its resources.
 
 ## Errors and compatibility
 
 Use `errors.Is` for `ErrNotFound`, `ErrConflict`, `ErrInProgress`, `ErrCleanupPending`, `ErrRequestGone`, `ErrCapacity`, `ErrVersionMismatch`, and `ErrOutcomeUnknown`. Context cancellation and deadline errors are preserved. Use `errors.Unwrap` to inspect the cause.
 
-The public Go signatures do not expose internal node DTOs. Deploy the CLI, library, and node from the same build for now. The node's HTTP/JSON protocol over the Unix socket is internal and has no external compatibility guarantee.
+The public Go signatures do not expose internal node DTOs. Deploy the CLI, library, node, and proxy image from matching builds. The Go node protocol is v2; `Open` returns `ErrVersionMismatch` for incompatible node versions. `Capabilities()` reports the validated node and `ProxyCapabilities(ctx)` reports the connected auth proxy. The node's HTTP/JSON protocol over the Unix socket is internal and has no external compatibility guarantee.

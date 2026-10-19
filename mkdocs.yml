@@ -63,6 +63,7 @@ nav:
       - CLIの更新: commands/update.md
       - 設定: configuration.md
       - 製品組み込み用 Go API: go-api.md
+      - ケース別の認証: credential-store.md
       - 認証API: auth-proxy/endpoints.md
   - 仕組みと開発:
       - アーキテクチャ: architecture.md
@@ -90,6 +91,7 @@ nav:
           - Update: en/commands/update.md
       - Configuration: en/configuration.md
       - Go API: en/go-api.md
+      - Case credentials: en/credential-store.md
       - Architecture: en/architecture.md
       - Auth proxy: en/auth-proxy.md
       - Auth API: en/auth-proxy/endpoints.md
