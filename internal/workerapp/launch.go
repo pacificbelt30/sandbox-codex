@@ -27,6 +27,12 @@ func Launch(ctx context.Context, runner Runner, opts sandbox.RunOptions) (id str
 			Branch:     opts.Branch,
 			NewBranch:  opts.NewBranch,
 		})
+		if err != nil && opts.ReuseBranchOnRetry && opts.NewBranch && ctx.Err() == nil {
+			path, err = worktree.CreateContext(ctx, worktree.CreateOptions{
+				ProjectDir: opts.ProjectDir,
+				Branch:     opts.Branch,
+			})
+		}
 		if err != nil {
 			return "", fmt.Errorf("creating worktree: %w", err)
 		}

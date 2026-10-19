@@ -173,6 +173,11 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	keyBytes := sha256.Sum256([]byte(req.RequestID))
 	key := hex.EncodeToString(keyBytes[:])
+	autoBranch := req.UseWorktree && req.Branch == ""
+	if autoBranch {
+		req.Branch = "cxd-" + key[:16]
+		req.NewBranch = true
+	}
 	// Proxy location affects the resulting worker but the admin secret is never
 	// persisted or hashed into the node's request ledger.
 	fingerprintInput, err := json.Marshal(struct {
@@ -228,7 +233,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		Name: claim.Name, RequestKey: key, RequestFingerprint: fingerprint, AllocationID: kataguard.RequestAllocation(key),
 		Agent: sandbox.Agent(req.Agent), DirectAgent: req.Agent != "", AgentArgs: req.AgentArgs,
 		Model: req.Model, ApprovalMode: sandbox.ApprovalMode(req.ApprovalMode),
-		Branch: req.Branch, UseWorktree: req.UseWorktree, NewBranch: req.NewBranch,
+		Branch: req.Branch, UseWorktree: req.UseWorktree, NewBranch: req.NewBranch, ReuseBranchOnRetry: autoBranch && claim.Attempt > 1,
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
 		NoInternet: req.NoInternet, ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
 	}

@@ -47,7 +47,7 @@ func TestLaunchWorktreeOwnershipOnFailure(t *testing.T) {
 		t.Fatalf("runner worktree = %q", f.opts.WorktreePath)
 	}
 	f.id = "worker-id"
-	opts.NewBranch = false
+	opts.ReuseBranchOnRetry = true
 	if id, err := Launch(context.Background(), f, opts); id != f.id || err == nil {
 		t.Fatalf("retained worker result = %q, %v", id, err)
 	}

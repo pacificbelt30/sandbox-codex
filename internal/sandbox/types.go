@@ -100,18 +100,19 @@ type RunOptions struct {
 	proxyHosts         []string
 	// Runtime selects the isolation boundary, not the container management API.
 	// Empty means Kata. Runc requires an explicit compatibility opt-in.
-	Runtime         string
-	KataRuntime     string
-	ResourceProfile string
-	Image           string
-	Packages        []string
-	PkgFile         string
-	ProjectDir      string
-	WorktreePath    string
-	UseWorktree     bool
-	Branch          string
-	NewBranch       bool
-	Name            string
+	Runtime            string
+	KataRuntime        string
+	ResourceProfile    string
+	Image              string
+	Packages           []string
+	PkgFile            string
+	ProjectDir         string
+	WorktreePath       string
+	UseWorktree        bool
+	Branch             string
+	NewBranch          bool
+	ReuseBranchOnRetry bool
+	Name               string
 	// RequestKey and fingerprint are hashes of an embedding product's external
 	// request identity and immutable launch options; no raw task data is stored.
 	RequestKey         string

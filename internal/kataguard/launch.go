@@ -29,6 +29,7 @@ type LaunchRecord struct {
 	Fingerprint string    `json:"fingerprint"`
 	Name        string    `json:"name"`
 	State       string    `json:"state"`
+	Attempt     int       `json:"attempt"`
 	Lease       string    `json:"lease,omitempty"`
 	WorkerID    string    `json:"worker_id,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -177,6 +178,7 @@ func (g *Guard) claimLaunch(ctx context.Context, finder requestFinder, key, fing
 	if _, err := rand.Read(lease); err != nil {
 		return LaunchRecord{}, err
 	}
+	r.Attempt++
 	r.State, r.Lease, r.WorkerID, r.UpdatedAt = "pending", hex.EncodeToString(lease), "", time.Now().UTC()
 	return r, g.writeLaunch(r)
 }
