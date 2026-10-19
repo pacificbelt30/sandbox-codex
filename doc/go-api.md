@@ -98,3 +98,5 @@ func main() {
 `errors.Is` で `ErrNotFound`、`ErrConflict`、`ErrInProgress`、`ErrCleanupPending`、`ErrRequestGone`、`ErrCapacity`、`ErrVersionMismatch`、`ErrOutcomeUnknown` を判定できます。`context.Canceled` と `context.DeadlineExceeded` も保持します。元のエラーは `errors.Unwrap` で参照できます。
 
 公開 Go パッケージは node の内部 DTO をシグネチャに出しません。現時点では CLI・ライブラリ・node・proxyイメージを対応するビルドで配置してください。Go API 用nodeプロトコルはv2です。版またはプロトコルが違う場合、`Open` は `ErrVersionMismatch` を返します。`Capabilities()` は検証済みnode、`ProxyCapabilities(ctx)` は現在の認証Proxyを報告します。nodeの Unix ソケット上の HTTP/JSON は内部プロトコルであり、外部向けの互換性を約束しません。
+
+[追加のポリシー・実行・回収API](sandbox-features.md)

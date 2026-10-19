@@ -114,25 +114,11 @@ clean:
 
 ## test: run tests with race detection and coverage
 test:
-	go test \
-		-race \
-		-coverprofile=coverage.out \
-		-covermode=atomic \
-		./cmd/... \
-		./internal/sandbox/... \
-		./internal/authproxy/... \
-		./internal/network/... \
-		./internal/networkpolicy/... \
-		./internal/kataguard/... \
-		./internal/engine/... \
-		./internal/worktree/... \
-		./internal/diagnostics/... \
-		./internal/config/... \
-		./internal/template/...
+	go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
 ## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
 kata-e2e: build
-	CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_TEST_BINARY="$(CURDIR)/$(BINARY)" go test ./internal/sandbox -run '^TestKata(Acceptance|WorkspaceSharing)$$' -count=1 -v -timeout=15m
+	CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_POLICY_E2E=1 CODEX_DOCK_KATA_TEST_BINARY="$(CURDIR)/$(BINARY)" go test ./internal/sandbox -run '^TestKata(Acceptance|WorkspaceSharing|PolicyFeatures)$$' -count=1 -v -timeout=15m
 
 ## lint: run golangci-lint
 lint:

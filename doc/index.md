@@ -39,3 +39,5 @@ Docker EngineとDocker CLIは不要です。
 - [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
 
 通常の実行先はLinux x86_64です。CLIのクロスビルドは、各OSでKataを実行できることを意味しません。
+
+[追加のサンドボックス制御](sandbox-features.md)

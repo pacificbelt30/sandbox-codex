@@ -9,6 +9,7 @@ import (
 )
 
 var proxyForwardRules networkpolicy.Rules
+var proxyUpstreamURL, proxyCAFile string
 
 const proxyPolicyLabel = "io.codex-dock.forward-policy"
 
@@ -34,6 +35,8 @@ func checkProxyPolicy(actual string, a proxyRunArgs) error {
 
 func bindForwardPolicyFlags(cmd *cobra.Command) {
 	flags := cmd.Flags()
+	flags.StringVar(&proxyUpstreamURL, "upstream-proxy", "", "Chain through an explicit HTTP(S) proxy using verified destination IPs")
+	flags.StringVar(&proxyCAFile, "ca-bundle", "", "Additional PEM CA bundle for proxy upstream TLS")
 	flags.StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Allow these domains and subdomains (repeatable; empty allows all)")
 	flags.StringArrayVar(&proxyForwardRules.DenyDomains, "forward-deny-domain", nil, "Deny these domains and subdomains (repeatable; deny overrides allow)")
 	flags.StringArrayVar(&proxyForwardRules.AllowCIDRs, "forward-allow-cidr", nil, "Allow only these destination IPs/CIDRs (repeatable)")
@@ -43,6 +46,12 @@ func bindForwardPolicyFlags(cmd *cobra.Command) {
 }
 
 func applyForwardPolicyDefaults(cmd *cobra.Command) {
+	if !cmd.Flags().Changed("upstream-proxy") {
+		proxyUpstreamURL = viper.GetString("proxy.upstream_proxy")
+	}
+	if cmd.Parent() == nil || cmd.Parent().Name() != "proxy" || !cmd.Flags().Changed("ca-bundle") {
+		proxyCAFile = viper.GetString("proxy.ca_bundle")
+	}
 	for _, setting := range []struct {
 		flag, key string
 		value     *[]string

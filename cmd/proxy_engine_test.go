@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"os"
 	"path/filepath"
@@ -85,5 +86,12 @@ func TestNativeProxyMountsOnlyOAuthStateWritable(t *testing.T) {
 	}
 	if len(h.Mounts) != 1 || h.Mounts[0].ReadOnly || h.Mounts[0].Source != state || !slices.Contains(c.Cmd, "--oauth-state-dir") {
 		t.Fatal("OAuth state mount or CLI path missing")
+	}
+}
+
+func TestBundledProxyImageAdvertisesExpectedProtocol(t *testing.T) {
+	expected := "LABEL " + proxyImageProtocolLabel + "=\"" + proxyImageProtocolVersion + "\""
+	if !strings.Contains(string(dockerdefaults.ProxyDockerfile), expected) {
+		t.Fatal("bundled proxy image would be rejected by CLI/Go API protocol checks")
 	}
 }

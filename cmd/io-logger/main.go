@@ -15,8 +15,10 @@ import (
 
 func run() error {
 	var dir, id string
+	var maxBytes int64
 	flag.StringVar(&dir, "state", "", "Private container record directory")
 	flag.StringVar(&id, "id", "", "Container identity")
+	flag.Int64Var(&maxBytes, "max-bytes", 0, "Retain at most this many output bytes (0 keeps legacy unlimited logging)")
 	flag.Parse()
 	if os.Geteuid() != 0 || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(id) || !filepath.IsAbs(dir) || filepath.Clean(dir) != dir || filepath.Base(dir) != id {
 		return fmt.Errorf("invalid logger identity")
@@ -59,13 +61,21 @@ func run() error {
 		return err
 	}
 	_ = ready.Close()
+	var writer io.Writer = log
+	if maxBytes > 0 {
+		info, err := log.Stat()
+		if err != nil {
+			return err
+		}
+		writer = &limitedLog{file: log, remaining: max(0, maxBytes-info.Size())}
+	}
 	var wg sync.WaitGroup
 	var lock sync.Mutex
 	var first error
 	copyStream := func(input *os.File) {
 		defer wg.Done()
 		defer func() { _ = input.Close() }()
-		_, err := io.Copy(log, input)
+		_, err := io.Copy(writer, input)
 		if err != nil {
 			lock.Lock()
 			if first == nil {
@@ -88,4 +98,27 @@ func main() {
 		_, _ = fmt.Fprintln(os.Stderr, "io-logger:", err)
 		os.Exit(1)
 	}
+}
+
+// limitedLog drains output after the retention limit so guest writes cannot
+// deadlock just because the retained diagnostic file is full.
+type limitedLog struct {
+	mu        sync.Mutex
+	file      io.Writer
+	remaining int64
+}
+
+func (w *limitedLog) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := int64(len(p))
+	keep := min(n, w.remaining)
+	if keep > 0 {
+		written, err := w.file.Write(p[:keep])
+		w.remaining -= int64(written)
+		if err != nil {
+			return written, err
+		}
+	}
+	return len(p), nil
 }

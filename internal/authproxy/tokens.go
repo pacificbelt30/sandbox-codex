@@ -201,3 +201,29 @@ func generateToken() (string, error) {
 	}
 	return "cdx-" + hex.EncodeToString(b), nil
 }
+
+// RevokeRun invalidates the matching identity and cancels all active streams.
+func (p *Proxy) RevokeRun(ctx context.Context, in identity.Identity) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := in.Validate(); err != nil {
+		return err
+	}
+	if p.cfg.CaseID != "" && in.CaseID != p.cfg.CaseID {
+		return fmt.Errorf("run belongs to another case")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.revokedRuns == nil {
+		p.revokedRuns = make(map[identity.Identity]bool)
+	}
+	p.revokedRuns[in] = true
+	for name, rec := range p.tokens {
+		if rec.Identity == in {
+			rec.cancel()
+			delete(p.tokens, name)
+		}
+	}
+	return nil
+}

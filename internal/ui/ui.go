@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"context"
 	"fmt"
-	"strings"
+	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/internal/policyevents"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -15,6 +18,10 @@ const pollInterval = 2 * time.Second
 
 // Run starts the dock-ui TUI.
 func Run(cfg sandbox.ManagerConfig) error {
+	return RunWithOptions(cfg, "")
+}
+
+func RunWithOptions(cfg sandbox.ManagerConfig, configPath string) error {
 	app := tview.NewApplication()
 
 	// Include a network manager so deleting a worker also removes its per-worker
@@ -23,11 +30,16 @@ func Run(cfg sandbox.ManagerConfig) error {
 	if err != nil {
 		return fmt.Errorf("connecting to Docker: %w", err)
 	}
+	defer func() { _ = netMgr.Close() }()
 	cfg.Network = netMgr
 	mgr, err := sandbox.NewManager(cfg)
 	if err != nil {
 		return fmt.Errorf("connecting to Docker: %w", err)
 	}
+
+	defer func() { _ = mgr.Close() }()
+	done := make(chan struct{})
+	defer close(done)
 
 	// Header
 	header := tview.NewTextView().
@@ -45,7 +57,7 @@ func Run(cfg sandbox.ManagerConfig) error {
 	// Footer / help
 	footer := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText("[yellow][↑↓][white] Select  [yellow][Enter][white] Logs  [yellow][S][white] Stop  [yellow][D][white] Delete  [yellow][R][white] Restart  [yellow][A][white] Stop All  [yellow][Q][white] Quit")
+		SetText("[yellow][↑↓][white] Select  [yellow][Enter][white] Logs  [yellow][S][white] Stop  [yellow][D][white] Delete  [yellow][R][white] Restart  [yellow][A][white] Stop All  [yellow][E][white] Denials  [yellow][P][white] Proxy settings  [yellow][Q][white] Quit")
 	reportError := func(err error) {
 		if err != nil {
 			app.QueueUpdateDraw(func() { footer.SetText("[red]" + tview.Escape(err.Error()) + "[-]") })
@@ -56,6 +68,7 @@ func Run(cfg sandbox.ManagerConfig) error {
 	logView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
+	logView.SetMaxLines(2000)
 	logView.SetTitle(" Logs ").SetBorder(true)
 
 	// Layout
@@ -70,6 +83,10 @@ func Run(cfg sandbox.ManagerConfig) error {
 			AddItem(logView, 0, 1, true).
 			AddItem(tview.NewTextView().SetText("[Q] Back"), 1, 0, false),
 			true, false)
+
+	if configPath != "" {
+		pages.AddPage("proxy", proxySettingsPage(configPath, func() { pages.SwitchToPage("main") }), true, false)
+	}
 
 	var workers []sandbox.Worker
 
@@ -121,9 +138,7 @@ func Run(cfg sandbox.ManagerConfig) error {
 	showLogs := func(w sandbox.Worker) {
 		logView.Clear()
 		// Switch to log page immediately so the user sees activity.
-		app.QueueUpdateDraw(func() {
-			pages.SwitchToPage("logs")
-		})
+		pages.SwitchToPage("logs")
 		go func() {
 			lw := &tviewWriter{view: logView, app: app}
 			opts := sandbox.LogOptions{
@@ -143,6 +158,26 @@ func Run(cfg sandbox.ManagerConfig) error {
 		idx := row - 1 // header offset
 
 		switch event.Rune() {
+		case 'e', 'E':
+			if idx >= 0 && idx < len(workers) {
+				logView.Clear()
+				pages.SwitchToPage("logs")
+				selected := workers[idx]
+				go func() {
+					lw := &tviewWriter{view: logView, app: app}
+					err := workeregress.Events(context.Background(), engine.Socket(), selected.ID, false, func(e policyevents.Event) error {
+						_, err := fmt.Fprintf(lw, "%s source=%s destination=%s reason=%s\n", e.Time.Format("15:04:05"), e.Source, e.Destination, e.Code)
+						return err
+					})
+					if err != nil {
+						_, _ = fmt.Fprintln(lw, err)
+					}
+				}()
+			}
+		case 'p', 'P':
+			if configPath != "" {
+				pages.SwitchToPage("proxy")
+			}
 		case 'q', 'Q':
 			app.Stop()
 
@@ -206,8 +241,13 @@ func Run(cfg sandbox.ManagerConfig) error {
 		refreshData()
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			refreshData()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				refreshData()
+			}
 		}
 	}()
 
@@ -256,16 +296,23 @@ func truncate(s string, n int) string {
 
 // tviewWriter is an io.Writer that appends text to a tview TextView.
 type tviewWriter struct {
-	view *tview.TextView
-	app  *tview.Application
-	buf  strings.Builder
+	view     *tview.TextView
+	app      *tview.Application
+	retained int
 }
 
 func (w *tviewWriter) Write(p []byte) (int, error) {
-	w.buf.Write(p)
-	text := w.buf.String()
+	text := tview.Escape(string(p))
+	reset := w.retained+len(text) > 4<<20
+	if reset {
+		w.retained = 0
+	}
+	w.retained += len(text)
 	w.app.QueueUpdateDraw(func() {
-		w.view.SetText(text)
+		if reset {
+			w.view.Clear()
+		}
+		_, _ = w.view.Write([]byte(text))
 		w.view.ScrollToEnd()
 	})
 	return len(p), nil

@@ -75,11 +75,15 @@ func (t policyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // Auth upstreams keep their independent, fixed routes and private-IP guard.
 // Forward domain/port rules never accidentally block the AI credential routes.
 func (p *Proxy) guardedDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	policy, err := networkpolicy.Compile(networkpolicy.Rules{BlockPrivate: p.cfg.BlockPrivate})
-	if err != nil {
-		return nil, err
+	policy := p.privatePolicy
+	if policy == nil {
+		var err error
+		policy, err = networkpolicy.Compile(networkpolicy.Rules{BlockPrivate: p.cfg.BlockPrivate})
+		if err != nil {
+			return nil, err
+		}
 	}
-	return (networkpolicy.Dialer{Policy: policy}).DialContext(ctx, network, addr)
+	return (networkpolicy.Dialer{Policy: policy, Connect: p.connectVerified}).DialContext(ctx, network, addr)
 }
 
 func isBlockedDestErr(err error) bool { return errors.Is(err, networkpolicy.ErrDenied) }

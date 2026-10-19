@@ -40,13 +40,14 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 		}
 	}
 
-	var upstreamConn net.Conn
-	if useTLS {
-		d := &tls.Dialer{Config: &tls.Config{ServerName: targetURL.Hostname()}}
-		upstreamConn, err = d.DialContext(r.Context(), "tcp", host)
-	} else {
-		d := &net.Dialer{}
-		upstreamConn, err = d.DialContext(r.Context(), "tcp", host)
+	upstreamConn, err := p.guardedDialContext(r.Context(), "tcp", host)
+	if err == nil && useTLS {
+		secure := tls.Client(upstreamConn, &tls.Config{ServerName: targetURL.Hostname(), RootCAs: p.rootCAs, MinVersion: tls.VersionTLS12})
+		err = secure.HandshakeContext(r.Context())
+		if err != nil {
+			_ = upstreamConn.Close()
+		}
+		upstreamConn = secure
 	}
 	if err != nil {
 		http.Error(w, "connecting to upstream WebSocket: "+err.Error(), http.StatusBadGateway)

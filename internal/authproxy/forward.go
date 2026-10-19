@@ -50,9 +50,10 @@ func (p *Proxy) handleForwardConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid egress policy", http.StatusInternalServerError)
 		return
 	}
-	destConn, err := (networkpolicy.Dialer{Policy: policy}).DialContext(r.Context(), "tcp", host)
+	destConn, err := (networkpolicy.Dialer{Policy: policy, Connect: p.connectVerified}).DialContext(r.Context(), "tcp", host)
 	if err != nil {
 		if isBlockedDestErr(err) {
+			p.recordDenial(w, r, err)
 			http.Error(w, err.Error(), http.StatusForbidden)
 		} else {
 			http.Error(w, err.Error(), http.StatusBadGateway)
@@ -115,6 +116,7 @@ func (p *Proxy) handleForwardHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(outReq)
 	if err != nil {
 		if isBlockedDestErr(err) {
+			p.recordDenial(w, r, err)
 			http.Error(w, err.Error(), http.StatusForbidden)
 		} else {
 			http.Error(w, err.Error(), http.StatusBadGateway)

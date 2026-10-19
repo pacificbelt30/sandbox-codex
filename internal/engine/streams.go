@@ -56,6 +56,17 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 		failure(w, err)
 		return
 	}
+	if action == "jobs" {
+		jobs := []container.ExecInspect{}
+		for eid, e := range b.execs {
+			if e.Container == rec.ID && e.Detached {
+				jobs = append(jobs, container.ExecInspect{ExecID: eid, ContainerID: rec.ID, Running: e.Running, ExitCode: e.ExitCode})
+			}
+		}
+		b.mu.Unlock()
+		reply(w, jobs)
+		return
+	}
 	if action == "exec" {
 		var cfg container.ExecOptions
 		err = decode(r, &cfg)
@@ -72,7 +83,11 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 			if len(b.execs) >= 4096 {
 				e = fmt.Errorf("too many retained exec sessions")
 			} else {
-				b.execs[eid] = &execution{Container: rec.ID, Config: cfg}
+				rec.LastActivity = time.Now().UTC()
+				e = b.save(rec)
+				if e == nil {
+					b.execs[eid] = &execution{ID: eid, Container: rec.ID, Config: cfg}
+				}
 			}
 		}
 		b.mu.Unlock()
@@ -80,6 +95,13 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 			failure(w, e)
 			return
 		}
+		time.AfterFunc(10*time.Minute, func() {
+			b.mu.Lock()
+			if e := b.execs[eid]; e != nil && !e.Started {
+				delete(b.execs, eid)
+			}
+			b.mu.Unlock()
+		})
 		reply(w, map[string]string{"Id": eid})
 		return
 	}
@@ -158,6 +180,11 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		return
 	}
 	cfg := e.Config
+	if parts[1] == "logs" || parts[1] == "kill" || parts[1] == "resize" {
+		b.mu.Unlock()
+		b.jobAction(w, r, ctx, eid, parts[1])
+		return
+	}
 	if parts[1] == "json" {
 		reply(w, container.ExecInspect{ExecID: eid, ContainerID: e.Container, Running: e.Running, ExitCode: e.ExitCode})
 		b.mu.Unlock()
@@ -168,7 +195,7 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		http.NotFound(w, r)
 		return
 	}
-	if e.Running || e.ExitCode != 0 {
+	if e.Started {
 		b.mu.Unlock()
 		failure(w, fmt.Errorf("exec already started"))
 		return
@@ -198,12 +225,31 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		return
 	}
 	if startConfig.Detach {
+		e.Started = true
+		e.Running = true
+		e.Detached = true
+		err = b.startJob(ctx, e, t, spec.Process)
+		if err != nil {
+			e.Running = false
+			e.ExitCode = 125
+		}
 		b.mu.Unlock()
-		failure(w, fmt.Errorf("detached exec is unsupported"))
+		if err != nil {
+			failure(w, err)
+		} else {
+			reply(w, map[string]string{"Id": eid})
+		}
 		return
 	}
+	execCtx, cancelExec := context.WithCancel(context.WithoutCancel(ctx))
+	e.cancel = cancelExec
+	e.done = make(chan struct{})
 	e.Running = true
+	e.Started = true
 	b.mu.Unlock()
+	defer cancelExec()
+	defer close(e.done)
+	ctx = execCtx
 	conn, rw, err := hijack(w)
 	if err != nil {
 		b.mu.Lock()
@@ -214,6 +260,9 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 	}
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Time{})
+	if !cfg.AttachStdin {
+		go func() { _, _ = io.Copy(io.Discard, rw); cancelExec() }()
+	}
 	var mu sync.Mutex
 	out := io.Writer(conn)
 	stderr := io.Writer(conn)
@@ -221,6 +270,8 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		out = lockedWriter{&mu, stdcopy.NewStdWriter(conn, stdcopy.Stdout)}
 		stderr = lockedWriter{&mu, stdcopy.NewStdWriter(conn, stdcopy.Stderr)}
 	}
+	out = cancelWriter{Writer: out, cancel: cancelExec}
+	stderr = cancelWriter{Writer: stderr, cancel: cancelExec}
 	processSpec := *spec.Process
 	processSpec.Args = cfg.Cmd
 	processSpec.Terminal = cfg.Tty
@@ -259,6 +310,11 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 	b.mu.Lock()
 	e.Running = false
 	e.ExitCode = exit
+	e.cancel = nil
+	if rec, _, loadErr := b.load(context.WithoutCancel(ctx), e.Container); loadErr == nil {
+		rec.LastActivity = time.Now().UTC()
+		_ = b.save(rec)
+	}
 	b.mu.Unlock()
 	time.AfterFunc(10*time.Minute, func() { b.mu.Lock(); delete(b.execs, eid); b.mu.Unlock() })
 }
@@ -350,4 +406,17 @@ func seekTail(f *os.File, n int) error {
 	}
 	_, err = f.Seek(0, io.SeekStart)
 	return err
+}
+
+type cancelWriter struct {
+	io.Writer
+	cancel context.CancelFunc
+}
+
+func (w cancelWriter) Write(data []byte) (int, error) {
+	n, err := w.Writer.Write(data)
+	if err != nil {
+		w.cancel()
+	}
+	return n, err
 }

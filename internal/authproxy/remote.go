@@ -25,6 +25,7 @@ type RemoteProxy struct {
 	anthropicOAuthMode bool
 	identityMode       bool
 	caseProxy          bool
+	credentialBroker   bool
 	httpClient         *http.Client
 	adminSecretHeader  string
 }
@@ -54,6 +55,7 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 	r.anthropicOAuthMode = mode["anthropic_oauth_mode"]
 	r.identityMode = mode["token_identity"]
 	r.caseProxy = mode["case_proxy"]
+	r.credentialBroker = mode["credential_broker"]
 	return r, nil
 }
 
@@ -194,3 +196,5 @@ func connectionHint(err error) string {
 	}
 	return "\nHint: auth proxy is not running. Run `codex-dock init` or `codex-dock proxy run` on the prepared containerd host."
 }
+
+func (r *RemoteProxy) SupportsCredentialBroker() bool { return r.credentialBroker }

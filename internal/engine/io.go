@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"github.com/containerd/containerd/v2/pkg/cio"
@@ -21,9 +22,15 @@ func (*loggingIO) Cancel()              {}
 func (*loggingIO) Wait()                {}
 func (*loggingIO) Close() error         { return nil }
 func (b *Backend) logIO(r *record) (cio.Creator, error) {
+	return b.logIOAt(b.path(r.ID), r.ID, r.Config.Tty, r.Config.OpenStdin, 0)
+}
+func (b *Backend) logIOAt(dir, id string, tty, stdin bool, limit int64) (cio.Creator, error) {
 	input := ""
-	if r.Config.OpenStdin {
-		input = filepath.Join(b.path(r.ID), "stdin.fifo")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	if stdin {
+		input = filepath.Join(dir, "stdin.fifo")
 		if info, err := os.Lstat(input); err == nil {
 			if info.Mode()&os.ModeNamedPipe == 0 {
 				return nil, fmt.Errorf("stdin path is not a FIFO")
@@ -38,10 +45,13 @@ func (b *Backend) logIO(r *record) (cio.Creator, error) {
 	}
 	u := &url.URL{Scheme: "binary", Path: b.opts.Logger}
 	q := url.Values{}
-	q.Set("--state", b.path(r.ID))
-	q.Set("--id", r.ID)
+	q.Set("--state", dir)
+	q.Set("--id", id)
+	if limit > 0 {
+		q.Set("--max-bytes", strconv.FormatInt(limit, 10))
+	}
 	u.RawQuery = q.Encode()
 	return func(string) (cio.IO, error) {
-		return &loggingIO{config: cio.Config{Stdin: input, Stdout: u.String(), Stderr: u.String(), Terminal: r.Config.Tty}}, nil
+		return &loggingIO{config: cio.Config{Stdin: input, Stdout: u.String(), Stderr: u.String(), Terminal: tty}}, nil
 	}, nil
 }

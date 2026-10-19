@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
+	"github.com/pacificbelt30/codex-dock/internal/workspace"
 	"github.com/pacificbelt30/codex-dock/internal/worktree"
 )
 
@@ -20,6 +21,15 @@ type Runner interface {
 func Launch(ctx context.Context, runner Runner, opts sandbox.RunOptions) (id string, runErr error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	if opts.CloneDir != "" {
+		if opts.UseWorktree || opts.WorktreePath != "" {
+			return "", fmt.Errorf("independent clone cannot be combined with worktree")
+		}
+		if err := workspace.Clone(ctx, opts.ProjectDir, opts.CloneDir, opts.Branch, opts.NewBranch); err != nil {
+			return "", err
+		}
+		opts.ProjectDir = opts.CloneDir
 	}
 	if opts.UseWorktree && opts.WorktreePath == "" {
 		path, err := worktree.CreateContext(ctx, worktree.CreateOptions{

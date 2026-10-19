@@ -78,3 +78,5 @@ cxd proxy run \
 
 宛先判定・DNS・redirect・CONNECTは自動テスト、VMを含めた通信分離は実Kata受入試験で確認しています。
 詳細は[テストと動作確認](testing.md)を参照してください。
+
+[TUI・プリセット・検査・拒否イベント](sandbox-features.md#通信の確認と設定)

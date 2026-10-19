@@ -81,18 +81,10 @@ func (p *Proxy) handleAdminRevokeRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid run identity", http.StatusBadRequest)
 		return
 	}
-	p.mu.Lock()
-	if p.revokedRuns == nil {
-		p.revokedRuns = make(map[identity.Identity]bool)
+	if err := p.RevokeRun(r.Context(), in); err != nil {
+		http.Error(w, "invalid run identity", 400)
+		return
 	}
-	p.revokedRuns[in] = true
-	for name, rec := range p.tokens {
-		if rec.Identity == in {
-			rec.cancel()
-			delete(p.tokens, name)
-		}
-	}
-	p.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -123,6 +115,7 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{
 		"worker_token_auth":    true,
+		"credential_broker":    true,
 		"oauth_mode":           p.IsOAuthMode(),
 		"anthropic_available":  p.IsAnthropicMode(),
 		"anthropic_oauth_mode": p.IsAnthropicOAuthMode(),

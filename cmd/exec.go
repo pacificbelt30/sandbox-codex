@@ -38,7 +38,9 @@ func (b *boundedOutput) Write(data []byte) (int, error) {
 }
 
 var execTimeout time.Duration
-var execStdin, execJSON bool
+var execStdin, execJSON, execTTY bool
+var execWorkdir string
+var execEnv []string
 
 var execCmd = &cobra.Command{
 	Use:   "exec [flags] NAME -- COMMAND [ARG...]",
@@ -70,7 +72,10 @@ var execCmd = &cobra.Command{
 		if execJSON {
 			out, errOut = &stdoutBuf, &stderrBuf
 		}
-		code, runErr := mgr.Exec(ctx, args[0], argv, in, out, errOut)
+		if execJSON && execTTY {
+			return fmt.Errorf("--tty and --json cannot be combined")
+		}
+		code, runErr := mgr.ExecWithOptions(ctx, args[0], sandbox.ExecOptions{Argv: argv, Stdin: in, Stdout: out, Stderr: errOut, WorkingDir: execWorkdir, Env: execEnv, TTY: execTTY})
 		if execJSON {
 			result := struct {
 				ExitCode int64  `json:"exit_code"`
@@ -155,6 +160,9 @@ var waitCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(execCmd, waitCmd)
 	execCmd.Flags().SetInterspersed(false)
+	execCmd.Flags().BoolVarP(&execTTY, "tty", "t", false, "Allocate a guest PTY; output streams are combined")
+	execCmd.Flags().StringVar(&execWorkdir, "workdir", "/workspace", "Guest working directory")
+	execCmd.Flags().StringArrayVar(&execEnv, "env", nil, "Guest environment KEY=value (repeatable)")
 	execCmd.Flags().DurationVar(&execTimeout, "timeout", 0, "Cancel the command after this duration (e.g. 30s)")
 	execCmd.Flags().BoolVarP(&execStdin, "interactive", "i", false, "Forward standard input")
 	execCmd.Flags().BoolVar(&execJSON, "json", false, "Return exit code, stdout and stderr as JSON")

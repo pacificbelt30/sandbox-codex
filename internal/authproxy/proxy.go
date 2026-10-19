@@ -2,22 +2,30 @@ package authproxy
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/internal/policyevents"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // Proxy is the Auth Proxy server that issues short-lived tokens to containers.
 type Proxy struct {
+	rootCAs               *x509.CertPool
+	upstreamProxy         *url.URL
 	cfg                   Config
+	events                *policyevents.Store
+	privatePolicy         networkpolicy.Policy
 	apiKey                string
 	oauthCreds            *OAuthCredentials // non-nil when operating in OAuth mode
 	listener              net.Listener
@@ -74,6 +82,23 @@ const defaultAnthropicVersion = "2023-06-01"
 // In OAuth mode (detected via IsOAuthAuth), credentials are loaded from
 // ~/.codex/auth.json. In API key mode, the API key is loaded as usual.
 func NewProxy(cfg Config) (*Proxy, error) {
+	if cfg.isEgress() && (len(cfg.CredentialRoutes) > 0 || cfg.CredentialRoutesFile != "") {
+		return nil, fmt.Errorf("credential routes cannot run in the credential-free egress proxy")
+	}
+	if cfg.CredentialRoutesFile != "" {
+		routes, err := LoadCredentialRoutes(cfg.CredentialRoutesFile)
+		if err != nil {
+			return nil, err
+		}
+		cfg.CredentialRoutes = append(cfg.CredentialRoutes, routes...)
+	}
+	cfg.CredentialRoutes = cloneRoutes(cfg.CredentialRoutes)
+	if err := validateRoutes(cfg.CredentialRoutes); err != nil {
+		return nil, err
+	}
+	if cfg.isEgress() && len(cfg.CredentialRoutes) > 0 {
+		return nil, fmt.Errorf("credential routes cannot run in the credential-free egress proxy")
+	}
 	if cfg.Role != "" && cfg.Role != RoleAuth && cfg.Role != RoleEgress {
 		return nil, fmt.Errorf("unknown proxy role %q", cfg.Role)
 	}
@@ -94,11 +119,17 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		anthropicOAuthClientID: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 	}
 
+	if err := p.configureUpstream(); err != nil {
+		return nil, err
+	}
+	p.events = policyevents.New(512, cfg.EventWriter)
+	p.privatePolicy, _ = networkpolicy.Compile(networkpolicy.Rules{BlockPrivate: cfg.BlockPrivate})
+
 	// When configured to block private destinations, route every outbound dial
 	// (forward proxy and reverse upstreams) through a guard that rejects
 	// private/loopback/link-local addresses. Off by default so tests keep using
 	// 127.0.0.1 upstreams via http.DefaultClient.
-	if cfg.BlockPrivate {
+	if cfg.BlockPrivate || cfg.UpstreamProxyURL != "" || len(cfg.CABundlePEM) > 0 {
 		p.httpClient = &http.Client{Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			DialContext:           p.guardedDialContext,
@@ -110,6 +141,13 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		}}
 	}
 
+	if transport, ok := p.httpClient.Transport.(*http.Transport); ok {
+		transport.TLSClientConfig = &tls.Config{RootCAs: p.rootCAs, MinVersion: tls.VersionTLS12}
+		if p.upstreamProxy != nil {
+			transport.Proxy = nil
+		}
+	}
+
 	// The egress (forward-only) instance holds no credentials.
 	if cfg.isEgress() {
 		policy, err := compileForwardPolicy(cfg)
@@ -117,7 +155,16 @@ func NewProxy(cfg Config) (*Proxy, error) {
 			return nil, err
 		}
 		p.egressPolicy = policy
-		p.httpClient = &http.Client{Transport: newProxyTransport((networkpolicy.Dialer{Policy: policy}).DialContext)}
+		p.httpClient = &http.Client{Transport: newProxyTransport((networkpolicy.Dialer{Policy: policy, Connect: p.connectVerified}).DialContext)}
+		if t, ok := p.httpClient.Transport.(*http.Transport); ok {
+			t.TLSClientConfig = &tls.Config{RootCAs: p.rootCAs, MinVersion: tls.VersionTLS12}
+		}
+		return p, nil
+	}
+	if cfg.BrokerOnly {
+		if len(cfg.CredentialRoutes) == 0 {
+			return nil, fmt.Errorf("broker requires routes")
+		}
 		return p, nil
 	}
 	if cfg.CredentialStore != nil {
@@ -261,6 +308,9 @@ func (p *Proxy) Start() error {
 	// Anthropic (Claude Code) reverse proxy: containers set ANTHROPIC_BASE_URL=http://proxy/anthropic.
 	// Forwards to api.anthropic.com, injecting the host's real API key or OAuth bearer token.
 	mux.HandleFunc("/anthropic/", p.handleAnthropicProxy)
+	if len(p.cfg.CredentialRoutes) > 0 {
+		mux.HandleFunc("/broker/", p.handleBroker)
+	}
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("/admin/issue", p.handleAdminIssue)

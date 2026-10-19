@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
+	"path"
+	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -13,43 +17,56 @@ import (
 // separately from transport errors so callers can preserve script semantics.
 // Closing ctx closes the stream; the node cancels and kills the exec process.
 func (m *Manager) Exec(ctx context.Context, name string, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int64, error) {
+	return m.ExecWithOptions(ctx, name, ExecOptions{Argv: argv, Stdin: stdin, Stdout: stdout, Stderr: stderr})
+}
+
+type ExecOptions struct {
+	OnStart        func(string)
+	Argv           []string
+	Stdin          io.Reader
+	Stdout, Stderr io.Writer
+	WorkingDir     string
+	Env            []string
+	TTY            bool
+}
+
+func (m *Manager) ExecWithOptions(ctx context.Context, name string, opts ExecOptions) (int64, error) {
+	argv, stdin, stdout, stderr := opts.Argv, opts.Stdin, opts.Stdout, opts.Stderr
+	if opts.WorkingDir == "" {
+		opts.WorkingDir = "/workspace"
+	}
+	if !path.IsAbs(opts.WorkingDir) || path.Clean(opts.WorkingDir) != opts.WorkingDir {
+		return 0, fmt.Errorf("exec working directory must be a clean absolute guest path")
+	}
+	if err := validateExecEnv(opts.Env); err != nil {
+		return 0, err
+	}
 	if len(argv) == 0 {
 		return 0, fmt.Errorf("exec requires a command")
 	}
-	id, err := m.resolveID(name)
+	id, err := m.verifyExecWorker(ctx, name)
 	if err != nil {
 		return 0, err
 	}
-	v, err := m.cli.ContainerInspect(ctx, id)
+	created, err := m.cli.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: argv, AttachStdin: stdin != nil, AttachStdout: true, AttachStderr: true, WorkingDir: opts.WorkingDir, Env: opts.Env, Tty: opts.TTY})
 	if err != nil {
 		return 0, err
 	}
-	if v.State == nil || !v.State.Running {
-		return 0, fmt.Errorf("worker %s is not running", name)
-	}
-	if v.Config == nil || v.Config.Labels[labelManaged] != "true" {
-		return 0, fmt.Errorf("worker %s is not managed", name)
-	}
-	if v.Config.Labels[labelIsolation] == RuntimeKata {
-		if err := m.CheckRuntime(ctx, RunOptions{Runtime: RuntimeKata, KataRuntime: v.Config.Labels[labelRuntime], ResourceProfile: v.Config.Labels[labelPrefix+"resource-profile"]}); err != nil {
-			return 0, err
-		}
-		if err := m.validateKataWorker(ctx, id); err != nil {
-			return 0, err
-		}
-		if err := m.verifyKataGuest(ctx, id, false); err != nil {
-			return 0, err
-		}
-	}
-	created, err := m.cli.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: argv, AttachStdin: stdin != nil, AttachStdout: true, AttachStderr: true, WorkingDir: "/workspace"})
+	stream, err := m.cli.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{Tty: opts.TTY})
 	if err != nil {
 		return 0, err
 	}
-	stream, err := m.cli.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{})
-	if err != nil {
-		return 0, err
+	if opts.OnStart != nil {
+		opts.OnStart(created.ID)
 	}
 	defer stream.Close()
+	completed := false
+	defer func() {
+		if !completed {
+			m.cancelExecution(created.ID)
+		}
+	}()
+
 	stop := context.AfterFunc(ctx, stream.Close)
 	defer stop()
 	if stdin != nil {
@@ -61,7 +78,12 @@ func (m *Manager) Exec(ctx context.Context, name string, argv []string, stdin io
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	_, copyErr := stdcopy.StdCopy(stdout, stderr, stream.Reader)
+	var copyErr error
+	if opts.TTY {
+		_, copyErr = io.Copy(stdout, stream.Reader)
+	} else {
+		_, copyErr = stdcopy.StdCopy(stdout, stderr, stream.Reader)
+	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -75,6 +97,7 @@ func (m *Manager) Exec(ctx context.Context, name string, argv []string, stdin io
 	if status.Running {
 		return 0, fmt.Errorf("exec stream ended before process exit")
 	}
+	completed = true
 	return int64(status.ExitCode), nil
 }
 
@@ -108,4 +131,66 @@ func (m *Manager) WaitContext(ctx context.Context, name string) (int64, error) {
 			return status.StatusCode, m.revokeWorkerTokenChecked(v)
 		}
 	}
+}
+
+func (m *Manager) verifyExecWorker(ctx context.Context, name string) (string, error) {
+	id, err := m.resolveID(name)
+	if err != nil {
+		return "", err
+	}
+	v, err := m.cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if v.State == nil || !v.State.Running {
+		return "", fmt.Errorf("worker %s is not running", name)
+	}
+	if v.Config == nil || v.Config.Labels[labelManaged] != "true" {
+		return "", fmt.Errorf("worker %s is not managed", name)
+	}
+	if v.Config.Labels[labelIsolation] == RuntimeKata {
+		if err := m.CheckRuntime(ctx, RunOptions{Runtime: RuntimeKata, KataRuntime: v.Config.Labels[labelRuntime], ResourceProfile: v.Config.Labels[labelPrefix+"resource-profile"]}); err != nil {
+			return "", err
+		}
+		if err := m.validateKataWorker(ctx, id); err != nil {
+			return "", err
+		}
+		if err := m.verifyKataGuest(ctx, id, false); err != nil {
+			return "", err
+		}
+	}
+	return id, nil
+}
+
+// A stdin half-close is valid EOF, so TCP alone cannot reliably communicate
+// cancellation. Send a separate bounded kill after closing the data stream.
+func (m *Manager) cancelExecution(eid string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		state, err := m.cli.ContainerExecInspect(ctx, eid)
+		if err != nil || !state.Running {
+			return
+		}
+		if m.jobRequest(ctx, "POST", "/exec/"+url.PathEscape(eid)+"/kill", nil) == nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func validateExecEnv(env []string) error {
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok || key == "" || strings.ContainsRune(entry, '\x00') {
+			return fmt.Errorf("exec environment entries must be KEY=value")
+		}
+	}
+	return nil
 }

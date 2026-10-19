@@ -150,7 +150,7 @@ func (f *engineFixture) serve(w http.ResponseWriter, r *http.Request) {
 		if !f.missingKata {
 			runtimes[DefaultKataRuntime] = system.RuntimeWithStatus{Runtime: system.Runtime{Type: DefaultKataRuntime}}
 		}
-		respond(system.Info{OSType: "linux", Runtimes: runtimes, CgroupDriver: "cgroupfs", CgroupVersion: "2"})
+		respond(system.Info{DriverStatus: [][2]string{{"cxd.worker-policy", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}, OSType: "linux", Runtimes: runtimes, CgroupDriver: "cgroupfs", CgroupVersion: "2"})
 	case strings.HasPrefix(p, "/images/"):
 		respond(map[string]any{"Config": map[string]any{"Entrypoint": []string{"/entrypoint.sh"}}})
 	case p == "/networks/create":

@@ -24,6 +24,31 @@ func applyProjectRunConfig(cmd *cobra.Command, cfg *ProjectConfig) {
 		return
 	}
 	flags := cmd.Flags()
+	if !flags.Changed("policy-preset") && cfg.Run.PolicyPreset != "" {
+		runPolicyPreset = cfg.Run.PolicyPreset
+	}
+	f, l, e, _ := cfg.Policies()
+	runOpts.Filesystem.DenyRead = append(runOpts.Filesystem.DenyRead, f.DenyRead...)
+	runOpts.Filesystem.DenyWrite = append(runOpts.Filesystem.DenyWrite, f.DenyWrite...)
+	if !flags.Changed("max-lifetime") && l.MaxLifetime > 0 && (runOpts.Lifecycle.MaxLifetime == 0 || l.MaxLifetime < runOpts.Lifecycle.MaxLifetime) {
+		runOpts.Lifecycle.MaxLifetime = l.MaxLifetime
+	}
+	if !flags.Changed("idle-timeout") && l.IdleTimeout > 0 && (runOpts.Lifecycle.IdleTimeout == 0 || l.IdleTimeout < runOpts.Lifecycle.IdleTimeout) {
+		runOpts.Lifecycle.IdleTimeout = l.IdleTimeout
+	}
+	if !flags.Changed("retention") && l.Retention > 0 {
+		runOpts.Lifecycle.Retention = l.Retention
+	}
+	if !flags.Changed("start-hook") && len(e.StartHooks) > 0 {
+		runOpts.Environment.StartHooks = e.StartHooks
+	}
+	if !flags.Changed("readiness") && len(e.Readiness) > 0 {
+		runOpts.Environment.Readiness = e.Readiness
+	}
+	if !flags.Changed("readiness-timeout") && e.ReadinessTimeout > 0 {
+		runOpts.Environment.ReadinessTimeout = e.ReadinessTimeout
+	}
+
 	if !flags.Changed("image") && !flags.Changed("template") {
 		if cfg.Run.Image != "" {
 			runOpts.Image = cfg.Run.Image

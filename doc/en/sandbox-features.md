@@ -1,0 +1,114 @@
+# Additional sandbox controls
+
+These controls are opt-in. Existing network defaults, retained workers, workspace sharing and worktrees remain available. Deploy matching node, proxy and worker images before enabling new controls. File restrictions, image digests, idle activity and jobs reject unsupported nodes instead of silently skipping enforcement.
+
+
+| Priority | Feature | Entry points |
+|---|---|---|
+| P0 A1 | Effective policy, explanation, preflight | `policy show/check/explain`, Go API |
+| P0 A2 | Structured denial events | `policy events`, TUI E, Go API |
+| P0 A3 | Explicit presets | `--policy-preset`, project config |
+| P0 A4 | Diagnostics and capabilities | `doctor`, `capabilities`, `ProxyCapabilities` |
+| P1 A5 | File read/write restrictions | `--deny-read`, `--deny-write` |
+| P1 A6 | Exec/files/jobs/PTY/session | CLI and Go API |
+| P1 A7 | Lifetime, idle, retention | Explicit settings plus `reap --watch` / `Reap` |
+| P1 A8 | Environment locks, hooks, readiness | `environment lock`, launch settings |
+| P1 A9 | Independent clones and recovery | `--clone-dir`, `artifact`, files API |
+| P1 A10 | Fixed origin/path/header credential broker | `--credential-routes`, Go callbacks |
+| P1 A11 | SSH/JVM, upstream proxy, custom CA | Compatibility flags and proxy settings |
+
+Default deny-all, mandatory file masks/clones/deletion, TLS MITM, live policy changes, VM snapshots/forks, new OS backends and remote multi-user services are outside this change.
+
+## Inspect and configure network policy
+
+```bash
+cxd policy check --json
+cxd policy show --worker WORKER --json
+cxd policy explain api.example.com:443 --resolve --json
+cxd policy events --worker WORKER --follow --json
+cxd policy presets
+cxd run --policy-preset api --egress-allow-domain api.example.com -d
+cxd run --policy-preset dependencies -d
+cxd run --policy-preset offline -d
+cxd proxy configure
+```
+
+Worker inspection reads its actual selected proxy configuration and policy ID. Without `--worker`, commands inspect host settings for new workers. Explanation never opens a connection. Without `--resolve`, an allowed decision covers only the hostname and port. With it, every DNS answer is checked; connection establishment repeats those checks.
+
+`offline` and `test` disable general egress while preserving fixed AI routes. Configured fixed credential-broker routes also remain available independently of general egress rules. `dependencies` selects common npm, Python and Go registries; `api` requires explicit domains. Presets cannot widen the host allowlist or override denials/private-address blocking.
+
+In the existing TUI, **P** opens proxy settings and **E** opens denial history. Standalone `proxy configure` works without a running node. It edits the six allow/deny lists, upstream proxy URL and CA path, validates destinations and saves without exposing secrets or overwriting unrelated settings. Concurrent edits are detected. Unsupported multiline arrays are rejected safely and can be edited in a text editor. Saving does not update running proxies. Drain workers and explicitly recreate the selected proxies to apply changes.
+
+Denial events contain time, reason code, observed source address, destination authority and policy ID. They exclude paths, queries, headers and credentials. Egress proxy history is shared by its workers; source addresses are not authenticated run identities. Use separate proxies for cases requiring separate history. The in-process ring retains 512 records; CLI/API read the last 1000 retained console lines. Each proxy process writes at most 100000 events, emits `event_log_limit`, then stops writing events to bound diagnostic disk use. This is diagnostic history rather than a persistent audit log across proxy recreation.
+
+## Files, execution and recovery
+
+```bash
+cxd run --deny-read /workspace/.env --deny-write /workspace/config -d
+cxd exec --workdir /workspace --env MODE=test WORKER -- npm test
+cxd exec -it WORKER -- bash
+cxd files get WORKER src/main.go --local main.go.copy
+cxd files put WORKER input.json --local input.json
+cxd files list WORKER src
+cxd jobs start WORKER -- sh -c 'npm test'
+cxd jobs list WORKER
+cxd jobs logs WORKER JOB_ID --offset 0
+cxd jobs kill WORKER JOB_ID
+cxd artifact diff WORKER --output changes.patch
+cxd artifact commit WORKER --message 'Save staged changes'
+cxd run --clone-dir /absolute/new-copy -d
+```
+
+File restrictions use OCI masked/readonly paths below `/workspace/`. Targets must already exist as regular files/directories inside the workspace; symlinks and resolutions outside it are rejected. These are not inherited rules for future files, nor inode labels for aliases/hardlinks. Avoid exposing the same sensitive content through additional mounts. File APIs execute with guest Python 3, reject symlinks in every component, accept regular files up to 64 MiB, and atomically replace uploads in the same directory. Directory listings allow at most 10000 entries. VM validation and guest permissions remain enforced.
+
+PTY streams combine stdout/stderr. Streaming executions/sessions end on cancellation or disconnection. Background jobs continue after client disconnection, with state and shim-owned logs recovered after node restart. They retain at most 16 MiB of combined output while draining subsequent output. Each logs call returns up to 1 MiB with the next offset and truncation status. Finished jobs remain until worker removal; the node retains at most 4096 execution sessions.
+
+Independent clones copy committed content without hardlinking Git objects. Destinations must be new absolute paths. Clones remain for recovery after launch failure or worker removal; retries never silently adopt an existing directory. Diff exports tracked staged/unstaged changes relative to HEAD. Retrieve untracked files explicitly, and stage desired changes/configure guest Git identity before committing.
+
+## Lifecycle and reproducibility
+
+```bash
+cxd run --max-lifetime 2h --idle-timeout 30m --retention 24h -d
+cxd reap --dry-run
+cxd reap --watch
+cxd environment lock IMAGE --source Dockerfile --source package-lock.json
+cxd run --image IMAGE --environment-lock codex-dock.lock.json -d
+cxd run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
+```
+
+Lifecycle limits require `reap --watch` or periodic Go API `Reap` calls. No host service is installed automatically; limits stop being applied while the supervisor is down. Idle means time since management execution activity, not guest CPU/filesystem activity. Long jobs and interactive work can be stopped by an idle limit. Stop revokes tokens; removal uses existing ownership checks and deletion journals. Zero retention never deletes a worker.
+
+Environment locks pin the node OCI image digest and SHA-256 hashes of explicitly selected source files. New lock files are created exclusively. Source or image changes reject launch. Include dependency lockfiles to cover package versions. Start hooks run sequentially inside the guest after auth setup and before agent startup; launch completes after the readiness probe succeeds. Failures/deadlines roll back launch. The default hook/probe deadline is 60 seconds, within the existing 180-second launch deadline. Older images without the support label reject hooks.
+
+Project `[run]` supports `policy_preset`, `deny_read`, `deny_write`, `max_lifetime`, `idle_timeout`, `retention`, argv arrays for `start_hooks`/`readiness`, and `readiness_timeout`. Host secrets, extra mounts, runtime and proxy endpoints remain host settings.
+
+## Credentials and compatibility
+
+`cxd proxy run --credential-routes /absolute/private-routes.json` mounts a 0600 host JSON file read-only into the auth proxy alone. The egress proxy remains credential-free. Example values are synthetic:
+
+```json
+[{"Name":"service","Upstream":"https://api.example.com","Paths":["/v1"],"Methods":["GET","POST"],"Header":"X-Service-Key","Prefix":"","Provider":"openai","Secret":"HOST_SECRET"}]
+```
+
+Guests send live placeholder Bearer tokens to `http://AUTH_PROXY/broker/service/v1/...`. Fixed HTTPS origin, path boundaries, method and provider are checked before injecting credentials. Encoded paths, WebSockets and following upstream redirects are disallowed. Secrets are never returned by a credential retrieval API. Only configure trusted upstream APIs: an upstream that echoes its received secret can expose it. Changes require drain/recreation. Embedders can also use `StartCredentialBroker` with `CredentialRoute.Secret` callbacks, explicitly arranging listeners and worker network placement.
+
+```bash
+cxd run --ssh-proxy --jvm-proxy --ca-bundle /absolute/extra-ca.pem -d
+cxd proxy run --upstream-proxy http://proxy.example.com:3128 --ca-bundle /absolute/extra-ca.pem
+```
+
+SSH uses a `GIT_SSH_COMMAND` CONNECT helper through the egress policy. Host SSH keys/agent sockets are not shared automatically. JVM HTTP(S) proxy properties are opt-in. Worker CA bundles extend system trust for curl, Python and Node. When Java and keytool are installed, the worker copies the system JVM truststore into its HOME and imports the additional certificates. Proxy CA bundles extend system roots for both HTTP and WebSocket TLS verification. Proxy chaining sends CONNECT to locally verified destination IPs and preserves private-IP blocking. Credential-bearing upstream proxy URLs are rejected.
+
+## Go API and performance
+
+The [Go API](go-api.md) adds `Policy`, `ExplainPolicy`, `PolicyEvents`, execution working directories/environments/TTY, `StartSession`/`Resize`, file and job operations, diff recovery and `Reap`. Existing methods remain available. Probe node and proxy capabilities separately.
+
+The network-policy benchmark identified per-request linear domain scans and repeated IP parsing. Compiled domain indexes preserve existing domain/IP matching semantics, covered by equivalence tests. For 1000 domains, three runs on the same host measured 65.9–181 µs, 48112 B and 1002 allocations per check before, versus 152–153 ns, 0 B and 0 allocations after. These are policy checks, not end-to-end network latency. Reproduce with:
+
+```bash
+go test ./internal/networkpolicy -run '^$' -bench . -benchmem -count=3
+```
+
+TUI logs append incrementally instead of rebuilding history on each write, with 2000 lines and approximately 4 MiB per segment. Polling stops when the UI exits.
+
+The [verification record](../testing.md) distinguishes fixture tests, native Kata acceptance, and external-service tests.

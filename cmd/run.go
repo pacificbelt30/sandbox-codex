@@ -14,10 +14,12 @@ import (
 	"time"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
+	"github.com/pacificbelt30/codex-dock/internal/environmentlock"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/template"
 	"github.com/pacificbelt30/codex-dock/internal/workerapp"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -41,6 +43,9 @@ var runTemplate string
 // shellTypeFlag holds the raw value of --shell-type before validation.
 var shellTypeFlag string
 
+var runEnvironmentLock string
+var runStartHooks []string
+var runReadiness string
 var runOpts sandbox.RunOptions
 var (
 	proxyAdminURL       string
@@ -51,6 +56,7 @@ var (
 	forceRecreateProxy  bool
 	mountFlags          []string
 	runEgressAllow      []string
+	runPolicyPreset     string
 )
 
 var runCmd = &cobra.Command{
@@ -109,6 +115,20 @@ func init() {
 	}
 	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
 	f.BoolVar(&runOpts.WatchPolling, "watch-polling", false, "Enable 1s polling for Chokidar/Watchpack to observe host edits across the VM boundary")
+	f.BoolVar(&runOpts.Compatibility.SSHProxy, "ssh-proxy", false, "Configure Git SSH through the policy-checked HTTP CONNECT proxy")
+	f.BoolVar(&runOpts.Compatibility.JVMProxy, "jvm-proxy", false, "Configure JVM HTTP(S) proxy properties")
+	f.StringVar(&runOpts.Compatibility.CABundle, "ca-bundle", "", "Additional PEM CA certificates mounted read-only in the worker")
+	f.StringArrayVar(&runOpts.Filesystem.DenyRead, "deny-read", nil, "Mask a guest path below /workspace (repeatable, opt-in)")
+	f.StringArrayVar(&runOpts.Filesystem.DenyWrite, "deny-write", nil, "Make a guest path below /workspace read-only (repeatable, opt-in)")
+	f.DurationVar(&runOpts.Lifecycle.MaxLifetime, "max-lifetime", 0, "Opt-in maximum lifetime enforced by cxd reap")
+	f.DurationVar(&runOpts.Lifecycle.IdleTimeout, "idle-timeout", 0, "Opt-in idle timeout since last cxd exec; enforced by cxd reap")
+	f.DurationVar(&runOpts.Lifecycle.Retention, "retention", 0, "Opt-in retention after exit; cxd reap removes expired workers")
+	f.StringVar(&runEnvironmentLock, "environment-lock", "", "Validate a lock file and require its image digest")
+	f.StringArrayVar(&runStartHooks, "start-hook", nil, "Guest shell command before agent startup (repeatable)")
+	f.StringVar(&runReadiness, "readiness", "", "Guest shell probe that must succeed before startup completes")
+	f.DurationVar(&runOpts.Environment.ReadinessTimeout, "readiness-timeout", 0, "Hook/readiness deadline (default 60s)")
+	f.StringVar(&runOpts.Environment.ImageID, "image-id", "", "Require this exact image digest (sha256:...)")
+	f.StringVar(&runOpts.CloneDir, "clone-dir", "", "Create an independent local clone at a new absolute directory; retained for recovery")
 	f.BoolVar(&runOpts.ReadOnly, "read-only", false, "Mount project as read-only")
 	f.BoolVar(&runOpts.ReadOnlyRootFS, "read-only-rootfs", false, "Make the image rootfs read-only; use tmpfs for temporary files and agent HOME")
 	f.BoolVar(&runOpts.NoGitMetadata, "no-git-metadata", false, "Do not automatically share linked worktree Git metadata with the worker")
@@ -117,6 +137,7 @@ func init() {
   <container-path> must be absolute and cannot be /workspace (use --project/--read-only for that).
   Trailing ":ro" mounts it read-only; ":rw" (default) mounts it read-write.`)
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable general egress for the worker: do not set HTTP(S)_PROXY, so only the auth proxy's API routes are reachable (no git/npm/pip egress through the router)")
+	f.StringVar(&runPolicyPreset, "policy-preset", "", "Opt-in egress preset: offline, test, dependencies, api")
 	f.StringArrayVar(&runEgressAllow, "egress-allow-domain", nil, "Allow general egress only to these domains and subdomains (repeatable; per-worker)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
@@ -163,7 +184,23 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	applyRunConfigDefaults(cmd)
+	if err := applyOptionalRunDefaults(cmd); err != nil {
+		return err
+	}
 	applyProjectRunConfig(cmd, projectCfg)
+	if runOpts.CloneDir != "" && runOpts.Parallel > 1 {
+		return fmt.Errorf("--clone-dir requires a distinct directory per worker; launch workers separately")
+	}
+	rules, offline, policyErr := workeregress.ResolvePreset(configuredPolicy().Rules(), runPolicyPreset, runEgressAllow)
+	if policyErr != nil {
+		return policyErr
+	}
+	if offline {
+		runOpts.NoInternet = true
+	}
+	if runPolicyPreset != "" && !offline {
+		runEgressAllow = rules.AllowDomains
+	}
 	// An explicit template selects both the image tag and its build source.
 	// A project build with the same tag must not replace that template.
 	buildCfg := projectBuildConfigForRun(cmd, projectCfg)
@@ -181,6 +218,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	if _, _, err := sandbox.ResolveRuntime(runOpts.Runtime, runOpts.KataRuntime); err != nil {
 		return err
+	}
+	if runEnvironmentLock != "" {
+		l, err := environmentlock.Load(runEnvironmentLock, projectDir, runOpts.Image)
+		if err != nil {
+			return err
+		}
+		runOpts.Environment.ImageID = l.ImageID
 	}
 	// Check before proxy startup, token issuance, worktrees or image builds.
 	preflight, err := sandbox.NewManager(managementConfig())
@@ -603,6 +647,9 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 		runOpts.WatchPolling = viper.GetBool("run.watch_polling")
 	}
 	flags := cmd.Flags()
+	if !flags.Changed("policy-preset") {
+		runPolicyPreset = viper.GetString("run.policy_preset")
+	}
 	applyRuntimeDefaults(cmd)
 	if !runOpts.DirectAgent && !flags.Changed("agent") && viper.IsSet("run.agent") {
 		agentFlag = viper.GetString("run.agent")

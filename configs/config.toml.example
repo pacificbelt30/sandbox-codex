@@ -114,6 +114,19 @@ approval_mode = "suggest"
 # read_only = false
 # no_internet = false
 # egress_allow_domains = ["api.github.com"]  # per-worker general egress allowlist
+# policy_preset = "api" # offline, test, dependencies, api (all opt-in)
+# deny_read = ["/workspace/.env"]
+# deny_write = ["/workspace/config"]
+# max_lifetime = "2h"  # requires cxd reap --watch
+# idle_timeout = "30m" # management execution activity, not guest CPU
+# retention = "24h"    # requires cxd reap --watch; 0 never deletes
+# start_hooks = ["npm ci"] # guest shell commands in GLOBAL config
+# readiness = "test -d node_modules"
+# readiness_timeout = "60s"
+# environment_lock = "codex-dock.lock.json"
+# ssh_proxy = false
+# jvm_proxy = false
+# ca_bundle = "/absolute/extra-ca.pem"
 
 # Additional host directories to bind-mount into the worker, beyond
 # /workspace (--project).                              flag: --mount
@@ -169,6 +182,8 @@ admin_url = "http://127.0.0.1:18081"
 # forward_deny_cidrs = ["203.0.113.0/24"]
 # forward_allow_ports = [80, 443]
 # forward_deny_ports = [25]
+# upstream_proxy = "http://proxy.example.com:3128" # verified-IP CONNECT chaining
+# ca_bundle = "/absolute/extra-ca.pem" # additional proxy TLS roots
 # Changes require proxy recreation; `proxy run` rejects an existing policy
 # mismatch. Drain workers first: Kata workers pin the current proxy IPs.
 

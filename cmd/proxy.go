@@ -90,18 +90,29 @@ var proxyServeCmd = &cobra.Command{
 				return err
 			}
 		}
+		var bundle []byte
+		if proxyCAFile != "" {
+			var err error
+			bundle, err = os.ReadFile(proxyCAFile)
+			if err != nil {
+				return err
+			}
+		}
 		p, err := authproxy.NewProxy(authproxy.Config{
-			CredentialStore: store,
-			CaseID:          proxyCaseID,
-			TokenTTL:        3600,
-			Verbose:         verbose,
-			Role:            proxyRole,
-			ListenAddr:      proxyListenAddr,
-			AdminListenAddr: proxyAdminListenAddr,
-			AdminSecret:     proxyAdminSecret,
-			ForwardPolicy:   forwardPolicyRules(),
-			BlockPrivate:    proxyBlockPrivate,
-			OAuthStateDir:   proxyOAuthStateDir,
+			UpstreamProxyURL: proxyUpstreamURL, CABundlePEM: bundle,
+			CredentialRoutesFile: proxyBrokerFile,
+			EventWriter:          os.Stdout,
+			CredentialStore:      store,
+			CaseID:               proxyCaseID,
+			TokenTTL:             3600,
+			Verbose:              verbose,
+			Role:                 proxyRole,
+			ListenAddr:           proxyListenAddr,
+			AdminListenAddr:      proxyAdminListenAddr,
+			AdminSecret:          proxyAdminSecret,
+			ForwardPolicy:        forwardPolicyRules(),
+			BlockPrivate:         proxyBlockPrivate,
+			OAuthStateDir:        proxyOAuthStateDir,
 		})
 		if err != nil {
 			return err
@@ -193,7 +204,7 @@ func startProxyContainer(ctx context.Context) error {
 	}
 
 	// 1) Auth proxy: holds credentials, admin published, no forwarding.
-	auth := proxyRunArgs{
+	auth := proxyRunArgs{brokerFile: proxyBrokerFile, upstreamProxy: proxyUpstreamURL, caFile: proxyCAFile,
 		name:             proxyRunName,
 		role:             authproxy.RoleAuth,
 		networkName:      proxyRunNetwork,
@@ -219,7 +230,7 @@ func startProxyContainer(ctx context.Context) error {
 	}
 
 	// 2) Egress proxy: forward-only, no credentials, LAN blocked.
-	egress := proxyRunArgs{
+	egress := proxyRunArgs{upstreamProxy: proxyUpstreamURL, caFile: proxyCAFile,
 		name:          proxyRunHTTPName,
 		role:          authproxy.RoleEgress,
 		networkName:   proxyRunNetwork,
@@ -286,6 +297,9 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 	if err == nil {
 		if v.Config == nil || v.State == nil {
 			return fmt.Errorf("incomplete proxy record")
+		}
+		if v.Config.Labels[proxyTransportLabel] != proxyTransportID(spec) {
+			return fmt.Errorf("proxy transport settings changed; drain workers before explicitly recreating this proxy")
 		}
 		if v.Config.Labels[proxyLayoutLabel] != proxyLayoutVersion {
 			workers, listErr := c.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(filters.Arg("label", "codex-dock.managed=true"))})
@@ -394,6 +408,7 @@ func init() {
 	proxyServeCmd.Flags().StringVar(&proxyAdminListenAddr, "admin-listen", "", "separate listen address for /admin/* endpoints (auth role). Use host \"egress\" (e.g. egress:18081) to bind the container's egress IP so workers cannot reach it")
 	proxyServeCmd.Flags().StringVar(&proxyAdminSecret, "admin-secret", "", "admin secret for /admin/* endpoints")
 	bindForwardPolicyFlags(proxyServeCmd)
+	proxyServeCmd.Flags().StringVar(&proxyBrokerFile, "credential-routes", "", "Private JSON file of fixed credential routes")
 	proxyServeCmd.Flags().BoolVar(&proxyBlockPrivate, "block-private", false, "Refuse outbound connections to private/LAN/link-local addresses (RFC1918, 127/8, 169.254/16, ULA, CGNAT)")
 	proxyServeCmd.Flags().StringVar(&proxyOAuthStateDir, "oauth-state-dir", "", "Writable private directory for rotated OAuth credentials")
 	proxyServeCmd.Flags().StringVar(&proxyCredentialSocket, "credential-store-socket", "", "Private Unix socket for a host-managed credential store")
@@ -414,6 +429,7 @@ func init() {
 	proxyRunCmd.Flags().StringVar(&proxyCredentialSocket, "credential-store-socket", "", "Private host credential store Unix socket (requires --case-id)")
 	proxyRunCmd.Flags().StringVar(&proxyCaseID, "case-id", "", "Credential case for this auth proxy instance")
 	bindForwardPolicyFlags(proxyRunCmd)
+	proxyRunCmd.Flags().StringVar(&proxyBrokerFile, "credential-routes", "", "Private host JSON file mounted only into the auth proxy")
 
 	// stop flags
 	proxyStopCmd.Flags().StringVar(&proxyStopName, "name", defaultProxyContainerName, "Container name")
@@ -425,19 +441,23 @@ func init() {
 
 // proxyRunArgs collects the inputs needed to build the "docker run" command for
 // one proxy container (auth or egress role).
+var proxyBrokerFile string
+
 type proxyRunArgs struct {
-	name            string
-	role            string // authproxy.RoleAuth / RoleEgress
-	networkName     string
-	image           string
-	listenAddr      string
-	adminPort       int    // >0: publish to 127.0.0.1 (auth only)
-	adminListenAddr string // "" disables the admin listener (egress)
-	adminSecret     string
-	forwardAllow    []string
-	forwardPolicy   networkpolicy.Rules
-	blockPrivate    bool
-	mountCreds      bool // bind host credentials (auth only)
+	brokerFile            string
+	upstreamProxy, caFile string
+	name                  string
+	role                  string // authproxy.RoleAuth / RoleEgress
+	networkName           string
+	image                 string
+	listenAddr            string
+	adminPort             int    // >0: publish to 127.0.0.1 (auth only)
+	adminListenAddr       string // "" disables the admin listener (egress)
+	adminSecret           string
+	forwardAllow          []string
+	forwardPolicy         networkpolicy.Rules
+	blockPrivate          bool
+	mountCreds            bool // bind host credentials (auth only)
 
 	// OpenAI / Codex credential sources (used when mountCreds).
 	apiKeyEnv     string // OPENAI_API_KEY env value
@@ -471,6 +491,15 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 		"run", "-d", "--name", a.name,
 		"--label", proxyLayoutLabel + "=" + proxyLayoutVersion,
 		"--network", a.networkName,
+	}
+	if a.brokerFile != "" {
+		args = append(args, "-v", a.brokerFile+":/run/cxd-broker.json:ro")
+	}
+	if id := proxyTransportID(a); id != "" {
+		args = append(args, "--label", proxyTransportLabel+"="+id)
+	}
+	if a.caFile != "" {
+		args = append(args, "-v", a.caFile+":/run/cxd-proxy-ca.pem:ro")
 	}
 	if a.role == authproxy.RoleEgress {
 		args = append(args, "--label", proxyPolicyLabel+"="+forwardPolicyID(a))
@@ -509,6 +538,15 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	}
 
 	args = append(args, a.image, "proxy", "serve", "--listen", a.listenAddr)
+	if a.brokerFile != "" {
+		args = append(args, "--credential-routes", "/run/cxd-broker.json")
+	}
+	if a.upstreamProxy != "" {
+		args = append(args, "--upstream-proxy", a.upstreamProxy)
+	}
+	if a.caFile != "" {
+		args = append(args, "--ca-bundle", "/run/cxd-proxy-ca.pem")
+	}
 	if a.role != "" {
 		args = append(args, "--role", a.role)
 	}

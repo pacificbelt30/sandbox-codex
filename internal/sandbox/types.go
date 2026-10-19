@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 	"io"
 	"time"
 
@@ -98,6 +99,11 @@ type MountSpec struct {
 
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
+	Compatibility      Compatibility
+	Filesystem         workerpolicy.Filesystem
+	Lifecycle          workerpolicy.Lifecycle
+	Environment        workerpolicy.Environment
+	CloneDir           string
 	pendingPlaceholder string
 	proxyHosts         []string
 	// Runtime selects the isolation boundary, not the container management API.

@@ -545,4 +545,22 @@ result={}`)
 		t.Log("PASS: worktree uses a separate checkout, preserves ownership and Git commit, and removes only the managed checkout")
 	})
 
+	t.Run("effective-policy-with-pinned-IP", func(t *testing.T) {
+		project := t.TempDir()
+		w := launch(t, project, "--no-internet=false")
+		output := cli(t, project, "policy", "show", "--worker", w.name, "--json")
+		var policy struct {
+			GeneralEgress bool   `json:"general_egress"`
+			PolicyID      string `json:"policy_id"`
+			Proxy         string `json:"proxy"`
+		}
+		if err := json.Unmarshal([]byte(output), &policy); err != nil {
+			t.Fatalf("policy JSON: %v %s", err, output)
+		}
+		if !policy.GeneralEgress || policy.PolicyID == "" || policy.Proxy == "" {
+			t.Fatalf("missing effective policy: %+v", policy)
+		}
+		t.Log("PASS: effective policy resolves the actual immutable proxy from the Kata worker's pinned IP")
+	})
+
 }

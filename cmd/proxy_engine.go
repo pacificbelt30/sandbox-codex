@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	dn "github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
+	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"os"
 	"path/filepath"
@@ -23,6 +25,34 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 	args := buildProxyRunArgs(a)
 	c := &container.Config{User: "0:0", Labels: map[string]string{}}
 	h := &container.HostConfig{Runtime: "runc", CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, PortBindings: nat.PortMap{}}
+	if a.brokerFile != "" {
+		if a.role != "auth" {
+			return nil, nil, fmt.Errorf("credential broker routes require auth role")
+		}
+		if _, err := authproxy.LoadCredentialRoutes(a.brokerFile); err != nil {
+			return nil, nil, err
+		}
+		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
+	}
+	if a.caFile != "" {
+		info, err := os.Stat(a.caFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, nil, fmt.Errorf("proxy CA bundle must be a regular file")
+		}
+		if info.Size() > 16<<20 {
+			return nil, nil, fmt.Errorf("proxy CA bundle exceeds 16 MiB")
+		}
+		bundle, err := os.ReadFile(a.caFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(bundle) {
+			return nil, nil, fmt.Errorf("proxy CA bundle has no certificates")
+		}
+	}
 	if a.mountCreds {
 		// Read owner-only host credentials as the invoking account, without
 		// granting DAC override or changing the source file's permissions.
@@ -61,6 +91,14 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 			c.Env = append(c.Env, value)
 		case "-v":
 			parts := strings.Split(value, ":")
+			if len(parts) == 3 && (parts[1] == "/run/cxd-proxy-ca.pem" || parts[1] == "/run/cxd-broker.json") && parts[2] == "ro" {
+				source, err := filepath.Abs(parts[0])
+				if err != nil {
+					return nil, nil, err
+				}
+				h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: source, Target: parts[1], ReadOnly: true})
+				continue
+			}
 			if len(parts) == 3 && parts[1] == "/run/cxd-credential-store.sock" && parts[2] == "ro" {
 				info, err := os.Lstat(parts[0])
 				if err != nil {

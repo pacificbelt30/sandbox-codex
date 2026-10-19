@@ -3,9 +3,12 @@ package projectconfig
 import (
 	"bytes"
 	"fmt"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
@@ -21,18 +24,27 @@ const Filename = "codex-dock.toml"
 type Config struct {
 	Root string `toml:"-"`
 	Run  struct {
-		Image              string   `toml:"image"`
-		Template           string   `toml:"template"`
-		Agent              string   `toml:"agent"`
-		Model              string   `toml:"model"`
-		ProfileSize        string   `toml:"profile_size"`
-		ApprovalMode       string   `toml:"approval_mode"`
-		WatchPolling       *bool    `toml:"watch_polling"`
-		ReadOnly           *bool    `toml:"read_only"`
-		ReadOnlyRootFS     *bool    `toml:"read_only_rootfs"`
-		NoGitMetadata      *bool    `toml:"no_git_metadata"`
-		NoInternet         *bool    `toml:"no_internet"`
-		EgressAllowDomains []string `toml:"egress_allow_domains"`
+		PolicyPreset       string     `toml:"policy_preset"`
+		DenyRead           []string   `toml:"deny_read"`
+		DenyWrite          []string   `toml:"deny_write"`
+		MaxLifetime        string     `toml:"max_lifetime"`
+		IdleTimeout        string     `toml:"idle_timeout"`
+		Retention          string     `toml:"retention"`
+		StartHooks         [][]string `toml:"start_hooks"`
+		Readiness          []string   `toml:"readiness"`
+		ReadinessTimeout   string     `toml:"readiness_timeout"`
+		Image              string     `toml:"image"`
+		Template           string     `toml:"template"`
+		Agent              string     `toml:"agent"`
+		Model              string     `toml:"model"`
+		ProfileSize        string     `toml:"profile_size"`
+		ApprovalMode       string     `toml:"approval_mode"`
+		WatchPolling       *bool      `toml:"watch_polling"`
+		ReadOnly           *bool      `toml:"read_only"`
+		ReadOnlyRootFS     *bool      `toml:"read_only_rootfs"`
+		NoGitMetadata      *bool      `toml:"no_git_metadata"`
+		NoInternet         *bool      `toml:"no_internet"`
+		EgressAllowDomains []string   `toml:"egress_allow_domains"`
 	} `toml:"run"`
 	Build struct {
 		Dockerfile string `toml:"dockerfile"`
@@ -45,6 +57,7 @@ var projectKeys = map[string]map[string]bool{
 	"run": {
 		"image": true, "template": true, "agent": true, "model": true, "profile_size": true,
 		"approval_mode": true, "watch_polling": true,
+		"policy_preset": true, "deny_read": true, "deny_write": true, "max_lifetime": true, "idle_timeout": true, "retention": true, "start_hooks": true, "readiness": true, "readiness_timeout": true,
 		"read_only": true, "read_only_rootfs": true, "no_git_metadata": true, "no_internet": true, "egress_allow_domains": true,
 	},
 	"build": {"dockerfile": true, "template": true, "tag": true},
@@ -87,6 +100,12 @@ func Load(dir string) (*Config, error) {
 		return nil, fmt.Errorf("invalid project config %s: %w", path, err)
 	}
 	cfg.Root = root
+	if _, _, _, err := cfg.Policies(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if _, _, err := workeregress.ResolvePreset(networkpolicy.Rules{}, cfg.Run.PolicyPreset, cfg.Run.EgressAllowDomains); err != nil {
+		return nil, err
+	}
 	if cfg.Run.Image != "" && cfg.Run.Template != "" {
 		return nil, fmt.Errorf("%s: choose either run.image or run.template", path)
 	}
@@ -213,4 +232,29 @@ func DockerfileUsesBase(data []byte, image string) bool {
 		}
 	}
 	return false
+}
+
+func (c *Config) Policies() (workerpolicy.Filesystem, workerpolicy.Lifecycle, workerpolicy.Environment, error) {
+	f := workerpolicy.Filesystem{DenyRead: c.Run.DenyRead, DenyWrite: c.Run.DenyWrite}
+	l := workerpolicy.Lifecycle{}
+	e := workerpolicy.Environment{StartHooks: c.Run.StartHooks, Readiness: c.Run.Readiness}
+	for _, value := range []struct {
+		text   string
+		target *time.Duration
+	}{{c.Run.MaxLifetime, &l.MaxLifetime}, {c.Run.IdleTimeout, &l.IdleTimeout}, {c.Run.Retention, &l.Retention}, {c.Run.ReadinessTimeout, &e.ReadinessTimeout}} {
+		if value.text != "" {
+			d, err := time.ParseDuration(value.text)
+			if err != nil || d < 0 {
+				return f, l, e, fmt.Errorf("invalid project duration %q", value.text)
+			}
+			*value.target = d
+		}
+	}
+	if err := f.Validate(); err != nil {
+		return f, l, e, err
+	}
+	if err := l.Validate(); err != nil {
+		return f, l, e, err
+	}
+	return f, l, e, e.Validate()
 }

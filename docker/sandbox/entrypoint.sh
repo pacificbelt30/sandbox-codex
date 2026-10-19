@@ -264,6 +264,99 @@ fi
 
 cd /workspace
 
+# Explicit client compatibility: credentials and host SSH agents stay outside.
+if [[ -n "${DOCK_CA_BUNDLE:-}" ]]; then
+    mkdir -p "$HOME"
+    cat /etc/ssl/certs/ca-certificates.crt "$DOCK_CA_BUNDLE" > "$HOME/.cxd-ca.pem"
+    chmod 600 "$HOME/.cxd-ca.pem"
+    export SSL_CERT_FILE="$HOME/.cxd-ca.pem" CURL_CA_BUNDLE="$HOME/.cxd-ca.pem" REQUESTS_CA_BUNDLE="$HOME/.cxd-ca.pem"
+    export NODE_EXTRA_CA_CERTS="$DOCK_CA_BUNDLE"
+    if command -v java >/dev/null 2>&1 && command -v keytool >/dev/null 2>&1; then
+        python3 - <<'PYJAVACA'
+import os, pathlib, re, shutil, subprocess, tempfile
+java = pathlib.Path(shutil.which('java')).resolve()
+base = java.parent.parent / 'lib/security/cacerts'
+store = pathlib.Path(os.environ['HOME']) / '.cxd-cacerts'
+if not base.is_file():
+    raise SystemExit('cannot locate JVM system truststore')
+shutil.copyfile(base, store)
+os.chmod(store, 0o600)
+certs = re.findall(r'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', pathlib.Path(os.environ['DOCK_CA_BUNDLE']).read_text(), re.S)
+if not certs:
+    raise SystemExit('custom CA bundle contains no certificates')
+for index, cert in enumerate(certs):
+    with tempfile.NamedTemporaryFile(mode='w') as f:
+        f.write(cert);f.flush()
+        subprocess.run(['keytool','-importcert','-noprompt','-storepass','changeit','-keystore',str(store),'-alias','cxd-extra-'+str(index),'-file',f.name], check=True, stdout=subprocess.DEVNULL)
+PYJAVACA
+        export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Djavax.net.ssl.trustStore=\"$HOME/.cxd-cacerts\" -Djavax.net.ssl.trustStorePassword=changeit"
+    fi
+fi
+if [[ "${DOCK_SSH_PROXY:-0}" == 1 ]]; then
+    mkdir -p "$HOME"
+    cat > "$HOME/.cxd-proxy-connect.py" <<'PYCONNECT'
+import os,sys,socket,threading,urllib.parse,ipaddress,re
+host,port=sys.argv[1:3]
+try:
+    ipaddress.ip_address(host)
+except ValueError:
+    if not re.fullmatch(r'[A-Za-z0-9.-]{1,253}',host):raise SystemExit('invalid SSH host')
+port=int(port)
+if not 0<port<65536:raise SystemExit('invalid SSH port')
+proxy=urllib.parse.urlsplit(os.environ['HTTP_PROXY'])
+if proxy.scheme!='http' or proxy.username or not proxy.hostname:raise SystemExit('unsupported SSH proxy')
+connection=socket.create_connection((proxy.hostname,proxy.port or 80),timeout=30)
+authority=('['+host+']' if ':' in host else host)+':'+str(port)
+connection.sendall(('CONNECT '+authority+' HTTP/1.1\r\nHost: '+authority+'\r\n\r\n').encode('ascii'))
+header=b''
+while not header.endswith(b'\r\n\r\n'):
+    byte=connection.recv(1)
+    if not byte or len(header)>=65536:raise SystemExit('invalid proxy response')
+    header+=byte
+if header.split(b' ',2)[1]!=b'200':raise SystemExit('SSH destination denied or unavailable')
+connection.settimeout(None)
+def send():
+    try:
+        while True:
+            data=os.read(0,65536)
+            if not data:break
+            connection.sendall(data)
+        connection.shutdown(socket.SHUT_WR)
+    except OSError:pass
+threading.Thread(target=send,daemon=True).start()
+while True:
+    data=connection.recv(65536)
+    if not data:break
+    sys.stdout.buffer.write(data);sys.stdout.buffer.flush()
+PYCONNECT
+    chmod 700 "$HOME/.cxd-proxy-connect.py"
+    printf -v CONNECT_HELPER '%q' "$HOME/.cxd-proxy-connect.py"
+    export GIT_SSH_COMMAND="ssh -o 'ProxyCommand=python3 ${CONNECT_HELPER} %h %p'"
+fi
+
+# Optional project setup stays inside the worker, after auth and before agents.
+if [[ -n "${DOCK_ENVIRONMENT_JSON:-}" ]]; then
+    python3 - <<'PYHOOK'
+import json, os, subprocess, time
+settings = json.loads(os.environ['DOCK_ENVIRONMENT_JSON'])
+timeout = settings.get('readiness_timeout', 0) / 1e9 or 60
+deadline = time.monotonic() + timeout
+for argv in settings.get('start_hooks', []):
+    subprocess.run(argv, check=True, timeout=max(.01, deadline-time.monotonic()))
+probe = settings.get('readiness', [])
+while probe:
+    remaining = deadline-time.monotonic()
+    if remaining <= 0:
+        raise SystemExit('worker readiness timed out')
+    if subprocess.run(probe, timeout=remaining).returncode == 0:
+        break
+    time.sleep(min(.25, max(0, deadline-time.monotonic())))
+ready = os.environ['DOCK_ENVIRONMENT_READY']
+with open(ready, 'w') as f:
+    f.write('ready\n')
+PYHOOK
+fi
+
 # ── Launch the selected agent ─────────────────────────────────────────────────
 case "${DOCK_AGENT}" in
     codex)

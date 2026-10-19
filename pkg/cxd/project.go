@@ -112,6 +112,8 @@ func (c *Client) PrepareProject(ctx context.Context, dir, requestID string, log 
 		if cfg.Run.Agent != "shell" {
 			req.Agent = cfg.Run.Agent
 		}
+		req.Filesystem, req.Lifecycle, req.Environment, _ = cfg.Policies()
+		req.PolicyPreset = cfg.Run.PolicyPreset
 		req.Model, req.Profile, req.ApprovalMode = cfg.Run.Model, cfg.Run.ProfileSize, cfg.Run.ApprovalMode
 		req.ReadOnly = cfg.Run.ReadOnly != nil && *cfg.Run.ReadOnly
 		req.ReadOnlyRootFS = cfg.Run.ReadOnlyRootFS != nil && *cfg.Run.ReadOnlyRootFS

@@ -3,6 +3,7 @@ package authproxy
 import (
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
+	"io"
 )
 
 // Proxy roles. The credential-injecting reverse proxy and the general-traffic
@@ -20,6 +21,15 @@ const (
 
 // Config configures the Auth Proxy.
 type Config struct {
+	CredentialRoutes     []CredentialRoute
+	CredentialRoutesFile string
+	BrokerOnly           bool
+	UpstreamProxyURL     string
+	CABundlePEM          []byte
+	// EventWriter receives credential-free JSON denial records. Nil keeps recording in memory only.
+	EventWriter io.Writer
+	PolicyID    string
+
 	// CredentialStore and CaseID opt into credentials supplied by a host product.
 	// Each case must run in a distinct auth proxy instance. The default nil
 	// store retains the existing host-file behavior.

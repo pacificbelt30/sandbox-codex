@@ -77,14 +77,22 @@ type record struct {
 	Networks                map[string]*dn.EndpointSettings
 	ExitCode                int
 	FinishedAt              string
+	StartedAt               time.Time
+	LastActivity            time.Time
 	NetNSDevice, NetNSInode uint64
 	FailedCreate            bool
 }
 type execution struct {
-	Container string
-	Config    container.ExecOptions
-	Running   bool
-	ExitCode  int
+	cancel     context.CancelFunc `json:"-"`
+	done       chan struct{}      `json:"-"`
+	ID         string
+	Detached   bool
+	FinishedAt time.Time
+	Container  string
+	Config     container.ExecOptions
+	Running    bool
+	Started    bool
+	ExitCode   int
 }
 
 func Open(o Options) (*Backend, error) {
@@ -120,11 +128,41 @@ func Open(o Options) (*Backend, error) {
 		_ = c.Close()
 		return nil, err
 	}
+	if err = b.recoverJobs(ctx); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
 	return b, nil
 }
 func (b *Backend) Close() error {
 	b.mu.Lock()
 	b.closed = true
+	var pending []<-chan struct{}
+	for _, e := range b.execs {
+		if !e.Detached && e.cancel != nil {
+			e.cancel()
+			if e.done != nil {
+				pending = append(pending, e.done)
+			}
+		}
+	}
+	b.mu.Unlock()
+	// Streaming executions belong to the connection; background jobs and main
+	// workers belong to containerd and deliberately survive a node restart.
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	waitExpired := false
+	for _, done := range pending {
+		select {
+		case <-done:
+		case <-deadline.C:
+			waitExpired = true
+		}
+		if waitExpired {
+			break
+		}
+	}
+	b.mu.Lock()
 	for cid, h := range b.hubs {
 		b.closePorts(cid)
 		if h.io != nil {
@@ -135,6 +173,7 @@ func (b *Backend) Close() error {
 	b.mu.Unlock()
 	return b.client.Close()
 }
+
 func id() (string, error) {
 	var data [32]byte
 	if _, err := rand.Read(data[:]); err != nil {
@@ -290,6 +329,9 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 	if err != nil {
 		return "", err
 	}
+	if expected := c.Labels["codex-dock.image-id"]; expected != "" && img.Target().Digest.String() != expected {
+		return "", fmt.Errorf("image digest changed since lock validation")
+	}
 	if err = img.Unpack(ctx, b.opts.Snapshotter); err != nil {
 		return "", err
 	}
@@ -362,6 +404,9 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 		runtimeOptions = &options.Options{BinaryName: b.opts.Tools["runc"]}
 	}
 	opts := []oci.SpecOpts{oci.WithImageConfig(img), oci.WithProcessArgs(args...), oci.WithEnv(c.Env), oci.WithProcessCwd(cwd), oci.WithUser(user), oci.WithHostname(name), oci.WithLinuxNamespace(specs.LinuxNamespace{Type: specs.NetworkNamespace, Path: b.nsPath(cid)}), oci.WithLinuxNamespace(specs.LinuxNamespace{Type: specs.CgroupNamespace}), oci.WithNoNewPrivileges, seccomp.WithDefaultProfile()}
+	if h.ReadonlyRootfs {
+		opts = append(opts, oci.WithRootFSReadonly())
+	}
 	if c.Tty {
 		opts = append(opts, oci.WithTTY)
 	}
@@ -378,6 +423,8 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 		opts = append(opts, oci.WithPidsLimit(*h.PidsLimit))
 	}
 	opts = append(opts, func(_ context.Context, _ oci.Client, _ *containers.Container, s *oci.Spec) error {
+		s.Linux.MaskedPaths = append(s.Linux.MaskedPaths, h.MaskedPaths...)
+		s.Linux.ReadonlyPaths = append(s.Linux.ReadonlyPaths, h.ReadonlyPaths...)
 		s.Mounts = append(s.Mounts, specs.Mount{Destination: "/sys/fs/cgroup", Type: "cgroup", Source: "cgroup", Options: []string{"nosuid", "noexec", "nodev", "relatime", "ro"}})
 		s.Linux.CgroupsPath = filepath.Join(h.CgroupParent, cid)
 		if h.CgroupParent == "" {
@@ -429,7 +476,7 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 }
 
 func (b *Backend) state(ctx context.Context, c cd.Container, r *record) (*container.State, error) {
-	s := &container.State{Status: "created", ExitCode: r.ExitCode, FinishedAt: r.FinishedAt}
+	s := &container.State{StartedAt: r.StartedAt.Format(time.RFC3339Nano), Status: "created", ExitCode: r.ExitCode, FinishedAt: r.FinishedAt}
 	t, err := c.Task(ctx, nil)
 	if errdefs.IsNotFound(err) {
 		if r.FinishedAt != "" {
@@ -462,6 +509,12 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 	state, err := b.state(ctx, c, r)
 	if err != nil {
 		return container.InspectResponse{}, err
+	}
+	if r.Config.Labels == nil {
+		r.Config.Labels = map[string]string{}
+	}
+	if !r.LastActivity.IsZero() {
+		r.Config.Labels["codex-dock.last-activity"] = r.LastActivity.Format(time.RFC3339Nano)
 	}
 	// Docker's current API still requires NetworkSettingsBase for published ports.
 	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil //nolint:staticcheck
@@ -543,6 +596,8 @@ func (b *Backend) start(ctx context.Context, r *record, c cd.Container) error {
 		return b.failedStart(ctx, r, c, err)
 	}
 	r.FailedCreate = false
+	r.StartedAt = time.Now().UTC()
+	r.LastActivity = r.StartedAt
 	r.FinishedAt = ""
 	r.ExitCode = 0
 	if err = b.save(r); err != nil {
@@ -694,7 +749,7 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			failure(w, err)
 			return
 		}
-		reply(w, system.Info{OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
+		reply(w, system.Info{DriverStatus: [][2]string{{"cxd.worker-policy", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}, OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
 		return
 	}
 	if path == "/images/check" && r.Method == "GET" {
@@ -714,7 +769,7 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(path, "/images/") && strings.HasSuffix(path, "/json") {
 		name := strings.TrimSuffix(strings.TrimPrefix(path, "/images/"), "/json")
-		_, ic, err := b.image(ctx, name)
+		img, ic, err := b.image(ctx, name)
 		if err != nil {
 			failure(w, err)
 			return
@@ -723,7 +778,7 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if ic.Created != nil {
 			created = ic.Created.Format(time.RFC3339Nano)
 		}
-		reply(w, image.InspectResponse{Created: created, Config: &dockerimage.DockerOCIImageConfig{ImageConfig: ic.Config}})
+		reply(w, image.InspectResponse{ID: img.Target().Digest.String(), Created: created, Config: &dockerimage.DockerOCIImageConfig{ImageConfig: ic.Config}})
 		return
 	}
 	if strings.HasPrefix(path, "/networks") {
@@ -802,7 +857,7 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(parts) > 1 {
 		action = parts[1]
 	}
-	if action == "attach" || action == "logs" || action == "wait" || action == "exec" {
+	if action == "attach" || action == "logs" || action == "wait" || action == "exec" || action == "jobs" {
 		b.streamHTTP(w, r, ctx, value, action)
 		return
 	}
@@ -858,6 +913,11 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = c.Delete(ctx, cd.WithSnapshotCleanup)
 		}
 		if err == nil {
+			for eid, e := range b.execs {
+				if e.Container == rec.ID {
+					delete(b.execs, eid)
+				}
+			}
 			err = os.RemoveAll(b.path(rec.ID))
 		}
 	default:

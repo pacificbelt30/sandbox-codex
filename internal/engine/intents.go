@@ -45,6 +45,11 @@ func (b *Backend) clearIntent(ctx context.Context, r *record) error {
 	if err := b.client.SnapshotService(b.opts.Snapshotter).Remove(ctx, r.ID); err != nil && !errdefs.IsNotFound(err) {
 		return err
 	}
+	for eid, e := range b.execs {
+		if e.Container == r.ID {
+			delete(b.execs, eid)
+		}
+	}
 	return os.RemoveAll(b.path(r.ID))
 }
 func (b *Backend) recoverIntents(ctx context.Context) error {

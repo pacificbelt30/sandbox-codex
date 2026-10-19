@@ -30,3 +30,5 @@ The execution host must be Linux x86_64. Cross-compiling the CLI does not make K
 | Diagnose a failure | [Troubleshooting](../troubleshooting.md) (Japanese) |
 | Understand the design | [Architecture](architecture.md), [security](security.md) |
 | Check test coverage | [Testing](../testing.md) (Japanese) |
+
+[Additional sandbox controls](sandbox-features.md)

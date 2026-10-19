@@ -41,7 +41,7 @@ func (p *Proxy) workerRequest(r *http.Request, allowAPIKey bool) (*http.Request,
 	var lease context.Context
 	for _, rec := range p.tokens {
 		if rec.Token == token && time.Now().Before(rec.ExpiresAt) && rec.context != nil && rec.context.Err() == nil {
-			if !providerRouteAllowed(rec.Identity.Provider, r.URL.Path) {
+			if !p.brokerProviderAllowed(rec.Identity.Provider, r.URL.Path) {
 				break
 			}
 			lease = rec.context

@@ -49,6 +49,7 @@ nav:
       - ファイル共有と所有者: workspace.md
       - Kata VMの管理: vm.md
       - 通信の許可・拒否: proxy-policy.md
+      - 追加のサンドボックス制御: sandbox-features.md
       - トラブルシューティング: troubleshooting.md
   - リファレンス:
       - コマンド一覧: commands.md
@@ -91,6 +92,7 @@ nav:
           - Update: en/commands/update.md
       - Configuration: en/configuration.md
       - Go API: en/go-api.md
+      - Additional sandbox controls: en/sandbox-features.md
       - Case credentials: en/credential-store.md
       - Architecture: en/architecture.md
       - Auth proxy: en/auth-proxy.md

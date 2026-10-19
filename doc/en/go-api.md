@@ -96,3 +96,5 @@ Canceling the `Exec` context stops the guest command. Canceling `Wait` stops onl
 Use `errors.Is` for `ErrNotFound`, `ErrConflict`, `ErrInProgress`, `ErrCleanupPending`, `ErrRequestGone`, `ErrCapacity`, `ErrVersionMismatch`, and `ErrOutcomeUnknown`. Context cancellation and deadline errors are preserved. Use `errors.Unwrap` to inspect the cause.
 
 The public Go signatures do not expose internal node DTOs. Deploy the CLI, library, node, and proxy image from matching builds. The Go node protocol is v2; `Open` returns `ErrVersionMismatch` for incompatible node versions. `Capabilities()` reports the validated node and `ProxyCapabilities(ctx)` reports the connected auth proxy. The node's HTTP/JSON protocol over the Unix socket is internal and has no external compatibility guarantee.
+
+[Additional policy, execution and recovery APIs](sandbox-features.md)

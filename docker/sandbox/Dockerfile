@@ -45,4 +45,5 @@ USER codex
 
 WORKDIR /workspace
 
+LABEL io.codex-dock.start-hooks="1"
 ENTRYPOINT ["/entrypoint.sh"]

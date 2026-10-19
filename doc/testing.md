@@ -40,7 +40,7 @@ gofmt -l cmd internal pkg
 make kata-e2e
 ```
 
-このターゲットはCLIとhelperをビルドし、`CODEX_DOCK_KATA_E2E=1` と対象CLIのパスを指定して、`TestKataAcceptance` と `TestKataWorkspaceSharing` を実行します。
+このターゲットはCLIとhelperをビルドし、`CODEX_DOCK_KATA_E2E=1`・`CODEX_DOCK_KATA_POLICY_E2E=1` と対象CLIのパスを指定して、`TestKataAcceptance`・`TestKataWorkspaceSharing`・`TestKataPolicyFeatures` を実行します。
 通常利用者として実行してください。共有試験は別HOMEと架空のAPIキーを使い、実認証ファイルをマウントしません。
 前提条件を満たさない場合は、skipではなく失敗として扱います。
 通常の `go test ./...` はこの実機試験を有効にしません。
@@ -154,3 +154,17 @@ CODEX_DOCK_DISPOSABLE_SETUP=1 python3 scripts/verify-setup.py \
 
 確認範囲は、計画時にサービスを作らないこと、新規配置、通常利用者の `init`、実Kata受入、稼働資源がある場合の更新拒否、正常更新時のイメージ保持、新サービスの起動失敗からの自動復旧、明示的なロールバックです。
 OSパッケージのネットワーク取得、ホスト再起動、外部AI推論はこの試験に含みません。
+
+
+## 追加制御の検証（2026-10-19）
+
+P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kataノード・cgroup・状態領域で検証しました。架空の認証情報だけを使用しています。
+
+- `make build`、全パッケージの `make test`（race/coverage）、`make vet`、`make lint`、`mkdocs build --strict` が成功。
+- macOS arm64のクロスビルドと、配置・導入スクリプトのPythonテストが成功。
+- `make kata-e2e` が成功。既存のVM隔離・ツール実行・ノード再起動・認証・通信・停止・削除と、共有/所有者の既存7ケースを確認。
+- 追加の実機試験で、Kataの固定IPから選択済みプロキシと実効policy IDを特定できることを確認。
+- `TestKataPolicyFeatures` で、mask・個別readonly・rootfsのread-only mount flag、hook/readiness、symlinkを拒否するファイル送受信、exec環境変数/作業ディレクトリ/取消、PTYリサイズ、背景ジョブ、ノード再起動後のジョブとログの回収を確認。
+- Go APIの新しい設定を使わない場合、既存要求IDのfingerprint入力が旧版と一致することをgolden testで確認。
+
+[追加制御の一覧と運用条件](sandbox-features.md)も参照してください。寿命・保持期限の適用には `reap --watch` または定期的な `Reap` 呼出しが必要です。実APIキーを使う外部AI推論と、実SSH/JDKサービスへの接続は今回の受入試験には含めていません。認証brokerの経路制限・失効・redirect、独自CA・多段proxyはローカルfixtureで検証しています。

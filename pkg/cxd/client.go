@@ -23,6 +23,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/workerapp"
 	"github.com/pacificbelt30/codex-dock/internal/workeregress"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
@@ -104,7 +105,18 @@ func (c *Client) Close() error { return errors.Join(c.manager.Close(), c.node.Cl
 // LaunchRequest describes one worker. An image must already be built or
 // imported into the dedicated node. Agent may be "codex" or "claude"; when
 // empty the worker stays idle so the product can call Exec repeatedly.
+type FilesystemPolicy = workerpolicy.Filesystem
+type LifecyclePolicy = workerpolicy.Lifecycle
+type EnvironmentPolicy = workerpolicy.Environment
+
+type Compatibility = sandbox.Compatibility
+
 type LaunchRequest struct {
+	Compatibility Compatibility     `json:",omitzero"`
+	Filesystem    FilesystemPolicy  `json:",omitzero"`
+	Lifecycle     LifecyclePolicy   `json:",omitzero"`
+	Environment   EnvironmentPolicy `json:",omitzero"`
+	CloneDir      string            `json:",omitempty"`
 	// RequestID is a stable, node-wide identifier for this launch attempt.
 	// Reuse it only with exactly the same immutable options.
 	RequestID          string
@@ -123,6 +135,7 @@ type LaunchRequest struct {
 	ReadOnlyRootFS     bool
 	NoGitMetadata      bool
 	NoInternet         bool
+	PolicyPreset       string `json:",omitempty"`
 	EgressAllowDomains []string
 	WatchPolling       bool
 	User               string
@@ -157,6 +170,15 @@ func fromWorker(w sandbox.Worker) Worker {
 // Launch creates and starts a detached worker. The returned ID remains useful
 // if cleanup fails after a canceled launch, so callers can retry Remove.
 func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) {
+	if err := req.Filesystem.Validate(); err != nil {
+		return Worker{}, err
+	}
+	if err := req.Lifecycle.Validate(); err != nil {
+		return Worker{}, err
+	}
+	if err := req.Environment.Validate(); err != nil {
+		return Worker{}, err
+	}
 	key, err := requestKey(req.RequestID)
 	if err != nil {
 		return Worker{}, err
@@ -192,6 +214,16 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	if req.Runtime == "" {
 		req.Runtime = sandbox.RuntimeKata
+	}
+	resolved, offline, err := workeregress.ResolvePreset(c.opts.EgressPolicy.rules(), req.PolicyPreset, req.EgressAllowDomains)
+	if err != nil {
+		return Worker{}, err
+	}
+	if offline {
+		req.NoInternet = true
+	}
+	if req.PolicyPreset != "" && !offline {
+		req.EgressAllowDomains = resolved.AllowDomains
 	}
 	if req.NoInternet && len(req.EgressAllowDomains) != 0 {
 		return Worker{}, fmt.Errorf("egress allowlist cannot be combined with no-internet")
@@ -276,6 +308,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	defer func() { _ = mgr.Close() }()
 	launch := sandbox.RunOptions{
+		Compatibility: req.Compatibility, Filesystem: req.Filesystem, Lifecycle: req.Lifecycle, Environment: req.Environment, CloneDir: req.CloneDir,
 		ProjectDir: req.ProjectDir, Image: req.Image, ResourceProfile: req.Profile, Runtime: req.Runtime,
 		Name: claim.Name, RequestKey: key, RequestFingerprint: fingerprint, AllocationID: kataguard.RequestAllocation(key),
 		Agent: sandbox.Agent(req.Agent), DirectAgent: req.Agent != "", AgentArgs: req.AgentArgs,
@@ -335,15 +368,18 @@ func (c *Client) List(ctx context.Context) ([]Worker, error) {
 
 // ExecRequest streams a command directly to and from an existing worker.
 type ExecRequest struct {
-	Argv   []string
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
+	WorkingDir string
+	Env        []string
+	TTY        bool
+	Argv       []string
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 // Exec returns the guest exit code separately from transport errors.
 func (c *Client) Exec(ctx context.Context, id string, req ExecRequest) (int64, error) {
-	code, err := c.manager.Exec(ctx, id, req.Argv, req.Stdin, req.Stdout, req.Stderr)
+	code, err := c.manager.ExecWithOptions(ctx, id, sandbox.ExecOptions{Argv: req.Argv, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr, WorkingDir: req.WorkingDir, Env: req.Env, TTY: req.TTY})
 	return code, classify(err)
 }
 

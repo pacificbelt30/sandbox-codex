@@ -66,10 +66,11 @@ type Rules struct {
 }
 
 type compiled struct {
-	allowDomains, denyDomains []string
-	allowCIDRs, denyCIDRs     []netip.Prefix
-	allowPorts, denyPorts     map[uint16]bool
-	blockPrivate              bool
+	allowDomains, denyDomains         []string
+	allowDomainIndex, denyDomainIndex domainIndex
+	allowCIDRs, denyCIDRs             []netip.Prefix
+	allowPorts, denyPorts             map[uint16]bool
+	blockPrivate                      bool
 }
 
 // Compile validates all rules up front. Denials override allowances; nonempty
@@ -88,6 +89,8 @@ func Compile(r Rules) (Policy, error) {
 			*pair.output = append(*pair.output, host)
 		}
 	}
+	p.allowDomainIndex = indexDomains(p.allowDomains)
+	p.denyDomainIndex = indexDomains(p.denyDomains)
 	for _, pair := range []struct {
 		input  []string
 		output *[]netip.Prefix
@@ -133,10 +136,17 @@ func (p *compiled) CheckDestination(ctx context.Context, d Destination) error {
 	if err != nil || d.Port == 0 {
 		return fmt.Errorf("%w: invalid authority", ErrDenied)
 	}
-	if matchesDomain(host, p.denyDomains) || p.denyPorts[d.Port] ||
-		(len(p.allowDomains) > 0 && !matchesDomain(host, p.allowDomains)) ||
-		(len(p.allowPorts) > 0 && !p.allowPorts[d.Port]) {
-		return fmt.Errorf("%w: %s", ErrDenied, d)
+	if p.denyDomainIndex.matches(host) {
+		return &Denial{Code: "domain_denied", Destination: d}
+	}
+	if p.denyPorts[d.Port] {
+		return &Denial{Code: "port_denied", Destination: d}
+	}
+	if len(p.allowDomains) > 0 && !p.allowDomainIndex.matches(host) {
+		return &Denial{Code: "domain_not_allowed", Destination: d}
+	}
+	if len(p.allowPorts) > 0 && !p.allowPorts[d.Port] {
+		return &Denial{Code: "port_not_allowed", Destination: d}
 	}
 	return nil
 }
@@ -146,21 +156,35 @@ func (p *compiled) CheckAddress(ctx context.Context, d Destination, ip netip.Add
 		return err
 	}
 	ip = ip.Unmap()
-	if !ip.IsValid() || ip.Zone() != "" || (p.blockPrivate && IsPrivate(ip)) || matchesCIDR(ip, p.denyCIDRs) || (len(p.allowCIDRs) > 0 && !matchesCIDR(ip, p.allowCIDRs)) {
-		return fmt.Errorf("%w: %s resolves to a blocked address", ErrDenied, d)
+	if !ip.IsValid() || ip.Zone() != "" {
+		return &Denial{Code: "invalid_address", Destination: d}
+	}
+	if p.blockPrivate && IsPrivate(ip) {
+		return &Denial{Code: "private_address", Destination: d}
+	}
+	if matchesCIDR(ip, p.denyCIDRs) {
+		return &Denial{Code: "address_denied", Destination: d}
+	}
+	if len(p.allowCIDRs) > 0 && !matchesCIDR(ip, p.allowCIDRs) {
+		return &Denial{Code: "address_not_allowed", Destination: d}
 	}
 	return nil
 }
 
 func normalizeHost(host string) (string, error) {
-	if ip, err := netip.ParseAddr(host); err == nil && ip.Zone() == "" {
-		return ip.Unmap().String(), nil
+	// Ordinary DNS names cannot be IP literals; avoid allocating a ParseAddr error.
+	if strings.Contains(host, ":") || len(host) > 0 && host[0] >= '0' && host[0] <= '9' {
+		if ip, err := netip.ParseAddr(host); err == nil && ip.Zone() == "" {
+			return ip.Unmap().String(), nil
+		}
 	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
-	if host == "" || len(host) > 253 {
+	if host == "" || len(host) > 253 || strings.HasSuffix(host, ".") {
 		return "", fmt.Errorf("invalid destination host")
 	}
-	for _, label := range strings.Split(host, ".") {
+	for remaining := host; remaining != ""; {
+		label, rest, _ := strings.Cut(remaining, ".")
+		remaining = rest
 		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
 			return "", fmt.Errorf("invalid destination host")
 		}
@@ -175,16 +199,34 @@ func normalizeHost(host string) (string, error) {
 	return host, nil
 }
 
-func matchesDomain(host string, domains []string) bool {
+// DNS suffixes are compiled once. Lookup is bounded by the number of labels
+// in a destination, rather than the size of the configured allow/deny list.
+type domainIndex struct{ exact, suffix map[string]bool }
+
+func indexDomains(domains []string) domainIndex {
+	index := domainIndex{exact: make(map[string]bool, len(domains)), suffix: make(map[string]bool, len(domains))}
 	for _, domain := range domains {
-		if host == domain {
-			return true
+		index.exact[domain] = true
+		if _, err := netip.ParseAddr(domain); err != nil {
+			index.suffix[domain] = true
 		}
-		if _, err := netip.ParseAddr(domain); err != nil && strings.HasSuffix(host, "."+domain) {
+	}
+	return index
+}
+func (index domainIndex) matches(host string) bool {
+	if index.exact[host] {
+		return true
+	}
+	for {
+		i := strings.IndexByte(host, '.')
+		if i < 0 {
+			return false
+		}
+		host = host[i+1:]
+		if index.suffix[host] {
 			return true
 		}
 	}
-	return false
 }
 
 func matchesCIDR(ip netip.Addr, prefixes []netip.Prefix) bool {
@@ -197,9 +239,11 @@ func matchesCIDR(ip netip.Addr, prefixes []netip.Prefix) bool {
 }
 
 // IsPrivate includes LAN, loopback, metadata/link-local and CGNAT destinations.
+var carrierGradeNAT = netip.MustParsePrefix("100.64.0.0/10")
+
 func IsPrivate(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	return !ip.IsValid() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || netip.MustParsePrefix("100.64.0.0/10").Contains(ip)
+	return !ip.IsValid() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || carrierGradeNAT.Contains(ip)
 }
 
 type combined []Policy

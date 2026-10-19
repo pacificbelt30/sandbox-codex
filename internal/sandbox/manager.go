@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	crand "crypto/rand"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,11 +122,53 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 // Failure cleanup uses its own bounded context so cancellation cannot leave
 // the worker running merely because the caller stopped waiting.
 func (m *Manager) RunContext(parent context.Context, opts RunOptions) (containerID string, runErr error) {
+	if err := opts.Filesystem.Validate(); err != nil {
+		return "", err
+	}
+	if err := opts.Lifecycle.Validate(); err != nil {
+		return "", err
+	}
+	if err := opts.Environment.Validate(); err != nil {
+		return "", err
+	}
 	if opts.Image == "" {
 		opts.Image = "codex-dock:latest"
 	}
 	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	defer cancel()
+	if len(opts.Filesystem.DenyRead)+len(opts.Filesystem.DenyWrite) > 0 || opts.ReadOnlyRootFS || opts.Environment.ImageID != "" || opts.Lifecycle.IdleTimeout > 0 {
+		info, err := m.cli.Info(ctx)
+		if err != nil {
+			return "", err
+		}
+		supported := false
+		for _, feature := range info.DriverStatus {
+			if feature == [2]string{"cxd.worker-policy", "1"} {
+				supported = true
+			}
+		}
+		if !supported {
+			return "", fmt.Errorf("worker policy requires a newer cxd node; upgrade the node before enabling it")
+		}
+	}
+	if opts.Compatibility.SSHProxy || opts.Compatibility.CABundle != "" {
+		info, err := m.cli.ImageInspect(ctx, opts.Image)
+		if err != nil {
+			return "", err
+		}
+		if info.Config == nil || info.Config.Labels["io.codex-dock.start-hooks"] != "1" {
+			return "", fmt.Errorf("SSH/custom CA compatibility requires a rebuilt worker image")
+		}
+	}
+	if opts.Environment.ImageID != "" {
+		info, err := m.cli.ImageInspect(ctx, opts.Image)
+		if err != nil {
+			return "", err
+		}
+		if info.ID != opts.Environment.ImageID {
+			return "", fmt.Errorf("image lock mismatch: rebuild or explicitly refresh the environment lock")
+		}
+	}
 	isolation, registration, err := ResolveRuntime(opts.Runtime, opts.KataRuntime)
 	if err != nil {
 		return "", err
@@ -167,6 +211,10 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		return "", fmt.Errorf("resolving workspace path: %w", err)
 	}
 
+	if err := validateFilesystemTargets(absWorkspace, opts.Filesystem); err != nil {
+		return "", err
+	}
+
 	// Build package install script
 	var allPkgs []Package
 	for _, spec := range opts.Packages {
@@ -184,6 +232,30 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		return "", fmt.Errorf("package installation requires a writable rootfs; build packages into the image before using --read-only-rootfs")
 	}
 	mounts := buildMounts(opts, absWorkspace)
+	if opts.Compatibility.CABundle != "" {
+		source, err := filepath.Abs(opts.Compatibility.CABundle)
+		if err != nil {
+			return "", err
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			return "", err
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("CA bundle must be a regular file")
+		}
+		if info.Size() > 16<<20 {
+			return "", fmt.Errorf("CA bundle exceeds 16 MiB")
+		}
+		bundle, err := os.ReadFile(source)
+		if err != nil {
+			return "", err
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(bundle) {
+			return "", fmt.Errorf("CA bundle contains no certificates")
+		}
+		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: source, Target: "/run/cxd-custom-ca.pem", ReadOnly: true})
+	}
 	var gitMounts []mount.Mount
 	var gitEnv []string
 	if !opts.NoGitMetadata {
@@ -273,8 +345,15 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 			labels[labelPrefix+"token-identity"] = string(encoded)
 		}
 	}
+	if opts.Environment.ImageID != "" {
+		labels[labelPrefix+"image-id"] = opts.Environment.ImageID
+	}
 	if opts.ReadOnlyRootFS {
 		labels[labelPrefix+"read-only-rootfs"] = "true"
+	}
+
+	if err := addWorkerPolicyLabels(labels, opts); err != nil {
+		return "", err
 	}
 
 	// Per-worker Internal network: create it and attach the proxy so the worker
@@ -313,6 +392,8 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 
 	// Security: drop all capabilities, non-root user, isolated Internal network.
 	hostConfig := buildHostConfig(mounts, netName)
+	hostConfig.MaskedPaths = append(hostConfig.MaskedPaths, opts.Filesystem.DenyRead...)
+	hostConfig.ReadonlyPaths = append(hostConfig.ReadonlyPaths, opts.Filesystem.DenyWrite...)
 	if opts.ReadOnlyRootFS {
 		hostConfig.ReadonlyRootfs = true
 		hostConfig.Tmpfs = map[string]string{
@@ -344,6 +425,29 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		return "", err
 	}
 	env = append(env, gitEnv...)
+	var environmentReady string
+	if len(opts.Environment.StartHooks) > 0 || len(opts.Environment.Readiness) > 0 {
+		if opts.ShellMode {
+			return "", fmt.Errorf("start hooks/readiness cannot be combined with raw --shell")
+		}
+		info, err := m.cli.ImageInspect(ctx, opts.Image)
+		if err != nil {
+			return "", err
+		}
+		if info.Config == nil || info.Config.Labels["io.codex-dock.start-hooks"] != "1" {
+			return "", fmt.Errorf("image does not support start hooks; rebuild the worker image")
+		}
+		payload, err := json.Marshal(opts.Environment)
+		if err != nil {
+			return "", err
+		}
+		nonce, err := randomID(16)
+		if err != nil {
+			return "", err
+		}
+		environmentReady = "/var/tmp/cxd-ready-" + nonce
+		env = append(env, "DOCK_ENVIRONMENT_JSON="+string(payload), "DOCK_ENVIRONMENT_READY="+environmentReady)
+	}
 
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
@@ -424,6 +528,11 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		}
 	}
 
+	if len(opts.Environment.StartHooks) > 0 || len(opts.Environment.Readiness) > 0 {
+		if err := m.waitEnvironment(ctx, resp.ID, environmentReady, opts.Environment.ReadinessTimeout); err != nil {
+			return "", err
+		}
+	}
 	if !opts.Detach {
 		// Attach stdio
 		go m.attachIO(context.Background(), resp.ID)
@@ -1004,7 +1113,7 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		env = append(env, "XDG_CACHE_HOME=/var/tmp/codex-home/.cache")
 	}
 
-	return env, nil
+	return compatibilityEnv(opts, env)
 }
 
 // proxyContainerNames returns the container names of the proxies that must be
