@@ -1,4 +1,4 @@
-# ワーカー管理コマンド — ps / stop / rm / logs
+# ワーカー管理コマンド — ps / start / exec / wait / stop / rm / logs
 
 > **日本語** | [English](../en/commands/worker.md)
 >
@@ -38,6 +38,25 @@ cxd start NAME_OR_ID
 Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
 プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
 Kata VM の台帳を指定して復旧する場合は、従来の `cxd vm start` も使えます。
+
+## `cxd exec` — 既存ワーカーでの実行
+
+```bash
+cxd exec --timeout 30s worker-name -- npm test
+cxd exec --json worker-name -- sh -c 'echo ok; echo warning >&2'
+cxd exec -i worker-name -- cat < input.txt
+```
+
+標準出力と標準エラーは別々に転送され、`cxd exec` はゲストの終了コードをシェルへ返します。タイムアウトは124、Ctrl+Cによる取消は130です。`--json` は `exit_code`、`stdout`、`stderr`、失敗時の `error` を返します。メモリ使用を抑えるため、JSON出力は各ストリーム8 MiBまでです。
+
+## `cxd wait` — 終了待ち
+
+```bash
+exit_code=$(cxd wait --timeout 5m worker-name)
+cxd wait --json worker-name
+```
+
+ワーカーの終了コードを表示します。`--json` では `{"exit_code": 0}` の形式です。待機タイムアウトは124、Ctrl+Cは130です。
 
 ## `cxd stop` — コンテナの停止
 

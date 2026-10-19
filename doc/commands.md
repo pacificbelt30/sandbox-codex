@@ -22,6 +22,8 @@ cxd の全コマンドリファレンスです。各コマンドの詳細は以�
 | [`cxd image check`](commands/build.md#起動前に互換性を調べる) | イメージの事前検査 | platform・必要ツール・entrypoint |
 | [`cxd vm`](vm.md) | Kata VMの照合と管理 | ps / inspect / start / stop / rm / prune |
 | [`cxd start`](commands/worker.md) | 停止済みワーカーの再起動 | 同じID・認証の復元 |
+| [`cxd exec`](commands/worker.md#cxd-exec--既存ワーカーでの実行) | 既存ワーカーでコマンドを実行 | `--timeout`・`-i`・`--json` |
+| [`cxd wait`](commands/worker.md#cxd-wait--終了待ち) | ワーカーの終了を待つ | 終了コード・`--timeout`・`--json` |
 | [`cxd proxy`](commands/proxy.md) | Auth Proxy の管理 | build / run / serve / stop / rm |
 | [`cxd ps`](commands/worker.md#cxd-ps--ワーカー一覧) | ワーカー一覧 | 実行中コンテナの表示 |
 | [`cxd stop`](commands/worker.md#cxd-stop--コンテナの停止) | コンテナの停止 | 単体・全停止 |

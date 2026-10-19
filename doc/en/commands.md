@@ -22,6 +22,8 @@ Full command reference for codex-dock. See the individual pages below for detail
 | [`cxd image check`](../commands/build.md) | Inspect image compatibility | Platform, tools and auth entrypoint |
 | [`cxd vm`](../vm.md) | Reconcile and manage Kata VMs | ps / inspect / start / stop / rm / prune |
 | [`cxd start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
+| `cxd exec` | Run a command in an existing worker | Timeout, stdin, JSON result |
+| `cxd wait` | Wait for a worker to exit | Exit code, timeout, JSON result |
 | [`cxd proxy`](commands/proxy.md) | Manage Auth Proxy | build / run / serve / stop / rm |
 | [`cxd ps`](commands/worker.md#cxd-ps) | List workers | Show running containers |
 | [`cxd stop`](commands/worker.md#cxd-stop) | Stop containers | Single or all |
