@@ -523,6 +523,7 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 // FindRequest checks a deterministic worker name against the durable engine
 // record. The node uses this only to reconcile a lost launch response.
 func (b *Backend) FindRequest(ctx context.Context, name string) (id, key, fingerprint string, found bool, err error) {
+	ctx = namespaces.WithNamespace(ctx, Namespace)
 	r, _, err := b.load(ctx, name)
 	if errdefs.IsNotFound(err) {
 		return "", "", "", false, nil

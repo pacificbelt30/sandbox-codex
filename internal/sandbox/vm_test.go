@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/containerd/errdefs"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 )
 
@@ -116,5 +117,22 @@ func TestAmbiguousVMRemovalNeverFallsBackToPendingCleanup(t *testing.T) {
 	}
 	if _, err := m.readCleanup(id); err != nil {
 		t.Fatal("ambiguous request consumed the cleanup record:", err)
+	}
+}
+
+func TestMissingWorkerAfterRemovalHasNotFoundCategory(t *testing.T) {
+	_, m := newEngineFixture(t)
+	id, err := m.Run(RunOptions{Name: "worker", ProjectDir: t.TempDir(), Detach: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Remove(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Remove(id, true); !errdefs.IsNotFound(err) {
+		t.Fatalf("repeated removal lost not-found category: %v", err)
+	}
+	if _, err := m.resolveID("worker"); !errdefs.IsNotFound(err) {
+		t.Fatalf("missing worker lost not-found category: %v", err)
 	}
 }
