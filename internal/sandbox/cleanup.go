@@ -239,7 +239,7 @@ func (m *Manager) findCleanup(value string) (cleanupRecord, error) {
 		}
 	}
 	if found == nil {
-		return cleanupRecord{}, fmt.Errorf("worker or pending cleanup %q not found", value)
+		return cleanupRecord{}, fmt.Errorf("worker or pending cleanup %q: %w", value, errdefs.ErrNotFound)
 	}
 	return *found, nil
 }

@@ -105,7 +105,7 @@ rm -f /tmp/codex-dock-node-restart/request /tmp/codex-dock-node-restart/complete
 chown 0:1000 /tmp/codex-dock-node-restart
 chmod 0770 /tmp/codex-dock-node-restart
 export CODEX_DOCK_NODE_RESTART_REQUEST_DIR=/tmp/codex-dock-node-restart
-su -s /bin/sh kata-test -c '/work/sandbox.test -test.run "^TestKata(Acceptance|WorkspaceSharing)$" -test.count=1 -test.v -test.timeout=15m' &
+su -s /bin/sh kata-test -c '/work/sandbox.test -test.run "^TestKata(Acceptance|WorkspaceSharing|GoAPI)$" -test.count=1 -test.v -test.timeout=25m' &
 test_pid=$!
 while kill -0 "$test_pid" 2>/dev/null; do
  if [ -f /tmp/codex-dock-node-restart/request ]; then

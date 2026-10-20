@@ -334,7 +334,9 @@ while True:
 	kataExec(t, ctx, c, w1, false, []string{"sh", "-c", `grep -Eq '^Seccomp:[[:space:]]+2$' /proc/1/status && grep -Eq '^NoNewPrivs:[[:space:]]+1$' /proc/1/status && grep -Eq '^CapEff:[[:space:]]+0+$' /proc/1/status && grep -Eq '^Seccomp:[[:space:]]+2$' /proc/self/status && grep -Eq '^CapEff:[[:space:]]+0+$' /proc/self/status`})
 	kataExec(t, ctx, c, w1, false, []string{"sh", "-c", `test "$(cat /sys/fs/cgroup/pids.max)" = 512`})
 	t.Log("verified: guest seccomp, no-new-privileges and PID limit")
-	t.Log(kataExec(t, ctx, c, w1, false, []string{"python3", "-c", codexToolFixture}))
+	t.Run("CodexToolExecution", func(t *testing.T) {
+		t.Log(kataExec(t, ctx, c, w1, false, []string{"python3", "-c", codexToolFixture}))
+	})
 	kataExec(t, ctx, c, w1, false, []string{"sh", "-c", `test "$(cat /opt/codex-dock-custom/sentinel)" = custom-image-ok && codex --version && claude --version && git status --porcelain && echo kata > /workspace/kata-created && test "$(cat /fixtures/sentinel)" = fixture && ! touch /fixtures/forbidden`})
 	if _, err := os.Stat(filepath.Join(wt, "kata-created")); err != nil {
 		t.Fatal("workspace writes not visible on host:", err)

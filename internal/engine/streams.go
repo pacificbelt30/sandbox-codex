@@ -14,12 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	cd "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
+	"golang.org/x/sys/unix"
 )
 
 // The shim owns console collection. This per-service object tracks exit state
@@ -165,6 +167,45 @@ func (w lockedWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 	return w.writer.Write(p)
 }
+
+// HTTP cancels the request context on stdin's half-close. Exec must keep
+// producing output after EOF, but still kill a silent command on disconnect.
+// The node serves Unix sockets: POLLHUP distinguishes full peer closure from
+// a read-side EOF (POLLRDHUP).
+func execStreamContext(parent context.Context, conn net.Conn) (context.Context, context.CancelFunc, error) {
+	fdConn, ok := conn.(syscall.Conn)
+	if !ok {
+		return nil, nil, fmt.Errorf("exec requires a pollable node connection")
+	}
+	raw, err := fdConn.SyscallConn()
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				closed := false
+				err := raw.Control(func(fd uintptr) {
+					fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLHUP | unix.POLLERR}}
+					_, err := unix.Poll(fds, 0)
+					closed = (err != nil && err != unix.EINTR) || fds[0].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0
+				})
+				if err != nil || closed {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return ctx, cancel, nil
+}
+
 func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.Context, path string) {
 	parts := strings.Split(strings.TrimPrefix(path, "/exec/"), "/")
 	if len(parts) != 2 {
@@ -283,7 +324,15 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 	if cfg.AttachStdin {
 		input = rw
 	}
-	p, err := t.Exec(ctx, eid, &processSpec, cio.NewCreator(cio.WithStreams(input, out, stderr), func(s *cio.Streams) { s.Terminal = cfg.Tty }))
+	streamCtx, stop, err := execStreamContext(ctx, conn)
+	var p cd.Process
+	if err == nil {
+		defer stop()
+		stopCancel := context.AfterFunc(execCtx, stop)
+		defer stopCancel()
+		ctx = streamCtx
+		p, err = t.Exec(ctx, eid, &processSpec, cio.NewCreator(cio.WithStreams(input, out, stderr), func(s *cio.Streams) { s.Terminal = cfg.Tty }))
+	}
 	exit := 125
 	if err == nil {
 		var wait <-chan cd.ExitStatus

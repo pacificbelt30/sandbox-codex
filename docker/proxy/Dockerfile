@@ -1,4 +1,5 @@
 FROM golang:1.24 AS build
+ARG CODEX_DOCK_BUILD_VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=secret,id=proxy_ca \
@@ -7,7 +8,7 @@ RUN --mount=type=secret,id=proxy_ca \
 COPY . .
 RUN --mount=type=secret,id=proxy_ca \
     if [ -r /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/codex-dock .
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X github.com/pacificbelt30/codex-dock/internal/buildinfo.Version=${CODEX_DOCK_BUILD_VERSION}" -o /out/codex-dock .
 
 FROM gcr.io/distroless/base-debian12
 ARG CODEX_DOCK_BUILD_VERSION=dev

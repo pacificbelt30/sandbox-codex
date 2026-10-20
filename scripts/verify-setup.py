@@ -23,6 +23,8 @@ def main():
     parser.add_argument('--next-bundle', type=Path, required=True)
     parser.add_argument('--images', type=Path, required=True)
     parser.add_argument('--acceptance', type=Path, required=True)
+    parser.add_argument('--acceptance-run', default='^TestKata(Acceptance|WorkspaceSharing|GoAPI)$',
+                        help='Go test name pattern for the real-Kata acceptance binary')
     parser.add_argument('--cache', type=Path, default=ROOT / '.kata-verification/setup-e2e/cache')
     parser.add_argument('--proxy-image', default='codex-dock-proxy:policy-verification')
     parser.add_argument('--image', default='codex-dock-setup-node:verification')
@@ -65,6 +67,7 @@ def main():
                 '--privileged', '--cgroupns=private', '--network=none',
                 '--device', '/dev/kvm', '--device', '/dev/vhost-vsock', '--device', '/dev/vhost-net',
                 '-e', 'CODEX_DOCK_DISPOSABLE_NODE=1', '-e', 'CODEX_DOCK_KATA_PROXY_IMAGE='+args.proxy_image,
+                '-e', 'CODEX_DOCK_KATA_ACCEPTANCE_RUN='+args.acceptance_run,
                 '--mount', f'type=volume,src={volume},dst=/var/lib/codex-dock-containerd']
         for source, target, readonly in [
             (args.bundle, '/bundle', True), (args.next_bundle, '/bundle-next', True),

@@ -118,7 +118,7 @@ test:
 
 ## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
 kata-e2e: build
-	CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_POLICY_E2E=1 CODEX_DOCK_KATA_TEST_BINARY="$(CURDIR)/$(BINARY)" go test ./internal/sandbox -run '^TestKata(Acceptance|WorkspaceSharing|PolicyFeatures)$$' -count=1 -v -timeout=15m
+	CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_POLICY_E2E=1 CODEX_DOCK_KATA_TEST_BINARY="$(CURDIR)/$(BINARY)" go test $(LDFLAGS) ./internal/sandbox -run '^TestKata(Acceptance|WorkspaceSharing|PolicyFeatures|GoAPI)$$' -count=1 -v -timeout=25m
 
 ## kata-api-e2e: public Go API failure/recovery acceptance with synthetic upstreams
 kata-api-e2e: build

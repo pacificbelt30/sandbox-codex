@@ -943,7 +943,7 @@ func (m *Manager) resolveID(nameOrID string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("container not found: %s", nameOrID)
+	return "", fmt.Errorf("container %q: %w", nameOrID, errdefs.ErrNotFound)
 }
 
 func (m *Manager) attachIO(ctx context.Context, containerID string) {

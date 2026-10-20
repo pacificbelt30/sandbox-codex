@@ -29,7 +29,9 @@ gofmt -l cmd internal pkg
 | 製品組み込み用 Go API | 公開エラー分類と要求IDの入力検査、node台帳での競合・再送・応答消失時の照合と回収、通信許可の入力検査 |
 | ケース別認証 | 資格情報ソケットの権限とケース分離、OAuth更新の版競合、ケース変更時の失効、プロバイダー経路と実行IDの失効 |
 
-[Go API](go-api.md)の実Kata受入には別ターゲット `make kata-api-e2e` を用意しています。下記のCLI受入と分けて実行し、成功記録がある版・範囲を確認してください。
+[Go API](go-api.md)の実機受入 `TestKataGoAPI` は `make kata-e2e` に含まれます。ケース別の架空資格情報でOpen → Launch → Exec → Stop → RemoveRequest、small/standardの別boot ID・ゲスト制限・ホスト予約・削除後の割当回収、取消済みLaunch context、Execの入力EOF・実行中取消とプロセス回収、要求IDの再送・競合・削除後の再送、再接続後の照合、VMへの資格情報漏れ、ケース間のトークン拒否、実行IDの失効を確認します。
+
+追加の障害系受入 `TestKataAPIIntegration` には別ターゲット `make kata-api-e2e` を用意しています。実行中のLaunch取消、OAuth更新・保存失敗・版競合・proxy再起動、通信中ストリームの失効などの対象は[公開Go APIの障害系受入](#公開go-apiの障害系受入)を参照してください。応答を通信路で破棄する故障注入とGo API経由のワーカー別通信許可は、両ターゲットともまだ含みません。単体テストと実Kata受入結果を区別し、成功記録がある版・範囲を確認してください。
 
 ## 実Kataで確認する
 
@@ -40,7 +42,7 @@ gofmt -l cmd internal pkg
 make kata-e2e
 ```
 
-このターゲットはCLIとhelperをビルドし、`CODEX_DOCK_KATA_E2E=1`・`CODEX_DOCK_KATA_POLICY_E2E=1` と対象CLIのパスを指定して、`TestKataAcceptance`・`TestKataWorkspaceSharing`・`TestKataPolicyFeatures` を実行します。
+このターゲットはCLIとhelperをビルドし、`CODEX_DOCK_KATA_E2E=1`・`CODEX_DOCK_KATA_POLICY_E2E=1` と対象CLIのパスを指定して、`TestKataAcceptance`・`TestKataWorkspaceSharing`・`TestKataPolicyFeatures`・`TestKataGoAPI` を実行します。
 通常利用者として実行してください。共有試験は別HOMEと架空のAPIキーを使い、実認証ファイルをマウントしません。
 前提条件を満たさない場合は、skipではなく失敗として扱います。
 通常の `go test ./...` はこの実機試験を有効にしません。
@@ -105,6 +107,25 @@ Anthropicの認証・HTTP/WS転送とOAuth更新はfixtureで確認していま�
 
 旧 `scripts/e2e-docker.sh` は移行前のDocker経路用です。現行構成の受入には `make kata-e2e` を使います。
 
+## 2026-10-19の実KVM追試
+
+専用の使い捨てUbuntu 26.04ノードで、Kata 4.2.0 / Dragonball、containerd 2.4.2、BuildKit 0.34.0、runc 1.4.3を実KVM上で実行しました。外側のDockerはノードの隔離用で、内部は製品専用containerdです。実API資格情報は使わず、ケース別の架空資格情報を使いました。
+
+| 試験 | 結果 |
+|---|---|
+| 既存実Kata受入 | PASS。別boot ID、Codexの実ツール実行、Git・PTY・通信分離・ホスト/管理ポート拒否、停止・再起動・削除・孤児回収 |
+| 共有・所有者 | 7ケースPASS。readonly/追加mount、明示UID/GID、setgid、worktree、双方向変更、再起動、Nodeのポーリング |
+| Go API | PASS。Open → Launch → Exec → Stop → RemoveRequest、再送・再接続照合・競合拒否、削除再試行、入力EOF、実行中Exec取消とプロセス回収 |
+| ケース別認証・資源 | PASS。ゲストの既知の認証保存先・環境に元資格情報なし、ケース間トークン拒否、実行ID失効、small/standardのゲスト制限・ホスト予約・割当回収 |
+| 配置・更新・復旧 | PASS。新規配置、稼働中更新拒否、正常更新時のイメージ/ファイル保持、新サービス起動失敗からの自動復旧、明示rollback、残存資源なし |
+| コード検査 | 全Goテスト、vet、影響範囲のrace、配置Pythonテスト14件成功 |
+
+実機で検出した要求ID照合のcontainerd namespace不足、入力EOFによるExec取消、削除済みworkerのNotFound分類欠落を修正しました。proxy Dockerfileのprotocol/buildラベルも現行APIと一致させました。
+
+初回にはCodex fixtureの45秒タイムアウトとSSE単体試験の一度の失敗があり、再試験は成功しました。SSEは単独5回でも成功しています。最終結果と初回の失敗を区別してください。
+
+この追試は冒頭のGo API受入範囲です。実行中Launch取消・通信路での応答破棄、実Kata経由のOAuth更新/保存失敗/版競合/認証proxy再起動、通信中ストリームの失効、Go APIのワーカー別ドメイン許可を含む全要件の合格判定はまだ完了していません。
+
 ## ドキュメントを確認する
 
 Pythonの仮想環境で依存を入れ、strictビルドを実行します。
@@ -137,16 +158,18 @@ mv dist/node-bundle dist/node-bundle-a
 make node-bundle VERSION=setup-test-b
 mv dist/node-bundle dist/node-bundle-b
 mkdir -p .kata-verification/setup-e2e
-CGO_ENABLED=0 go test -c ./internal/sandbox -o .kata-verification/setup-e2e/acceptance.test
+CGO_ENABLED=0 go test -c -ldflags "-X github.com/pacificbelt30/codex-dock/internal/buildinfo.Version=setup-test-a" ./internal/sandbox -o .kata-verification/setup-e2e/acceptance.test
 docker build -t codex-dock-setup-node:verification -f deploy/kata/Dockerfile.verify deploy/kata
 docker build -t codex-dock:kata-guard docker/sandbox
-docker build -t codex-dock-proxy:policy-verification -f docker/proxy/Dockerfile .
+docker build --build-arg CODEX_DOCK_BUILD_VERSION=setup-test-a -t codex-dock-proxy:policy-verification -f docker/proxy/Dockerfile .
 docker save -o .kata-verification/setup-e2e/images.tar codex-dock:kata-guard codex-dock-proxy:policy-verification
 CODEX_DOCK_DISPOSABLE_SETUP=1 python3 scripts/verify-setup.py \
   --bundle dist/node-bundle-a --next-bundle dist/node-bundle-b \
   --images .kata-verification/setup-e2e/images.tar \
   --acceptance .kata-verification/setup-e2e/acceptance.test
 ```
+
+Go APIだけを再試験する場合は `--acceptance-run '^TestKataGoAPI$'` を指定できます。既定では3つの受入試験を実行します。
 
 必要な場合だけ `--sudo-docker` を付けます。配布物を準備済みなら `--cache PATH --offline` で検証できます。
 スクリプトはホストの既存サービスを変更せず、自分が作ったラベル付きノードと専用ボリュームを最後に回収します。
@@ -181,7 +204,7 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 
 ## 製品組み込み改善の検証（2026-10-20）
 
-既存サービスから分離したcontainerd・BuildKit・Kataノード・cgroupで、`make kata-e2e VERSION=dev`（400.698秒）と `make kata-api-e2e VERSION=dev`（受入本体228.339秒）が成功しました。後者はcompact・lifecycle・保存失敗・版競合・proxy再起動の5ケースすべてが成功し、参照中イメージの削除拒否と、最後の試験用イメージ削除・参照消失まで確認しています。取消後のinventoryで、余分なVM・ホスト割当・実プロセスが残らないことも確認しました。
+既存サービスから分離したcontainerd・BuildKit・Kataノード・cgroupで、`make kata-e2e VERSION=dev`（当時の対象はAcceptance・WorkspaceSharing・PolicyFeatures、400.698秒）と `make kata-api-e2e VERSION=dev`（受入本体228.339秒）が成功しました。後者はcompact・lifecycle・保存失敗・版競合・proxy再起動の5ケースすべてが成功し、参照中イメージの削除拒否と、最後の試験用イメージ削除・参照消失まで確認しています。取消後のinventoryで、余分なVM・ホスト割当・実プロセスが残らないことも確認しました。
 
 | compactの観測 | ホストcurrent | ホストpeak | 条件 |
 |---|---:|---:|---|
@@ -194,3 +217,10 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 `make build`、全パッケージrace/coverageテスト、vet、lint、macOS arm64クロスビルド、ドキュメントstrictビルドも成功しました。公開APIの要求台帳照合に必要なcontainerd namespaceを補い、OAuth保存先の一般エラーと空の保存版でもケースと通信中leaseを失効させることを試験しています。運用条件とモデル制限時の対応経路は[追加制御](sandbox-features.md)を参照してください。実認証情報・外部AI推論・systemd user unitの常駐稼働はこの受入には含めず、既存サービスへの更新適用もしていません。
 
 検証終了後、専用ワーカー・proxy・ネットワークが0件であることを確認し、検証用containerd・BuildKit・ノード・cgroup・socket・状態領域を回収しました。既存containerdとノードの稼働は継続しています。
+
+
+### リモート統合後の追試
+
+上記の改善とGo API実機受入の追加を統合した版で、`make kata-e2e VERSION=dev` のAcceptance（184.97秒）・WorkspaceSharing（8ケース、141.79秒）・PolicyFeatures（46.36秒）が成功しました。GoAPIは初回に試験用StateDirの権限チェックで失敗したため、保存先を既存の0700 fixtureディレクトリ配下へ変更し、`TestKataGoAPI` だけを再実行して成功しました（70.319秒）。製品の権限チェックは維持しています。
+
+統合版の `make kata-api-e2e VERSION=dev` も5ケースすべて成功しました（223.575秒）。全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト14件、補助スクリプトテスト2件、macOS arm64クロスビルドも成功しています。試験用コンテナ・タスク・ネットワークが0件であることを確認してから、専用containerd・BuildKit・ノードと状態領域を回収しました。
