@@ -65,6 +65,23 @@ func TestSmallKataProfileSetsAndVerifiesWorkerMemory(t *testing.T) {
 	}
 }
 
+func TestCreateOnlyDefersGuestExecutionUntilStart(t *testing.T) {
+	f, m := newEngineFixture(t)
+	id, err := m.RunContext(context.Background(), RunOptions{Name: "prepared", ProjectDir: t.TempDir(), Runtime: RuntimeKata, Detach: true, CreateOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.starts != 0 {
+		t.Fatal("create started user code")
+	}
+	if err := m.StartContext(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if f.starts != 1 {
+		t.Fatalf("start count %d", f.starts)
+	}
+}
+
 // engineFixture exercises the actual Docker SDK requests and manager lifecycle,
 // including cleanup. It makes no assertions about a real VM having booted.
 type engineFixture struct {

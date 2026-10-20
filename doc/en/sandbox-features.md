@@ -76,7 +76,7 @@ cxd run --image IMAGE --environment-lock codex-dock.lock.json -d
 cxd run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
 ```
 
-Lifecycle limits require `reap --watch` or periodic Go API `Reap` calls. No host service is installed automatically; limits stop being applied while the supervisor is down. Idle means time since management execution activity, not guest CPU/filesystem activity. Long jobs and interactive work can be stopped by an idle limit. Stop revokes tokens; removal uses existing ownership checks and deletion journals. Zero retention never deletes a worker.
+Lifecycle limits require `reap --watch` or periodic Go API `Reap` calls. No host service is installed automatically; limits stop being applied while the supervisor is down. Idle means time since management execution activity, not guest CPU/filesystem activity. Updated nodes protect registered jobs and exec/PTY sessions; disable idle limits for main-agent work or activity outside the management API. Explicit maximum lifetime can still stop busy workers. Stop revokes tokens; removal uses existing ownership checks and deletion journals. Zero retention never deletes a worker.
 
 Environment locks pin the node OCI image digest and SHA-256 hashes of explicitly selected source files. New lock files are created exclusively. Source or image changes reject launch. Include dependency lockfiles to cover package versions. Start hooks run sequentially inside the guest after auth setup and before agent startup; launch completes after the readiness probe succeeds. Failures/deadlines roll back launch. The default hook/probe deadline is 60 seconds, within the existing 180-second launch deadline. Older images without the support label reject hooks.
 
@@ -112,3 +112,20 @@ go test ./internal/networkpolicy -run '^$' -bench . -benchmem -count=3
 TUI logs append incrementally instead of rebuilding history on each write, with 2000 lines and approximately 4 MiB per segment. Polling stops when the UI exits.
 
 The [verification record](../testing.md) distinguishes fixture tests, native Kata acceptance, and external-service tests.
+
+
+## Model authorization and staged startup
+
+Use repeated `cxd proxy run --allow-model model-id`, host `[proxy].allowed_models`, or `CaseProxyOptions.AllowedModels` to restrict a whole auth proxy to exact submitted model IDs. Empty preserves legacy behavior. The immutable configuration requires draining workers and recreating the proxy to change. `ProxyCapabilities` reports support and active enforcement separately.
+
+When enabled, authenticated POST requests are checked before credential injection or upstream I/O. Only JSON bodies up to 8 MiB are accepted; duplicate keys, case variants of `model`, invalid JSON, compressed bodies, queries and encoded paths are rejected. The original checked bytes are forwarded and redirects are not followed. Supported paths are `/v1/responses`, `/v1/responses/compact`, `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/moderations`, `/chatgpt/codex/responses`, `/chatgpt/codex/responses/compact`, `/anthropic/v1/messages`, and `/anthropic/v1/messages/count_tokens`. All other AI paths, model-listing/batch/file APIs and WebSockets are denied. Clients must support HTTP. This controls the submitted ID, not upstream alias resolution. Custom broker routes, general egress and separately supplied credentials have separate policies; disable or restrict egress and do not configure alternative AI broker routes when model enforcement is mandatory.
+
+`Create` materializes a Kata worker without starting a VM, hooks or agent or issuing a live worker token. It still creates networks, snapshots and a host reservation; defer `Create` too if resource allocation requires approval. Remove abandoned workers explicitly. Maximum lifetime counts from creation, including any approval wait. Create and Launch cannot share a request ID; retries of the same operation keep the same ID. `Start` verifies isolation, activates the token and waits for hooks/readiness. After cancellation or failure, reconcile with Request/Get and use a fresh context for cleanup. Launch retains its combined behavior.
+
+## Supervised collection and memory observation
+
+The optional systemd user unit `deploy/kata/codex-dock-reaper.service` runs the installed `/usr/local/bin/cxd reap --watch` and restarts on failure after five seconds. Copy it to `~/.config/systemd/user/`, reload the user manager and explicitly enable/start the unit. Monitor its journal and status. An administrator must configure user linger if it needs to survive logout. Nothing is enabled automatically. Multi-case products should periodically call Reap through clients holding their own admin credentials and monitor failures.
+
+Updated nodes protect pending execs, active exec/PTY sessions and detached jobs against idle collection, checking atomically with stopping so newly started work is protected too. Main agent activity and work started outside the management API are not measured; disable idle limits for these workloads. Explicit maximum lifetime still applies to busy workers.
+
+ResourceUsage returns a verified running VM's host cgroup current memory, optional peak and OOM-kill count separately from guest/host capacity budgets. These are not guest RSS. The guest budget is the worker cgroup limit, separate from total VM RAM shown by /proc/meminfo. The standard default and small guest 1 GiB / host 2 GiB profile remain unchanged. An explicit compact profile provides guest 512 MiB / host 768 MiB, one CPU and 512 PIDs for lightweight tasks. Select CLI --profile-size compact or Go Profile: "compact" after querying Profiles on an updated node. This is not a guarantee that large dependency installs/builds fit; measure product-specific workloads, concurrency, peaks and OOM events. CLI vm inspect --json exposes the same host observations.

@@ -75,3 +75,5 @@ cxd proxy serve --role auth \
 `serve` のdataリスナー既定は `0.0.0.0:18080` なので、単体利用では上のように明示してください。
 KataワーカーのネットワークやVM隔離は、このコマンドでは用意しません。
 詳しくは[単体利用](../proxy-standalone.md)を参照してください。
+
+`cxd proxy run --allow-model model-id` は繰返し指定でき、固定AI経路の要求本文でモデルを強制します。[対応経路と制約](../sandbox-features.md#モデル認可と段階的な起動)を確認してください。

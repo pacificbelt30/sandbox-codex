@@ -21,6 +21,9 @@ const (
 
 // Config configures the Auth Proxy.
 type Config struct {
+	// AllowedModels restricts fixed AI routes to exact model IDs. Empty keeps
+	// legacy forwarding. Unsupported endpoints and WebSockets are denied.
+	AllowedModels        []string
 	CredentialRoutes     []CredentialRoute
 	CredentialRoutesFile string
 	BrokerOnly           bool

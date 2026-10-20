@@ -52,3 +52,5 @@ Isolation also depends on maintaining the host kernel, KVM, Kata and guest kerne
 
 [Verification](../testing.md) (Japanese) includes real Kata acceptance and existing-auth.json WebSocket/HTTP SSE inference.
 Long-running real OAuth refresh, interactive keyboard use and arbitrary custom images require separate checks.
+
+Model ID enforcement is opt-in at the host auth proxy; a model flag alone is not authorization. See [additional controls](sandbox-features.md#model-authorization-and-staged-startup) for supported routes, WebSocket denial and separate egress/broker paths.

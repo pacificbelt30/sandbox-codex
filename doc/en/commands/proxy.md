@@ -67,3 +67,5 @@ cxd proxy serve --role auth \
 Role `auth` serves AI/token/admin routes; `egress` forwards general traffic.
 The default data listen address is `0.0.0.0:18080`, so set loopback explicitly for local use.
 This command does not create Kata isolation or worker networks. See [standalone use](../proxy-standalone.md).
+
+Repeat `cxd proxy run --allow-model model-id` to enforce exact model IDs in fixed AI request bodies. See [supported routes and limitations](../sandbox-features.md#model-authorization-and-staged-startup).

@@ -11,7 +11,7 @@ import (
 func newProfileCommand() *cobra.Command {
 	var asJSON bool
 	command := &cobra.Command{
-		Use: "profile [standard|small]", Short: "Show Kata worker resource profiles",
+		Use: "profile [standard|small|compact]", Short: "Show Kata worker resource profiles",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			profiles := kataguard.ResourceProfiles()
@@ -35,7 +35,7 @@ func newProfileCommand() *cobra.Command {
 		},
 	}
 	command.Flags().BoolVar(&asJSON, "json", false, "Print a machine-readable resource profile")
-	command.ValidArgsFunction = cobra.FixedCompletions([]cobra.Completion{"standard", "small"}, cobra.ShellCompDirectiveNoFileComp)
+	command.ValidArgsFunction = cobra.FixedCompletions([]cobra.Completion{"standard", "small", "compact"}, cobra.ShellCompDirectiveNoFileComp)
 	return command
 }
 

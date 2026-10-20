@@ -71,7 +71,7 @@ With no `Agent`, `Launch` starts an idle worker for repeated `Exec` calls. `Agen
 | `Profiles(ctx)` | Query the running node's CPU, guest RAM, host memory reservation, and PID limits. These are reservation limits, not measured RSS |
 | `Capabilities()` / `ProxyCapabilities(ctx)` | Query node build, protocol, and features / connected auth proxy features |
 
-`LaunchRequest` also supports model, approval mode, extra mounts, read-only rootfs, and disabling shared Git metadata. Its default image is `codex-dock:latest` and default resource profile is `standard`. Query `client.Profiles(ctx)` before selecting the smaller `small` profile.
+`LaunchRequest` also supports model, approval mode, extra mounts, read-only rootfs, and disabling shared Git metadata. Its default image is `codex-dock:latest` and default resource profile is `standard`. Query `client.Profiles(ctx)` before selecting the smaller `small` or lightweight `compact` (guest 512 MiB / host 768 MiB) profile.
 
 `client.PrepareProject(ctx, dir, requestID, log)` validates the portable `codex-dock.toml`, builds a missing or stale image through BuildKit, and returns a `LaunchRequest` for the product to review and submit. `client.Build` and `client.BuildTemplate` are available separately. `Launch` itself requires a built image and a running auth proxy.
 
@@ -98,3 +98,5 @@ Use `errors.Is` for `ErrNotFound`, `ErrConflict`, `ErrInProgress`, `ErrCleanupPe
 The public Go signatures do not expose internal node DTOs. Deploy the CLI, library, node, and proxy image from matching builds. The Go node protocol is v2; `Open` returns `ErrVersionMismatch` for incompatible node versions. `Capabilities()` reports the validated node and `ProxyCapabilities(ctx)` reports the connected auth proxy. The node's HTTP/JSON protocol over the Unix socket is internal and has no external compatibility guarantee.
 
 [Additional policy, execution and recovery APIs](sandbox-features.md)
+
+`Create(ctx, request)` creates a stopped Kata worker; `Start(ctx, worker)` boots and verifies it before token activation and hook/agent execution. `Launch` retains its combined create/start behavior. `ResourceUsage(ctx, worker)` separates observed host cgroup current/peak memory and OOM kills from the profile budgets. See [operating conditions](sandbox-features.md#model-authorization-and-staged-startup).

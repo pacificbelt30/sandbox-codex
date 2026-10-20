@@ -82,6 +82,13 @@ const defaultAnthropicVersion = "2023-06-01"
 // In OAuth mode (detected via IsOAuthAuth), credentials are loaded from
 // ~/.codex/auth.json. In API key mode, the API key is loaded as usual.
 func NewProxy(cfg Config) (*Proxy, error) {
+	if err := ValidateAllowedModels(cfg.AllowedModels); err != nil {
+		return nil, err
+	}
+	if cfg.isEgress() && len(cfg.AllowedModels) != 0 {
+		return nil, fmt.Errorf("model authorization belongs on the auth proxy")
+	}
+	cfg.AllowedModels = append([]string(nil), cfg.AllowedModels...)
 	if cfg.isEgress() && (len(cfg.CredentialRoutes) > 0 || cfg.CredentialRoutesFile != "") {
 		return nil, fmt.Errorf("credential routes cannot run in the credential-free egress proxy")
 	}

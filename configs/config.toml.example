@@ -182,6 +182,7 @@ admin_url = "http://127.0.0.1:18081"
 # forward_deny_cidrs = ["203.0.113.0/24"]
 # forward_allow_ports = [80, 443]
 # forward_deny_ports = [25]
+# allowed_models = ["model-id"] # exact IDs; opt-in HTTP AI routes only, no WebSocket
 # upstream_proxy = "http://proxy.example.com:3128" # verified-IP CONNECT chaining
 # ca_bundle = "/absolute/extra-ca.pem" # additional proxy TLS roots
 # Changes require proxy recreation; `proxy run` rejects an existing policy

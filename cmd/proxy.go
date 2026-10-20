@@ -47,6 +47,7 @@ var (
 	proxyOAuthStateDir    string
 	proxyCredentialSocket string
 	proxyCaseID           string
+	proxyAllowedModels    []string
 
 	proxyBuildTag        string
 	proxyBuildDockerfile string
@@ -101,6 +102,7 @@ var proxyServeCmd = &cobra.Command{
 		p, err := authproxy.NewProxy(authproxy.Config{
 			UpstreamProxyURL: proxyUpstreamURL, CABundlePEM: bundle,
 			CredentialRoutesFile: proxyBrokerFile,
+			AllowedModels:        proxyAllowedModels,
 			EventWriter:          os.Stdout,
 			CredentialStore:      store,
 			CaseID:               proxyCaseID,
@@ -171,6 +173,9 @@ At least one credential source must be configured before running.`,
 // It builds the proxy image / egress network when missing and restarts existing
 // (stopped) containers. Shared by `proxy run` and `cxd run`'s auto-start.
 func startProxyContainer(ctx context.Context) error {
+	if err := authproxy.ValidateAllowedModels(proxyAllowedModels); err != nil {
+		return err
+	}
 	rules := forwardPolicyRules()
 	rules.BlockPrivate = true
 	if _, err := networkpolicy.Compile(rules); err != nil {
@@ -204,7 +209,7 @@ func startProxyContainer(ctx context.Context) error {
 	}
 
 	// 1) Auth proxy: holds credentials, admin published, no forwarding.
-	auth := proxyRunArgs{brokerFile: proxyBrokerFile, upstreamProxy: proxyUpstreamURL, caFile: proxyCAFile,
+	auth := proxyRunArgs{allowedModels: proxyAllowedModels, brokerFile: proxyBrokerFile, upstreamProxy: proxyUpstreamURL, caFile: proxyCAFile,
 		name:             proxyRunName,
 		role:             authproxy.RoleAuth,
 		networkName:      proxyRunNetwork,
@@ -402,6 +407,8 @@ func init() {
 	proxyCmd.AddCommand(proxyStopCmd)
 	proxyCmd.AddCommand(proxyRmCmd)
 
+	proxyServeCmd.Flags().StringArrayVar(&proxyAllowedModels, "allow-model", nil, "Allow exact upstream model ID (repeatable; disables unsupported AI routes and WebSockets)")
+	proxyRunCmd.Flags().StringArrayVar(&proxyAllowedModels, "allow-model", nil, "Allow exact upstream model ID (repeatable; recreate proxy to change)")
 	// serve flags
 	proxyServeCmd.Flags().StringVar(&proxyRole, "role", authproxy.RoleAuth, "Proxy role: \"auth\" (reverse routes + token + admin, no forwarding) or \"egress\" (forward proxy only, no credentials)")
 	proxyServeCmd.Flags().StringVar(&proxyListenAddr, "listen", "0.0.0.0:18080", "worker-facing listen address")
@@ -471,6 +478,7 @@ type proxyRunArgs struct {
 	oauthStateDir    string // private writable host directory
 	credentialSocket string // private host Unix socket, mounted only into auth proxy
 	caseID           string
+	allowedModels    []string
 }
 
 func caseDigest(id string) string {
@@ -538,6 +546,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	}
 
 	args = append(args, a.image, "proxy", "serve", "--listen", a.listenAddr)
+	for _, model := range a.allowedModels {
+		args = append(args, "--allow-model", model)
+	}
 	if a.brokerFile != "" {
 		args = append(args, "--credential-routes", "/run/cxd-broker.json")
 	}

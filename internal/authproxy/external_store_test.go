@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
@@ -72,6 +73,11 @@ func TestExternalCredentialCasesDoNotReadHostOrMixRefreshes(t *testing.T) {
 	}
 	next := *a.oauthCreds
 	next.AccessToken = "new-access-a"
+	active, release, ok := a.workerRequest(request, true)
+	if !ok {
+		t.Fatal("case token rejected before storage failure")
+	}
+	defer release()
 	store.fail = true
 	if err := a.persistOAuthState("openai", &next); err == nil {
 		t.Fatal("failed DB save was accepted")
@@ -79,7 +85,21 @@ func TestExternalCredentialCasesDoNotReadHostOrMixRefreshes(t *testing.T) {
 	if a.storeVersion != "a1" || a.oauthCreds.AccessToken != "access-a" {
 		t.Fatal("failed save published new credentials")
 	}
+	select {
+	case <-active.Context().Done():
+	case <-time.After(time.Second):
+		t.Fatal("storage failure left active stream lease alive")
+	}
+	if _, cleanup, ok := a.workerRequest(request, true); ok {
+		cleanup()
+		t.Fatal("storage failure did not revoke the case token")
+	}
 	store.fail = false
+	// Recovery requires a fresh proxy that reloads the durable generation.
+	a, err = NewProxy(Config{CredentialStore: store, CaseID: "user-a", AdminSecret: "fixture-admin-secret-long-enough-0001", AdminListenAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := a.persistOAuthState("openai", &next); err != nil {
 		t.Fatal(err)
 	}

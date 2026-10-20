@@ -80,7 +80,7 @@ cxd run --image IMAGE --environment-lock codex-dock.lock.json -d
 cxd run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
 ```
 
-寿命・idle・保持期限は `reap --watch` またはGo APIの定期的な `Reap` 呼出しが適用します。CLI起動だけで監視サービスを常駐配置することはありません。監視が止まれば期限の適用も止まります。idleは最後の管理API実行の時刻で、guestのCPU使用やファイル更新を計測した値ではありません。長いジョブ・対話作業にidle制限を使うと途中停止し得るため、用途に合わせて選んでください。停止はtoken失効を伴い、削除は既存の所有権確認・削除journalを通します。保持期限ゼロは削除しません。
+寿命・idle・保持期限は `reap --watch` またはGo APIの定期的な `Reap` 呼出しが適用します。CLI起動だけで監視サービスを常駐配置することはありません。監視が止まれば期限の適用も止まります。idleは最後の管理API実行の時刻で、guestのCPU使用やファイル更新を計測した値ではありません。対応ノードでは開始待ちexec・実行中exec/PTY・背景ジョブをidle回収から除外します。停止直前にノード内で再確認するため、新しいexecとの競合でも停止しません。agentのメインプロセスや管理API外で起動した処理の活動は判定しないため、これらを使う場合はidle制限を無効にしてください。最大寿命の明示制限は実行中でも適用されます。停止はtoken失効を伴い、削除は既存の所有権確認・削除journalを通します。保持期限ゼロは削除しません。
 
 lockはノード上のOCI image digestと指定ファイルのSHA-256を固定し、新規ファイルにだけ書きます。タグまたはsourceが変われば起動を拒否します。依存パッケージ自体のlockfileもsourceに含めてください。起動hookはguest内で認証設定後・agent開始前に順次実行します。probe成功後に起動完了とし、失敗や期限超過では起動を回収します。既定のhook/probe期限は60秒、起動全体には既存の180秒上限もあります。対応ラベルのない旧イメージではhookを拒否します。
 
@@ -116,3 +116,20 @@ go test ./internal/networkpolicy -run '^$' -bench . -benchmem -count=3
 ```
 
 TUIログは追記描画に変更し、2000行・約4 MiBで区切ります。履歴全体を毎回再生成する処理をなくし、終了時にはpollingも停止します。
+
+
+## モデル認可と段階的な起動
+
+`cxd proxy run --allow-model model-id`（繰返し可）、ホスト設定 `[proxy].allowed_models`、または `CaseProxyOptions.AllowedModels` で、その認証プロキシ全体のAI要求を制限します。空リストでは既存の転送を変更しません。設定は起動時に固定し、変更にはワーカー退避・プロキシ再作成が必要です。`ProxyCapabilities` は対応能力と有効状態を別々に返します。
+
+制限時はPOSTのJSONを最大8 MiBまで読み、正確な `model` 文字列を照合します。重複キー・大小文字違いのmodelキー・不正JSON・圧縮本文・query・encoded pathを拒否します。検査後の本文はそのまま送信し、上流redirectは追跡しません。対応経路は `/v1/responses`、`/v1/responses/compact`、`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings`、`/v1/moderations`、`/chatgpt/codex/responses`、`/chatgpt/codex/responses/compact`、`/anthropic/v1/messages`、`/anthropic/v1/messages/count_tokens` です。その他のAI経路とWebSocketは拒否するため、HTTP対応のクライアント設定が必要です。モデル一覧取得やbatch・ファイルAPIもこのモードでは転送しません。
+
+これは要求に記載したIDの制限です。上流がaliasをどの実モデルへ解決するかは管理しません。認証brokerの独自経路・一般通信先・利用者が持ち込んだ別の資格情報を一括認可する仕組みではありません。必須のモデル制限を持つ製品では、一般通信を無効にするか到達先を限定し、独自brokerに別のAI経路を設定しないでください。
+
+Go APIの `Create` は、既存 `Launch` と同じ検証済み設定で初回起動前まで作成します。VM・hook・agentは実行せず、生きたワーカートークンも発行しません。ネットワーク・snapshot・ホスト資源予約は作成するため、承認前の資源確保も禁止する契約では `Create` 自体を承認後に呼んでください。採用しなかった作成済みワーカーは `Remove` で回収します。最大寿命は作成時刻から数えるため、承認待ち時間も含みます。`Create` と `Launch` は要求IDを共有できず、同じ操作の再送は同じIDを使います。`Start` は隔離検証・トークン有効化・hook/readinessまで完了して成功します。取消・失敗後は `Request` / `Get` と新しいcontextで照合・回収してください。
+
+## 回収の常駐とメモリの観測
+
+任意のsystemd user unitを `deploy/kata/codex-dock-reaper.service` に用意しています。対応するCLIを配置後、通常オペレーターが `~/.config/systemd/user/` にコピーし、`systemctl --user daemon-reload` と `systemctl --user enable --now codex-dock-reaper.service` で有効にします。ログは `journalctl --user -u codex-dock-reaper.service`、状態は `systemctl --user status codex-dock-reaper.service` で確認します。失敗時は5秒後に再起動します。ユーザーサービスをログアウト後も維持する必要がある場合は、管理者が当該ユーザーのlingerを設定します。自動配置・自動有効化はしません。複数ケースの製品は管理シークレットを持つ自分のクライアントから定期的に `Reap` を呼び、エラーを監視してください。
+
+`ResourceUsage` は検証済みで稼働中のVMについて、ホストcgroupの `memory.current`・対応カーネルの `memory.peak`・`oom_kill` を返します。guestのRSSではありません。guest/hostの予約上限は別フィールドです。guest値はワーカーのcgroup上限で、VM全体の `/proc/meminfo` の総RAMとは区別します。smallのguest 1 GiB／host 2 GiBと既定のstandardは維持します。軽量用途には明示選択の `compact`（guest 512 MiB／host 768 MiB、1 CPU、512 PID）を追加しました。CLIは `--profile-size compact`、Go APIは `Profile: "compact"` で選びます。対応nodeへ更新し、`Profiles` で値を確認してください。容量の大きい依存導入やビルドの完走を保証する値ではないため、製品固有の処理・同時実行・peak・OOMを測って選択します。CLIの `vm inspect --json` でも同じホスト観測値を確認できます。

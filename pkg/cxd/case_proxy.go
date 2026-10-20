@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,6 +38,8 @@ type CaseProxyOptions struct {
 	StoreSocket string
 	AdminPort   int
 	AdminSecret string
+	// AllowedModels optionally enforces exact upstream model IDs for this case.
+	AllowedModels []string
 }
 
 type CaseProxy struct {
@@ -50,6 +53,9 @@ var caseProxyName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 // EnsureCaseProxy starts an auth proxy with no host HOME credential mounts.
 // The store socket is mounted only into this proxy, never into worker VMs.
 func EnsureCaseProxy(ctx context.Context, opts CaseProxyOptions) (CaseProxy, error) {
+	if err := authproxy.ValidateAllowedModels(opts.AllowedModels); err != nil {
+		return CaseProxy{}, err
+	}
 	if !caseProxyName.MatchString(opts.Name) || opts.CaseID == "" || len(opts.CaseID) > 256 || strings.ContainsAny(opts.CaseID, "\x00\r\n") || len(opts.AdminSecret) < 32 || opts.AdminPort < 1 || opts.AdminPort > 65535 {
 		return CaseProxy{}, fmt.Errorf("case proxy requires name, case ID, admin secret and a valid admin port")
 	}
@@ -109,6 +115,9 @@ func EnsureCaseProxy(ctx context.Context, opts CaseProxyOptions) (CaseProxy, err
 				}
 			}
 		}
+		if !sameModelPolicy(existing.Config.Cmd, opts.AllowedModels) {
+			return CaseProxy{}, fmt.Errorf("case proxy model policy differs; drain workers before replacement")
+		}
 		if !mounted {
 			return CaseProxy{}, fmt.Errorf("case proxy credential socket differs; drain workers before replacement")
 		}
@@ -137,6 +146,9 @@ func EnsureCaseProxy(ctx context.Context, opts CaseProxyOptions) (CaseProxy, err
 		Image: opts.Image, User: fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid()),
 		Cmd:    []string{"proxy", "serve", "--listen", "0.0.0.0:18080", "--role", "auth", "--admin-listen", "egress:" + strconv.Itoa(opts.AdminPort), "--admin-secret", opts.AdminSecret, "--block-private", "--credential-store-socket", "/run/cxd-credential-store.sock", "--case-id", opts.CaseID},
 		Labels: map[string]string{"io.codex-dock.proxy-layout": "split-v3-oauth-state", "io.codex-dock.credential-case": caseHash},
+	}
+	for _, model := range opts.AllowedModels {
+		cfg.Cmd = append(cfg.Cmd, "--allow-model", model)
 	}
 	host := &container.HostConfig{Runtime: "runc", CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, NetworkMode: container.NetworkMode(network.EgressNetworkName), Mounts: []mount.Mount{{Type: mount.TypeBind, Source: opts.StoreSocket, Target: "/run/cxd-credential-store.sock", ReadOnly: true}}, PortBindings: nat.PortMap{port: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: strconv.Itoa(opts.AdminPort)}}}}
 	created, err := cli.ContainerCreate(ctx, cfg, host, nil, nil, opts.Name)
@@ -200,4 +212,21 @@ func RemoveCaseProxy(ctx context.Context, nodeSocket, name, caseID string) error
 		}
 	}
 	return cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
+}
+
+// Compare immutable launch arguments, including absent flags on legacy proxies.
+func sameModelPolicy(args, models []string) bool {
+	actual := []string{}
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--allow-model" {
+			i++
+			if i == len(args) {
+				return false
+			}
+			actual = append(actual, args[i])
+		} else if strings.HasPrefix(args[i], "--allow-model=") {
+			actual = append(actual, strings.TrimPrefix(args[i], "--allow-model="))
+		}
+	}
+	return slices.Equal(actual, models)
 }

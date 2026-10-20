@@ -8,6 +8,9 @@ import (
 // Tests use fixtures exclusively. Never read the developer's real OAuth cache
 // or API keys, including when an assertion would print a credential on failure.
 func TestMain(m *testing.M) {
+	if os.Getenv("CXD_KATA_FIXTURE_PROXY") == "1" {
+		os.Exit(runKataFixtureProxy())
+	}
 	dir, err := os.MkdirTemp("", "codex-dock-auth-tests-")
 	if err != nil {
 		os.Exit(1)

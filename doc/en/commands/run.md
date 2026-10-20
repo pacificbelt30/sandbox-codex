@@ -64,7 +64,7 @@ cxd run -- npm test -- --watch=false
 | `--model` | `-m` | | Model name to pass to Codex |
 | `--read-only` | | `false` | Mount project directory read-only |
 | `--read-only-rootfs` | | `false` | Make the image rootfs read-only; use tmpfs for HOME and temporary files |
-| `--profile-size` | | `standard` | Kata VM resource profile (`standard` or `small`) |
+| `--profile-size` | | `standard` | Kata VM resource profile (`standard`, `small`, or `compact`) |
 | `--no-git-metadata` | | `false` | Do not automatically share linked worktree Git metadata |
 | `--mount` | | | Additional host directory to mount (repeatable): `<host-path>:<container-path>[:ro\|rw]` ([details](#--mount)) |
 | `--no-internet` | | `false` | Disconnect general egress; keep fixed AI API routes |
@@ -314,3 +314,5 @@ cxd run --template mytool
 - [Auth Proxy Specification](../auth-proxy.md)
 - [Network Specification](../network.md)
 - [Configuration Reference](../configuration.md)
+
+`compact` is an explicit lightweight profile: one CPU, guest 512 MiB, host limit 768 MiB, 512 PIDs. Select --profile-size compact; existing standard/small profiles remain unchanged. Large dependency installs/builds may not fit. Use an updated node and [measure workloads](../sandbox-features.md#supervised-collection-and-memory-observation).

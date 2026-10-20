@@ -16,6 +16,8 @@ type ResourceProfile struct {
 
 const SmallGuestMemory = int64(1024 * 1024 * 1024)
 const SmallHostMemory = int64(2048 * 1024 * 1024)
+const CompactGuestMemory = int64(512 * 1024 * 1024)
+const CompactHostMemory = int64(768 * 1024 * 1024)
 
 func CurrentResourceProfile() ResourceProfile {
 	return ResourceProfile{
@@ -33,6 +35,8 @@ func LookupResourceProfile(name string) (ResourceProfile, bool) {
 		return CurrentResourceProfile(), true
 	case "small":
 		return ResourceProfile{Name: "small", CPUCores: 1, GuestMemoryBytes: SmallGuestMemory, HostMemoryBytes: SmallHostMemory, PIDLimit: 512}, true
+	case "compact":
+		return ResourceProfile{Name: "compact", CPUCores: 1, GuestMemoryBytes: CompactGuestMemory, HostMemoryBytes: CompactHostMemory, PIDLimit: 512}, true
 	default:
 		return ResourceProfile{}, false
 	}
@@ -41,5 +45,6 @@ func LookupResourceProfile(name string) (ResourceProfile, bool) {
 func ResourceProfiles() []ResourceProfile {
 	standard := CurrentResourceProfile()
 	small, _ := LookupResourceProfile("small")
-	return []ResourceProfile{standard, small}
+	compact, _ := LookupResourceProfile("compact")
+	return []ResourceProfile{standard, small, compact}
 }

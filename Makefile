@@ -17,7 +17,7 @@ TEMPLATES_DIR := $(CONFIG_DIR)/templates
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X $(MODULE)/internal/buildinfo.Version=$(VERSION)"
 
-.PHONY: all build node-bundle worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e lint vet tidy help
+.PHONY: all build node-bundle worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e kata-api-e2e lint vet tidy help
 
 ## all: build binary and OCI images
 all: build image proxy-image
@@ -119,6 +119,10 @@ test:
 ## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
 kata-e2e: build
 	CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_POLICY_E2E=1 CODEX_DOCK_KATA_TEST_BINARY="$(CURDIR)/$(BINARY)" go test ./internal/sandbox -run '^TestKata(Acceptance|WorkspaceSharing|PolicyFeatures)$$' -count=1 -v -timeout=15m
+
+## kata-api-e2e: public Go API failure/recovery acceptance with synthetic upstreams
+kata-api-e2e: build
+	python3 scripts/verify-go-api.py --binary "$(CURDIR)/$(BINARY)" --version "$(VERSION)"
 
 ## lint: run golangci-lint
 lint:

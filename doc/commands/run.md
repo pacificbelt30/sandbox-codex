@@ -65,7 +65,7 @@ cxd run -- npm test -- --watch=false
 | `--model` | `-m` | | エージェントに渡すモデル名 |
 | `--read-only` | | `false` | プロジェクトディレクトリを読み取り専用でマウント |
 | `--read-only-rootfs` | | `false` | イメージの rootfs を読み取り専用にし、HOME と一時ファイルには tmpfs を使用 |
-| `--profile-size` | | `standard` | Kata VM の資源プロファイル（`standard` / `small`） |
+| `--profile-size` | | `standard` | Kata VM の資源プロファイル（`standard` / `small` / `compact`） |
 | `--no-git-metadata` | | `false` | linked worktree の共通 Git metadata を自動共有しない |
 | `--mount` | | | 追加のホストディレクトリをマウント（繰り返し指定可）`<host-path>:<container-path>[:ro\|rw]`（[詳細](#--mount--任意ディレクトリの追加マウント)） |
 | `--no-internet` | | `false` | 一般egressプロキシを接続せず、AI API経路だけを維持 |
@@ -401,3 +401,5 @@ cxd run --user 1000:1000
 - [Auth Proxy 技術仕様](../auth-proxy.md) — 認証の仕組み
 - [ネットワーク仕様](../network.md) — 専用ワーカーネットワークと2種類のプロキシの構成
 - [設定リファレンス](../configuration.md) — config.toml の設定項目
+
+`compact` は軽量用途向けの明示選択です（1 CPU・guest 512 MiB・ホスト上限 768 MiB・512 PID）。`--profile-size compact` で指定し、既定のstandard/smallは変えません。大きな依存導入やビルドには不足する場合があります。対応nodeと[実測値の確認](../sandbox-features.md#回収の常駐とメモリの観測)が必要です。

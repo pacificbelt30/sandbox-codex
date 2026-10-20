@@ -20,12 +20,14 @@ func (c *Client) Capabilities() Capabilities {
 }
 
 type ProxyCapabilities struct {
-	CaseProxy        bool
-	CredentialBroker bool
-	TokenIdentity    bool
-	OpenAIOAuth      bool
-	Anthropic        bool
-	AnthropicOAuth   bool
+	ModelAuthorization bool
+	ModelPolicyActive  bool
+	CaseProxy          bool
+	CredentialBroker   bool
+	TokenIdentity      bool
+	OpenAIOAuth        bool
+	Anthropic          bool
+	AnthropicOAuth     bool
 }
 
 // ProxyCapabilities probes the configured auth proxy. Node capabilities alone
@@ -35,5 +37,5 @@ func (c *Client) ProxyCapabilities(ctx context.Context) (ProxyCapabilities, erro
 	if err != nil {
 		return ProxyCapabilities{}, err
 	}
-	return ProxyCapabilities{CredentialBroker: p.SupportsCredentialBroker(), CaseProxy: p.IsCaseProxy(), TokenIdentity: p.SupportsTokenIdentity(), OpenAIOAuth: p.IsOAuthMode(), Anthropic: p.IsAnthropicMode(), AnthropicOAuth: p.IsAnthropicOAuthMode()}, nil
+	return ProxyCapabilities{ModelAuthorization: p.SupportsModelAuthorization(), ModelPolicyActive: p.ModelPolicyActive(), CredentialBroker: p.SupportsCredentialBroker(), CaseProxy: p.IsCaseProxy(), TokenIdentity: p.SupportsTokenIdentity(), OpenAIOAuth: p.IsOAuthMode(), Anthropic: p.IsAnthropicMode(), AnthropicOAuth: p.IsAnthropicOAuthMode()}, nil
 }

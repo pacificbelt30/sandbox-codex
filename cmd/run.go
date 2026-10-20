@@ -85,7 +85,7 @@ func init() {
 	f.StringVar(&runOpts.Runtime, "runtime", sandbox.RuntimeKata, "Worker isolation: kata (default, requires Linux/KVM) or explicit runc compatibility mode; never falls back automatically")
 	f.StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration on the dedicated containerd node")
 	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "OCI image for the sandbox")
-	f.StringVar(&runOpts.ResourceProfile, "profile-size", "standard", "Kata worker size: standard or small (1 GiB guest RAM)")
+	f.StringVar(&runOpts.ResourceProfile, "profile-size", "standard", "Kata worker size: standard, small (1 GiB) or compact (512 MiB)")
 	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "cxd build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
@@ -171,7 +171,7 @@ func init() {
 	registerCompletion(runCmd, "user", cobra.FixedCompletions([]cobra.Completion{"current", "codex", "dir"}, cobra.ShellCompDirectiveNoFileComp))
 	registerCompletion(runCmd, "template", completeTemplates)
 	registerCompletion(runCmd, "image", completeImageTags)
-	registerCompletion(runCmd, "profile-size", cobra.FixedCompletions([]cobra.Completion{"standard", "small"}, cobra.ShellCompDirectiveNoFileComp))
+	registerCompletion(runCmd, "profile-size", cobra.FixedCompletions([]cobra.Completion{"standard", "small", "compact"}, cobra.ShellCompDirectiveNoFileComp))
 }
 
 func runWorker(cmd *cobra.Command, args []string) error {
@@ -643,6 +643,7 @@ func connectProxyWithRetry(adminURL, containerURL, secret string, attempts int) 
 }
 
 func applyRunConfigDefaults(cmd *cobra.Command) {
+	proxyAllowedModels = viper.GetStringSlice("proxy.allowed_models")
 	if !cmd.Flags().Changed("watch-polling") {
 		runOpts.WatchPolling = viper.GetBool("run.watch_polling")
 	}

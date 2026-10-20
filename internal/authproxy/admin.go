@@ -115,6 +115,8 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{
 		"worker_token_auth":    true,
+		"model_authorization":  true,
+		"model_policy_active":  len(p.cfg.AllowedModels) != 0,
 		"credential_broker":    true,
 		"oauth_mode":           p.IsOAuthMode(),
 		"anthropic_available":  p.IsAnthropicMode(),

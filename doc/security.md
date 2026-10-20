@@ -52,3 +52,5 @@ workspaceと追加mountのreadonly指定を保つ。worktreeでのcommit互換�
 [実機試験と実AI試験](testing.md)では、隔離・権限・資源・機能と、既存auth.jsonによるWebSocket/HTTP SSE推論を確認した。
 長期間の実OAuth更新、対話キーボード操作、任意のカスタムイメージは別途確認が必要。
 隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。
+
+モデルIDの制限は、ホストが認証プロキシへ明示設定した場合だけ有効です。起動CLIのモデル指定だけでは認可を強制しません。対応経路・WebSocket拒否・別通信経路の扱いは[追加制御](sandbox-features.md#モデル認可と段階的な起動)を参照してください。

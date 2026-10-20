@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,12 +95,14 @@ func (p *Proxy) persistOAuthState(provider string, credentials any) error {
 		defer cancel()
 		version, err := store.SaveRefresh(ctx, p.cfg.CaseID, p.storeVersion, provider, next)
 		if err != nil {
-			if errors.Is(err, credentialstore.ErrConflict) || errors.Is(err, credentialstore.ErrNotFound) {
-				p.revokeCaseTokens()
-			}
+			// A rotated refresh token may already have invalidated the saved
+			// generation even when storage is merely unavailable. Do not keep
+			// serving the case after a generation failed to become durable.
+			p.revokeCaseTokens()
 			return err
 		}
 		if version == "" {
+			p.revokeCaseTokens()
 			return fmt.Errorf("external credential store returned empty version")
 		}
 		next.Version = version

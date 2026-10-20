@@ -29,7 +29,7 @@ gofmt -l cmd internal pkg
 | 製品組み込み用 Go API | 公開エラー分類と要求IDの入力検査、node台帳での競合・再送・応答消失時の照合と回収、通信許可の入力検査 |
 | ケース別認証 | 資格情報ソケットの権限とケース分離、OAuth更新の版競合、ケース変更時の失効、プロバイダー経路と実行IDの失効 |
 
-[Go API](go-api.md)の実Kata環境での製品経由の一連の起動・実行・取消・回収は、現時点の自動受入試験には含まれていません。上記の単体テストとCLI経由の実Kata受入結果を区別してください。
+[Go API](go-api.md)の実Kata受入には別ターゲット `make kata-api-e2e` を用意しています。下記のCLI受入と分けて実行し、成功記録がある版・範囲を確認してください。
 
 ## 実Kataで確認する
 
@@ -168,3 +168,29 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 - Go APIの新しい設定を使わない場合、既存要求IDのfingerprint入力が旧版と一致することをgolden testで確認。
 
 [追加制御の一覧と運用条件](sandbox-features.md)も参照してください。寿命・保持期限の適用には `reap --watch` または定期的な `Reap` 呼出しが必要です。実APIキーを使う外部AI推論と、実SSH/JDKサービスへの接続は今回の受入試験には含めていません。認証brokerの経路制限・失効・redirect、独自CA・多段proxyはローカルfixtureで検証しています。
+
+
+## 公開Go APIの障害系受入
+
+対応するCLI/node、ワーカーイメージ、ベースproxyイメージ、standalone BuildKitを配置した専用Linux/KVMホストで `make kata-api-e2e` を実行します。`CODEX_DOCK_KATA_NODE_SOCKET` と `BUILDKIT_HOST` で対象を明示できます。`CODEX_DOCK_KATA_TEST_IMAGE` と `CODEX_DOCK_KATA_PROXY_IMAGE` は利用するベースイメージを選びます。ビルド版はnodeと一致させてください（例：`make kata-api-e2e VERSION=dev`）。
+
+スクリプトは `internal/authproxy` のテスト実行ファイルを入れた一意のfixtureイメージを作ります。本物のproxy handler・Unix credential adapterを通し、上流だけをプロキシ内の架空HTTPサーバーへ差し替えます。実APIキーや外部AI推論は使いません。OAuth更新の実Kata fixtureはOpenAI型で、実Anthropic接続は含みません。fixtureイメージを運用に使わないでください。ワーカーとケースproxyを最後に削除し、スクリプト所有のfixtureイメージもテストが回収します。BuildKit cacheとホスト共通egress networkは通常のビルド・ノード管理に従います。
+
+`TestKataAPIIntegration` の対象は、Createの再送とLaunchとの衝突、起動前にhookが動かないこと、Start後のreadiness、small/compactのホストcurrent/peak/OOMとcompact 2台の同時稼働、実要求のモデル拒否、実行中ジョブ/streamのidle回収除外、RevokeRunによる通信中streamの終了と再利用拒否、hook中のLaunch取消と要求台帳・資源回収、OAuth保存失敗・版競合での失効、正常更新とproxy再起動での保存世代再取得、古いtoken拒否と停止/再起動での再有効化です。
+
+
+## 製品組み込み改善の検証（2026-10-20）
+
+既存サービスから分離したcontainerd・BuildKit・Kataノード・cgroupで、`make kata-e2e VERSION=dev`（400.698秒）と `make kata-api-e2e VERSION=dev`（受入本体228.339秒）が成功しました。後者はcompact・lifecycle・保存失敗・版競合・proxy再起動の5ケースすべてが成功し、参照中イメージの削除拒否と、最後の試験用イメージ削除・参照消失まで確認しています。取消後のinventoryで、余分なVM・ホスト割当・実プロセスが残らないことも確認しました。
+
+| compactの観測 | ホストcurrent | ホストpeak | 条件 |
+|---|---:|---:|---|
+| 起動後の待機 | 144850944 B（約138 MiB） | 144850944 B | guestワーカー上限512 MiB、ホスト上限768 MiB |
+| 256 MiB確保ジョブ実行中 | 424894464 B（約405 MiB） | 425246720 B（約406 MiB） | 別のcompact VMも同時稼働 |
+| 同時稼働の2台目 | 156971008 B（約150 MiB） | 157384704 B | 待機中 |
+
+両VMでguestの `memory.max=536870912` とguest/hostのOOMカウンター0を確認し、負荷ジョブが意図的な停止まで動き続けることも確認しました。同一ホスト・架空HTTP上流での限定した負荷試験です。一般的な依存導入・大規模ビルド・実AI CLI負荷の必要量を保証しません。standard/smallの既存上限と既定値は維持しています。
+
+`make build`、全パッケージrace/coverageテスト、vet、lint、macOS arm64クロスビルド、ドキュメントstrictビルドも成功しました。公開APIの要求台帳照合に必要なcontainerd namespaceを補い、OAuth保存先の一般エラーと空の保存版でもケースと通信中leaseを失効させることを試験しています。運用条件とモデル制限時の対応経路は[追加制御](sandbox-features.md)を参照してください。実認証情報・外部AI推論・systemd user unitの常駐稼働はこの受入には含めず、既存サービスへの更新適用もしていません。
+
+検証終了後、専用ワーカー・proxy・ネットワークが0件であることを確認し、検証用containerd・BuildKit・ノード・cgroup・socket・状態領域を回収しました。既存containerdとノードの稼働は継続しています。

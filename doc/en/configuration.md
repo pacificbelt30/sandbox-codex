@@ -191,3 +191,5 @@ See [host setup](../kata.md) (Japanese).
 | `~/.claude/.credentials.json` | Claude Code login |
 
 Do not include their contents in logs or images. See [auth proxy](auth-proxy.md).
+
+Host `[proxy].allowed_models` optionally allows exact upstream model IDs. Empty preserves legacy behavior; enabled policies deny unsupported AI routes and WebSockets. Explicit `proxy run --allow-model` flags take precedence. Recreate the proxy and check [supported routes](sandbox-features.md#model-authorization-and-staged-startup).

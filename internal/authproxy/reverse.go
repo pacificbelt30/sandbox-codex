@@ -19,6 +19,9 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 	}
 	defer done()
 	r = authenticated
+	if !p.authorizeModel(w, r) {
+		return
+	}
 	// Preserve the encoded path so a newly added upstream endpoint can use its
 	// own path syntax without the proxy decoding and re-encoding it.
 	path := strings.TrimPrefix(r.URL.EscapedPath(), stripPrefix)
@@ -62,9 +65,19 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		}
 	}
 	// Inject real host credentials, overriding any placeholder the container sent.
+	if r.Context().Err() != nil {
+		http.Error(w, "worker request canceled or expired", http.StatusUnauthorized)
+		return
+	}
 	inject(req.Header)
 
-	resp, err := p.httpClient.Do(req)
+	client := p.httpClient
+	if len(p.cfg.AllowedModels) != 0 {
+		copy := *client
+		copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &copy
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return

@@ -135,9 +135,12 @@ func (g *Guard) observeEnvelope(ctx context.Context, id string) VM {
 			}
 		}
 	}
-	for _, name := range []string{"cpu.max", "memory.max", "memory.current", "memory.swap.max", "pids.max", "pids.current", "memory.events"} {
+	for _, name := range []string{"cpu.max", "memory.max", "memory.current", "memory.peak", "memory.swap.max", "pids.max", "pids.current", "memory.events"} {
 		b, err := os.ReadFile(filepath.Join(path, name))
 		if err != nil {
+			if name == "memory.peak" && os.IsNotExist(err) {
+				continue
+			}
 			vm.Problems = append(vm.Problems, err.Error())
 		} else {
 			vm.Resources[name] = strings.TrimSpace(string(b))

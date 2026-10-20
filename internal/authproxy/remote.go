@@ -26,6 +26,8 @@ type RemoteProxy struct {
 	identityMode       bool
 	caseProxy          bool
 	credentialBroker   bool
+	modelAuthorization bool
+	modelPolicyActive  bool
 	httpClient         *http.Client
 	adminSecretHeader  string
 }
@@ -56,6 +58,8 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 	r.identityMode = mode["token_identity"]
 	r.caseProxy = mode["case_proxy"]
 	r.credentialBroker = mode["credential_broker"]
+	r.modelAuthorization = mode["model_authorization"]
+	r.modelPolicyActive = mode["model_policy_active"]
 	return r, nil
 }
 
@@ -198,3 +202,6 @@ func connectionHint(err error) string {
 }
 
 func (r *RemoteProxy) SupportsCredentialBroker() bool { return r.credentialBroker }
+
+func (r *RemoteProxy) SupportsModelAuthorization() bool { return r.modelAuthorization }
+func (r *RemoteProxy) ModelPolicyActive() bool          { return r.modelPolicyActive }

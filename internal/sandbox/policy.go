@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
+	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -87,7 +89,12 @@ func (m *Manager) Reap(ctx context.Context, now time.Time, dryRun bool) ([]ReapA
 					failures = append(failures, fmt.Errorf("worker %s: node does not report idle activity; upgrade the node", w.ID))
 					continue
 				}
-				if now.Sub(active) >= p.IdleTimeout {
+				count, err := strconv.Atoi(v.Config.Labels[labelPrefix+"active-executions"])
+				if err != nil || count < 0 {
+					failures = append(failures, fmt.Errorf("worker %s: safe idle collection requires an updated node", w.ID))
+					continue
+				}
+				if count == 0 && now.Sub(active) >= p.IdleTimeout {
 					a.Action, a.Reason = "stop", "idle_timeout"
 				}
 			}
@@ -104,18 +111,57 @@ func (m *Manager) Reap(ctx context.Context, now time.Time, dryRun bool) ([]ReapA
 		if a.Action == "" {
 			continue
 		}
-		actions = append(actions, a)
 		if dryRun {
+			actions = append(actions, a)
 			continue
 		}
-		if a.Action == "stop" {
+		if a.Reason == "idle_timeout" {
+			var stopped bool
+			stopped, err = m.stopIdle(ctx, v.ID, now.Add(-p.IdleTimeout))
+			if err == nil && !stopped {
+				continue // New activity appeared after inspection; no token revoked.
+			}
+		} else if a.Action == "stop" {
 			err = m.StopContext(ctx, w.ID, 10)
 		} else {
 			err = m.RemoveContext(ctx, w.ID, false)
 		}
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s %s: %w", a.Action, w.ID, err))
+		} else {
+			actions = append(actions, a)
 		}
 	}
 	return actions, errors.Join(failures...)
+}
+
+func (m *Manager) stopIdle(parent context.Context, id string, before time.Time) (bool, error) {
+	ctx, cancel := context.WithTimeout(parent, 120*time.Second)
+	defer cancel()
+	unlock, err := m.lockCleanup(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	v, err := m.cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	var result struct {
+		Stopped bool `json:"stopped"`
+	}
+	err = m.jobRequest(ctx, "POST", "/containers/"+url.PathEscape(id)+"/idle-stop?before="+url.QueryEscape(before.Format(time.RFC3339Nano)), &result)
+	if err == nil && !result.Stopped {
+		return false, nil
+	}
+	// An uncertain stop must also fail closed for credentials. Leave durable
+	// allocation recovery to the normal Stop/Remove retry if the node failed.
+	revokeErr := m.revokeWorkerTokenChecked(v)
+	if err != nil {
+		return false, errors.Join(err, revokeErr)
+	}
+	if v.Config.Labels[labelIsolation] == RuntimeKata {
+		err = m.releaseKataAllocation(ctx, v.Config.Labels[labelAllocation], v.ID)
+	}
+	return true, errors.Join(err, revokeErr)
 }

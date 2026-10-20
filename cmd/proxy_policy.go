@@ -46,6 +46,9 @@ func bindForwardPolicyFlags(cmd *cobra.Command) {
 }
 
 func applyForwardPolicyDefaults(cmd *cobra.Command) {
+	if cmd.Flags().Lookup("allow-model") == nil || !cmd.Flags().Changed("allow-model") {
+		proxyAllowedModels = viper.GetStringSlice("proxy.allowed_models")
+	}
 	if !cmd.Flags().Changed("upstream-proxy") {
 		proxyUpstreamURL = viper.GetString("proxy.upstream_proxy")
 	}

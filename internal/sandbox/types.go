@@ -99,6 +99,9 @@ type MountSpec struct {
 
 // RunOptions holds all options for starting a sandboxed container.
 type RunOptions struct {
+	// CreateOnly materializes a Kata worker without booting user code or issuing
+	// a live token. StartContext performs verification and activation later.
+	CreateOnly         bool
 	Compatibility      Compatibility
 	Filesystem         workerpolicy.Filesystem
 	Lifecycle          workerpolicy.Lifecycle

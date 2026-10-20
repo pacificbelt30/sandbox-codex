@@ -29,6 +29,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/network"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 	"golang.org/x/term"
 )
 
@@ -142,12 +143,16 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 			return "", err
 		}
 		supported := false
+		idleSafe := opts.Lifecycle.IdleTimeout == 0
 		for _, feature := range info.DriverStatus {
+			if feature == [2]string{"cxd.idle-safe", "1"} {
+				idleSafe = true
+			}
 			if feature == [2]string{"cxd.worker-policy", "1"} {
 				supported = true
 			}
 		}
-		if !supported {
+		if !supported || !idleSafe {
 			return "", fmt.Errorf("worker policy requires a newer cxd node; upgrade the node before enabling it")
 		}
 	}
@@ -175,6 +180,9 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	}
 	if err := m.CheckRuntime(ctx, opts); err != nil {
 		return "", err
+	}
+	if opts.CreateOnly && isolation != RuntimeKata {
+		return "", fmt.Errorf("create without initial start requires Kata isolation")
 	}
 	profile, _ := kataguard.LookupResourceProfile(opts.ResourceProfile)
 	if m.proxy != nil {
@@ -504,6 +512,12 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	if m.verbose {
 		fmt.Printf("Container created: %s (%s)\n", name, resp.ID[:12])
 	}
+	if opts.CreateOnly {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		return resp.ID, nil
+	}
 
 	if err := m.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return "", fmt.Errorf("starting container %s: %w", name, err)
@@ -546,7 +560,7 @@ func (m *Manager) Start(containerID string) (startErr error) {
 	return m.StartContext(context.Background(), containerID)
 }
 
-// StartContext restarts a retained worker and honors the caller's deadline.
+// StartContext starts a created or stopped worker and honors the caller's deadline.
 func (m *Manager) StartContext(parent context.Context, containerID string) (startErr error) {
 	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	defer cancel()
@@ -581,6 +595,24 @@ func (m *Manager) StartContext(parent context.Context, containerID string) (star
 			return m.verifyKataGuest(ctx, v.ID, false)
 		}
 		return nil
+	}
+	// Parse retained readiness before releasing user code.
+	var readyPath string
+	var environment workerpolicy.Environment
+	if kata {
+		for _, value := range v.Config.Env {
+			if strings.HasPrefix(value, "DOCK_ENVIRONMENT_READY=") {
+				readyPath = strings.TrimPrefix(value, "DOCK_ENVIRONMENT_READY=")
+			}
+			if strings.HasPrefix(value, "DOCK_ENVIRONMENT_JSON=") {
+				if err = json.Unmarshal([]byte(strings.TrimPrefix(value, "DOCK_ENVIRONMENT_JSON=")), &environment); err != nil {
+					return fmt.Errorf("invalid retained environment policy: %w", err)
+				}
+			}
+		}
+		if readyPath != "" && (filepath.Dir(readyPath) != "/var/tmp" || !strings.HasPrefix(filepath.Base(readyPath), "cxd-ready-")) {
+			return fmt.Errorf("invalid retained readiness path")
+		}
 	}
 	if kata {
 		g, err := m.kataNode()
@@ -630,7 +662,17 @@ func (m *Manager) StartContext(parent context.Context, containerID string) (star
 		if err = m.restoreWorkerToken(v); err != nil {
 			return err
 		}
+		if readyPath != "" {
+			if _, err = m.execTrusted(ctx, v.ID, []string{"rm", "-f", "--", readyPath}); err != nil {
+				return err
+			}
+		}
 		if _, err = m.execTrusted(ctx, v.ID, []string{guestGuard, "release", v.Config.Labels[labelAllocation]}); err != nil {
+			return err
+		}
+	}
+	if readyPath != "" {
+		if err = m.waitEnvironment(ctx, v.ID, readyPath, environment.ReadinessTimeout); err != nil {
 			return err
 		}
 	}

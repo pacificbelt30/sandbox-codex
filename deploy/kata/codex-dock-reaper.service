@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply explicitly configured cxd worker lifecycle policies
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cxd reap --watch
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -516,6 +516,7 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 	if !r.LastActivity.IsZero() {
 		r.Config.Labels["codex-dock.last-activity"] = r.LastActivity.Format(time.RFC3339Nano)
 	}
+	r.Config.Labels["codex-dock.active-executions"] = strconv.Itoa(b.activeExecutions(r.ID))
 	// Docker's current API still requires NetworkSettingsBase for published ports.
 	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil //nolint:staticcheck
 }
@@ -523,6 +524,9 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 // FindRequest checks a deterministic worker name against the durable engine
 // record. The node uses this only to reconcile a lost launch response.
 func (b *Backend) FindRequest(ctx context.Context, name string) (id, key, fingerprint string, found bool, err error) {
+	ctx = namespaces.WithNamespace(ctx, Namespace)
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	r, _, err := b.load(ctx, name)
 	if errdefs.IsNotFound(err) {
 		return "", "", "", false, nil
@@ -714,7 +718,7 @@ func failure(w http.ResponseWriter, err error) {
 	if errdefs.IsNotFound(err) {
 		code = 404
 	}
-	if errdefs.IsAlreadyExists(err) {
+	if errdefs.IsAlreadyExists(err) || errdefs.IsConflict(err) {
 		code = 409
 	}
 	w.WriteHeader(code)
@@ -749,7 +753,7 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			failure(w, err)
 			return
 		}
-		reply(w, system.Info{DriverStatus: [][2]string{{"cxd.worker-policy", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}, OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
+		reply(w, system.Info{DriverStatus: [][2]string{{"cxd.worker-policy", "1"}, {"cxd.idle-safe", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}, OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
 		return
 	}
 	if path == "/images/check" && r.Method == "GET" {
@@ -765,6 +769,39 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/images/load" && r.Method == "POST" {
 		b.importImages(w, r, ctx)
+		return
+	}
+	if strings.HasPrefix(path, "/images/") && r.Method == http.MethodDelete {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		name, err := imageName(strings.TrimPrefix(path, "/images/"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		// Remove one reference only, never force deletion or prune shared
+		// content/snapshots. Retained containers must remain restartable.
+		all, err := b.client.Containers(ctx)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		for _, c := range all {
+			info, err := c.Info(ctx)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			if info.Image == name {
+				failure(w, fmt.Errorf("%w: image is referenced by a retained container", errdefs.ErrConflict))
+				return
+			}
+		}
+		if err := b.client.ImageService().Delete(ctx, name); err != nil {
+			failure(w, err)
+			return
+		}
+		reply(w, []image.DeleteResponse{{Untagged: name}})
 		return
 	}
 	if strings.HasPrefix(path, "/images/") && strings.HasSuffix(path, "/json") {
@@ -878,6 +915,26 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "start":
 		err = b.start(ctx, rec, c)
+	case "idle-stop":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		before, parseErr := time.Parse(time.RFC3339Nano, r.URL.Query().Get("before"))
+		if parseErr != nil || before.After(time.Now()) {
+			failure(w, fmt.Errorf("invalid idle cutoff"))
+			return
+		}
+		// Serialize exec creation/start with the final idle decision and stop.
+		if !idleEligible(rec.LastActivity, before, b.activeExecutions(rec.ID)) {
+			reply(w, map[string]bool{"stopped": false})
+			return
+		}
+		err = b.stop(ctx, rec, c, 10)
+		if err == nil {
+			reply(w, map[string]bool{"stopped": true})
+			return
+		}
 	case "stop":
 		seconds := 10
 		if v := r.URL.Query().Get("t"); v != "" {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
@@ -35,6 +36,36 @@ func TestForwardPolicyConfigAndFlags(t *testing.T) {
 		if !containsSequence(args, pair[0], pair[1]) {
 			t.Fatalf("missing %v", pair)
 		}
+	}
+}
+
+func TestModelPolicyFlagsOverrideHostConfigAndChangeProxyIdentity(t *testing.T) {
+	old := proxyAllowedModels
+	t.Cleanup(func() { proxyAllowedModels = old; viper.Reset() })
+	viper.Reset()
+	viper.Set("proxy.allowed_models", []string{"configured"})
+	c := &cobra.Command{Use: "test-models"}
+	c.Flags().StringArrayVar(&proxyAllowedModels, "allow-model", nil, "")
+	applyForwardPolicyDefaults(c)
+	if !slices.Equal(proxyAllowedModels, []string{"configured"}) {
+		t.Fatal("host model policy ignored")
+	}
+	if err := c.Flags().Set("allow-model", "explicit"); err != nil {
+		t.Fatal(err)
+	}
+	applyForwardPolicyDefaults(c)
+	if !slices.Equal(proxyAllowedModels, []string{"explicit"}) {
+		t.Fatal("explicit policy overridden")
+	}
+	a := proxyRunArgs{role: authproxy.RoleAuth, allowedModels: proxyAllowedModels}
+	args := buildProxyRunArgs(a)
+	if !containsSequence(args, "--allow-model", "explicit") {
+		t.Fatal("policy not passed to proxy")
+	}
+	id := proxyTransportID(a)
+	a.allowedModels = []string{"different"}
+	if id == proxyTransportID(a) || id == "" {
+		t.Fatal("changed model policy would silently reuse proxy")
 	}
 }
 

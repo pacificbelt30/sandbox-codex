@@ -66,12 +66,14 @@ func main() {
 | `Launch(ctx, request)` | `RequestID` を使ってワーカーを作成・起動し、ID を返す。`ProjectDir` は絶対パス。現時点では作成と初回起動を分離しない |
 | `Get` / `List` | ワーカーの状態を照会する |
 | `Exec` / `Wait` | 既存ワーカーでコマンドを実行する／メインプロセスの終了を待つ |
+| `Create(ctx, request)` | 初回起動前のKataワーカーを作成。VM・hook・agent・生きたトークンは開始しない。作成と起動を分ける場合に使用 |
+| `ResourceUsage(ctx, worker)` | 検証済みVMのホストcgroupの現在値・peak・OOM kill数と、資源プロファイルの上限を別々に取得 |
 | `Start` / `Stop` / `Remove` | 停止済みワーカーの再起動／停止／回収。`Stop` は認証トークンを失効させる |
 | `Request` / `RemoveRequest` | 要求IDから永続起動状態を照会する／応答消失後も同じ要求IDで回収を再試行する |
 | `Profiles(ctx)` | 稼働中ノードの CPU、guest RAM、ホスト側予約メモリ、PID 上限を取得する。値は予約・制限の契約であり、実測 RSS ではない |
 | `Capabilities()` / `ProxyCapabilities(ctx)` | nodeのビルド版・プロトコル・対応機能／接続先認証Proxyの対応機能を調べる |
 
-`LaunchRequest` ではモデル、承認モード、追加マウント、read-only rootfs、Git metadata の非共有なども指定できます。指定しないイメージは `codex-dock:latest`、資源プロファイルは `standard` です。小型の `small` を選ぶ前に `client.Profiles(ctx)` で稼働中ノードの値を確認してください。
+`LaunchRequest` ではモデル、承認モード、追加マウント、read-only rootfs、Git metadata の非共有なども指定できます。指定しないイメージは `codex-dock:latest`、資源プロファイルは `standard` です。小型の `small` または軽量用途の `compact`（guest 512 MiB／host 768 MiB）を選ぶ前に `client.Profiles(ctx)` で稼働中ノードの値を確認してください。
 
 `Open` はソケットとノードのバージョンを確認します。`Launch` には、ビルド済みのイメージと起動中の認証プロキシが必要です。`client.PrepareProject(ctx, dir, requestID, log)` は CLI と共通の `codex-dock.toml` 検証を使い、必要なイメージを BuildKit で作成して `LaunchRequest` を返します。`client.Build` と `client.BuildTemplate` も個別に利用できます。製品側で設定を確認・補足してから `Launch` を呼べます。
 
@@ -100,3 +102,5 @@ func main() {
 公開 Go パッケージは node の内部 DTO をシグネチャに出しません。現時点では CLI・ライブラリ・node・proxyイメージを対応するビルドで配置してください。Go API 用nodeプロトコルはv2です。版またはプロトコルが違う場合、`Open` は `ErrVersionMismatch` を返します。`Capabilities()` は検証済みnode、`ProxyCapabilities(ctx)` は現在の認証Proxyを報告します。nodeの Unix ソケット上の HTTP/JSON は内部プロトコルであり、外部向けの互換性を約束しません。
 
 [追加のポリシー・実行・回収API](sandbox-features.md)
+
+`Create` の後に `Start` を呼ぶ段階的な起動も可能です。[運用条件](sandbox-features.md#モデル認可と段階的な起動)を確認してください。`Launch` の作成と初回起動が一体である従来の動作は維持します。

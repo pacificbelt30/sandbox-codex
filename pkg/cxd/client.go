@@ -170,6 +170,18 @@ func fromWorker(w sandbox.Worker) Worker {
 // Launch creates and starts a detached worker. The returned ID remains useful
 // if cleanup fails after a canceled launch, so callers can retry Remove.
 func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) {
+	return c.launch(ctx, req, false)
+}
+
+// Create reserves and creates a stopped Kata worker. No guest process, hook or
+// agent runs and no live worker token is issued until Start verifies the VM. Host-side
+// networks, snapshots and the resource reservation exist and need Remove if the
+// product abandons this worker. RequestID cannot be reused between Create/Launch.
+func (c *Client) Create(ctx context.Context, req LaunchRequest) (Worker, error) {
+	return c.launch(ctx, req, true)
+}
+
+func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool) (Worker, error) {
 	if err := req.Filesystem.Validate(); err != nil {
 		return Worker{}, err
 	}
@@ -251,7 +263,8 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 		HTTPProxyURL      string
 		EgressProxyImage  string
 		EgressPolicyID    string
-	}{req, c.opts.ProxyContainerURL, c.opts.ProxyAdminURL, c.opts.HTTPProxyURL, c.opts.EgressProxyImage, egressPolicyID})
+		CreateOnly        bool `json:",omitempty"`
+	}{req, c.opts.ProxyContainerURL, c.opts.ProxyAdminURL, c.opts.HTTPProxyURL, c.opts.EgressProxyImage, egressPolicyID, createOnly})
 	if err != nil {
 		return Worker{}, err
 	}
@@ -308,6 +321,7 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	}
 	defer func() { _ = mgr.Close() }()
 	launch := sandbox.RunOptions{
+		CreateOnly:    createOnly,
 		Compatibility: req.Compatibility, Filesystem: req.Filesystem, Lifecycle: req.Lifecycle, Environment: req.Environment, CloneDir: req.CloneDir,
 		ProjectDir: req.ProjectDir, Image: req.Image, ResourceProfile: req.Profile, Runtime: req.Runtime,
 		Name: claim.Name, RequestKey: key, RequestFingerprint: fingerprint, AllocationID: kataguard.RequestAllocation(key),
@@ -333,12 +347,16 @@ func (c *Client) Launch(ctx context.Context, req LaunchRequest) (Worker, error) 
 	finishCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	_, finishErr := c.node.FinishLaunch(finishCtx, key, claim.Lease, id)
 	cancel()
+	verb := "started"
+	if createOnly {
+		verb = "created"
+	}
 	if finishErr != nil {
-		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker started but launch confirmation failed: %w", ErrOutcomeUnknown, finishErr)
+		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker %s but launch confirmation failed: %w", ErrOutcomeUnknown, verb, finishErr)
 	}
 	w, err := mgr.InspectContext(ctx, id)
 	if err != nil {
-		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker started; inspect %s: %w", ErrOutcomeUnknown, id, err)
+		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker %s; inspect %s: %w", ErrOutcomeUnknown, verb, id, err)
 	}
 	return fromWorker(w), nil
 }
