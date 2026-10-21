@@ -126,23 +126,33 @@ func newEngineFixture(t *testing.T) (*engineFixture, *Manager) {
 		for _, key := range []string{"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"} {
 			status += key + ":\t0000000000000000\n"
 		}
-		profile, _ := kataguard.LookupResourceProfile(f.worker.Config.Labels[labelPrefix+"resource-profile"])
-		return json.Marshal(map[string]string{"boot_id": "fixture-guest-kernel", "status": status, "cmdline": guestGuard + "\x00wait\x00" + f.worker.Config.Labels[labelAllocation] + "\x00", "pids": "512", "memory": strconv.FormatInt(profile.GuestMemoryBytes, 10), "cpu": "100000 100000"})
+		profile, err := m.resourceProfile(ctx, f.worker.Config.Labels[labelPrefix+"resource-profile"])
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]string{"boot_id": "fixture-guest-kernel", "status": status, "cmdline": guestGuard + "\x00wait\x00" + f.worker.Config.Labels[labelAllocation] + "\x00", "pids": strconv.FormatInt(profile.PIDLimit, 10), "memory": strconv.FormatInt(profile.GuestMemoryBytes, 10), "cpu": profile.CPUQuota()})
 	}
 	return f, m
 }
 
-type fakeKataNode struct{}
+type fakeKataNode struct{ profiles []kataguard.ResourceProfile }
+
+func (f *fakeKataNode) Profiles(context.Context) ([]kataguard.ResourceProfile, error) {
+	return append(kataguard.ResourceProfiles(), f.profiles...), nil
+}
 
 func (*fakeKataNode) Validate(context.Context, string) error { return nil }
 func (*fakeKataNode) Reserve(_ context.Context, id string) (string, error) {
 	return "/codex-dock/cdx-" + id, nil
 }
 func (f *fakeKataNode) ReserveProfile(ctx context.Context, id, profile string) (string, error) {
-	if _, ok := kataguard.LookupResourceProfile(profile); !ok {
-		return "", fmt.Errorf("invalid profile")
+	profiles, _ := f.Profiles(ctx)
+	for _, p := range profiles {
+		if p.Name == profile {
+			return f.Reserve(ctx, id)
+		}
 	}
-	return f.Reserve(ctx, id)
+	return "", fmt.Errorf("invalid profile")
 }
 func (*fakeKataNode) Verify(context.Context, string, string) error  { return nil }
 func (*fakeKataNode) Release(context.Context, string, string) error { return nil }
@@ -503,5 +513,36 @@ func TestRemovalConfirmsContainerAbsenceAfterNestedNotFound(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOperatorProfileAppliesAndAttestsCPUAndPIDLimits(t *testing.T) {
+	f, m := newEngineFixture(t)
+	p := kataguard.ResourceProfile{Name: "batch", CPUCores: 2, GuestMemoryBytes: kataguard.CompactGuestMemory, HostMemoryBytes: kataguard.CompactHostMemory, PIDLimit: 256}
+	m.guard = &fakeKataNode{profiles: []kataguard.ResourceProfile{p}}
+	id, err := m.Run(RunOptions{Name: "custom-budget", ProjectDir: t.TempDir(), ResourceProfile: p.Name, Detach: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := m.Remove(id, true); err != nil {
+			t.Error(err)
+		}
+	}()
+	h := f.worker.HostConfig
+	if h.NanoCPUs != 2_000_000_000 || h.PidsLimit == nil || *h.PidsLimit != 256 || h.Memory != p.GuestMemoryBytes {
+		t.Fatal("custom resource budget was not applied")
+	}
+	if err := m.validateKataWorker(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	h.NanoCPUs = 1_000_000_000
+	if err := m.validateKataWorker(context.Background(), id); err == nil {
+		t.Fatal("changed CPU budget passed attestation")
+	}
+	h.NanoCPUs = 2_000_000_000
+	*h.PidsLimit = 512
+	if err := m.validateKataWorker(context.Background(), id); err == nil {
+		t.Fatal("changed PID budget passed attestation")
 	}
 }

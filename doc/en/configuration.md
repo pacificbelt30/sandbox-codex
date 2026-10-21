@@ -103,6 +103,7 @@ Under `[run]`:
 |---|---|---|
 | `runtime` | `kata` | `--runtime` |
 | `kata_runtime` | `io.containerd.kata.v2` | `--kata-runtime` |
+| `profile_size` | `standard` | `--profile-size` |
 | `image` | `default_image` | `--image` |
 | `template` | `default_template` | `--template` |
 | `agent` | `shell` | `--agent` |
@@ -193,3 +194,7 @@ See [host setup](../kata.md) (Japanese).
 Do not include their contents in logs or images. See [auth proxy](auth-proxy.md).
 
 Host `[proxy].allowed_models` optionally allows exact upstream model IDs. Empty preserves legacy behavior; enabled policies deny unsupported AI routes and WebSockets. Explicit `proxy run --allow-model` flags take precedence. Recreate the proxy and check [supported routes](sandbox-features.md#model-authorization-and-staged-startup).
+
+## Operator resource profiles
+
+`run.profile_size` selects a built-in or node-registered name. The root node operator registers additional budgets through `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`, independently of user TOML. See [bounds, guest assets and immutable reservations](sandbox-features.md#operator-resource-profiles).

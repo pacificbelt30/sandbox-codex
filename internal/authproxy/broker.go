@@ -147,6 +147,9 @@ func (p *Proxy) handleBroker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.ContentLength = r.ContentLength
+	if !enableStreamingResponse(w) {
+		return
+	}
 	for _, key := range []string{"Accept", "Content-Type", "User-Agent", "Idempotency-Key"} {
 		if v := r.Header.Get(key); v != "" {
 			req.Header.Set(key, v)

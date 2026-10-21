@@ -129,3 +129,21 @@ The optional systemd user unit `deploy/kata/codex-dock-reaper.service` runs the 
 Updated nodes protect pending execs, active exec/PTY sessions and detached jobs against idle collection, checking atomically with stopping so newly started work is protected too. Main agent activity and work started outside the management API are not measured; disable idle limits for these workloads. Explicit maximum lifetime still applies to busy workers.
 
 ResourceUsage returns a verified running VM's host cgroup current memory, optional peak and OOM-kill count separately from guest/host capacity budgets. These are not guest RSS. The guest budget is the worker cgroup limit, separate from total VM RAM shown by /proc/meminfo. The standard default and small guest 1 GiB / host 2 GiB profile remain unchanged. An explicit compact profile provides guest 512 MiB / host 768 MiB, one CPU and 512 PIDs for lightweight tasks. Select CLI --profile-size compact or Go Profile: "compact" after querying Profiles on an updated node. This is not a guarantee that large dependency installs/builds fit; measure product-specific workloads, concurrency, peaks and OOM events. CLI vm inspect --json exposes the same host observations.
+
+## Operator resource profiles
+
+Built-in `standard`, `small` and `compact` budgets are unchanged. Operators can register additional CPU, guest/host memory and PID combinations in a root-owned JSON file with no group/world write permission. Load it with `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`:
+
+```json
+[{"name":"batch","cpu_cores":2,"guest_memory_bytes":536870912,"host_memory_bytes":805306368,"pid_limit":256}]
+```
+
+Names start with a lowercase letter and contain lowercase letters, digits or hyphens, up to 63 characters. The file permits 32 definitions and 64 KiB; duplicate or built-in names are rejected. Bounds are 1–64 CPUs, 512–2048 MiB guest memory, host memory at least 256 MiB above guest memory and at most 3072 MiB, and 64–4096 PIDs. Memory must be MiB-aligned. These settings stay within pinned Dragonball assets and retain mandatory host/guest startup verification.
+
+Query `client.Profiles(ctx)` before selecting `Profile: "batch"`. CLI callers use `--profile-size batch` or global `run.profile_size`; completion queries the node. The package-level `cxd.Profiles()` returns built-in defaults only.
+
+Non-512 PID profiles require the updated guest hook and schema-v2 metadata bound to that image. `prepare_guest.py build` generates these assets; `runtime-lock` checks the image SHA256 and pins matching metadata as `guest-policy`. Legacy images/manifests retain 512 behavior. Registering non-512 limits on unsupported assets fails node startup. Check `dynamic-pid-profiles-v1` and `operator-resource-profiles-v1`. The node sets an OCI annotation and bootstrap verifies the actual guest limit before activating credentials, using the [pinned Kata hook state](https://github.com/kata-containers/kata-containers/blob/4.2.0/src/agent/rustjail/src/container.rs).
+
+Drain existing VMs before switching/resealing guest images. Allocation records pin the full custom budget. Adding names does not change asset stamps, but file changes require a node restart. Drain every reservation using a definition before modifying or deleting it: retained reservations cannot be reinterpreted. Restore the old definition before recovery if it was changed accidentally. Deployment and service restart are not automatic.
+
+When resealing, use `runtime-lock --logger /absolute/current/codex-dock-io-logger` to select the matching logger explicitly. An older helper selected through PATH may lack bounded-job logging options; pin the matching node-bundle helper.

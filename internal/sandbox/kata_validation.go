@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pacificbelt30/codex-dock/internal/kataguard"
-
 	"github.com/pacificbelt30/codex-dock/internal/network"
 )
 
@@ -36,8 +34,11 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 	if v.Config.Labels[labelProfile] != g.Stamp() || h.CgroupParent != parent || len(v.Config.Entrypoint) != 3 || v.Config.Entrypoint[0] != guestGuard || v.Config.Entrypoint[1] != "wait" || v.Config.Entrypoint[2] != v.Config.Labels[labelAllocation] {
 		return fmt.Errorf("kata worker requires the pinned verification bootstrap; recreate it")
 	}
-	profile, ok := kataguard.LookupResourceProfile(v.Config.Labels[labelPrefix+"resource-profile"])
-	if !ok || h.Memory != profile.GuestMemoryBytes || h.MemorySwap != profile.GuestMemoryBytes || h.NanoCPUs != 1_000_000_000 || h.PidsLimit == nil || *h.PidsLimit != profile.PIDLimit {
+	profile, err := m.resourceProfile(ctx, v.Config.Labels[labelPrefix+"resource-profile"])
+	if err != nil {
+		return err
+	}
+	if h.Memory != profile.GuestMemoryBytes || h.MemorySwap != profile.GuestMemoryBytes || h.NanoCPUs != int64(profile.CPUCores)*1_000_000_000 || h.PidsLimit == nil || *h.PidsLimit != profile.PIDLimit {
 		return fmt.Errorf("kata workload resource limits changed")
 	}
 	launcher := false

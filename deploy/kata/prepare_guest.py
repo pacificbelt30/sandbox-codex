@@ -61,7 +61,15 @@ def static_hook(binary):
 def verify(manifest_path):
     manifest_path = pathlib.Path(manifest_path).resolve(strict=True)
     record = json.loads(manifest_path.read_text())
-    if record["schema_version"] != 1 or record["pids_limit"] != 512 or record["guest_hook_path"] != HOOK_PATH or record["source_image_sha256"] != SOURCE_SHA256 or set(record["files"]) != {"guest.image", "pids-hook", "pids_hook.c"}:
+    version = record.get("schema_version")
+    policy = record.get("pid_policy", "")
+    if (version not in (1, 2)
+            or version == 1 and policy != ""
+            or version == 2 and policy != "oci-annotation-v1"
+            or record["pids_limit"] != 512
+            or record["guest_hook_path"] != HOOK_PATH
+            or record["source_image_sha256"] != SOURCE_SHA256
+            or set(record["files"]) != {"guest.image", "pids-hook", "pids_hook.c"}):
         raise ValueError("unsupported guest manifest")
     for name, checksum in record["files"].items():
         path = manifest_path.parent/name
@@ -121,7 +129,7 @@ def build(source, binary, output):
     if sha(source) != SOURCE_SHA256:
         raise ValueError("source image changed during packaging")
     manifest = output/"assets.lock.json"
-    manifest.write_text(json.dumps({"schema_version": 1, "pids_limit": 512, "guest_hook_path": HOOK_PATH,
+    manifest.write_text(json.dumps({"schema_version": 2, "pid_policy": "oci-annotation-v1", "pids_limit": 512, "guest_hook_path": HOOK_PATH,
                                     "source_image_sha256": SOURCE_SHA256, "files": files}, indent=2)+"\n")
     manifest.chmod(0o644)
     verify(manifest)

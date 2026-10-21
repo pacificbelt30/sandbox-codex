@@ -102,6 +102,9 @@ func (p *Proxy) handleForwardHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	outReq := r.Clone(r.Context())
+	if !enableStreamingResponse(w) {
+		return
+	}
 	outReq.RequestURI = ""
 	outReq.Host = outReq.URL.Host
 	outReq.Header.Del("Proxy-Connection")

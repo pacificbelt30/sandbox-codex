@@ -187,7 +187,10 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	if opts.CreateOnly && isolation != RuntimeKata {
 		return "", fmt.Errorf("create without initial start requires Kata isolation")
 	}
-	profile, _ := kataguard.LookupResourceProfile(opts.ResourceProfile)
+	profile, err := m.resourceProfile(ctx, opts.ResourceProfile)
+	if err != nil {
+		return "", err
+	}
 	if m.proxy != nil {
 		for _, endpoint := range []string{m.proxyAdminURL, m.proxy.ContainerEndpoint()} {
 			if endpoint == "" {
@@ -635,9 +638,9 @@ func (m *Manager) StartContext(parent context.Context, containerID string) (star
 		if err != nil {
 			return err
 		}
-		profile, ok := kataguard.LookupResourceProfile(v.Config.Labels[labelPrefix+"resource-profile"])
-		if !ok {
-			return fmt.Errorf("unknown Kata resource profile")
+		profile, err := m.resourceProfile(ctx, v.Config.Labels[labelPrefix+"resource-profile"])
+		if err != nil {
+			return err
 		}
 		if profile.Name == "standard" {
 			_, err = g.Reserve(ctx, v.Config.Labels[labelAllocation])

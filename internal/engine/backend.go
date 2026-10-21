@@ -426,6 +426,12 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 		s.Linux.MaskedPaths = append(s.Linux.MaskedPaths, h.MaskedPaths...)
 		s.Linux.ReadonlyPaths = append(s.Linux.ReadonlyPaths, h.ReadonlyPaths...)
 		s.Mounts = append(s.Mounts, specs.Mount{Destination: "/sys/fs/cgroup", Type: "cgroup", Source: "cgroup", Options: []string{"nosuid", "noexec", "nodev", "relatime", "ro"}})
+		if h.PidsLimit != nil && h.Runtime != "runc" {
+			if s.Annotations == nil {
+				s.Annotations = make(map[string]string)
+			}
+			s.Annotations["io.codex-dock.pids-limit"] = strconv.FormatInt(*h.PidsLimit, 10)
+		}
 		s.Linux.CgroupsPath = filepath.Join(h.CgroupParent, cid)
 		if h.CgroupParent == "" {
 			s.Linux.CgroupsPath = "/codex-dock-services/" + cid

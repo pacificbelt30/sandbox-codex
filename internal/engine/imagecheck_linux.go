@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/containerd/containerd/v2/core/leases"
 	"github.com/containerd/containerd/v2/core/mount"
 	"github.com/containerd/continuity/fs"
+	"github.com/containerd/errdefs"
 	"github.com/opencontainers/image-spec/identity"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	dockerdefaults "github.com/pacificbelt30/codex-dock/docker"
@@ -24,6 +26,17 @@ func (b *Backend) checkImage(ctx context.Context, name, agent string) (report di
 	if agent != "shell" && agent != "codex" && agent != "claude" {
 		return report, fmt.Errorf("choose agent shell, codex or claude")
 	}
+	// A temporary view is not referenced by a container. Keep it leased until
+	// the inspection and unmount finish, even when containerd GC runs meanwhile.
+	ctx, release, err := b.client.WithLease(ctx, leases.WithRandomID(), leases.WithExpiration(2*time.Minute))
+	if err != nil {
+		return report, err
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		resultErr = errors.Join(resultErr, release(cleanup))
+	}()
 	img, ic, err := b.image(ctx, name)
 	if err != nil {
 		return report, err
@@ -48,7 +61,9 @@ func (b *Backend) checkImage(ctx context.Context, name, agent string) (report di
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
-		resultErr = errors.Join(resultErr, service.Remove(cleanup, key))
+		if err := service.Remove(cleanup, key); err != nil && !errdefs.IsNotFound(err) {
+			resultErr = errors.Join(resultErr, err)
+		}
 	}()
 	err = mount.WithReadonlyTempMount(ctx, mounts, func(root string) error {
 		report = inspectImageRoot(root, ic, agent)

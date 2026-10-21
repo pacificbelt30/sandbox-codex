@@ -1,8 +1,9 @@
 import pathlib
+import json
 import struct
 import tempfile
 import unittest
-from prepare_guest import geometry, static_hook
+from prepare_guest import geometry, static_hook, verify, sha, HOOK_PATH, SOURCE_SHA256
 
 
 class GuestInputTests(unittest.TestCase):
@@ -16,6 +17,28 @@ class GuestInputTests(unittest.TestCase):
             image.write_bytes(mbr)
             with self.assertRaises(ValueError):
                 geometry(image)
+
+    def test_legacy_and_profile_guest_policy_metadata(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            names = ("guest.image", "pids-hook", "pids_hook.c")
+            for name in names:
+                (root / name).write_text("fixture-" + name)
+                (root / name).chmod(0o644)
+            record = {"schema_version": 1, "pids_limit": 512, "guest_hook_path": HOOK_PATH,
+                      "source_image_sha256": SOURCE_SHA256,
+                      "files": {name: sha(root / name) for name in names}}
+            manifest = root / "assets.lock.json"
+            manifest.write_text(json.dumps(record))
+            self.assertEqual(verify(manifest)["schema_version"], 1)
+            record.update(schema_version=2, pid_policy="oci-annotation-v1")
+            manifest.write_text(json.dumps(record))
+            self.assertEqual(verify(manifest)["schema_version"], 2)
+            for version, policy in ((1, "oci-annotation-v1"), (2, ""), (3, "oci-annotation-v1")):
+                record.update(schema_version=version, pid_policy=policy)
+                manifest.write_text(json.dumps(record))
+                with self.assertRaises(ValueError):
+                    verify(manifest)
 
     def test_dynamic_hook_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

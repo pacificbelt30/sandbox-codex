@@ -41,10 +41,25 @@ func (c *Client) ResourceUsage(ctx context.Context, worker string) (ResourceUsag
 	if !v.HostVerified || !v.Populated || len(v.Problems) != 0 {
 		return ResourceUsage{}, fmt.Errorf("worker does not have a verified running resource envelope")
 	}
+
 	p, ok := kataguard.LookupResourceProfile(v.ResourceProfile)
+	if !ok {
+		profiles, err := c.node.Profiles(ctx)
+		if err != nil {
+			return ResourceUsage{}, classify(err)
+		}
+		for _, candidate := range profiles {
+			if candidate.Name == v.ResourceProfile {
+				p = candidate
+				ok = true
+				break
+			}
+		}
+	}
 	if !ok {
 		return ResourceUsage{}, fmt.Errorf("unknown resource profile")
 	}
+
 	current, err := strconv.ParseInt(v.Resources["memory.current"], 10, 64)
 	if err != nil || current < 0 {
 		return ResourceUsage{}, fmt.Errorf("invalid observed memory usage")

@@ -21,7 +21,7 @@ Ubuntu 26.04で新しく配置する場合は、[自動セットアップ](setup
 
 Linux x86_64、KVM、cgroup v2、`cpu memory pids` controller、pidfdと`cgroup.kill`、iproute2・nftables・runc、containerd 2.xの設定v3が必要。検証版はKata 4.2.0 / containerd 2.4.2 / BuildKit 0.34.0。KataのDragonball用kernelには公式配布物上でexperimentalの名称が付く。更新時は資産を検証して受入試験を再実行する。
 
-ワーカー1台につきguestのCPU 1・メモリ2 GiB・PID 512、ホスト側のVM全体にCPU 1・メモリ3 GiB・swap 0・PID 512を設定する。既定の同時予約は2台。ホストにはVM合計とcontainerd・BuildKit・プロキシ用の余裕が必要で、2台構成は8 GiB以上を目安にする。`node serve --max-workers` は1〜64。
+既定のstandardではワーカー1台につきguestのCPU 1・メモリ2 GiB・PID 512、ホスト側のVM全体にCPU 1・メモリ3 GiB・swap 0・PID 512を設定する。既定の同時予約は2台。ホストにはVM合計とcontainerd・BuildKit・プロキシ用の余裕が必要で、2台構成は8 GiB以上を目安にする。`node serve --max-workers` は1〜64。
 
 管理サービスとBuildKitの利用者は、ホストmountとイメージの選択ができる信頼済み管理者であり、root相当の権限を持つ。専用グループ `codex-dock` を使う。通常CLIへroot/CAP_SYS_PTRACEを付与せず、管理socket・状態・ランタイム資産をguestへ渡さない。
 

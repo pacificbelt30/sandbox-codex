@@ -228,3 +228,7 @@ private IP等の遮断は、許可ルールでは解除できません。
 読込優先順位とマウントは[認証プロキシ](auth-proxy.md#認証ソース)を参照してください。
 
 ホストの `[proxy].allowed_models` は正確な上流モデルIDの許可リストです。空は従来動作を維持し、設定時は未対応AI経路とWebSocketを拒否します。`proxy run --allow-model` の明示指定が優先します。プロキシ再作成と[対応経路の確認](sandbox-features.md#モデル認可と段階的な起動)が必要です。
+
+## ノード管理者の資源プロファイル
+
+`run.profile_size` は組み込みまたはnodeに登録された名前を選びます。追加の予算は、rootのnode管理者が `node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で登録します。利用者のTOMLで上限を新規登録する仕組みではありません。[許容範囲・guest資産・予約の固定](sandbox-features.md#管理者定義の資源プロファイル)を参照してください。

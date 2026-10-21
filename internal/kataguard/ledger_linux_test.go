@@ -106,3 +106,45 @@ func TestAllocationLedgerRejectsSymlinkAndCorruptRecord(t *testing.T) {
 		t.Fatal("symlink record accepted")
 	}
 }
+
+func TestCustomResourceBudgetIsDurableAndCannotBeReinterpreted(t *testing.T) {
+	g := ledgerFixture(t)
+	p := customProfile()
+	g.profiles = []ResourceProfile{p}
+	id := strings.Repeat("e", 32)
+	if err := g.trackAllocation(context.Background(), id, "", p.Name); err != nil {
+		t.Fatal(err)
+	}
+	other := &Guard{config: g.config, manifest: g.manifest, profiles: append([]ResourceProfile(nil), g.profiles...)}
+	record, err := other.readRecord(id)
+	if err != nil || record.Budget == nil || *record.Budget != p {
+		t.Fatalf("custom budget was not retained: %v", err)
+	}
+	extra := p
+	extra.Name = "another"
+	other.profiles = append(other.profiles, extra)
+	if other.Stamp() != g.Stamp() {
+		t.Fatal("adding a profile invalidated existing asset attestations")
+	}
+	if _, err := other.readRecord(id); err != nil {
+		t.Fatal("additive profile invalidated allocation:", err)
+	}
+	for _, mutate := range []func(*ResourceProfile){func(p *ResourceProfile) { p.CPUCores = 1 }, func(p *ResourceProfile) { p.PIDLimit = 512 }, func(p *ResourceProfile) { p.GuestMemoryBytes = CompactGuestMemory }, func(p *ResourceProfile) { p.HostMemoryBytes = HostMemory }} {
+		other.profiles[0] = p
+		mutate(&other.profiles[0])
+		if _, err := other.readRecord(id); err == nil {
+			t.Fatal("retained budget was reinterpreted")
+		}
+	}
+	other.profiles = nil
+	if _, err := other.readRecord(id); err == nil {
+		t.Fatal("removed custom definition was accepted")
+	}
+	other.profiles = []ResourceProfile{p}
+	if _, err := other.readRecord(id); err != nil {
+		t.Fatal("restoring definition did not permit recovery:", err)
+	}
+	if err := g.trackAllocation(context.Background(), id, "", "standard"); err == nil {
+		t.Fatal("custom allocation changed to builtin")
+	}
+}

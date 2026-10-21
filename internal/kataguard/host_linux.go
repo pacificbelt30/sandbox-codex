@@ -21,12 +21,14 @@ import (
 
 type Config struct {
 	Manifest, CgroupRoot, StateDir, Endpoint, Socket string
+	ResourceProfiles                                 string
 	MaxWorkers                                       int
 	DNS                                              []string
 }
 type Guard struct {
 	config   Config
 	manifest Manifest
+	profiles []ResourceProfile
 }
 
 func trustedOwner(info os.FileInfo) bool {
@@ -66,7 +68,16 @@ func New(c Config) (*Guard, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := &Guard{config: c, manifest: m}
+	profiles, err := loadResourceProfiles(c.ResourceProfiles)
+	if err != nil {
+		return nil, fmt.Errorf("loading node resource profiles: %w", err)
+	}
+	g := &Guard{config: c, manifest: m, profiles: profiles}
+	for _, p := range profiles {
+		if p.PIDLimit != 512 && !g.supportsPIDProfiles() {
+			return nil, fmt.Errorf("non-512 PID profiles require prepared guest policy assets; update and reseal the guest image before enabling them")
+		}
+	}
 	return g, nil
 }
 
@@ -77,6 +88,13 @@ func (g *Guard) Validate(ctx context.Context, runtime string) error {
 	m, err := Load(g.config.Manifest)
 	if err != nil {
 		return err
+	}
+	profiles, err := loadResourceProfiles(g.config.ResourceProfiles)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(profiles, g.profiles) {
+		return fmt.Errorf("node resource profiles changed; restart the node after draining changed definitions")
 	}
 	if m.Runtime != runtime {
 		return fmt.Errorf("kata registration differs from pinned manifest")
@@ -183,7 +201,7 @@ func (g *Guard) group(id string) (string, error) {
 	return filepath.Join(g.config.CgroupRoot, "cdx-"+id), nil
 }
 func groupLimitsFor(profile ResourceProfile) map[string]string {
-	return map[string]string{"cpu.max": CPUQuota, "memory.max": strconv.FormatInt(profile.HostMemoryBytes, 10), "memory.swap.max": "0", "pids.max": strconv.FormatInt(profile.PIDLimit, 10), "memory.oom.group": "1"}
+	return map[string]string{"cpu.max": profile.CPUQuota(), "memory.max": strconv.FormatInt(profile.HostMemoryBytes, 10), "memory.swap.max": "0", "pids.max": strconv.FormatInt(profile.PIDLimit, 10), "memory.oom.group": "1"}
 }
 func (g *Guard) checkLimits(path string) error {
 	id := strings.TrimPrefix(filepath.Base(path), "cdx-")
@@ -191,7 +209,7 @@ func (g *Guard) checkLimits(path string) error {
 	if err != nil {
 		return err
 	}
-	profile, _ := LookupResourceProfile(record.Profile)
+	profile, _ := g.resourceProfile(record.Profile)
 	for name, want := range groupLimitsFor(profile) {
 		b, err := os.ReadFile(filepath.Join(path, name))
 		if err != nil {
@@ -209,7 +227,7 @@ func (g *Guard) Reserve(ctx context.Context, id string) (string, error) {
 }
 
 func (g *Guard) ReserveProfile(ctx context.Context, id, profileName string) (string, error) {
-	profile, ok := LookupResourceProfile(profileName)
+	profile, ok := g.resourceProfile(profileName)
 	if !ok {
 		return "", fmt.Errorf("unknown Kata resource profile %q", profileName)
 	}
@@ -476,6 +494,9 @@ func (g *Guard) releaseUnlocked(ctx context.Context, id, worker string) error {
 
 func (g *Guard) ProtectedPaths() []string {
 	paths := []string{g.config.Manifest, g.config.StateDir, g.config.CgroupRoot, "/proc", "/sys/fs/cgroup", "/dev/kvm", "/run/netns", "/run/codex-dock-buildkit", "/var/lib/codex-dock-buildkit", "/var/lib/codex-dock-setup", "/var/cache/codex-dock-setup", "/opt/codex-dock/releases"}
+	if g.config.ResourceProfiles != "" {
+		paths = append(paths, g.config.ResourceProfiles)
+	}
 	if _, d, err := readConfig(g.manifest.Assets["config"].Path, g.manifest.Assets["daemon"].Path, g.manifest.Runtime); err == nil {
 		paths = append(paths, d.Root, d.State, d.GRPC.Address)
 	}

@@ -143,11 +143,19 @@ func TestIntegration_AnthropicOAuth_FullPath(t *testing.T) {
 
 // TestIntegration_AnthropicSSEStreaming verifies that Server-Sent Events are
 // relayed incrementally rather than buffered until the upstream stream ends.
-// The upstream sends one event, flushes, sleeps, then sends a second event.
-// The client must receive the first event well before the upstream finishes.
+// The upstream waits for the client to read the first event before sending the
+// second. A buffered proxy cannot complete this handshake before the deadline.
 func TestIntegration_AnthropicSSEStreaming(t *testing.T) {
-	const gap = 400 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	firstReceived := make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Consume the POST before streaming, as the real Messages endpoint does.
+		// Do not race the HTTP transport's request writer with an early response.
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Error(err)
+			return
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		fl, ok := w.(http.Flusher)
@@ -157,7 +165,11 @@ func TestIntegration_AnthropicSSEStreaming(t *testing.T) {
 		}
 		_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n")
 		fl.Flush()
-		time.Sleep(gap)
+		select {
+		case <-firstReceived:
+		case <-ctx.Done():
+			return
+		}
 		_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 		fl.Flush()
 	}))
@@ -165,13 +177,24 @@ func TestIntegration_AnthropicSSEStreaming(t *testing.T) {
 
 	p := newAnthropicAPIKeyProxy(t, "sk-ant")
 	p.anthropicUpstreamURL = upstream.URL
+	// Keep the upstream pool independent from the downstream test client and
+	// other httptest servers, whose Close drains the global default transport.
+	p.httpClient = upstream.Client()
 	if err := p.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer p.Stop()
 
-	start := time.Now()
-	resp := doAnthropicRequest(t, p, `{"stream":true}`, map[string]string{"x-api-key": "cdx-x"})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Endpoint()+"/anthropic/v1/messages", strings.NewReader(`{"stream":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("x-api-key", "cdx-x")
+	authorizeTestRequest(t, p, req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
@@ -183,21 +206,91 @@ func TestIntegration_AnthropicSSEStreaming(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading first SSE line: %v", err)
 	}
-	elapsed := time.Since(start)
 	if !strings.Contains(firstLine, "message_start") {
 		t.Errorf("first SSE line = %q; want message_start", firstLine)
 	}
-	// With incremental flushing the first event arrives almost immediately;
-	// a buffered proxy would withhold it until the upstream stream completes
-	// (>= gap). Allow generous slack to avoid flakiness.
-	if elapsed >= gap {
-		t.Errorf("first SSE event took %v (>= upstream gap %v): streaming is buffered, not incremental", elapsed, gap)
-	}
+	close(firstReceived)
 
 	// The remainder of the stream must still arrive intact.
-	rest, _ := io.ReadAll(reader)
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("reading SSE completion: %v", err)
+	}
 	if !strings.Contains(string(rest), "message_stop") {
 		t.Errorf("second SSE event missing from stream: %q", string(rest))
+	}
+}
+
+// The client completes its upload only after receiving the first response
+// event. Automatic HTTP/1 request draining would deadlock this exchange and can
+// also close a request body still being read by the upstream transport writer.
+func TestIntegration_HTTPResponseBeforeUploadCompletes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
+			t.Error(err)
+			return
+		}
+		first := make([]byte, 5)
+		if _, err := io.ReadFull(r.Body, first); err != nil || string(first) != "first" {
+			t.Errorf("initial upload: %q %v", first, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: ready\n\n")
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Error(err)
+			return
+		}
+		rest, err := io.ReadAll(r.Body)
+		if err != nil || string(rest) != "second" {
+			t.Errorf("remaining upload: %q %v", rest, err)
+			return
+		}
+		_, _ = io.WriteString(w, "data: complete\n\n")
+	}))
+	defer upstream.Close()
+	p := newAnthropicAPIKeyProxy(t, "sk-ant")
+	p.anthropicUpstreamURL, p.httpClient = upstream.URL, upstream.Client()
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close(); _ = writer.Close() }()
+	ready := make(chan struct{})
+	go func() {
+		if _, err := io.WriteString(writer, "first"); err != nil {
+			return
+		}
+		select {
+		case <-ready:
+			_, _ = io.WriteString(writer, "second")
+			_ = writer.Close()
+		case <-ctx.Done():
+			_ = writer.CloseWithError(ctx.Err())
+		}
+	}()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Endpoint()+"/anthropic/v1/messages", reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizeTestRequest(t, p, req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	stream := bufio.NewReader(resp.Body)
+	line, err := stream.ReadString('\n')
+	if err != nil || line != "data: ready\n" {
+		t.Fatalf("first event before upload completion: %q %v", line, err)
+	}
+	close(ready)
+	rest, err := io.ReadAll(stream)
+	if err != nil || !strings.Contains(string(rest), "data: complete") {
+		t.Fatalf("response after upload completion: %q %v", rest, err)
 	}
 }
 

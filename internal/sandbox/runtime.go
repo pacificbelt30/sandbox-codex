@@ -8,7 +8,6 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/system"
-	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 )
 
 const (
@@ -49,8 +48,11 @@ func (m *Manager) CheckRuntime(ctx context.Context, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
-	profile, ok := kataguard.LookupResourceProfile(opts.ResourceProfile)
-	if !ok || isolation != RuntimeKata && profile.Name != "standard" {
+	profile, err := m.resourceProfile(ctx, opts.ResourceProfile)
+	if err != nil {
+		return err
+	}
+	if isolation != RuntimeKata && profile.Name != "standard" {
 		return fmt.Errorf("invalid resource profile %q for %s runtime", opts.ResourceProfile, isolation)
 	}
 	info, err := m.cli.Info(ctx)

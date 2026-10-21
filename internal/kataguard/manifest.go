@@ -147,11 +147,11 @@ func readConfig(kataPath, daemonPath, runtime string) (kataConfig, daemonConfig,
 // signature. Legacy QEMU/Docker profiles must be drained before resealing.
 func Seal(kataPath, daemonPath, containerd, launcher, runtime, output string, shimPath ...string) error {
 	shim := "/opt/kata/runtime-rs/bin/containerd-shim-kata-v2"
-	if len(shimPath) == 1 {
+	if len(shimPath) >= 1 {
 		shim = shimPath[0]
 	}
-	if len(shimPath) > 1 {
-		return fmt.Errorf("one shim path required")
+	if len(shimPath) > 2 {
+		return fmt.Errorf("one shim path and optional logger path required")
 	}
 	binary, err := elf.Open(launcher)
 	if err != nil {
@@ -177,7 +177,13 @@ func Seal(kataPath, daemonPath, containerd, launcher, runtime, output string, sh
 	h := k.Hypervisor["dragonball"]
 	paths := map[string]string{"config": kataPath, "daemon": daemonPath, "containerd": containerd, "launcher": launcher, "runtime": shim, "kernel": h.Kernel, "image": h.Image}
 	for key, name := range map[string]string{"ip": "ip", "nft": "nft", "sysctl": "sysctl", "runc": "runc", "runc-shim": "containerd-shim-runc-v2", "logger": "codex-dock-io-logger"} {
-		path, err := exec.LookPath(name)
+		var path string
+		var err error
+		if key == "logger" && len(shimPath) == 2 && shimPath[1] != "" {
+			path = shimPath[1]
+		} else {
+			path, err = exec.LookPath(name)
+		}
 		if err != nil {
 			return fmt.Errorf("required node tool %s: %w", name, err)
 		}
@@ -212,6 +218,22 @@ func Seal(kataPath, daemonPath, containerd, launcher, runtime, output string, sh
 			return err
 		}
 		m.Assets[name] = Asset{path, checksum}
+	}
+	guestPolicy := filepath.Join(filepath.Dir(m.Assets["image"].Path), "assets.lock.json")
+	if _, err := os.Lstat(guestPolicy); err == nil {
+		supported, err := readGuestPolicy(guestPolicy, m.Assets["image"].SHA256)
+		if err != nil {
+			return err
+		}
+		if supported {
+			checksum, err := hash(guestPolicy)
+			if err != nil {
+				return err
+			}
+			m.Assets["guest-policy"] = Asset{Path: guestPolicy, SHA256: checksum}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -273,6 +295,15 @@ func Load(path string) (Manifest, error) {
 		}
 		if len(asset.SHA256) != 64 || actual != asset.SHA256 {
 			return m, fmt.Errorf("kata asset checksum mismatch: %s", name)
+		}
+	}
+	if asset, ok := m.Assets["guest-policy"]; ok {
+		supported, err := readGuestPolicy(asset.Path, m.Assets["image"].SHA256)
+		if err != nil {
+			return m, err
+		}
+		if !supported {
+			return m, fmt.Errorf("guest policy asset must declare dynamic PID support")
 		}
 	}
 	k, _, err := readConfig(m.Assets["config"].Path, m.Assets["daemon"].Path, m.Runtime)

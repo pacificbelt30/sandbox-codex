@@ -133,3 +133,21 @@ Go APIの `Create` は、既存 `Launch` と同じ検証済み設定で初回起
 任意のsystemd user unitを `deploy/kata/codex-dock-reaper.service` に用意しています。対応するCLIを配置後、通常オペレーターが `~/.config/systemd/user/` にコピーし、`systemctl --user daemon-reload` と `systemctl --user enable --now codex-dock-reaper.service` で有効にします。ログは `journalctl --user -u codex-dock-reaper.service`、状態は `systemctl --user status codex-dock-reaper.service` で確認します。失敗時は5秒後に再起動します。ユーザーサービスをログアウト後も維持する必要がある場合は、管理者が当該ユーザーのlingerを設定します。自動配置・自動有効化はしません。複数ケースの製品は管理シークレットを持つ自分のクライアントから定期的に `Reap` を呼び、エラーを監視してください。
 
 `ResourceUsage` は検証済みで稼働中のVMについて、ホストcgroupの `memory.current`・対応カーネルの `memory.peak`・`oom_kill` を返します。guestのRSSではありません。guest/hostの予約上限は別フィールドです。guest値はワーカーのcgroup上限で、VM全体の `/proc/meminfo` の総RAMとは区別します。smallのguest 1 GiB／host 2 GiBと既定のstandardは維持します。軽量用途には明示選択の `compact`（guest 512 MiB／host 768 MiB、1 CPU、512 PID）を追加しました。CLIは `--profile-size compact`、Go APIは `Profile: "compact"` で選びます。対応nodeへ更新し、`Profiles` で値を確認してください。容量の大きい依存導入やビルドの完走を保証する値ではないため、製品固有の処理・同時実行・peak・OOMを測って選択します。CLIの `vm inspect --json` でも同じホスト観測値を確認できます。
+
+## 管理者定義の資源プロファイル
+
+組み込みの `standard`・`small`・`compact` は変更しません。管理者はroot所有でグループ・全体への書き込みを許可しないJSONファイルに、追加の名前とCPU・guest/hostメモリ・PID上限を登録できます。`node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で読み込みます。例は次のとおりです。
+
+```json
+[{"name":"batch","cpu_cores":2,"guest_memory_bytes":536870912,"host_memory_bytes":805306368,"pid_limit":256}]
+```
+
+名前は英小文字で始まる英小文字・数字・ハイフンの63文字以内です。最大32定義、64KiBまでで、組み込み名の置換や重複は拒否します。CPUは1〜64、guestメモリは512〜2048MiB、host上限はguestより256MiB以上大きく3072MiB以下、PIDは64〜4096です。メモリ値はMiB単位で指定します。固定したDragonball資産の範囲を広げる設定ではなく、起動時のhost/guest検証も必須です。
+
+Goでは `client.Profiles(ctx)` を確認して `Profile: "batch"` を指定します。CLIは `--profile-size batch` またはグローバル設定の `run.profile_size` を使います。補完も稼働nodeの名前を取得します。引数なしのパッケージ関数 `cxd.Profiles()` は組み込み値だけを返します。
+
+PIDが512以外の定義には、更新されたguestフックと、そのimageに対応するschema v2のguestメタデータが必要です。`prepare_guest.py build` は新方式の資産を生成し、`runtime-lock` はimageのSHA256と対応するメタデータを検証して `guest-policy` 資産として固定します。古いguest・manifestの512動作は維持します。未対応資産で512以外を登録するとnode起動時に失敗します。`dynamic-pid-profiles-v1` と `operator-resource-profiles-v1` で対応を確認できます。PID値はnodeがOCI annotationに設定し、guestの実際の上限をbootstrapで確認してから資格情報を有効にします。[固定Kataのhook state](https://github.com/kata-containers/kata-containers/blob/4.2.0/src/agent/rustjail/src/container.rs)を使います。
+
+新しいguest imageへの切り替え・再固定前には既存VMを回収してください。登録済み定義の値は予約台帳に固定されます。名前の追加は既存の資産stampを変更しませんが、ファイル変更後はnodeを再起動します。値の変更・削除はその定義の予約をすべて回収してから行ってください。保持した予約を別予算へ読み替えることは拒否します。誤って変更した場合は、元の定義を復元してから回収してください。配置・サービス再起動は自動実行しません。
+
+再固定時には `runtime-lock --logger /absolute/current/codex-dock-io-logger` で対応版のログ収集バイナリを明示できます。PATHから古いhelperを選ぶとバックグラウンドジョブの出力上限オプションに対応しない場合があるため、node bundleの対応するhelperを固定してください。

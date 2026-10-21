@@ -152,3 +152,20 @@ func init() {
 	rmCmd.ValidArgsFunction = completeWorkers(func(sandbox.Worker) bool { return true })
 	logsCmd.ValidArgsFunction = completeWorkers(func(sandbox.Worker) bool { return true })
 }
+
+func completeResourceProfiles(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	profiles := kataguard.ResourceProfiles()
+	if mgr, err := sandbox.NewManager(sandbox.ManagerConfig{}); err == nil {
+		defer func() { _ = mgr.Close() }()
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		defer cancel()
+		if current, err := mgr.ResourceProfiles(ctx); err == nil {
+			profiles = current
+		}
+	}
+	values := make([]cobra.Completion, 0, len(profiles))
+	for _, p := range profiles {
+		values = append(values, p.Name)
+	}
+	return values, cobra.ShellCompDirectiveNoFileComp
+}

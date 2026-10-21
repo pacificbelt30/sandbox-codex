@@ -124,7 +124,7 @@ func TestKataPolicyFeatures(t *testing.T) {
 	if err != nil || !strings.Contains(terminal.String(), "44 111") {
 		t.Fatalf("PTY resize %q %v", terminal.String(), err)
 	}
-	job, err := m.StartJob(ctx, id, ExecOptions{Argv: []string{"sh", "-c", "printf job-start; sleep 5; printf job-end"}})
+	job, err := m.StartJob(ctx, id, ExecOptions{Argv: []string{"sh", "-c", "printf job-start; printf job-start > /workspace/job-marker; sleep 5; printf job-end; printf job-end >> /workspace/job-marker"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,8 @@ func TestKataPolicyFeatures(t *testing.T) {
 	}
 	logs, err := m.JobLogs(ctx, id, job.ID, 0)
 	if err != nil || logs.Output != "job-startjob-end" {
-		t.Fatalf("job logs %+v %v", logs, err)
+		marker, markerErr := os.ReadFile(filepath.Join(project, "job-marker"))
+		t.Fatalf("job logs %+v %v marker=%q markerErr=%v", logs, err, marker, markerErr)
 	}
 	if jobs, err := m.ListJobs(ctx, id); err != nil || len(jobs) != 1 {
 		t.Fatalf("jobs %+v %v", jobs, err)

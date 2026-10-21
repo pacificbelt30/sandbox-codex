@@ -37,6 +37,7 @@ func init() {
 	f.StringVar(&cfg.Socket, "socket", "/run/codex-dock-node.sock", "Root-owned management socket (never worker-mounted)")
 	f.StringVar(&group, "group", "codex-dock", "Trusted host operator group allowed to use the socket")
 	f.StringSliceVar(&cfg.DNS, "proxy-dns", nil, "Reachable non-loopback DNS servers for proxy namespaces")
+	f.StringVar(&cfg.ResourceProfiles, "resource-profiles", "", "Root-owned JSON array of additional bounded resource profiles")
 	f.IntVar(&cfg.MaxWorkers, "max-workers", 2, "Maximum simultaneously allocated worker envelopes")
 	node.AddCommand(serve)
 	rootCmd.AddCommand(node)

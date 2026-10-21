@@ -56,7 +56,7 @@ func init() {
 	check.Flags().StringVar(&runOpts.Runtime, "runtime", sandbox.RuntimeKata, "Worker isolation: kata or runc")
 	check.Flags().StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration")
 	rootCmd.AddCommand(check)
-	var kataPath, daemonPath, containerd, launcher, output, runtime, shim string
+	var kataPath, daemonPath, containerd, launcher, output, runtime, shim, loggerPath string
 	seal := &cobra.Command{Use: "runtime-lock", Short: "Pin already-verified local Kata assets in a new manifest", RunE: func(cmd *cobra.Command, args []string) error {
 		if containerd == "" {
 			var err error
@@ -65,6 +65,9 @@ func init() {
 				return err
 			}
 		}
+		if loggerPath != "" {
+			return kataguard.Seal(kataPath, daemonPath, containerd, launcher, runtime, output, shim, loggerPath)
+		}
 		return kataguard.Seal(kataPath, daemonPath, containerd, launcher, runtime, output, shim)
 	}}
 	seal.Flags().StringVar(&kataPath, "kata-config", "/etc/codex-dock/kata.toml", "Installed Kata profile")
@@ -72,6 +75,7 @@ func init() {
 	seal.Flags().StringVar(&containerd, "containerd", "", "Trusted containerd executable (default: PATH)")
 	seal.Flags().StringVar(&launcher, "launcher", "/opt/codex-dock/worker-guard", "Static trusted worker bootstrap")
 	seal.Flags().StringVar(&runtime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata registration")
+	seal.Flags().StringVar(&loggerPath, "logger", "", "Pinned binary logger executable (default: PATH)")
 	seal.Flags().StringVar(&output, "output", "/etc/codex-dock/kata-assets.json", "New manifest path; never overwritten")
 	seal.Flags().StringVar(&shim, "runtime-shim", "/opt/kata/runtime-rs/bin/containerd-shim-kata-v2", "Pinned embedded Dragonball runtime")
 	rootCmd.AddCommand(seal)

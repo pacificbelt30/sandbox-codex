@@ -79,6 +79,10 @@ debug = false
 runtime = "kata"
 kata_runtime = "io.containerd.kata.v2"
 
+# Built-in or operator-registered Kata budget.          flag: --profile-size
+# Operators register additional names with node serve --resource-profiles JSON.
+profile_size = "standard"
+
 # Image for `run` only. If unset, the global `default_image` is used.
 image = "codex-dock:latest"
 

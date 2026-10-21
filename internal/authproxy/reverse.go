@@ -1,6 +1,7 @@
 package authproxy
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,6 +45,9 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		return
 	}
 	req.ContentLength = r.ContentLength
+	if !enableStreamingResponse(w) {
+		return
+	}
 
 	// Copy headers, skipping hop-by-hop headers.
 	hopByHop := map[string]bool{
@@ -95,6 +99,17 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 	if p.cfg.Verbose {
 		fmt.Printf("Proxied %s %s -> %s (%d)\n", r.Method, r.URL.Path, target, resp.StatusCode)
 	}
+}
+
+// The upstream transport owns the request body until its writer finishes,
+// which can be after response headers arrive. HTTP/1's default response drain
+// can otherwise read/close that same body and abort a healthy upstream stream.
+func enableStreamingResponse(w http.ResponseWriter) bool {
+	if err := http.NewResponseController(w).EnableFullDuplex(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		http.Error(w, "enabling streamed response", http.StatusInternalServerError)
+		return false
+	}
+	return true
 }
 
 // copyAndFlush streams src to w, flushing after every chunk when w supports

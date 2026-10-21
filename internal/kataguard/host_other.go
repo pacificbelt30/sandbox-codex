@@ -10,12 +10,14 @@ import (
 
 type Config struct {
 	Manifest, CgroupRoot, StateDir, Endpoint, Socket string
+	ResourceProfiles                                 string
 	MaxWorkers                                       int
 	DNS                                              []string
 }
 type Guard struct {
 	config   Config
 	manifest Manifest
+	profiles []ResourceProfile
 }
 
 func trustedOwner(info os.FileInfo) bool { return false }

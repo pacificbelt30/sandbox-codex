@@ -90,7 +90,11 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	for _, mode := range []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart"} {
+	modes := []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart"}
+	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
+		modes = append(modes, "custom-profile")
+	}
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.Chmod(root, 0700); err != nil {
@@ -144,6 +148,9 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			runIdentity := identity.Identity{CaseID: "fixture-case", RunID: "run-" + mode, ConnectionVersion: "connection-1", Provider: "openai"}
 			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: runIdentity, ModelPolicy: &identity.ModelPolicy{AllowedModels: []string{"allowed", "outside-global"}}}
+			if mode == "custom-profile" {
+				req.Profile = os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE")
+			}
 			if mode == "compact" {
 				req.Profile = "compact"
 			}
@@ -206,6 +213,54 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("allowed model: %s", got)
+			}
+			if mode == "custom-profile" {
+				profiles, err := c.Profiles(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var expected Profile
+				for _, p := range profiles {
+					if p.Name == req.Profile {
+						expected = p
+						break
+					}
+				}
+				if expected.Name == "" || usage.Profile != expected {
+					t.Fatalf("custom profile was not attested: %+v", usage.Profile)
+				}
+				checkLimits := func() {
+					t.Helper()
+					var out bytes.Buffer
+					code, err := c.Exec(ctx, w.ID, ExecRequest{Argv: []string{"sh", "-c", "cat /sys/fs/cgroup/cpu.max /sys/fs/cgroup/pids.max /sys/fs/cgroup/memory.max"}, Stdout: &out})
+					want := fmt.Sprintf("%d 100000\n%d\n%d", int64(expected.CPUCores)*100000, expected.PIDLimit, expected.GuestMemoryBytes)
+					if err != nil || code != 0 || strings.TrimSpace(out.String()) != want {
+						t.Fatalf("custom guest budget: %q %v", out.String(), err)
+					}
+				}
+				checkLimits()
+				if requestDir := os.Getenv("CODEX_DOCK_NODE_RESTART_REQUEST_DIR"); requestDir != "" {
+					if err := os.Remove(filepath.Join(requestDir, "complete")); err != nil && !os.IsNotExist(err) {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(requestDir, "request"), []byte("restart\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					awaitAPI(t, ctx, func() bool { _, err := os.Stat(filepath.Join(requestDir, "complete")); return err == nil })
+					checkLimits()
+				}
+				if err := c.Stop(ctx, w.ID, 5*time.Second); err != nil {
+					t.Fatal(err)
+				}
+				if err := c.Start(ctx, w.ID); err != nil {
+					t.Fatal(err)
+				}
+				checkLimits()
+				if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
+					t.Fatalf("custom profile restart auth: %s", got)
+				}
+				t.Logf("verified custom budget after node and VM restart: CPU=%d guest=%d host=%d PIDs=%d", expected.CPUCores, expected.GuestMemoryBytes, expected.HostMemoryBytes, expected.PIDLimit)
+				return
 			}
 			if mode == "codex-http" {
 				eofCtx, cancelEOF := context.WithTimeout(ctx, 5*time.Second)
