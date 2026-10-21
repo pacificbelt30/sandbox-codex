@@ -26,3 +26,5 @@ Use separate proxies, admin secrets, credential sockets, and admin ports for cas
 Case proxies are opt-in. The existing CLI flow using host HOME credentials is unchanged. A case proxy does not read HOME credentials or local OAuth state. Keep its admin port on loopback and never pass the admin secret to a worker or project configuration.
 
 OAuth save failures revoke new requests and active stream leases. Storage recovery alone may not restore a refresh token already rotated upstream. The product must reconcile credentials/connection generation, including re-login if needed, and must not silently reauthorize old runs. Restarting the proxy alone does not guarantee credential recovery.
+
+For official Claude Code subscriptions, `AnthropicOAuth` accepts an access-only setup-token record without `RefreshToken`. Expiry then requires host-side credential replacement and reconnection. A login record with a refresh token and known expiry is refreshed and saved with CAS before use. See [Claude Code](claude-code.md).

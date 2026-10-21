@@ -10,6 +10,7 @@ cxd の全コマンドリファレンスです。各コマンドの詳細は以�
 
 | コマンド | 説明 | 詳細 |
 |---|---|---|
+| [`cxd claude`](claude-code.md) | 公式Claude Codeの起動 | ネイティブ引数・APIキー／サブスク |
 | [`cxd codex`](commands/run.md#codex-cli-を直接起動する) | Codex CLIの引数をそのまま渡して起動 | カレントディレクトリを共有・直接exec |
 | [`cxd run`](commands/run.md) | サンドボックスコンテナの起動 | オプション・承認モード・並列実行・パッケージ管理 |
 | [`cxd completion`](commands/completion.md) | Tab 補完スクリプトの生成 | Bash・Zsh・Fish・PowerShell |

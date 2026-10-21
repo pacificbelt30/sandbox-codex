@@ -56,3 +56,5 @@ workspaceと追加mountのreadonly指定を保つ。worktreeでのcommit互換�
 隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。
 
 モデルIDの制限は、ホストが認証プロキシへ明示設定した場合だけ有効です。起動CLIのモデル指定だけでは認可を強制しません。対応経路・WebSocket拒否・別通信経路の扱いは[追加制御](sandbox-features.md#モデル認可と段階的な起動)を参照してください。
+
+Claude CodeはAPIキー・サブスクで仮トークン用の環境変数を分け、実access/refresh tokenをワーカーへ保存しません。実Anthropic推論とサブスク利用枠の検証はfixture試験に含みません。[Claude Code](claude-code.md)と[テスト記録](testing.md#claude-codeの受入)を参照してください。

@@ -35,7 +35,7 @@ make install-templates
 | エージェント | 利用できるホスト側の認証 |
 |---|---|
 | Codex | `OPENAI_API_KEY`、保存済みAPIキー、`~/.codex/auth.json` |
-| Claude Code | `ANTHROPIC_API_KEY`、保存済みAPIキー、`~/.claude/.credentials.json` |
+| Claude Code | `ANTHROPIC_API_KEY`、`CLAUDE_CODE_OAUTH_TOKEN`、`~/.claude/.credentials.json`、保存済みAPIキー |
 
 既存のログインファイルは、`cxd` を実行する利用者のホームに置きます。
 APIキーを使う場合は環境変数を設定します。OpenAIのキーは `cxd auth set` で保存することもできます。
@@ -146,3 +146,5 @@ cxd rm add-tests --force
 - [カスタムイメージ](commands/build.md)：Dockerfileとテンプレート
 - [通信ポリシー](proxy-policy.md)：許可リスト、拒否リスト、`--no-internet`
 - [トラブルシューティング](troubleshooting.md)：起動・認証・通信の確認
+
+[Claude CodeのAPIキー・サブスク設定手順](claude-code.md)。

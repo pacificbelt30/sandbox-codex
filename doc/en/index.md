@@ -18,6 +18,7 @@ The execution host must be Linux x86_64. Cross-compiling the CLI does not make K
 
 | Task | Guide |
 |---|---|
+| Run Claude Code with API or subscription auth | [Claude Code](claude-code.md) |
 | Move from Docker | [Migration](../migration.md) (Japanese) |
 | Understand shared files and ownership | [Workspace](../workspace.md) (Japanese) |
 | Inspect and manage VMs | [VM management](../vm.md) (Japanese) |

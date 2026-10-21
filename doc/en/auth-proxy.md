@@ -40,11 +40,13 @@ Each provider uses the first available source below.
 
 | Priority | OpenAI | Anthropic |
 |---|---|---|
-| 1 | `OPENAI_API_KEY` | `ANTHROPIC_API_KEY` |
-| 2 | `~/.config/codex-dock/apikey` | `~/.config/codex-dock/anthropic-apikey` |
-| 3 | `~/.codex/auth.json` | `~/.claude/.credentials.json` |
+| 1 | `~/.codex/auth.json` OAuth | `ANTHROPIC_API_KEY` |
+| 2 | `OPENAI_API_KEY` | `CLAUDE_CODE_OAUTH_TOKEN` |
+| 3 | `~/.config/codex-dock/apikey` | `~/.claude/.credentials.json` OAuth |
+| 4 | `~/.codex/auth.json` API key | `~/.config/codex-dock/anthropic-apikey` |
 
-API keys take precedence over OAuth for the same provider.
+An explicit Anthropic API key selects API billing even with a saved subscription login. Unset it to use subscription OAuth. See [Claude Code](claude-code.md) for setup-token support, refresh and pinned-CLI execution. External case proxies use only their CredentialStore, without these host fallbacks.
+
 The auth proxy runs as the caller's UID/GID with a private HOME at `/var/lib/codex-dock-proxy`.
 Credential files are mounted read-only. Owner-only `0600` files work without permission changes or added capabilities.
 Unreadable files and directories are rejected before startup.

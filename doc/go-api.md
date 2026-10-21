@@ -123,6 +123,10 @@ func main() {
 
 モデル制限付きの通常起動はWebSocketとリクエスト圧縮を無効化します。制限なしの既定起動は従来どおりです。明示接続ヘルパーも圧縮を無効にし、ProxyがJSONを検証できるようにします。[公式設定リファレンス](https://learn.chatgpt.com/docs/config-file/config-reference)と[CLIによる設定上書き](https://learn.chatgpt.com/docs/config-file/config-advanced)に対応します。
 
+### Claude Codeの接続
+
+`ClaudeCommand(ctx, workerID)` は、保存済みのAPIキー／サブスク方式に対応する明示コマンドと環境変数を返します。ユーザー／プロジェクト設定には依存しません。ネイティブ引数を追加し、`Argv` と `Env` の両方を `Exec` へ渡してください。`Env` はログに出さないでください。`Connections` はAPI方式では `ANTHROPIC_API_KEY` と `X-Api-Key`、サブスク方式では `CLAUDE_CODE_OAUTH_TOKEN` とBearerを返します。[Claude Code](claude-code.md)を参照してください。
+
 ### Credential Storeの適合テスト
 
 `pkg/cxd/credentialstore/storetest.Run(t, factory)` をホスト側Adapterのテストから呼べます。factoryは独立したテスト用Storeと、ログイン置換・切断・再接続・書き込み失敗の注入用 `storetest.Harness` を返します。`Reopen` は同じ永続DBを使う新しいAdapterを作ってください。本番データや実際の資格情報に対して実行しないでください。

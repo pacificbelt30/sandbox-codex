@@ -55,3 +55,5 @@ Isolation also depends on maintaining the host kernel, KVM, Kata and guest kerne
 Long-running real OAuth refresh, interactive keyboard use and arbitrary custom images require separate checks.
 
 Model ID enforcement is opt-in at the host auth proxy; a model flag alone is not authorization. See [additional controls](sandbox-features.md#model-authorization-and-staged-startup) for supported routes, WebSocket denial and separate egress/broker paths.
+
+Claude Code uses distinct API-key and subscription placeholder variables. No real Claude access/refresh token is written to the worker. Live Anthropic inference and subscription usage accounting remain outside fixture verification; see [Claude Code](claude-code.md) and the [test record](../testing.md#claude-codeの受入) (Japanese).

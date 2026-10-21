@@ -195,9 +195,13 @@ private IP等の遮断は、許可ルールでは解除できません。
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` / `ALL_PROXY` と小文字版 | BuildKitへのbuild args |
 | `CODEX_PROXY_CERT` | ビルド中に使うCAのパス。`proxy_ca` secretで渡す |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | ホスト認証プロキシの実APIキー |
+| `CLAUDE_CODE_OAUTH_TOKEN` | ホスト認証プロキシ用のサブスクaccess token。`claude setup-token` で発行 |
+| `CODEX_DOCK_CODEX_VERSION` / `CODEX_DOCK_CLAUDE_VERSION` | ビルド時の固定CLI版の上書き |
 
 実行方式の環境変数は、明示したフラグより下、設定ファイルより上の優先順位です。
 `DOCKER_HOST` とDocker contextは利用しません。
+
+Claude Codeのサブスク認証にはホストの `CLAUDE_CODE_OAUTH_TOKEN` も使えます。ビルド用の版指定は `CODEX_DOCK_CLAUDE_VERSION` です。[Claude Code](claude-code.md)に認証の優先順位と更新手順をまとめています。
 
 ## ホスト管理サービスの設定
 

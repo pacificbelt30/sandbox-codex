@@ -20,6 +20,7 @@ Docker EngineとDocker CLIは不要です。
 
 | 目的 | ページ |
 |---|---|
+| Claude CodeをAPIキー・サブスクで使う | [Claude Code](claude-code.md) |
 | ファイル共有・所有者・権限を確認する | [workspace](workspace.md) |
 | VMの状態や残存資源を調べる | [VM管理](vm.md) |
 | カスタムイメージやテンプレートを作る | [build](commands/build.md) |

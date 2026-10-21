@@ -46,12 +46,12 @@ cxd proxy run
 
 | 優先順位 | OpenAI | Anthropic |
 |---|---|---|
-| 1 | `OPENAI_API_KEY` | `ANTHROPIC_API_KEY` |
-| 2 | `~/.config/codex-dock/apikey` | `~/.config/codex-dock/anthropic-apikey` |
-| 3 | `~/.codex/auth.json` | `~/.claude/.credentials.json` |
+| 1 | `~/.codex/auth.json` OAuth | `ANTHROPIC_API_KEY` |
+| 2 | `OPENAI_API_KEY` | `CLAUDE_CODE_OAUTH_TOKEN` |
+| 3 | `~/.config/codex-dock/apikey` | `~/.claude/.credentials.json` OAuth |
+| 4 | `~/.codex/auth.json` APIキー | `~/.config/codex-dock/anthropic-apikey` |
 
-APIキーを設定している場合は、同じプロバイダーのOAuthより優先します。
-保存キーの設定は[authコマンド](commands/auth.md)を参照してください。
+明示したAnthropic APIキーは、保存済みサブスクより優先してAPI課金を選びます。サブスク利用時はunsetしてください。[Claude Code](claude-code.md)にsetup-token、更新、固定CLIの起動手順をまとめています。ケース別プロキシは外部CredentialStoreだけを使い、このホスト側の優先順位へフォールバックしません。OpenAIの保存キーの設定は[authコマンド](commands/auth.md)を参照してください。
 
 認証プロキシは呼出元のUID/GIDで動き、専用HOME `/var/lib/codex-dock-proxy` に認証ファイルを読み取り専用でマウントします。
 元ファイルが所有者だけに読み取りを許した `0600` でも利用できます。

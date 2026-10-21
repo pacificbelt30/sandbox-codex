@@ -38,6 +38,8 @@ BuildKitで作成したOCIイメージはワーカーと同じ専用containerd n
 任意のイメージ名を指定する場合は、先にそのタグをビルドしてください。
 プロジェクトの `codex-dock.toml` に `[build]` を記述すると、`cxd build`、`init`、`run` が同じビルド元を使えます。クローン先でも不足するイメージを自動ビルドします。設定例は[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
 
+Claude Codeも `CLAUDE_CLI_VERSION=2.1.306` に固定しています。ビルド時の変更には `CODEX_DOCK_CLAUDE_VERSION` を使います。イメージ・プロキシの更新と検証範囲は[Claude Code](../claude-code.md)を参照してください。
+
 ## カスタムイメージを作る
 
 組み込みイメージから派生すると、エージェントと認証用entrypointを引き継げます。

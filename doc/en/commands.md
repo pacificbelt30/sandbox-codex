@@ -10,6 +10,7 @@ Full command reference for codex-dock. See the individual pages below for detail
 
 | Command | Description | Details |
 |---|---|---|
+| [`cxd claude`](claude-code.md) | Run official Claude Code | Native flags; API or subscription |
 | [`cxd codex`](commands/run.md#launch-codex-cli-directly) | Pass Codex CLI arguments through unchanged | Mount current directory and exec Codex |
 | [`cxd run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
 | [`cxd completion`](commands/completion.md) | Generate Tab completion scripts | Bash, Zsh, Fish, PowerShell |

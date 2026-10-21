@@ -30,7 +30,7 @@ Configure credentials before starting the proxy.
 | Agent | Host credential sources |
 |---|---|
 | Codex | `OPENAI_API_KEY`, saved API key, `~/.codex/auth.json` |
-| Claude Code | `ANTHROPIC_API_KEY`, saved API key, `~/.claude/.credentials.json` |
+| Claude Code | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `~/.claude/.credentials.json`, saved API key |
 
 Use an existing login file under the caller's home, or set an API key in the environment.
 See [credential precedence](auth-proxy.md#credential-sources).
@@ -107,3 +107,5 @@ Save required results before removal, which also cleans up managed worktrees and
 
 Foreground workers are removed when they finish unless `--keep` is set.
 Shared proxies keep running. See [operations](../operations.md) and [troubleshooting](../troubleshooting.md) (Japanese).
+
+[Claude Code API-key and subscription setup](claude-code.md).

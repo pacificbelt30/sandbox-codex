@@ -35,6 +35,8 @@ Missing images are built from the corresponding template or default Dockerfile.
 Build arbitrary custom tags explicitly before using them.
 With a `[build]` section in the project's `codex-dock.toml`, `build`, `init`, and `run` use the same build source. Missing images are built after a fresh clone. See [project settings](../configuration.md#project-settings).
 
+Claude Code is pinned with `CLAUDE_CLI_VERSION=2.1.306`. Use `CODEX_DOCK_CLAUDE_VERSION` to override it for a build. See [Claude Code](../claude-code.md) for image/proxy updates and verification.
+
 ## Custom image
 
 First build the base image with `cxd build`.

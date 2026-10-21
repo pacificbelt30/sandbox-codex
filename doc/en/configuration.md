@@ -171,9 +171,13 @@ Recreate the proxy to apply changes. See [policy rules](../proxy-policy.md) (Jap
 | HTTP/HTTPS/NO/ALL proxy variables, upper/lowercase | BuildKit build args |
 | `CODEX_PROXY_CERT` | CA file passed as BuildKit `proxy_ca` secret |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Host proxy credentials |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Host auth proxy subscription access token from `claude setup-token` |
+| `CODEX_DOCK_CODEX_VERSION` / `CODEX_DOCK_CLAUDE_VERSION` | Exact agent CLI version override for builds |
 
 Runtime overrides take precedence over config, below explicit flags.
 `DOCKER_HOST` and Docker contexts are not used.
+
+Claude Code accepts host `CLAUDE_CODE_OAUTH_TOKEN` for subscription authentication. Build overrides include `CODEX_DOCK_CLAUDE_VERSION`. See [Claude Code](claude-code.md) for source precedence and upgrade steps.
 
 ## Host service configuration
 

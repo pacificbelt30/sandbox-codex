@@ -122,7 +122,7 @@ TUIログは追記描画に変更し、2000行・約4 MiBで区切ります。�
 
 `cxd proxy run --allow-model model-id`（繰返し可）、ホスト設定 `[proxy].allowed_models`、または `CaseProxyOptions.AllowedModels` で、その認証プロキシ全体のAI要求を制限します。空リストでは既存の転送を変更しません。設定は起動時に固定し、変更にはワーカー退避・プロキシ再作成が必要です。`ProxyCapabilities` は対応能力と有効状態を別々に返します。
 
-制限時はPOSTのJSONを最大8 MiBまで読み、正確な `model` 文字列を照合します。重複キー・大小文字違いのmodelキー・不正JSON・圧縮本文・query・encoded pathを拒否します。検査後の本文はそのまま送信し、上流redirectは追跡しません。対応経路は `/v1/responses`、`/v1/responses/compact`、`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings`、`/v1/moderations`、`/chatgpt/codex/responses`、`/chatgpt/codex/responses/compact`、`/anthropic/v1/messages`、`/anthropic/v1/messages/count_tokens` です。その他のAI経路とWebSocketは拒否するため、HTTP対応のクライアント設定が必要です。モデル一覧取得やbatch・ファイルAPIもこのモードでは転送しません。
+制限時はPOSTのJSONを最大8 MiBまで読み、正確な `model` 文字列を照合します。重複キー・大小文字違いのmodelキー・不正JSON・圧縮本文・encoded pathを拒否します。queryはClaude Messages/count_tokensの正確な `beta=true` だけを許可し、それ以外は拒否します。検査後の本文はそのまま送信し、上流redirectは追跡しません。対応経路は `/v1/responses`、`/v1/responses/compact`、`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings`、`/v1/moderations`、`/chatgpt/codex/responses`、`/chatgpt/codex/responses/compact`、`/anthropic/v1/messages`、`/anthropic/v1/messages/count_tokens` です。その他のAI経路とWebSocketは拒否するため、HTTP対応のクライアント設定が必要です。モデル一覧取得やbatch・ファイルAPIもこのモードでは転送しません。
 
 これは要求に記載したIDの制限です。上流がaliasをどの実モデルへ解決するかは管理しません。認証brokerの独自経路・一般通信先・利用者が持ち込んだ別の資格情報を一括認可する仕組みではありません。必須のモデル制限を持つ製品では、一般通信を無効にするか到達先を限定し、独自brokerに別のAI経路を設定しないでください。
 

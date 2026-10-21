@@ -197,7 +197,7 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 
 対応するCLI/node、ワーカーイメージ、ベースproxyイメージ、standalone BuildKitを配置した専用Linux/KVMホストで `make kata-api-e2e` を実行します。`CODEX_DOCK_KATA_NODE_SOCKET` と `BUILDKIT_HOST` で対象を明示できます。`CODEX_DOCK_KATA_TEST_IMAGE` と `CODEX_DOCK_KATA_PROXY_IMAGE` は利用するベースイメージを選びます。ビルド版はnodeと一致させてください（例：`make kata-api-e2e VERSION=dev`）。
 
-スクリプトは `internal/authproxy` のテスト実行ファイルを入れた一意のfixtureイメージを作ります。本物のproxy handler・Unix credential adapterを通し、上流だけをプロキシ内の架空HTTPサーバーへ差し替えます。実APIキーや外部AI推論は使いません。OAuth更新の実Kata fixtureはOpenAI型で、実Anthropic接続は含みません。fixtureイメージを運用に使わないでください。ワーカーとケースproxyを最後に削除し、スクリプト所有のfixtureイメージもテストが回収します。BuildKit cacheとホスト共通egress networkは通常のビルド・ノード管理に従います。
+スクリプトは `internal/authproxy` のテスト実行ファイルを入れた一意のfixtureイメージを作ります。本物のproxy handler・Unix credential adapterを通し、上流だけをプロキシ内の架空HTTPサーバーへ差し替えます。実APIキーや外部AI推論は使いません。OAuth更新の実Kata fixtureはOpenAI型に加え、[Claude Codeの受入](#claude-codeの受入)でAnthropic型も確認します。外部の実Anthropic接続は含みません。fixtureイメージを運用に使わないでください。ワーカーとケースproxyを最後に削除し、スクリプト所有のfixtureイメージもテストが回収します。BuildKit cacheとホスト共通egress networkは通常のビルド・ノード管理に従います。
 
 `TestKataAPIIntegration` の対象は、Createの再送とLaunchとの衝突、起動前にhookが動かないこと、Start後のreadiness、small/compactのホストcurrent/peak/OOMとcompact 2台の同時稼働、実要求のモデル拒否、実行中ジョブ/streamのidle回収除外、RevokeRunによる通信中streamの終了と再利用拒否、hook中の同一Launch再送がpendingを保持すること、Launch取消と要求台帳・資源回収、OAuth保存失敗・版競合での失効、正常更新とproxy再起動での保存世代再取得、古いtoken拒否と停止/再起動での再有効化です。
 
@@ -318,3 +318,37 @@ CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。資産�
 全Goテストのrace検査、vet、lint、Linux arm64・macOS arm64クロスビルド、ドキュメントのstrict buildも成功しました。
 
 追加のGo API受入も、固定CLI 0.163.0と架空の資格情報で全9ケースが成功しました（406.251秒）。明示HTTP/SSE、compact、起動取消・通信中失効、OAuth保存失敗・版競合・Proxy再起動、容量付き一時領域、組み込みサンプル、登録プロファイルのnode/VM再起動後の制約を確認しています。検証用VM・コンテナ・ネットワーク・サービス・状態を回収し、既存サービスは変更していません。
+
+
+## Claude Codeの受入
+
+組み込みイメージの公式Claude Codeは2.1.306です。実APIキーやサブスクの実アカウントは使わず、proxy handlerの上流だけを架空のMessages/SSE・OAuthサーバーへ置き換えます。
+
+ホストで固定CLIを動かす任意試験:
+
+```bash
+CXD_TEST_CLAUDE_BINARY=/absolute/path/to/claude go test ./internal/authproxy -run '^TestClaudeCLIIntegration$' -count=1 -v
+```
+
+Linux/KVMの独立したノードでGo APIから実Kataを動かす試験:
+
+```bash
+make build
+python3 scripts/verify-go-api.py --binary "$PWD/cxd" --version "$(./cxd --version | awk '{print $NF}')" --run '^TestKataAPIIntegration/claude-'
+```
+
+既存の `make kata-api-e2e` にもClaudeのAPIキー・OAuthケースを含めています。待機ワーカーの `ClaudeCommand` と、`Agent: "claude"` を指定したメインプロセス起動の両方を試験します。公式CLIのMessages/SSE、Bashツールの実行と結果の返送、明示モデル制限、ワーカー停止・再起動後の仮トークン復元、OAuthの一度だけの更新・外部Store保存・接続世代維持を確認します。単体試験ではsetup-token、認証方式の優先順位、余分なクエリの拒否、更新のHTTP失敗・不正応答・取消・保存失敗・版競合・再起動後の読込・stream失効も対象です。
+
+実Anthropic APIへの推論、実Pro/Max等の利用枠、長期OAuth更新、対話キーボード操作、別のClaude CLI版は未確認です。fixtureの成功は実契約での認証・課金・上限の保証ではありません。
+
+
+2026-10-21の独立Kataノードでは、上記4つのClaudeケースが成功しました。待機ワーカーのAPIキー58.49秒／OAuth50.60秒、メインプロセスのAPIキー26.90秒／OAuth26.88秒です。既存ケースも含む公開Go API全13ケースが626.378秒で成功しました。ワーカーは既存ベースへ最新entrypointとnpm公式配布の固定Claudeバイナリを重ねた検証用イメージで、proxyの上流だけをfixtureへ差し替えています。ホストの固定公式CLIを用いるrace付き試験も両認証で成功しました。
+
+
+標準の `make kata-e2e VERSION=dev` も4スイートすべて成功しました（450.143秒）。VM受入207.26秒、共有8ケース141.98秒、追加制御38.91秒、標準Go API61.99秒です。全パッケージrace/coverage、vet、lint、Linux arm64・macOS arm64クロスビルド、MkDocs strictビルドも成功しました。Anthropic APIキー要求を別プロバイダーのOAuth更新ロックから独立させる回帰テストと、固定公式CLIを含むauthproxy全体のrace試験も成功しています。
+
+
+最後の更新ロック回避を反映した後も、実KataのAPIキー・OAuthを再試験し、両ケースが103.921秒で成功しました。待機ワーカーでの公式CLI、ツール結果の往復、停止・再起動、OAuth更新のCAS保存を再確認しています。
+
+
+検証終了後、専用VM・コンテナ・task・空のネットワークの消滅を確認してから、専用node・BuildKit・containerd・mount・cgroup・状態領域を回収しました。元の3サービスと元ネットワークの所有権・node疎通も確認しており、既存サービスには更新を適用していません。

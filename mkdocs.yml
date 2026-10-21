@@ -41,6 +41,7 @@ nav:
   - ホーム: index.md
   - はじめに:
       - クイックスタート: getting-started.md
+      - Claude Code: claude-code.md
       - 導入と更新の自動化: setup.md
       - 実行ホストの手動準備: kata.md
       - 旧環境からの移行: migration.md
@@ -80,6 +81,7 @@ nav:
   - English:
       - Home: en/index.md
       - Quick start: en/getting-started.md
+      - Claude Code: en/claude-code.md
       - Commands:
           - Overview: en/commands.md
           - Completion: en/commands/completion.md

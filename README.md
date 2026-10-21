@@ -11,6 +11,7 @@ Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです
 
 ## できること
 
+- **Claude Code**：[APIキーとサブスクの両方](doc/claude-code.md)に対応。`cxd claude` で公式CLIを起動します。
 - **VM隔離**：ワーカーごとにCPU・メモリ・プロセス数を制限します。
 - **認証の分離**：実APIキーやOAuthのaccess token・refresh tokenは認証プロキシで扱います。ワーカーには短命トークンを渡します。
 	OAuth の更新結果はホストの `~/.local/state/codex-dock/oauth/` に権限 0700/0600 で保存され、プロキシ再起動後も復元されます。ログインをやり直して元の認証ファイルが変わると、以前の更新結果は使用しません。

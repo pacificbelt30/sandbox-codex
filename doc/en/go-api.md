@@ -119,6 +119,10 @@ A worker model policy must fit within 4 KiB including its serialized JSON and la
 
 Normal launches with model restrictions disable WebSocket and request compression; unrestricted defaults are preserved. The explicit helper also disables compression so the proxy can validate JSON. See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [CLI configuration overrides](https://learn.chatgpt.com/docs/config-file/config-advanced).
 
+### Claude Code connections
+
+`ClaudeCommand(ctx, workerID)` returns an explicit command/environment for the saved API-key or subscription mode, independent of user/project settings. Append native Claude flags and pass both `Argv` and `Env` to `Exec`. Do not log `Env`. `Connections` reports `ANTHROPIC_API_KEY` with `X-Api-Key` for API mode, or `CLAUDE_CODE_OAUTH_TOKEN` with Bearer for subscriptions. See [Claude Code](claude-code.md).
+
 ### Credential Store conformance
 
 Call `pkg/cxd/credentialstore/storetest.Run(t, factory)` from host-adapter tests. The factory returns isolated test storage and a `storetest.Harness` controlling login replacement, disconnect, reopen and write-failure injection. `Reopen` must construct a fresh adapter over the same durable database. Never run the suite against production data or real credentials.
