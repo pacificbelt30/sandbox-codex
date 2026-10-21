@@ -128,3 +128,23 @@ func main() {
 `pkg/cxd/credentialstore/storetest.Run(t, factory)` をホスト側Adapterのテストから呼べます。factoryは独立したテスト用Storeと、ログイン置換・切断・再接続・書き込み失敗の注入用 `storetest.Harness` を返します。`Reopen` は同じ永続DBを使う新しいAdapterを作ってください。本番データや実際の資格情報に対して実行しないでください。
 
 テストは両プロバイダーの更新、接続世代の維持、資格情報版の更新、別インスタンスを交えた12同時CASの単一成功、競合・切断後の復活防止、再オープン後の永続性、コミット前の保存失敗・取消時の無変更、返却・保存値の所有権を確認します。接続先DBのAdapter実装と、そのDB・障害注入の用意は呼び出し側が担います。テストは資格情報の値を出力しません。
+
+### 容量上限付きの一時領域
+
+`LaunchRequest.TemporaryStorage` にゲストのパスと容量を指定できます。
+
+```go
+TemporaryStorage: []cxd.TemporaryStorage{{
+    Target: "/run/build-cache", MaxBytes: 64 << 20,
+    Medium: cxd.StorageMemory, Lifetime: cxd.StorageLifetimeVM,
+    Executable: true,
+}},
+```
+
+現時点では `memory` の tmpfs と `vm` の寿命に対応します。容量はファイルシステムの上限であり、メモリの事前確保ではありません。使用分は既存のguestメモリ上限に含まれ、アプリと競合します。全領域の上限合計をguestメモリ以内に抑えたうえで余裕を設けてください。ディスク媒体・永続化・ホスト容量の予約には対応せず、未対応の指定はエラーになります。
+
+パスは正規化済みの絶対パス、容量は4KiB単位で4KiB〜2GiB、領域数は最大16です。領域同士の重なり、既存bindの隠蔽、read-only bindやファイルシステム制限との重なり、起動用・カーネル用パスへの指定は拒否します。マウントはワーカーのUID/GID、初期モード0700、`nosuid,nodev` となり、既定では `noexec` です。`Executable` は直接実行の可否を指定するもので、スクリプトをインタープリタで読み取って実行することまで禁止しません。
+
+`Create` は領域を使用せず、`Start` の起動検証で種類・上限・所有者・マウントフラグを確認してからhookやユーザーコードを解放します。内容はnode再起動で維持され、VM停止で破棄されます。停止後の `Start` では空の領域になり、hookが再実行されます。設定は不変の作成条件に含まれます。
+
+対応にはKataと更新済みの固定bootstrapが必要です。ワーカーを停止・回収してから対応するworker-guardを配置し、`runtime-lock --launcher ... --logger ...` でアセットを再固定してください。`Capabilities()` の `bounded-tmpfs-v1` は、固定bootstrapが容量検証に対応する場合だけ返されます。未対応nodeへの指定は作成前に失敗します。指定しない既存ワーカーの動作は変わりません。

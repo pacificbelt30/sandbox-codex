@@ -144,6 +144,7 @@ type RunOptions struct {
 	TokenTTL           int
 	TokenIdentity      identity.Identity
 	TokenModelPolicy   *identity.ModelPolicy
+	TemporaryStorage   []workerpolicy.TemporaryStorage
 	AgentsMD           string
 	Detach             bool
 	Parallel           int

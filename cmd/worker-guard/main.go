@@ -22,6 +22,10 @@ func main() {
 		die(fmt.Errorf("missing operation"))
 	}
 	switch os.Args[1] {
+	case "capabilities":
+		if err := json.NewEncoder(os.Stdout).Encode([]string{"temporary-storage-probe-v1"}); err != nil {
+			die(err)
+		}
 	case "wait":
 		if len(os.Args) < 4 || os.Getpid() != 1 {
 			die(fmt.Errorf("expected PID 1, allocation nonce and command"))
@@ -85,6 +89,17 @@ func main() {
 				die(err)
 			}
 			out[name] = strings.TrimSpace(string(data))
+		}
+		if len(os.Args) > 2 {
+			observations, err := temporaryObservations(os.Args[2:])
+			if err != nil {
+				die(err)
+			}
+			data, err := json.Marshal(observations)
+			if err != nil {
+				die(err)
+			}
+			out["temporary_storage"] = string(data)
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
 			die(err)

@@ -126,6 +126,11 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 // Failure cleanup uses its own bounded context so cancellation cannot leave
 // the worker running merely because the caller stopped waiting.
 func (m *Manager) RunContext(parent context.Context, opts RunOptions) (containerID string, runErr error) {
+	storage, err := workerpolicy.NormalizeTemporaryStorage(opts.TemporaryStorage)
+	if err != nil {
+		return "", err
+	}
+	opts.TemporaryStorage = storage
 	if err := opts.Filesystem.Validate(); err != nil {
 		return "", err
 	}
@@ -140,14 +145,18 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	}
 	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	defer cancel()
-	if len(opts.Filesystem.DenyRead)+len(opts.Filesystem.DenyWrite) > 0 || opts.ReadOnlyRootFS || opts.Environment.ImageID != "" || opts.Lifecycle.IdleTimeout > 0 {
+	if len(opts.Filesystem.DenyRead)+len(opts.Filesystem.DenyWrite) > 0 || opts.ReadOnlyRootFS || opts.Environment.ImageID != "" || opts.Lifecycle.IdleTimeout > 0 || len(storage) > 0 {
 		info, err := m.cli.Info(ctx)
 		if err != nil {
 			return "", err
 		}
 		supported := false
 		idleSafe := opts.Lifecycle.IdleTimeout == 0
+		temporarySupported := len(storage) == 0
 		for _, feature := range info.DriverStatus {
+			if feature == [2]string{"cxd.temporary-storage", "1"} {
+				temporarySupported = true
+			}
 			if feature == [2]string{"cxd.idle-safe", "1"} {
 				idleSafe = true
 			}
@@ -155,7 +164,7 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 				supported = true
 			}
 		}
-		if !supported || !idleSafe {
+		if !supported || !idleSafe || !temporarySupported {
 			return "", fmt.Errorf("worker policy requires a newer cxd node; upgrade the node before enabling it")
 		}
 	}
@@ -183,6 +192,9 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	}
 	if err := m.CheckRuntime(ctx, opts); err != nil {
 		return "", err
+	}
+	if len(storage) > 0 && isolation != RuntimeKata {
+		return "", fmt.Errorf("bounded temporary storage requires Kata isolation")
 	}
 	if opts.CreateOnly && isolation != RuntimeKata {
 		return "", fmt.Errorf("create without initial start requires Kata isolation")
@@ -283,6 +295,13 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		if err = m.protectKataMounts(mounts); err != nil {
 			return "", err
 		}
+	}
+	if err := workerpolicy.ValidateTemporaryBudget(storage, profile.GuestMemoryBytes); err != nil {
+		return "", err
+	}
+	denied := append(append([]string(nil), opts.Filesystem.DenyRead...), opts.Filesystem.DenyWrite...)
+	if err := validateTemporaryTopology(storage, mounts, denied, opts.ReadOnlyRootFS); err != nil {
+		return "", err
 	}
 	if err := m.checkCleanupState(); err != nil {
 		return "", fmt.Errorf("preparing cleanup state: %w", err)
@@ -476,6 +495,12 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		env = append(env, "DOCK_ENVIRONMENT_JSON="+string(payload), "DOCK_ENVIRONMENT_READY="+environmentReady)
 	}
 
+	for _, spec := range storage {
+		if hostConfig.Tmpfs == nil {
+			hostConfig.Tmpfs = make(map[string]string)
+		}
+		hostConfig.Tmpfs[spec.Target] = spec.MountOptions()
+	}
 	// Build codex command
 	codexArgs := buildCodexArgs(opts)
 

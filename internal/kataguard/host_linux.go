@@ -26,9 +26,10 @@ type Config struct {
 	DNS                                              []string
 }
 type Guard struct {
-	config   Config
-	manifest Manifest
-	profiles []ResourceProfile
+	config           Config
+	manifest         Manifest
+	profiles         []ResourceProfile
+	temporaryStorage bool
 }
 
 func trustedOwner(info os.FileInfo) bool {
@@ -72,7 +73,7 @@ func New(c Config) (*Guard, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading node resource profiles: %w", err)
 	}
-	g := &Guard{config: c, manifest: m, profiles: profiles}
+	g := &Guard{config: c, manifest: m, profiles: profiles, temporaryStorage: launcherTemporaryStorage(m.Assets["launcher"].Path)}
 	for _, p := range profiles {
 		if p.PIDLimit != 512 && !g.supportsPIDProfiles() {
 			return nil, fmt.Errorf("non-512 PID profiles require prepared guest policy assets; update and reseal the guest image before enabling them")

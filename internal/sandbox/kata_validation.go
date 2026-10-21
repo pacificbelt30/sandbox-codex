@@ -41,6 +41,9 @@ func (m *Manager) validateKataWorker(ctx context.Context, id string) error {
 	if h.Memory != profile.GuestMemoryBytes || h.MemorySwap != profile.GuestMemoryBytes || h.NanoCPUs != int64(profile.CPUCores)*1_000_000_000 || h.PidsLimit == nil || *h.PidsLimit != profile.PIDLimit {
 		return fmt.Errorf("kata workload resource limits changed")
 	}
+	if _, err := validateSavedTemporaryStorage(v, profile.GuestMemoryBytes); err != nil {
+		return err
+	}
 	launcher := false
 	var userMounts []mount.Mount
 	for _, bind := range h.Mounts {

@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 )
 
 const labelAllocation = labelPrefix + "allocation"
@@ -253,7 +254,15 @@ func (m *Manager) verifyKataGuest(ctx context.Context, id string, waiting bool) 
 	if err != nil {
 		return err
 	}
-	data, err := m.execTrusted(ctx, id, []string{guestGuard, "probe"})
+	storage, err := workerpolicy.ParseTemporaryStorage(v.Config.Labels[workerpolicy.TemporaryStorageLabel])
+	if err != nil {
+		return err
+	}
+	args := []string{guestGuard, "probe"}
+	for _, s := range storage {
+		args = append(args, s.Target)
+	}
+	data, err := m.execTrusted(ctx, id, args)
 	if err != nil {
 		return err
 	}
@@ -261,7 +270,10 @@ func (m *Manager) verifyKataGuest(ctx context.Context, id string, waiting bool) 
 	if err != nil {
 		return err
 	}
-	return verifyGuest(data, v.Config.Labels[labelAllocation], string(boot), v.Config.User, waiting, profile)
+	if err := verifyGuest(data, v.Config.Labels[labelAllocation], string(boot), v.Config.User, waiting, profile); err != nil {
+		return err
+	}
+	return verifyTemporaryGuest(data, storage, waiting)
 }
 
 func (m *Manager) releaseKataAllocation(ctx context.Context, allocation, id string) error {

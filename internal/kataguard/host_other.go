@@ -15,9 +15,10 @@ type Config struct {
 	DNS                                              []string
 }
 type Guard struct {
-	config   Config
-	manifest Manifest
-	profiles []ResourceProfile
+	config           Config
+	manifest         Manifest
+	profiles         []ResourceProfile
+	temporaryStorage bool
 }
 
 func trustedOwner(info os.FileInfo) bool { return false }

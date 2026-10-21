@@ -124,3 +124,23 @@ Normal launches with model restrictions disable WebSocket and request compressio
 Call `pkg/cxd/credentialstore/storetest.Run(t, factory)` from host-adapter tests. The factory returns isolated test storage and a `storetest.Harness` controlling login replacement, disconnect, reopen and write-failure injection. `Reopen` must construct a fresh adapter over the same durable database. Never run the suite against production data or real credentials.
 
 The suite checks refresh for both providers, stable connection generations, changing credential versions, exactly one winner among 12 concurrent CAS operations across instances, stale-write/reconnect rejection, durability after reopen, pre-commit failure/cancellation atomicity and snapshot ownership. The caller supplies its database adapter and backend-specific failure controls. Assertions never print credential values.
+
+### Bounded temporary storage
+
+Declare a guest path and filesystem ceiling in `LaunchRequest.TemporaryStorage`:
+
+```go
+TemporaryStorage: []cxd.TemporaryStorage{{
+    Target: "/run/build-cache", MaxBytes: 64 << 20,
+    Medium: cxd.StorageMemory, Lifetime: cxd.StorageLifetimeVM,
+    Executable: true,
+}},
+```
+
+Only `memory` tmpfs with `vm` lifetime is supported. Capacity is a filesystem ceiling, not preallocated memory. Actual usage competes with applications within the existing guest memory budget. The total of all declared ceilings must fit that budget; leave room for application memory. Disk media, persistence and host storage reservations are unsupported and fail explicitly.
+
+Targets must be clean absolute paths. Sizes range from 4 KiB to 2 GiB in 4 KiB increments, with at most 16 filesystems. Overlapping filesystems, hidden bind mounts, overlap with read-only binds or filesystem restrictions, and bootstrap/kernel paths are rejected. Mounts use the worker UID/GID, initial mode 0700 and `nosuid,nodev`; `noexec` is the default. `Executable` controls direct execution, not interpreters reading scripts.
+
+`Create` does not use the filesystem. During `Start`, the bootstrap verifies its type, capacity, owner and mount flags before hooks or user code run. Data survives node restart and is discarded when the VM stops. A later `Start` gets empty filesystems and reruns hooks. Storage settings are immutable creation inputs.
+
+This requires Kata and an updated pinned bootstrap. Drain workers before installing the matching worker-guard and repin assets with `runtime-lock --launcher ... --logger ...`. `Capabilities()` advertises `bounded-tmpfs-v1` only when that bootstrap supports capacity verification. Unsupported nodes reject requests before creation. Workers without declarations retain their existing behavior.

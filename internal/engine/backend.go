@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,6 +43,7 @@ import (
 	"github.com/moby/sys/signal"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 )
 
 const owned = "codex-dock.engine"
@@ -53,6 +55,7 @@ type Options struct {
 	Address, State, Runtime, KataConfig, Snapshotter string
 	Logger                                           string
 	DNS                                              []string
+	TemporaryStorage                                 bool
 	// Retire moves an attested, exited Dragonball shim to a sibling leaf
 	// inside the same bounded envelope before its self-owned cgroup is deleted.
 	Retire      func(context.Context, string, string) error
@@ -422,6 +425,20 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 	if h.PidsLimit != nil {
 		opts = append(opts, oci.WithPidsLimit(*h.PidsLimit))
 	}
+	storage, err := workerpolicy.ParseTemporaryStorage(c.Labels[workerpolicy.TemporaryStorageLabel])
+	if err != nil {
+		return "", err
+	}
+	if len(storage) > 0 && !b.opts.TemporaryStorage {
+		return "", fmt.Errorf("node bootstrap does not support temporary storage")
+	}
+	temporary := make(map[string]bool)
+	for _, v := range storage {
+		if h.Tmpfs[v.Target] != v.MountOptions() {
+			return "", fmt.Errorf("temporary storage declaration does not match tmpfs")
+		}
+		temporary[v.Target] = true
+	}
 	opts = append(opts, func(_ context.Context, _ oci.Client, _ *containers.Container, s *oci.Spec) error {
 		s.Linux.MaskedPaths = append(s.Linux.MaskedPaths, h.MaskedPaths...)
 		s.Linux.ReadonlyPaths = append(s.Linux.ReadonlyPaths, h.ReadonlyPaths...)
@@ -455,8 +472,17 @@ func (b *Backend) create(ctx context.Context, c container.Config, h container.Ho
 			}
 			s.Mounts = append(s.Mounts, specs.Mount{Type: "bind", Source: m.Source, Destination: m.Target, Options: options})
 		}
-		for target, options := range h.Tmpfs {
-			s.Mounts = append(s.Mounts, specs.Mount{Type: "tmpfs", Source: "tmpfs", Destination: target, Options: strings.Split(options, ",")})
+		targets := make([]string, 0, len(h.Tmpfs))
+		for target := range h.Tmpfs {
+			targets = append(targets, target)
+		}
+		sort.Strings(targets)
+		for _, target := range targets {
+			options := strings.Split(h.Tmpfs[target], ",")
+			if temporary[target] {
+				options = append(options, "uid="+strconv.FormatUint(uint64(s.Process.User.UID), 10), "gid="+strconv.FormatUint(uint64(s.Process.User.GID), 10))
+			}
+			s.Mounts = append(s.Mounts, specs.Mount{Type: "tmpfs", Source: "tmpfs", Destination: target, Options: options})
 		}
 		for _, file := range []string{"hosts", "resolv.conf", "hostname"} {
 			s.Mounts = append(s.Mounts, specs.Mount{Type: "bind", Source: filepath.Join(b.path(cid), file), Destination: "/etc/" + file, Options: []string{"bind", "ro"}})
@@ -769,7 +795,11 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			failure(w, err)
 			return
 		}
-		reply(w, system.Info{DriverStatus: [][2]string{{"cxd.worker-policy", "1"}, {"cxd.idle-safe", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}, OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
+		features := [][2]string{{"cxd.worker-policy", "1"}, {"cxd.idle-safe", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}
+		if b.opts.TemporaryStorage {
+			features = append(features, [2]string{"cxd.temporary-storage", "1"})
+		}
+		reply(w, system.Info{DriverStatus: features, OSType: "linux", CgroupDriver: "cgroupfs", CgroupVersion: "2", Runtimes: map[string]system.RuntimeWithStatus{"io.containerd.kata.v2": {Runtime: system.Runtime{Type: b.opts.Runtime}}, "runc": {Runtime: system.Runtime{Type: "io.containerd.runc.v2"}}}})
 		return
 	}
 	if path == "/images/check" && r.Method == "GET" {

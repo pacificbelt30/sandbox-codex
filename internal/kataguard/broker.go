@@ -94,7 +94,7 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 	for _, name := range []string{"ip", "nft", "sysctl", "runc", "runc-shim"} {
 		tools[name] = g.manifest.Assets[name].Path
 	}
-	backend, err := engine.Open(engine.Options{Address: daemon.GRPC.Address, State: filepath.Join(cfg.StateDir, "engine"), Runtime: g.manifest.Assets["runtime"].Path, KataConfig: g.manifest.Assets["config"].Path, Retire: g.Retire, AbortCreate: g.AbortCreate, Tools: tools, Logger: g.manifest.Assets["logger"].Path, DNS: cfg.DNS})
+	backend, err := engine.Open(engine.Options{Address: daemon.GRPC.Address, State: filepath.Join(cfg.StateDir, "engine"), Runtime: g.manifest.Assets["runtime"].Path, KataConfig: g.manifest.Assets["config"].Path, Retire: g.Retire, AbortCreate: g.AbortCreate, Tools: tools, Logger: g.manifest.Assets["logger"].Path, DNS: cfg.DNS, TemporaryStorage: g.temporaryStorage})
 	if err != nil {
 		return err
 	}
@@ -144,6 +144,9 @@ func Serve(ctx context.Context, cfg Config, socket string, gid int) error {
 			case "validate":
 				err = g.Validate(ctx, req.Runtime)
 				reply.Info = NodeInfo{ProtocolVersion: 2, Profile: Profile, Endpoint: cfg.Endpoint, Stamp: g.Stamp(), Launcher: g.Launcher(), Root: cfg.CgroupRoot, SharedFSCache: "none", BuildVersion: buildinfo.Version, Capabilities: []string{"request-status-v1", "request-cleanup-v1", "resource-profiles-v1", "operator-resource-profiles-v1", "filesystem-policy-v1", "idle-activity-v1", "idle-safe-v1", "create-before-start-v1", "exec-options-v1", "background-jobs-v1", "exec-pty-resize-v1", "image-digest-v1"}, Protected: append(g.ProtectedPaths(), socket)}
+				if g.temporaryStorage {
+					reply.Info.Capabilities = append(reply.Info.Capabilities, "bounded-tmpfs-v1")
+				}
 				if g.supportsPIDProfiles() {
 					reply.Info.Capabilities = append(reply.Info.Capabilities, "dynamic-pid-profiles-v1")
 				}

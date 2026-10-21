@@ -14,6 +14,13 @@ import (
 const lifecycleLabel = labelPrefix + "lifecycle"
 
 func addWorkerPolicyLabels(labels map[string]string, opts RunOptions) error {
+	if len(opts.TemporaryStorage) > 0 {
+		data, err := json.Marshal(opts.TemporaryStorage)
+		if err != nil {
+			return err
+		}
+		labels[workerpolicy.TemporaryStorageLabel] = string(data)
+	}
 	if opts.Lifecycle != (workerpolicy.Lifecycle{}) {
 		data, err := json.Marshal(opts.Lifecycle)
 		if err != nil {

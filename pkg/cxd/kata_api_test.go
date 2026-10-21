@@ -23,6 +23,43 @@ import (
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
+const apiTemporaryStorage = `
+import errno, os, stat, subprocess
+for target, capacity, executable in [('/run/build-cache', 8 << 20, True), ('/run/data-cache', 1 << 20, False)]:
+    info = os.stat(target)
+    assert (info.st_uid, info.st_gid) == (os.getuid(), os.getgid())
+    assert stat.S_IMODE(info.st_mode) == 0o700
+    fs = os.statvfs(target)
+    assert fs.f_blocks * fs.f_frsize == capacity
+    script = target + '/run.sh'
+    with open(script, 'w') as out:
+        out.write('#!/bin/sh\nprintf tmpfs-ok')
+    os.chmod(script, 0o700)
+    if executable:
+        assert subprocess.check_output([script]) == b'tmpfs-ok'
+    else:
+        try:
+            subprocess.run([script], check=True)
+        except PermissionError:
+            pass
+        else:
+            raise AssertionError('noexec mount allowed direct execution')
+    os.remove(script)
+    try:
+        with open(target + '/full', 'wb', buffering=0) as out:
+            chunk = b'x' * 65536
+            for _ in range(capacity // len(chunk) + 2):
+                out.write(chunk)
+    except OSError as exc:
+        assert exc.errno == errno.ENOSPC, exc
+    else:
+        raise AssertionError('filesystem capacity was not enforced')
+    finally:
+        os.remove(target + '/full')
+with open('/run/build-cache/marker', 'w') as out:
+    out.write('survive node restart only')
+`
+
 type apiFixtureStore struct {
 	mu           sync.Mutex
 	creds        credentialstore.Credentials
@@ -90,7 +127,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	modes := []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart"}
+	modes := []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage"}
 	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
 		modes = append(modes, "custom-profile")
 	}
@@ -158,6 +195,14 @@ func TestKataAPIIntegration(t *testing.T) {
 				req.Lifecycle.IdleTimeout = 500 * time.Millisecond
 				req.Environment = EnvironmentPolicy{StartHooks: [][]string{{"sh", "-c", "printf ready > /workspace/hook"}}, Readiness: []string{"test", "-f", "/workspace/hook"}}
 			}
+			if mode == "temporary-storage" {
+				req.ReadOnlyRootFS = true
+				req.TemporaryStorage = []TemporaryStorage{
+					{Target: "/run/build-cache", MaxBytes: 8 << 20, Executable: true},
+					{Target: "/run/data-cache", MaxBytes: 1 << 20},
+				}
+				req.Environment = EnvironmentPolicy{StartHooks: [][]string{{"sh", "-c", "printf ready > /run/build-cache/hook"}}, Readiness: []string{"test", "-f", "/run/build-cache/hook"}}
+			}
 			w, err := c.Create(ctx, req)
 			if err != nil {
 				t.Fatal(err)
@@ -184,6 +229,14 @@ func TestKataAPIIntegration(t *testing.T) {
 			changedPolicy.ModelPolicy.AllowedModels = []string{"different"}
 			if _, err := c.Create(ctx, changedPolicy); !errors.Is(err, ErrConflict) {
 				t.Fatalf("model policy changed on replay: %v", err)
+			}
+			if mode == "temporary-storage" {
+				changed := req
+				changed.TemporaryStorage = append([]TemporaryStorage(nil), req.TemporaryStorage...)
+				changed.TemporaryStorage[0].MaxBytes /= 2
+				if _, err := c.Create(ctx, changed); !errors.Is(err, ErrConflict) {
+					t.Fatalf("temporary storage changed on replay: %v", err)
+				}
 			}
 			if _, err := c.Launch(ctx, req); err == nil {
 				t.Fatal("Create and Launch shared a request identity")
@@ -213,6 +266,40 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("allowed model: %s", got)
+			}
+			if mode == "temporary-storage" {
+				execOK := func(args ...string) {
+					t.Helper()
+					var out bytes.Buffer
+					code, err := c.Exec(ctx, w.ID, ExecRequest{Argv: args, Stdout: &out, Stderr: &out})
+					if err != nil || code != 0 {
+						t.Fatalf("temporary storage assertion: code=%d err=%v output=%s", code, err, out.String())
+					}
+				}
+				execOK("python3", "-c", apiTemporaryStorage)
+				if requestDir := os.Getenv("CODEX_DOCK_NODE_RESTART_REQUEST_DIR"); requestDir != "" {
+					if err := os.Remove(filepath.Join(requestDir, "complete")); err != nil && !os.IsNotExist(err) {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(requestDir, "request"), []byte("restart\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					awaitAPI(t, ctx, func() bool { _, err := os.Stat(filepath.Join(requestDir, "complete")); return err == nil })
+					execOK("test", "-f", "/run/build-cache/marker")
+				}
+				if err := c.Stop(ctx, w.ID, 5*time.Second); err != nil {
+					t.Fatal(err)
+				}
+				if err := c.Start(ctx, w.ID); err != nil {
+					t.Fatal(err)
+				}
+				execOK("sh", "-c", "test ! -e /run/build-cache/marker && test -f /run/build-cache/hook")
+				execOK("python3", "-c", apiTemporaryStorage)
+				if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
+					t.Fatalf("temporary storage restart auth: %s", got)
+				}
+				t.Log("verified bounded tmpfs capacity, ENOSPC, owner/mode, exec/noexec, node persistence and VM lifetime")
+				return
 			}
 			if mode == "custom-profile" {
 				profiles, err := c.Profiles(ctx)

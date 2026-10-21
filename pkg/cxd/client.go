@@ -143,6 +143,7 @@ type LaunchRequest struct {
 	TokenTTL           time.Duration
 	Identity           identity.Identity
 	ModelPolicy        *identity.ModelPolicy `json:",omitempty"`
+	TemporaryStorage   []TemporaryStorage    `json:",omitempty"`
 }
 
 // Mount is an additional host bind mount. Node socket access already grants
@@ -187,6 +188,21 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 		return Worker{}, err
 	}
 	req.ModelPolicy = req.ModelPolicy.Clone()
+	storage, err := workerpolicy.NormalizeTemporaryStorage(req.TemporaryStorage)
+	if err != nil {
+		return Worker{}, err
+	}
+	req.TemporaryStorage = storage
+	if len(storage) > 0 {
+		_, features := c.node.Capabilities()
+		supported := false
+		for _, f := range features {
+			supported = supported || f == "bounded-tmpfs-v1"
+		}
+		if !supported {
+			return Worker{}, fmt.Errorf("node and pinned bootstrap do not support bounded temporary storage")
+		}
+	}
 	if err := req.Filesystem.Validate(); err != nil {
 		return Worker{}, err
 	}
@@ -339,7 +355,7 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
 		NoInternet: req.NoInternet, WatchPolling: req.WatchPolling,
 		ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
-		TokenIdentity: req.Identity, TokenModelPolicy: req.ModelPolicy,
+		TokenIdentity: req.Identity, TokenModelPolicy: req.ModelPolicy, TemporaryStorage: req.TemporaryStorage,
 	}
 	for _, mount := range req.Mounts {
 		launch.Mounts = append(launch.Mounts, sandbox.MountSpec{Source: mount.Source, Target: mount.Target, ReadOnly: mount.ReadOnly})
