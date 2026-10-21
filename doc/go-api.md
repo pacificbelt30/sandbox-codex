@@ -63,7 +63,7 @@ func main() {
 
 | 操作 | 契約 |
 |---|---|
-| `Launch(ctx, request)` | `RequestID` を使ってワーカーを作成・起動し、ID を返す。`ProjectDir` は絶対パス。現時点では作成と初回起動を分離しない |
+| `Launch(ctx, request)` | `RequestID` を使ってワーカーを作成・起動し、IDを返す。`ProjectDir` は絶対パス。作成と初回起動を分ける場合は `Create` → `Start` を使う |
 | `Get` / `List` | ワーカーの状態を照会する |
 | `Exec` / `Wait` | 既存ワーカーでコマンドを実行する／メインプロセスの終了を待つ |
 | `Create(ctx, request)` | 初回起動前のKataワーカーを作成。VM・hook・agent・生きたトークンは開始しない。作成と起動を分ける場合に使用 |
@@ -148,3 +148,21 @@ TemporaryStorage: []cxd.TemporaryStorage{{
 `Create` は領域を使用せず、`Start` の起動検証で種類・上限・所有者・マウントフラグを確認してからhookやユーザーコードを解放します。内容はnode再起動で維持され、VM停止で破棄されます。停止後の `Start` では空の領域になり、hookが再実行されます。設定は不変の作成条件に含まれます。
 
 対応にはKataと更新済みの固定bootstrapが必要です。ワーカーを停止・回収してから対応するworker-guardを配置し、`runtime-lock --launcher ... --logger ...` でアセットを再固定してください。`Capabilities()` の `bounded-tmpfs-v1` は、固定bootstrapが容量検証に対応する場合だけ返されます。未対応nodeへの指定は作成前に失敗します。指定しない既存ワーカーの動作は変わりません。
+
+### 実行できる組み込み例
+
+[`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-codex/blob/main/examples/embedding/main.go) は公開APIだけを使い、対応機能・プロファイル確認 → Create → Start → 出力を受け取りながらExecを取消 → 同じワーカーで再実行 → Stop → RemoveRequestを行います。回収には取消済みの実行contextと独立した1分のcontextを使います。`-model` でトークンごとの認可、`-temporary-mib` で一時領域を追加でき、`-prompt` を指定した場合だけ実CodexをHTTP/SSEで呼びます。既定の試験コマンドはAIへ接続しません。
+
+```bash
+go build -o /var/tmp/cxd-embedding ./examples/embedding
+/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-1 -profile compact
+# 更新済みbootstrapと許可モデルがある場合。実際の上流を使用する。
+/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-2 \
+  -profile compact -temporary-mib 64 -model MODEL_ID -prompt 'Run the project tests.'
+```
+
+例は `CODEX_DOCK_KATA_NODE_SOCKET`、`CXD_EXAMPLE_PROXY_ADMIN_URL`、`CXD_EXAMPLE_PROXY_CONTAINER_URL`、`CODEX_DOCK_PROXY_ADMIN_SECRET`、`CXD_EXAMPLE_STATE_DIR` をホスト環境から読みます。省略時は `Open` の既定値です。ケース別Proxyでは `CXD_EXAMPLE_CASE_ID`、`CXD_EXAMPLE_RUN_ID`、`CXD_EXAMPLE_CONNECTION_VERSION` も一式で指定します。これらの `CXD_EXAMPLE_*` は例の実行ファイルだけの設定です。管理シークレットとヘルパーの `Env` は表示しません。
+
+この例は終了時に自分の要求を削除します。終了後の再試行には新しいRequestIDを使ってください。応答不明・回収失敗の場合は表示された要求IDで `Request` / `RemoveRequest` を再試行できます。利用者の認可、業務状態、DB Adapter、レビュー・承認・Git運用は呼び出し側に残します。Credential Store Adapterは上の適合テストを再利用してください。
+
+`make kata-api-e2e VERSION=<nodeと同じ版>` は例をビルドし、架空の上流と実Kata上で同じ実行ファイルを検証します。`scripts/verify-go-api.py --binary ./cxd --version <版> --run '^TestKataAPIIntegration/embedding-example$'` で絞り込めます。実行対象が0件またはskipだけの場合は成功にしません。[障害系受入の準備](testing.md#公開go-apiの障害系受入)も参照してください。

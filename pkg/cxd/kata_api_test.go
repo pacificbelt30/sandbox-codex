@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -127,7 +128,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	modes := []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage"}
+	modes := []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example"}
 	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
 		modes = append(modes, "custom-profile")
 	}
@@ -184,6 +185,49 @@ func TestKataAPIIntegration(t *testing.T) {
 				t.Fatalf("model capabilities: %+v %v", caps, err)
 			}
 			runIdentity := identity.Identity{CaseID: "fixture-case", RunID: "run-" + mode, ConnectionVersion: "connection-1", Provider: "openai"}
+			if mode == "embedding-example" {
+				binary := os.Getenv("CODEX_DOCK_KATA_EMBEDDING_BINARY")
+				if binary == "" {
+					t.Fatal("build the embedding example with scripts/verify-go-api.py")
+				}
+				requestID := proxy.Name + "/example"
+				defer func() {
+					cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+					defer cancel()
+					if state, err := c.Request(cleanup, requestID); err == nil && state.WorkerID != "" {
+						if err := c.RemoveRequest(cleanup, requestID, true); err != nil {
+							t.Error("embedding fixture cleanup:", err)
+						}
+					} else if err != nil && !errors.Is(err, ErrNotFound) {
+						t.Error("embedding fixture request:", err)
+					}
+				}()
+				command := exec.CommandContext(ctx, binary, "-project", project, "-request-id", requestID,
+					"-image", workerImage, "-profile", "compact", "-temporary-mib", "8", "-model", "allowed", "-prompt", "Say fixture complete.")
+				command.Env = append(os.Environ(),
+					"CODEX_DOCK_KATA_NODE_SOCKET="+engine.Socket(), "CXD_EXAMPLE_PROXY_ADMIN_URL="+proxy.AdminURL,
+					"CXD_EXAMPLE_PROXY_CONTAINER_URL="+proxy.ContainerURL, "CODEX_DOCK_PROXY_ADMIN_SECRET="+proxyOpts.AdminSecret,
+					"CXD_EXAMPLE_STATE_DIR="+filepath.Join(root, "example-state"), "CXD_EXAMPLE_CASE_ID="+runIdentity.CaseID,
+					"CXD_EXAMPLE_RUN_ID="+runIdentity.RunID, "CXD_EXAMPLE_CONNECTION_VERSION="+runIdentity.ConnectionVersion)
+				output, err := command.CombinedOutput()
+				if err != nil {
+					t.Fatalf("embedding example: %v\n%s", err, output)
+				}
+				for _, marker := range []string{"CREATE_OK", "START_OK", "streaming before cancellation", "EXEC_CANCEL_OK", "CXD_HTTP_SSE_OK", "CODEX_HTTP_OK", "REMOVE_OK"} {
+					if !strings.Contains(string(output), marker) {
+						t.Fatalf("embedding example missing %s: %s", marker, output)
+					}
+				}
+				state, err := c.Request(ctx, requestID)
+				if err != nil || state.WorkerID == "" {
+					t.Fatalf("embedding request record missing: %+v %v", state, err)
+				}
+				if _, err := c.Get(ctx, state.WorkerID); !errors.Is(err, ErrNotFound) {
+					t.Fatalf("embedding example left its worker: %v", err)
+				}
+				t.Log("verified actual embedding binary: staged start, streaming exec cancellation, bounded tmpfs, Codex HTTP/SSE and durable removal")
+				return
+			}
 			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: runIdentity, ModelPolicy: &identity.ModelPolicy{AllowedModels: []string{"allowed", "outside-global"}}}
 			if mode == "custom-profile" {
 				req.Profile = os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE")
@@ -502,6 +546,11 @@ func TestKataAPIIntegration(t *testing.T) {
 				if actions, err := c.Reap(ctx, false); err != nil || len(actions) != 0 {
 					t.Fatalf("streaming exec reaped: %+v %v", actions, err)
 				}
+				select {
+				case err := <-streamDone:
+					t.Fatalf("stream ended before revocation: %v", err)
+				default:
+				}
 				if err := c.RevokeRun(ctx, runIdentity); err != nil {
 					t.Fatal(err)
 				}
@@ -654,12 +703,12 @@ try:
 except urllib.error.HTTPError as e: print(e.code)
 `
 
-const apiHTTPStream = `import os,urllib.request
+const apiHTTPStream = `import os,urllib.request,http.client
 req=urllib.request.Request(os.environ['CODEX_AUTH_PROXY_URL']+'/v1/responses',data=b'{"model":"allowed","stream":true}',headers={'Authorization':'Bearer '+os.environ['CODEX_TOKEN'],'Content-Type':'application/json'})
 with urllib.request.urlopen(req,timeout=20) as resp:
  assert resp.readline().startswith(b'data:')
  open('/workspace/stream-started','w').close()
  try:
   while resp.read(1): pass
- except (OSError,ValueError): pass
+ except (OSError,ValueError,http.client.IncompleteRead): pass
 `

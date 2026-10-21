@@ -94,7 +94,11 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	copyAndFlush(w, resp.Body)
+	if err := copyAndFlush(w, resp.Body); err != nil {
+		// Headers are already sent. A normal return would emit a successful
+		// chunk terminator and disguise a truncated upstream as clean EOF.
+		panic(http.ErrAbortHandler)
+	}
 
 	if p.cfg.Verbose {
 		fmt.Printf("Proxied %s %s -> %s (%d)\n", r.Method, r.URL.Path, target, resp.StatusCode)
@@ -118,21 +122,24 @@ func enableStreamingResponse(w http.ResponseWriter) bool {
 // Responses API use for streaming responses. A plain io.Copy would let the
 // net/http response buffer hold events until it fills or the handler returns,
 // stalling interactive agents.
-func copyAndFlush(w http.ResponseWriter, src io.Reader) {
+func copyAndFlush(w http.ResponseWriter, src io.Reader) error {
 	flusher, _ := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
 	for {
 		n, rerr := src.Read(buf)
 		if n > 0 {
 			if _, werr := w.Write(buf[:n]); werr != nil {
-				return
+				return werr
 			}
 			if flusher != nil {
 				flusher.Flush()
 			}
 		}
 		if rerr != nil {
-			return
+			if rerr == io.EOF {
+				return nil
+			}
+			return rerr
 		}
 	}
 }

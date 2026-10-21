@@ -470,7 +470,16 @@ while True:
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		t.Log("verified: stopped worker namespace loss is reconstructed from durable endpoint ownership")
+		// /run/netns belongs to root. Observe through the trusted fault
+		// supervisor rather than weakening permissions for the test operator.
+		evidence, err := os.ReadFile(filepath.Join(requestDir, "complete"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validateNamespaceReplacement(evidence, w1); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("verified: stopped worker namespace loss is reconstructed with a new inode from durable endpoint ownership")
 	}
 	if err := m.VMStart(ctx, prefix+"-worker"); err != nil {
 		t.Fatal("retained worker restart:", err)
@@ -512,6 +521,39 @@ while True:
 	}
 	t.Log("verified: vm stop/start/rm, stopped-worker prune protection, orphan discovery and exact allocation recovery")
 	t.Log("PASS: guest kernel isolation, real proxy/token setup, CLI binaries, workspace/Git/extra mounts, PTY, parallel network separation, host/admin denial, no-internet and stop/restart/removal. External AI inference and interactive keyboard shortcuts are separate manual checks.")
+}
+
+func validateNamespaceReplacement(data []byte, cid string) error {
+	type namespaceIdentity struct {
+		Device uint64 `json:"device"`
+		Inode  uint64 `json:"inode"`
+	}
+	var proof struct {
+		Operation   string            `json:"operation"`
+		ContainerID string            `json:"container_id"`
+		Removed     bool              `json:"removed"`
+		Before      namespaceIdentity `json:"before"`
+		After       namespaceIdentity `json:"after"`
+	}
+	if err := json.Unmarshal(data, &proof); err != nil {
+		return fmt.Errorf("namespace supervisor must return replacement evidence: %w", err)
+	}
+	if proof.Operation != "namespace" || proof.ContainerID != cid || !proof.Removed || proof.Before.Device == 0 || proof.Before.Inode == 0 || proof.After.Device == 0 || proof.After.Inode == 0 || proof.Before == proof.After {
+		return fmt.Errorf("namespace supervisor did not attest removal and a different inode for the exact stopped worker")
+	}
+	return nil
+}
+
+func TestNamespaceFaultHarnessCannotReportANoopAsRecovery(t *testing.T) {
+	valid := `{"operation":"namespace","container_id":"owned","removed":true,"before":{"device":5,"inode":77},"after":{"device":5,"inode":88}}`
+	if err := validateNamespaceReplacement([]byte(valid), "owned"); err != nil {
+		t.Fatal(err)
+	}
+	for _, data := range []string{"ready\n", `{}`, strings.Replace(valid, `"inode":77`, `"inode":88`, 1), strings.Replace(valid, `"removed":true`, `"removed":false`, 1), strings.Replace(valid, `"container_id":"owned"`, `"container_id":"other"`, 1)} {
+		if err := validateNamespaceReplacement([]byte(data), "owned"); err == nil {
+			t.Fatal("incomplete or unrelated namespace fault evidence was accepted")
+		}
+	}
 }
 
 func kataExec(t *testing.T, ctx context.Context, c *client.Client, id string, tty bool, args []string) string {

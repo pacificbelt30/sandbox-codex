@@ -63,7 +63,7 @@ With no `Agent`, `Launch` starts an idle worker for repeated `Exec` calls. `Agen
 
 | Method | Contract |
 |---|---|
-| `Launch(ctx, request)` | Creates and starts a worker under a stable `RequestID`; `ProjectDir` must be absolute. Initial creation and start are one operation |
+| `Launch(ctx, request)` | Creates and starts a worker under a stable `RequestID`; `ProjectDir` must be absolute. Use `Create` → `Start` to separate creation from initial start |
 | `Get` / `List` | Inspect worker state |
 | `Exec` / `Wait` | Execute a command in a worker / wait for its main process |
 | `Start` / `Stop` / `Remove` | Restart a stopped worker / stop it and revoke its auth token / remove its resources |
@@ -144,3 +144,21 @@ Targets must be clean absolute paths. Sizes range from 4 KiB to 2 GiB in 4 KiB i
 `Create` does not use the filesystem. During `Start`, the bootstrap verifies its type, capacity, owner and mount flags before hooks or user code run. Data survives node restart and is discarded when the VM stops. A later `Start` gets empty filesystems and reruns hooks. Storage settings are immutable creation inputs.
 
 This requires Kata and an updated pinned bootstrap. Drain workers before installing the matching worker-guard and repin assets with `runtime-lock --launcher ... --logger ...`. `Capabilities()` advertises `bounded-tmpfs-v1` only when that bootstrap supports capacity verification. Unsupported nodes reject requests before creation. Workers without declarations retain their existing behavior.
+
+### Runnable embedding example
+
+[`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-codex/blob/main/examples/embedding/main.go) uses only public APIs: capability/profile checks → Create → Start → cancel a streaming Exec → run another command in the same worker → Stop → RemoveRequest. Cleanup uses a separate one-minute context. Add `-model` for per-token authorization and `-temporary-mib` for temporary storage. Only `-prompt` invokes Codex over explicit HTTP/SSE; the default test command makes no AI request.
+
+```bash
+go build -o /var/tmp/cxd-embedding ./examples/embedding
+/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-1 -profile compact
+# Requires an updated bootstrap and an allowed model; uses the real upstream.
+/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-2 \
+  -profile compact -temporary-mib 64 -model MODEL_ID -prompt 'Run the project tests.'
+```
+
+The example reads `CODEX_DOCK_KATA_NODE_SOCKET`, `CXD_EXAMPLE_PROXY_ADMIN_URL`, `CXD_EXAMPLE_PROXY_CONTAINER_URL`, `CODEX_DOCK_PROXY_ADMIN_SECRET` and `CXD_EXAMPLE_STATE_DIR` from its host environment, falling back to `Open` defaults. Case proxies also require `CXD_EXAMPLE_CASE_ID`, `CXD_EXAMPLE_RUN_ID` and `CXD_EXAMPLE_CONNECTION_VERSION` together. `CXD_EXAMPLE_*` settings belong only to this example executable. It does not display admin secrets or helper `Env` values.
+
+The example removes its request at exit. Use a new RequestID for another completed attempt. After an uncertain response or cleanup failure, use the reported ID with `Request` / `RemoveRequest`. Caller authorization, business state, database adapters, review/approval and Git workflows stay in the host application. Reuse the conformance suite above for Credential Store adapters.
+
+`make kata-api-e2e VERSION=<matching-node-version>` builds and runs this executable with synthetic upstreams in real Kata. Select it alone with `scripts/verify-go-api.py --binary ./cxd --version <version> --run '^TestKataAPIIntegration/embedding-example$'`. A run with no executed subtests or only skips fails. See the [acceptance setup](../testing.md#公開go-apiの障害系受入).

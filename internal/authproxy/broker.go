@@ -170,7 +170,9 @@ func (p *Proxy) handleBroker(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	copyAndFlush(w, resp.Body)
+	if err := copyAndFlush(w, resp.Body); err != nil {
+		panic(http.ErrAbortHandler)
+	}
 }
 
 func cloneRoutes(routes []CredentialRoute) []CredentialRoute {

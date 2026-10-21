@@ -201,6 +201,20 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 
 `TestKataAPIIntegration` の対象は、Createの再送とLaunchとの衝突、起動前にhookが動かないこと、Start後のreadiness、small/compactのホストcurrent/peak/OOMとcompact 2台の同時稼働、実要求のモデル拒否、実行中ジョブ/streamのidle回収除外、RevokeRunによる通信中streamの終了と再利用拒否、hook中の同一Launch再送がpendingを保持すること、Launch取消と要求台帳・資源回収、OAuth保存失敗・版競合での失効、正常更新とproxy再起動での保存世代再取得、古いtoken拒否と停止/再起動での再有効化です。
 
+追加で、固定Codex 0.163.0を生成設定なしの明示HTTP/SSEで呼ぶ `codex-http`、容量超過時のENOSPC・所有者・exec/noexec・node再起動時の保持・VM停止時の消去を調べる `temporary-storage`、[公開APIの組み込み例](go-api.md#実行できる組み込み例)を実際にビルドして実行する `embedding-example` を含みます。
+
+絞り込みは `python3 scripts/verify-go-api.py --binary ./cxd --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。対象が0件、skipだけ、または途中失敗の場合は検証成功にしません。登録プロファイルも試す場合は `CODEX_DOCK_KATA_CUSTOM_PROFILE=<登録名>` を設定してください。`custom-profile` が実際のguest CPU・メモリ・PID上限とnode/VM再起動後の値を確認します。標準ケースの追加機能を使うため、対応するnodeと固定bootstrapを配置してください。
+
+`CODEX_DOCK_NODE_RESTART_REQUEST_DIR` を設定すると、ホスト側supervisorとの追加連携を有効にします。試験はこのディレクトリの古い `complete` を削除し、`request` に `restart` または `namespace <完全なcontainer ID>` を書きます。supervisorは対象nodeだけを再起動し、後者では停止済みの所有権確認済みnamespaceを失わせてから復旧させ、nodeが再接続可能になった後だけ `complete` を作成してください。
+
+通常ユーザーからroot専用の `/run/netns` を開けるようには変更しません。`namespace` の完了には、root supervisorが観測した次のJSONを返します。実際のIDとdevice/inode値を使用し、`removed` はnamespaceのパス消失を確認してからtrueにします。試験は対象ID、消失、変更前後のinodeの相違を照合し、単なる `ready` や再起動だけの報告を拒否します。書きかけの応答を読ませないよう、完了内容は一時ファイルに書いてから `complete` へatomic renameしてください。通常の `restart` の完了内容は `ready` のままで構いません。
+
+```json
+{"operation":"namespace","container_id":"<完全なID>","removed":true,"before":{"device":5,"inode":101},"after":{"device":5,"inode":102}}
+```
+
+この環境変数を省略した場合、node再起動・namespace喪失の追加検証を実施したとは扱いません。通常のAPI・VM停止/再起動試験は引き続き実行します。
+
 
 ## 製品組み込み改善の検証（2026-10-20）
 
@@ -233,3 +247,26 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 - 起動中に同じ要求を再送すると、作成済みワーカーの照合が有効なleaseより先に走り、台帳を早期に完了扱いにしていました。修正前に単体回帰試験の失敗を確認し、有効なleaseを先に検査するよう変更しました。元の起動による確定、lease失効後の照合、完了済み結果の再送を単体試験で確認し、実Kataではhook中の再送が `ErrInProgress`・`pending` を保持し、その後の取消と資源回収まで成功しました。起動元消失時の最大5分の待機は[Go API](go-api.md#再送と復旧)に明記しています。
 
 Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功しました（463.303秒）。lease修正後は影響する `TestKataGoAPI`（75.195秒）と、拡張した `make kata-api-e2e VERSION=dev` の5ケース（219.455秒）を再実行して成功しています。最終コードで全Goパッケージのrace/coverage・vet・lintも成功しました。試験用コンテナ・タスク・ネットワークが0件であることを確認し、専用ノード・containerd・BuildKit・cgroup・状態領域を回収しました。既存サービスへの更新適用と外部AIへの実推論は今回の確認に含みません。
+
+## 汎用組み込み機能の検証（2026-10-21）
+
+既存サービスから分離したネイティブcontainerd・BuildKit・Kata 4.2.0 / Dragonballで、公開Go APIの9ケースを確認しました。上流は架空HTTPサーバーで、実際のCodex CLIとVM・Proxy・Unix Credential Store Adapterを使っています。外部AIへの推論と実資格情報は使いません。
+
+| 対象 | 確認結果 |
+|---|---|
+| 実行ごとのモデル認可 | 同じケースProxyの別トークンを区別し、Proxy全体との積集合・全拒否・VM再起動後の復元を確認 |
+| 明示HTTP/SSE | Codex 0.163.0を空のCODEX_HOMEで呼び、生成設定に依存しない完了応答を確認。stdin未接続のEOFも確認 |
+| 登録プロファイル | CPU 2、guest上限512MiB、host上限768MiB、PID 256を実guestで確認。node/VM再起動後の値も一致 |
+| 一時領域 | 8MiB/1MiB tmpfsの上限・ENOSPC・UID/GID・0700・exec/noexec、node再起動時の保持、VM停止後の消去を確認 |
+| 認証と回収 | OAuth保存失敗・版競合での失効、正常更新とProxy再起動後の再取得、実行中streamの失効、起動途中の取消と割当回収を確認 |
+| 組み込み例 | 同じ実行ファイルでCreate → Start → 最初の出力でExec取消 → 別Exec → Codex HTTP/SSE → Stop → RemoveRequestを確認 |
+
+`codex-http`、`compact`、`save-failure`、`conflict`、`restart`、`temporary-storage`、`custom-profile` の7ケースが成功し、`embedding-example` は59.824秒で成功しました。`lifecycle` は初回、失効したstreamの `http.client.IncompleteRead` を試験用クライアントが処理せず失敗しました。期待する途中切断として処理し、失効前にはstreamが継続していることも検査して再実行した結果、66.108秒で成功しました。
+
+回帰確認でHTTP/1の自動request-body drainと上流の送信writerの競合によるSSE欠落を再現し、stream転送時のfull-duplexを明示して修正しました。修正後のSSE反復3,000回と、upload完了前に応答が始まる回帰試験が成功しています。上流の異常切断も正常EOFへ変換せず、OpenAI・Anthropic・credential broker・egressの4経路で通信エラーとして検出する試験が成功しました。HTTP/SSEの呼び出し側は、切断や読取りエラーと、AIの完了イベントを区別してください。
+
+全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト18件と補助スクリプトテスト5件、macOS arm64/amd64・Linux arm64のクロスビルドが成功しました。クロスビルドはそのOSでのKata実行を保証しません。`go mod tidy -diff` に差分はありません。Credential Storeの適合テストは、永続fixtureと意図的に壊したAdapterへの検出試験で確認しています。各利用先DBのAdapterは、そのDBのテスト環境で適合試験を実行してください。
+
+最終のKata回帰ではWorkspaceSharing（8ケース、145.60秒）、PolicyFeatures（46.83秒）、GoAPI（85.14秒）が成功しました。Acceptanceの初回は、追加したnamespace観測が通常ユーザーからroot専用パスをstatして失敗しました。権限を緩和せず、ホスト側の故障注入supervisorによる実測証跡を照合する方式へ直して、Acceptanceを再実行し成功しました（176.486秒）。所有権・task不在・空のcgroup・保存済みinodeを確認した停止済みnamespaceを実際に削除し、再起動後の新しいinode、VM再起動と孤児回収まで確認しています。単なる再起動をnamespace復旧として合格させない回帰試験も追加しました。これにより全4スイートの合格を確認しています。
+
+最後に試験用コンテナ・task・VM割当・ネットワークが0件であることを確認し、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存の3サービスは同じPIDで稼働し、既存nodeのhealth応答も正常でした。各機能は汎用API・設定・適合テストとして実装しており、別オーケストレータ自身のAdapterやDBへの組み込み試験は対象に含みません。
