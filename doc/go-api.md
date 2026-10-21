@@ -107,6 +107,8 @@ func main() {
 
 `Create` の後に `Start` を呼ぶ段階的な起動も可能です。[運用条件](sandbox-features.md#モデル認可と段階的な起動)を確認してください。`Launch` の作成と初回起動が一体である従来の動作は維持します。
 
+起動の工程別時間が必要な場合は `LaunchWithTimings(ctx, req)` を使います。`Launch` と同じ契約で `Worker`、`LaunchTimings`、`error` を返します。[計測の範囲と再現手順](performance.md#起動のどこに時間がかかるか調べる)を参照してください。
+
 ### 実行ごとのモデル認可
 
 `LaunchRequest.ModelPolicy` に `&identity.ModelPolicy{AllowedModels: []string{"model-id"}}` を指定すると、実際の上流リクエストのモデルをトークンごとに制限します。Proxy 全体の許可集合との積集合を使います。`nil` は従来どおり Proxy 設定を継承し、空のポリシーは全モデルを拒否します。`Model` はモデル選択にすぎず、認可ではありません。

@@ -64,7 +64,20 @@ environment = dict(os.environ, OPENAI_API_KEY="sk-local-fixture-never-valid", NO
 for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
     environment.pop(key, None)
 log = tempfile.TemporaryFile(mode="w+t")
-process = subprocess.Popen(['codex','--ask-for-approval','on-request','exec','--skip-git-repo-check','-c','approval_policy="on-request"','-c',f'openai_base_url="http://127.0.0.1:{server.server_port}/v1"','-c','features.responses_websockets=false','-c','features.responses_websockets_v2=false','-c','model_provider="fixture"','-c',f'model_providers.fixture={{name="fixture",base_url="http://127.0.0.1:{server.server_port}/v1",wire_api="responses"}}','Use the shell tool to create the fixture marker.'], env=environment, stdin=subprocess.DEVNULL, text=True, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+# Keep this offline test independent of optional external metrics delivery.
+# https://learn.chatgpt.com/docs/config-file/config-reference
+command = [
+    'codex', '--ask-for-approval', 'on-request', 'exec', '--skip-git-repo-check',
+    '-c', 'approval_policy="on-request"',
+    '-c', 'analytics.enabled=false', '-c', 'otel.metrics_exporter="none"',
+    '-c', f'openai_base_url="http://127.0.0.1:{server.server_port}/v1"',
+    '-c', 'features.responses_websockets=false',
+    '-c', 'features.responses_websockets_v2=false',
+    '-c', 'model_provider="fixture"',
+    '-c', f'model_providers.fixture={{name="fixture",base_url="http://127.0.0.1:{server.server_port}/v1",wire_api="responses"}}',
+    'Use the shell tool to create the fixture marker.',
+]
+process = subprocess.Popen(command, env=environment, stdin=subprocess.DEVNULL, text=True, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 try:
     process.wait(timeout=45)
 except subprocess.TimeoutExpired:

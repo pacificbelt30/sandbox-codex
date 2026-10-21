@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/pacificbelt30/codex-dock/internal/launchtiming"
 	"os"
 	"strings"
 	"testing"
@@ -51,8 +52,20 @@ func TestGuestVerificationFailureNeverReleasesWorkOrEnablesToken(t *testing.T) {
 				}
 				return json.Marshal(fields)
 			}
-			if _, err := m.Run(RunOptions{Name: "worker", ProjectDir: t.TempDir(), Detach: true}); err == nil {
+			ctx, timings := launchtiming.Begin(context.Background())
+			if _, err := m.RunContext(ctx, RunOptions{Name: "worker", ProjectDir: t.TempDir(), Detach: true}); err == nil {
 				t.Fatal("invalid guest accepted")
+			}
+			_, phases := timings.Finish()
+			cleanupMeasured := false
+			for _, phase := range phases {
+				if phase.Name == "token_activation" || phase.Name == "bootstrap_release" {
+					t.Fatalf("failed verification reached a credential/code activation phase: %+v", phases)
+				}
+				cleanupMeasured = cleanupMeasured || phase.Name == "worker_cleanup"
+			}
+			if !cleanupMeasured {
+				t.Fatalf("failure cleanup missing from timings: %+v", phases)
 			}
 			if released || len(p.issued) != 0 || len(p.restored) != 0 {
 				t.Fatalf("unverified worker received work/credentials: released=%t issued=%v restored=%v", released, p.issued, p.restored)

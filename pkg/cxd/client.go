@@ -18,6 +18,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
+	"github.com/pacificbelt30/codex-dock/internal/launchtiming"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
@@ -291,11 +292,13 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 	}
 	fingerprintBytes := sha256.Sum256(fingerprintInput)
 	fingerprint := hex.EncodeToString(fingerprintBytes[:])
+	launchtiming.Next(ctx, "request_claim")
 	claim, err := c.node.ClaimLaunch(ctx, key, fingerprint)
 	if err != nil {
 		return Worker{}, classify(err)
 	}
 	if claim.State == "complete" {
+		launchtiming.Next(ctx, "existing_worker")
 		w, err := c.Get(ctx, claim.WorkerID)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
@@ -311,6 +314,7 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 	if claim.State != "pending" || claim.Lease == "" {
 		return Worker{Name: claim.Name}, fmt.Errorf("%w: request %s is active or needs recovery", ErrInProgress, req.RequestID)
 	}
+	launchtiming.Next(ctx, "proxy_setup")
 	httpProxyURL := c.opts.HTTPProxyURL
 	if len(req.EgressAllowDomains) != 0 {
 		var policyErr error
@@ -363,11 +367,14 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 	if req.Agent == "" {
 		launch.ExecCmd = "exec sleep infinity"
 	}
+	launchtiming.Next(ctx, "workspace_setup")
 	id, err := workerapp.Launch(ctx, mgr, launch)
 	if err != nil {
+		launchtiming.Next(ctx, "request_abort")
 		abortErr := c.abortClaim(key, claim.Lease, id)
 		return Worker{ID: id, Name: claim.Name}, errors.Join(classify(err), abortErr)
 	}
+	launchtiming.Next(ctx, "request_confirmation")
 	finishCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	_, finishErr := c.node.FinishLaunch(finishCtx, key, claim.Lease, id)
 	cancel()
@@ -378,6 +385,7 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 	if finishErr != nil {
 		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker %s but launch confirmation failed: %w", ErrOutcomeUnknown, verb, finishErr)
 	}
+	launchtiming.Next(ctx, "final_inspect")
 	w, err := mgr.InspectContext(ctx, id)
 	if err != nil {
 		return Worker{ID: id, Name: claim.Name}, fmt.Errorf("%w: worker %s; inspect %s: %w", ErrOutcomeUnknown, verb, id, err)

@@ -29,6 +29,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
+	"github.com/pacificbelt30/codex-dock/internal/launchtiming"
 	"github.com/pacificbelt30/codex-dock/internal/network"
 	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 	"golang.org/x/term"
@@ -127,6 +128,7 @@ func (m *Manager) Run(opts RunOptions) (containerID string, runErr error) {
 // Failure cleanup uses its own bounded context so cancellation cannot leave
 // the worker running merely because the caller stopped waiting.
 func (m *Manager) RunContext(parent context.Context, opts RunOptions) (containerID string, runErr error) {
+	launchtiming.Next(parent, "preflight")
 	storage, err := workerpolicy.NormalizeTemporaryStorage(opts.TemporaryStorage)
 	if err != nil {
 		return "", err
@@ -316,6 +318,7 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		if runErr == nil {
 			return
 		}
+		launchtiming.Next(ctx, "worker_cleanup")
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		if tokenIssued && m.proxy != nil {
@@ -406,6 +409,7 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	// Per-worker Internal network: create it and attach the proxy so the worker
 	// can reach the proxy/router but nothing else (no other worker, host, or
 	// direct internet). Enforced entirely by Docker — no iptables/sudo.
+	launchtiming.Next(ctx, "network_setup")
 	netName := network.WorkerNetworkName(name)
 	if m.network != nil {
 		if isolation == RuntimeKata {
@@ -438,6 +442,7 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 	}
 
 	// Security: drop all capabilities, non-root user, isolated Internal network.
+	launchtiming.Next(ctx, "worker_configuration")
 	hostConfig := buildHostConfig(mounts, netName)
 	hostConfig.MaskedPaths = append(hostConfig.MaskedPaths, opts.Filesystem.DenyRead...)
 	hostConfig.ReadonlyPaths = append(hostConfig.ReadonlyPaths, opts.Filesystem.DenyWrite...)
@@ -525,6 +530,7 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
 	_ = codexArgs // passed via env
+	launchtiming.Next(ctx, "capacity_reservation")
 	if isolation == RuntimeKata {
 		allocation = opts.AllocationID
 		if allocation == "" {
@@ -538,11 +544,13 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		}
 	}
 
+	launchtiming.Next(ctx, "container_create")
 	resp, err := m.cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, name)
 	if err != nil {
 		return "", fmt.Errorf("creating container %s: %w", name, err)
 	}
 	createdID = resp.ID
+	launchtiming.Next(ctx, "created_worker_verification")
 	unlock, err := m.lockCleanup(ctx, resp.ID)
 	if err != nil {
 		return "", err
@@ -564,10 +572,12 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		return resp.ID, nil
 	}
 
+	launchtiming.Next(ctx, "vm_start")
 	if err := m.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return "", fmt.Errorf("starting container %s: %w", name, err)
 	}
 	if isolation == RuntimeKata {
+		launchtiming.Next(ctx, "host_guest_verification")
 		if err := m.validateKataWorker(ctx, resp.ID); err != nil {
 			return "", err
 		}
@@ -578,15 +588,18 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		if err != nil {
 			return "", err
 		}
+		launchtiming.Next(ctx, "token_activation")
 		tokenIssued = m.proxy != nil
 		if err = m.restoreWorkerToken(v); err != nil {
 			return "", err
 		}
+		launchtiming.Next(ctx, "bootstrap_release")
 		if _, err = m.execTrusted(ctx, resp.ID, []string{guestGuard, "release", allocation}); err != nil {
 			return "", err
 		}
 	}
 
+	launchtiming.Next(ctx, "environment_readiness")
 	if len(opts.Environment.StartHooks) > 0 || len(opts.Environment.Readiness) > 0 {
 		if err := m.waitEnvironment(ctx, resp.ID, environmentReady, opts.Environment.ReadinessTimeout); err != nil {
 			return "", err

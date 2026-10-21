@@ -154,10 +154,10 @@ func TestKataGoAPI(t *testing.T) {
 		// A canceled call must not allocate a worker or claim a request.
 		canceled, stopCanceled := context.WithCancel(ctx)
 		stopCanceled()
-		if _, err := api.Launch(canceled, req); !errors.Is(err, context.Canceled) {
+		if _, _, err := api.LaunchWithTimings(canceled, req); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled launch: %v", err)
 		}
-		worker, err := api.Launch(ctx, req)
+		worker, timings, err := api.LaunchWithTimings(ctx, req)
 		if worker.ID != "" {
 			t.Cleanup(func() {
 				clean, stop := context.WithTimeout(context.Background(), 45*time.Second)
@@ -169,6 +169,23 @@ func TestKataGoAPI(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatal(err)
+		}
+		var measured time.Duration
+		phaseIndex := map[string]int{}
+		for index, phase := range timings.Phases {
+			measured += phase.Duration
+			phaseIndex[phase.Name] = index
+		}
+		if measured != timings.Duration || timings.Duration <= 0 {
+			t.Fatalf("launch timing did not partition elapsed time: %+v", timings)
+		}
+		previous := -1
+		for _, name := range []string{"request_claim", "preflight", "vm_start", "host_guest_verification", "token_activation", "bootstrap_release", "request_confirmation", "final_inspect"} {
+			index, ok := phaseIndex[name]
+			if !ok || index <= previous {
+				t.Fatalf("missing/out-of-order measured phase %s: %+v", name, timings)
+			}
+			previous = index
 		}
 		inspect, err := node.ContainerInspect(ctx, worker.ID)
 		if err != nil {

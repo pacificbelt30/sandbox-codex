@@ -320,6 +320,40 @@ CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。資産�
 追加のGo API受入も、固定CLI 0.163.0と架空の資格情報で全9ケースが成功しました（406.251秒）。明示HTTP/SSE、compact、起動取消・通信中失効、OAuth保存失敗・版競合・Proxy再起動、容量付き一時領域、組み込みサンプル、登録プロファイルのnode/VM再起動後の制約を確認しています。検証用VM・コンテナ・ネットワーク・サービス・状態を回収し、既存サービスは変更していません。
 
 
+## 新規Kata起動の工程別計測
+
+2026-10-21、`c2bd5ac` を基準に `LaunchWithTimings` と `BenchmarkKataLaunch` を追加して、独立したnode・containerd・BuildKitで新規起動を5回計測しました。
+Intel Core i5-8500、Linux amd64、Go 1.27.2、clientのGOMAXPROCS=4、`compact`（guest 512 MiB／host予約768 MiB／PID 512）です。
+各回は別のworker・要求ID・workspace・ケースProxyを使い、Proxy作成とclientのOpenは計測外です。起動中に他のビルド・テストを実行していません。
+workerは準備済みベースに最新entrypointと固定Claudeバイナリを重ねた検証用イメージで、page cacheは温まっています。一般egress・Git共有・エージェント実行を無効にし、架空のAPIキーだけを用いました。
+
+再現手順は[実Kataの新規起動](performance.md#実kataの新規起動)です。今回は `-benchtime=1x -count=5` で、計5標本を取りました。
+
+| 計測対象 | 中央値 |
+|---|---:|
+| Launch全体 | 6.707秒 |
+| VM開始API | 3.498秒 |
+| host/guest検証 | 0.957秒 |
+| コンテナ作成 | 0.820秒 |
+| preflight | 0.667秒 |
+| ネットワーク作成・Proxy接続 | 0.295秒 |
+| bootstrap解放 | 0.220秒 |
+| 起動後の最初のExec（別計測） | 約2.066秒 |
+
+Launch全体の範囲は6.529〜6.906秒でした。工程ごとの中央値は別々に求めており、その合計がLaunch中央値になるとは限りません。
+各標本でのVM開始時間の割合の中央値は52.15%です。これはWarm poolを次に検討する根拠であり、Warm poolによる短縮を実測した値ではありません。
+`vm_start` はnodeの開始API全体です。純粋なVMM起動時間や、実エージェントが最初の応答を返すまでの時間は測っていません。
+
+計測APIは既存の起動・検証・認証・後片付けの順序を変えません。失敗時の部分計測、guest検証失敗時にトークン有効化・bootstrap解放へ進まず回収すること、計測有無で同じ要求IDを再送できることを受入対象にしています。
+
+初回の通し試験では、Codexのツール実行・最終応答後にCLIが45秒以内に終了せず、該当サブテストが失敗しました。他の3スイートは成功しました。
+オフラインfixtureを外向きメトリクス送信の既定動作に依存させないよう、fixtureだけに `analytics.enabled=false` と `otel.metrics_exporter="none"` を指定しました（[公式設定リファレンス](https://learn.chatgpt.com/docs/config-file/config-reference)）。
+45秒の上限、終了コード0、ツール結果の返送、生成ファイルの検査を維持した再実行で、固定CLIの正常終了を確認しました。製品の設定は変えておらず、初回の終了遅延の詳細原因を断定したものではありません。
+
+最終の `make kata-e2e VERSION=dev` は全4スイートが404.818秒で成功しました。VM受入171.51秒（実Codexツール試験30.01秒）、共有8ケース134.26秒、追加制御38.41秒、Go API60.64秒です。
+全Goテストのrace/coverage、vet、lint、Linux arm64・macOS arm64クロスビルド、MkDocs strictビルドも成功しています。
+専用VM・コンテナ・task・ネットワークの消滅を確認してから、検証用サービス・mount・cgroup・状態領域を回収しました。既存の3サービスのPID、node疎通、元ネットワークの所有権は維持されています。
+
 ## Claude Codeの受入
 
 組み込みイメージの公式Claude Codeは2.1.306です。実APIキーやサブスクの実アカウントは使わず、proxy handlerの上流だけを架空のMessages/SSE・OAuthサーバーへ置き換えます。

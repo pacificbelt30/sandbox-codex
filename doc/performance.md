@@ -25,9 +25,32 @@ Kataの資産検証、公開Go APIのExec、認証プロキシの処理を別々
 | `BenchmarkWorkerRequest` | 認証ヘッダー解析、発行記録の検索、期限・経路の確認、request contextの生成・解放 | ネットワーク、上流APIへの通信 |
 | `BenchmarkLoadPinnedManifest` | 実資産の読込・checksum・所有権・パス・設定の照合 | VM起動、guest内の処理 |
 | `BenchmarkKataExec` | Execごとの資産・ホスト・guestの検証、`/bin/true` の実行と終了確認 | VM作成、clientのOpen、warmup、AI推論 |
+| `BenchmarkKataLaunch` | 新規ワーカーのLaunch全体と工程別時間。最初のExecは別の値として表示 | clientのOpen、Proxy作成、イメージ作成・import、削除、AI推論 |
 
 Proxyのbenchmarkは1・32・256・4,096件の発行記録で、認証成功と未発行トークンの拒否を測ります。
 Execのbenchmarkに表示されるallocation値はクライアント側の値です。
+
+## 起動のどこに時間がかかるか調べる
+
+Go APIの `client.LaunchWithTimings(ctx, req)` は、`Worker`、`LaunchTimings`、`error` を返します。
+通常の `Launch` と同じリクエスト識別・検証・認証・後片付けを使い、計測の有無はリクエストのfingerprintに入りません。
+通常の `Launch` は計測記録を作りません。
+
+```go
+worker, timing, err := client.LaunchWithTimings(ctx, req)
+// 失敗時も既存の契約どおり worker.ID を保持して回収する。
+for _, phase := range timing.Phases {
+    fmt.Printf("%s: %s\n", phase.Name, phase.Duration)
+}
+```
+
+各工程は重複しない経過時間で、合計が `timing.Duration` になります。JSONの時間単位はnsです。
+preflight、ネットワーク作成、容量予約、コンテナ作成、作成条件の検証、VM起動、host/guest検証、トークン有効化、bootstrap解放、readiness、要求の完了確認を区別します。
+`vm_start` はnodeの開始API全体であり、純粋なVMM起動時間ではありません。`host_guest_verification` は資産再検証・host検証・guest probeを含みます。
+初回以外の同じRequestIDへの再送では、既存ワーカーの照合など実行した工程だけを返します。失敗時は回収・要求の中断確認も含めた部分計測を返します。
+
+レポートには固定の工程名と時間だけを記録し、パス・引数・リクエスト値・トークン・エラー本文は含めません。保存や送信は呼出側が選択します。
+工程名は診断用であり、版ごとに追加・変更され得ます。起動完了・認証の判定には従来どおりAPIの結果を使ってください。
 
 ## 再計測する
 
@@ -69,7 +92,40 @@ CODEX_DOCK_BENCH_WORKER=FULL_WORKER_ID \
 
 manifestのパスやワーカーIDを省略すると、対応するbenchmarkはskipします。skipを計測成功として扱わないでください。
 
+### 実Kataの新規起動
+
+他の利用者・起動処理と共有しない検証用nodeで実行します。workerとProxyのイメージは事前に用意してください。
+benchmark自身が無効なAPIキーだけを返すCredentialStoreと専用ケースProxyを作り、各標本で新しいワーカーを起動・削除します。実アカウントやAIへの通信は使いません。
+一般egressは無効、Gitメタデータ共有なし、エージェントなしのidleワーカーを使います。
+
+```bash
+CODEX_DOCK_KATA_NODE_SOCKET=/run/codex-dock-node.sock \
+CODEX_DOCK_BENCH_LAUNCH=1 CODEX_DOCK_BENCH_PROFILE=compact \
+CODEX_DOCK_KATA_TEST_IMAGE=codex-dock:latest \
+CODEX_DOCK_KATA_PROXY_IMAGE=codex-dock-proxy:latest \
+GOMAXPROCS=4 \
+  go test -ldflags '-X github.com/pacificbelt30/codex-dock/internal/buildinfo.Version=dev' \
+    ./pkg/cxd -run '^$' -bench '^BenchmarkKataLaunch$' -benchtime=3x -count=5 -timeout=20m -v
+```
+
+`dev` はnodeのBuildVersionに合わせます。`CODEX_DOCK_BENCH_LAUNCH=1` を省略するとskipします。
+`launch_ms/op` と各工程の `*_ms/op` は起動時間、`first_exec_ms/op` は起動後の最初の `/bin/true` の実行・終了確認です。
+詳細な各標本は `launch_timing` のJSONに出ます。Go benchmarkは本計測の前に1回の校正起動も行います。
+既定の `compact` 以外も `CODEX_DOCK_BENCH_PROFILE` で選べます。準備済みイメージ・温まったpage cacheの結果を、初回イメージ展開や実タスクの開始時間と混同しないでください。
+
 ## 変更前後を比較する
+
+### 次の高速化候補の判断
+
+[新規起動の実測](testing.md#新規kata起動の工程別計測)ではVM開始が主要な待ち時間でした。次の候補は未使用VMの事前起動です。現時点ではWarm pool・メモリsnapshot・VM forkは実装していません。
+既存の `Create` は停止状態での作成であり、VMの起動は `Start` で行います。
+
+Warm poolの採用には、事前起動中もbootstrapを閉じ、認証を有効にせず、割当時に資産・host/guest・ポリシーを再検証する仕組みが必要です。
+現行のworkspace、mount、UID、ネットワーク、image、モデル権限、実行identityの不変条件を引き継ぎます。異なる要求への使い回しや、使用済みVMの再投入は行いません。
+待機VMも容量予約に数え、期限切れ・取消・node再起動時の所有権確認と回収、同じVMの二重割当防止まで確認してから有効化します。
+通常起動と同条件で割当から最初のExecまでを比較し、検証・補充・予約メモリの費用を含めて採用を判断します。VM開始時間をそのまま改善率として扱わないでください。
+
+### 比較条件
 
 同じGo版・CPU条件・資産・ワーカープロファイルで比較し、計測中は他のビルドや試験を止めます。
 nodeとclientには同じ測定用BuildVersionを指定します。各組で旧版・新版の順序を入れ替え、複数標本の中央値を比較してください。

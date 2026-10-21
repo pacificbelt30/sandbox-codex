@@ -103,6 +103,8 @@ The public Go signatures do not expose internal node DTOs. Deploy the CLI, libra
 
 `Create(ctx, request)` creates a stopped Kata worker; `Start(ctx, worker)` boots and verifies it before token activation and hook/agent execution. `Launch` retains its combined create/start behavior. `ResourceUsage(ctx, worker)` separates observed host cgroup current/peak memory and OOM kills from the profile budgets. See [operating conditions](sandbox-features.md#model-authorization-and-staged-startup).
 
+Use `LaunchWithTimings(ctx, req)` for sequential startup measurements. It returns `Worker`, `LaunchTimings` and `error` with the same contract as `Launch`. See [measurement scope and reproduction](performance.md#locate-startup-costs).
+
 ### Per-execution model authorization
 
 Set `LaunchRequest.ModelPolicy` to `&identity.ModelPolicy{AllowedModels: []string{"model-id"}}` to constrain the actual upstream request model per token. The effective set intersects the proxy-wide allowlist. A `nil` policy preserves inherited behavior; an explicitly empty policy denies every model. `Model` selects an agent model and is not authorization.
