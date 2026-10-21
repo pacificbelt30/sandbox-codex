@@ -302,7 +302,9 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Time{})
 	if !cfg.AttachStdin {
-		go func() { _, _ = io.Copy(io.Discard, rw); cancelExec() }()
+		// Unused input may reach EOF while the client still reads output.
+		// execStreamContext handles full disconnects for both stdin modes.
+		go func() { _, _ = io.Copy(io.Discard, rw) }()
 	}
 	var mu sync.Mutex
 	out := io.Writer(conn)

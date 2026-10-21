@@ -144,6 +144,12 @@ func (g *Guard) claimLaunch(ctx context.Context, finder requestFinder, key, fing
 	if r.State == "complete" || r.State == "cleanup-pending" {
 		return r, nil
 	}
+	// A worker can already exist while its owner is still verifying the VM or
+	// waiting for hooks. Reconciliation must not complete a live launch lease.
+	if r.State == "pending" && time.Since(r.UpdatedAt) < launchLeasePeriod {
+		r.Lease = "" // A second caller must never inherit the active claim.
+		return r, nil
+	}
 	id, foundKey, foundFingerprint, found, err := finder.FindRequest(ctx, r.Name)
 	if err != nil {
 		return LaunchRecord{}, err
@@ -154,10 +160,6 @@ func (g *Guard) claimLaunch(ctx context.Context, finder requestFinder, key, fing
 		}
 		r.State, r.WorkerID, r.Lease, r.UpdatedAt = "complete", id, "", time.Now().UTC()
 		return r, g.writeLaunch(r)
-	}
-	if r.State == "pending" && time.Since(r.UpdatedAt) < launchLeasePeriod {
-		r.Lease = "" // A second caller must never inherit the active claim.
-		return r, nil
 	}
 	if !fresh && (r.State == "pending" || r.State == "failed") {
 		inventory, err := g.Inventory(ctx)

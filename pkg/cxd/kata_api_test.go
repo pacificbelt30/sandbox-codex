@@ -322,6 +322,8 @@ func TestKataAPIIntegration(t *testing.T) {
 				launched := make(chan error, 1)
 				go func() { _, err := c.Launch(launchCtx, cancelReq); launched <- err }()
 				awaitAPI(t, ctx, func() bool { _, err := os.Stat(filepath.Join(project, "launch-started")); return err == nil })
+				replay, replayErr := c.Launch(ctx, cancelReq)
+				inFlight, inFlightErr := c.Request(ctx, cancelReq.RequestID)
 				stopLaunch()
 				select {
 				case err := <-launched:
@@ -330,6 +332,9 @@ func TestKataAPIIntegration(t *testing.T) {
 					}
 				case <-time.After(60 * time.Second):
 					t.Fatal("launch cleanup timed out")
+				}
+				if !errors.Is(replayErr, ErrInProgress) || inFlightErr != nil || inFlight.State != "pending" {
+					t.Fatalf("retry completed an active launch: worker=%+v err=%v state=%+v stateErr=%v", replay, replayErr, inFlight, inFlightErr)
 				}
 				status, err := c.Request(ctx, cancelReq.RequestID)
 				if err != nil || status.State == "pending" || status.State == "cleanup-pending" {

@@ -29,7 +29,7 @@ gofmt -l cmd internal pkg
 | 製品組み込み用 Go API | 公開エラー分類と要求IDの入力検査、node台帳での競合・再送・応答消失時の照合と回収、通信許可の入力検査 |
 | ケース別認証 | 資格情報ソケットの権限とケース分離、OAuth更新の版競合、ケース変更時の失効、プロバイダー経路と実行IDの失効 |
 
-[Go API](go-api.md)の実機受入 `TestKataGoAPI` は `make kata-e2e` に含まれます。ケース別の架空資格情報でOpen → Launch → Exec → Stop → RemoveRequest、small/standardの別boot ID・ゲスト制限・ホスト予約・削除後の割当回収、取消済みLaunch context、Execの入力EOF・実行中取消とプロセス回収、要求IDの再送・競合・削除後の再送、再接続後の照合、VMへの資格情報漏れ、ケース間のトークン拒否、実行IDの失効を確認します。
+[Go API](go-api.md)の実機受入 `TestKataGoAPI` は `make kata-e2e` に含まれます。ケース別の架空資格情報でOpen → Launch → Exec → Stop → RemoveRequest、small/standardの別boot ID・ゲスト制限・ホスト予約・削除後の割当回収、取消済みLaunch context、Execの入力EOF（stdin未接続も含む）・実行中取消とプロセス回収、要求IDの再送・競合・削除後の再送、再接続後の照合、VMへの資格情報漏れ、ケース間のトークン拒否、実行IDの失効を確認します。
 
 追加の障害系受入 `TestKataAPIIntegration` には別ターゲット `make kata-api-e2e` を用意しています。実行中のLaunch取消、OAuth更新・保存失敗・版競合・proxy再起動、通信中ストリームの失効などの対象は[公開Go APIの障害系受入](#公開go-apiの障害系受入)を参照してください。応答を通信路で破棄する故障注入とGo API経由のワーカー別通信許可は、両ターゲットともまだ含みません。単体テストと実Kata受入結果を区別し、成功記録がある版・範囲を確認してください。
 
@@ -199,7 +199,7 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 
 スクリプトは `internal/authproxy` のテスト実行ファイルを入れた一意のfixtureイメージを作ります。本物のproxy handler・Unix credential adapterを通し、上流だけをプロキシ内の架空HTTPサーバーへ差し替えます。実APIキーや外部AI推論は使いません。OAuth更新の実Kata fixtureはOpenAI型で、実Anthropic接続は含みません。fixtureイメージを運用に使わないでください。ワーカーとケースproxyを最後に削除し、スクリプト所有のfixtureイメージもテストが回収します。BuildKit cacheとホスト共通egress networkは通常のビルド・ノード管理に従います。
 
-`TestKataAPIIntegration` の対象は、Createの再送とLaunchとの衝突、起動前にhookが動かないこと、Start後のreadiness、small/compactのホストcurrent/peak/OOMとcompact 2台の同時稼働、実要求のモデル拒否、実行中ジョブ/streamのidle回収除外、RevokeRunによる通信中streamの終了と再利用拒否、hook中のLaunch取消と要求台帳・資源回収、OAuth保存失敗・版競合での失効、正常更新とproxy再起動での保存世代再取得、古いtoken拒否と停止/再起動での再有効化です。
+`TestKataAPIIntegration` の対象は、Createの再送とLaunchとの衝突、起動前にhookが動かないこと、Start後のreadiness、small/compactのホストcurrent/peak/OOMとcompact 2台の同時稼働、実要求のモデル拒否、実行中ジョブ/streamのidle回収除外、RevokeRunによる通信中streamの終了と再利用拒否、hook中の同一Launch再送がpendingを保持すること、Launch取消と要求台帳・資源回収、OAuth保存失敗・版競合での失効、正常更新とproxy再起動での保存世代再取得、古いtoken拒否と停止/再起動での再有効化です。
 
 
 ## 製品組み込み改善の検証（2026-10-20）
@@ -224,3 +224,12 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 上記の改善とGo API実機受入の追加を統合した版で、`make kata-e2e VERSION=dev` のAcceptance（184.97秒）・WorkspaceSharing（8ケース、141.79秒）・PolicyFeatures（46.36秒）が成功しました。GoAPIは初回に試験用StateDirの権限チェックで失敗したため、保存先を既存の0700 fixtureディレクトリ配下へ変更し、`TestKataGoAPI` だけを再実行して成功しました（70.319秒）。製品の権限チェックは維持しています。
 
 統合版の `make kata-api-e2e VERSION=dev` も5ケースすべて成功しました（223.575秒）。全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト14件、補助スクリプトテスト2件、macOS arm64クロスビルドも成功しています。試験用コンテナ・タスク・ネットワークが0件であることを確認してから、専用containerd・BuildKit・ノードと状態領域を回収しました。
+
+### 競合関連のロジックレビューと修正
+
+`8cd98f2` の両親との差分を照合し、`FindRequest` のcontainerd namespace固定・排他制御と、NotFoundの分類・伝播が維持されていることを確認しました。呼出元と関連処理を調べ、従来の受入では確認していなかった次の2件を修正しました。
+
+- stdin未接続のExecに送信EOFだけを通知すると、出力前に取消されました。修正前の実Kata試験は終了125・`context canceled` で失敗し、修正後は同じ試験で出力と終了0を確認しました。完全切断の検知と明示的な取消は維持しています。
+- 起動中に同じ要求を再送すると、作成済みワーカーの照合が有効なleaseより先に走り、台帳を早期に完了扱いにしていました。修正前に単体回帰試験の失敗を確認し、有効なleaseを先に検査するよう変更しました。元の起動による確定、lease失効後の照合、完了済み結果の再送を単体試験で確認し、実Kataではhook中の再送が `ErrInProgress`・`pending` を保持し、その後の取消と資源回収まで成功しました。起動元消失時の最大5分の待機は[Go API](go-api.md#再送と復旧)に明記しています。
+
+Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功しました（463.303秒）。lease修正後は影響する `TestKataGoAPI`（75.195秒）と、拡張した `make kata-api-e2e VERSION=dev` の5ケース（219.455秒）を再実行して成功しています。最終コードで全Goパッケージのrace/coverage・vet・lintも成功しました。試験用コンテナ・タスク・ネットワークが0件であることを確認し、専用ノード・containerd・BuildKit・cgroup・状態領域を回収しました。既存サービスへの更新適用と外部AIへの実推論は今回の確認に含みません。

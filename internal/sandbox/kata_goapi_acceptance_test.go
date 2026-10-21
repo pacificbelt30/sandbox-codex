@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/docker/docker/api/types/container"
 	dockernetwork "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
 	"github.com/pacificbelt30/codex-dock/internal/network"
@@ -323,6 +325,7 @@ func (s *kataCaseStore) SaveRefresh(context.Context, string, string, string, cre
 // A half-close is input EOF; a canceled call must still kill a silent process.
 func checkKataExecInputAndCancellation(t *testing.T, ctx context.Context, api *cxd.Client, workerID, project string) {
 	t.Helper()
+	checkKataExecWithoutStdinEOF(t, ctx, workerID)
 	var output bytes.Buffer
 	code, err := api.Exec(ctx, workerID, cxd.ExecRequest{Argv: []string{"python3", "-c", "import sys; print(sys.stdin.read().upper())"}, Stdin: strings.NewReader("stdin eof"), Stdout: &output, Stderr: &output})
 	if err != nil || code != 0 || strings.TrimSpace(output.String()) != "STDIN EOF" {
@@ -370,4 +373,41 @@ raise AssertionError('canceled exec process remains alive')`
 		t.Fatalf("exec process cleanup: exit=%d err=%v %s", code, err, &output)
 	}
 	t.Log("verified: output after stdin EOF; context cancellation kills a silent exec")
+}
+
+// Closing only the client's write side must also preserve commands which do
+// not attach stdin. Use the node protocol directly so the test controls EOF.
+func checkKataExecWithoutStdinEOF(t *testing.T, parent context.Context, workerID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	node, err := engine.NewClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer node.Close()
+	created, err := node.ContainerExecCreate(ctx, workerID, container.ExecOptions{
+		Cmd:          []string{"python3", "-c", "import time; time.sleep(.3); print('output-after-unused-stdin-eof')"},
+		AttachStdout: true, AttachStderr: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := node.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	stop := context.AfterFunc(ctx, stream.Close)
+	defer stop()
+	if err := stream.CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	var output, stderr bytes.Buffer
+	_, copyErr := stdcopy.StdCopy(&output, &stderr, stream.Reader)
+	status, inspectErr := node.ContainerExecInspect(ctx, created.ID)
+	if copyErr != nil || inspectErr != nil || status.Running || status.ExitCode != 0 || strings.TrimSpace(output.String()) != "output-after-unused-stdin-eof" {
+		t.Fatalf("exec without stdin canceled on EOF: exit=%d running=%t copy=%v inspect=%v stdout=%q stderr=%q", status.ExitCode, status.Running, copyErr, inspectErr, &output, &stderr)
+	}
+	t.Log("verified: unused stdin EOF preserves exec output and exit status")
 }

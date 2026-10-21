@@ -85,6 +85,8 @@ With `UseWorktree: true` and no branch name, the API derives a branch name from 
 
 Concurrent launches with the same ID allow only one launcher to proceed; the other gets `ErrInProgress`. If the response is lost, retry with the same ID to find the existing worker. After a launcher disappears, the node reconciles its ledger with containerd and reservations before allowing a retry. While the outcome is uncertain, it returns `ErrInProgress` and creates no second VM. A completed worker removed later cannot be recreated with the same ID; the API returns `ErrRequestGone`. Use a new ID for a new attempt.
 
+While the five-minute launch lease is valid, an existing worker alone does not mean startup has completed. If the launcher disappears before recording completion, retries may return `ErrInProgress` until the lease expires. Once completion is stored in the ledger, retries return that result.
+
 If `Launch` returns an error and a `Worker.ID`, inspect it with `Get` and clean it up with `Remove`. `ErrOutcomeUnknown` means launch confirmation was lost; retry with the same ID. `ErrCleanupPending` means cleanup must be retried.
 
 `Request(ctx, requestID)` reports the durable `pending`, `complete`, `failed`, or `cleanup-pending` state without exposing the live lease. `RemoveRequest(ctx, requestID, true)` retries cleanup of the associated worker and deletion journal. It also succeeds if only the prior cleanup response was lost. Keep `Options.StateDir` stable across product restarts.

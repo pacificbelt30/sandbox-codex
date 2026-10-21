@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 type testRequestFinder struct {
@@ -53,6 +54,12 @@ func TestLaunchClaimPersistsAndCannotBeStolen(t *testing.T) {
 		t.Fatal("changed options reused the request ID")
 	}
 	finder.id, finder.key, finder.fingerprint, finder.found = digest("worker"), key, fingerprint, true
+	// Container creation precedes verification, hooks and the launcher's finish.
+	// Seeing that container must not let a concurrent retry complete its lease.
+	second, err = restarted.claimLaunch(context.Background(), finder, key, fingerprint)
+	if err != nil || second.State != "pending" || second.Lease != "" {
+		t.Fatalf("retry during startup = %+v, %v", second, err)
+	}
 	if _, err := restarted.finishLaunch(context.Background(), finder, key, "wrong-lease", finder.id); err == nil {
 		t.Fatal("another claim completed the launch")
 	}
@@ -66,11 +73,19 @@ func TestLaunchClaimPersistsAndCannotBeStolen(t *testing.T) {
 	}
 }
 
-func TestLaunchClaimRecoversWorkerAfterLostFinish(t *testing.T) {
+func TestLaunchClaimRecoversWorkerAfterExpiredLease(t *testing.T) {
 	g := &Guard{config: Config{StateDir: trustedTestState(t)}}
 	key, fingerprint := digest("product/job/2"), digest("options")
 	finder := &testRequestFinder{}
 	if _, err := g.claimLaunch(context.Background(), finder, key, fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.readLaunch(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.UpdatedAt = time.Now().Add(-launchLeasePeriod - time.Second)
+	if err := g.writeLaunch(r); err != nil {
 		t.Fatal(err)
 	}
 	finder.id, finder.key, finder.fingerprint, finder.found = digest("worker-2"), key, fingerprint, true

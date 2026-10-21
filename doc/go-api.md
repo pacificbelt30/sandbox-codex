@@ -89,6 +89,8 @@ func main() {
 
 同じ ID を同時に送ると、一方だけが起動を進めます。もう一方には `ErrInProgress` が返ります。起動応答が失われても、同じ ID の再送で既存ワーカーを照合します。起動中のプロセスが消えた場合、台帳と containerd・予約台帳を照合してから再実行を許可します。状態が確定できない間は新たな VM を作らず、`ErrInProgress` を返します。完了済みワーカーを削除した後に同じ ID を再送すると `ErrRequestGone` になり、再作成しません。新しい試行には新しい ID を使ってください。
 
+起動leaseが有効な間（5分）は、ワーカーが作成済みでも起動完了とは扱いません。起動側が完了確認を送る前に消えた場合、lease失効まで `ErrInProgress` を返すことがあります。完了確認が台帳に保存済みなら、再送でその結果を返します。
+
 `Launch` がエラーとともに `Worker.ID` を返した場合、VM または削除記録が残っている可能性があります。`Get` と `Remove` で照合・回収してください。`ErrOutcomeUnknown` は起動後の確認応答が失われたことを示し、同じ ID で再送できます。`ErrCleanupPending` は `Remove` の再試行が必要です。
 
 `Request(ctx, requestID)` は `pending`、`complete`、`failed`、`cleanup-pending` の台帳状態を返し、起動中のleaseは公開しません。`RemoveRequest(ctx, requestID, true)` は既存ワーカーと削除記録の回収を試み、前回の回収応答だけが失われた場合も成功として扱えます。製品再起動後も同じ `Options.StateDir` を使ってください。
