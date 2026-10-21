@@ -122,3 +122,9 @@ func main() {
 `CodexHTTPCommand(ctx, workerID)` はHTTP/SSEを明示する `Argv` と、短命のプレースホルダーだけを含む `Env` を返します。`Argv` に `exec` や `app-server` と引数を追加し、`ExecRequest` に渡してください。生成済みユーザー設定を読まない呼び出し元でも、接続設定はCLIの `-c` で渡されます。`Env` はログに出さないでください。組み込みワーカーのCodex 0.163.0を検証対象にしています。
 
 モデル制限付きの通常起動はWebSocketとリクエスト圧縮を無効化します。制限なしの既定起動は従来どおりです。明示接続ヘルパーも圧縮を無効にし、ProxyがJSONを検証できるようにします。[公式設定リファレンス](https://learn.chatgpt.com/docs/config-file/config-reference)と[CLIによる設定上書き](https://learn.chatgpt.com/docs/config-file/config-advanced)に対応します。
+
+### Credential Storeの適合テスト
+
+`pkg/cxd/credentialstore/storetest.Run(t, factory)` をホスト側Adapterのテストから呼べます。factoryは独立したテスト用Storeと、ログイン置換・切断・再接続・書き込み失敗の注入用 `storetest.Harness` を返します。`Reopen` は同じ永続DBを使う新しいAdapterを作ってください。本番データや実際の資格情報に対して実行しないでください。
+
+テストは両プロバイダーの更新、接続世代の維持、資格情報版の更新、別インスタンスを交えた12同時CASの単一成功、競合・切断後の復活防止、再オープン後の永続性、コミット前の保存失敗・取消時の無変更、返却・保存値の所有権を確認します。接続先DBのAdapter実装と、そのDB・障害注入の用意は呼び出し側が担います。テストは資格情報の値を出力しません。

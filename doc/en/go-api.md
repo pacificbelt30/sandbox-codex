@@ -118,3 +118,9 @@ A worker model policy must fit within 4 KiB including its serialized JSON and la
 `CodexHTTPCommand(ctx, workerID)` returns explicit HTTP/SSE `Argv` and `Env` containing only a short-lived placeholder. Append `exec` or `app-server` and its arguments, then pass both to `ExecRequest`. Connection settings use CLI `-c` overrides even when a caller ignores generated user configuration. Do not log `Env`. Verification targets the worker image's pinned Codex 0.163.0.
 
 Normal launches with model restrictions disable WebSocket and request compression; unrestricted defaults are preserved. The explicit helper also disables compression so the proxy can validate JSON. See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [CLI configuration overrides](https://learn.chatgpt.com/docs/config-file/config-advanced).
+
+### Credential Store conformance
+
+Call `pkg/cxd/credentialstore/storetest.Run(t, factory)` from host-adapter tests. The factory returns isolated test storage and a `storetest.Harness` controlling login replacement, disconnect, reopen and write-failure injection. `Reopen` must construct a fresh adapter over the same durable database. Never run the suite against production data or real credentials.
+
+The suite checks refresh for both providers, stable connection generations, changing credential versions, exactly one winner among 12 concurrent CAS operations across instances, stale-write/reconnect rejection, durability after reopen, pre-commit failure/cancellation atomicity and snapshot ownership. The caller supplies its database adapter and backend-specific failure controls. Assertions never print credential values.

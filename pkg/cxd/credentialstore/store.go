@@ -13,7 +13,9 @@ var ErrNotFound = errors.New("credential connection not found")
 // Credentials is one case's current credential generation. A provider must
 // use either its API key or its OAuth record, never both.
 type Credentials struct {
-	Version           string          `json:"version"`
+	// Version changes after every durable credential update.
+	Version string `json:"version"`
+	// ConnectionVersion is stable across refresh, and changes on login/reconnect.
 	ConnectionVersion string          `json:"connection_version"`
 	OpenAIAPIKey      string          `json:"openai_api_key,omitempty"`
 	OpenAIOAuth       *OpenAIOAuth    `json:"openai_oauth,omitempty"`
@@ -42,7 +44,11 @@ type AnthropicOAuth struct {
 // Store is implemented by the host product. SaveRefresh must compare version
 // atomically with its durable source of truth and return the new version only
 // after the refreshed credential is committed. A changed or revoked case must
-// return ErrConflict or ErrNotFound. Never log the credential arguments.
+// return ErrConflict or ErrNotFound. A refresh must preserve ConnectionVersion.
+// Versions must not be recycled after disconnect/reconnect. Load and SaveRefresh
+// exchange owned snapshots, not mutable aliases of the durable state. Operations
+// with an already canceled context must not publish updates. Never log credential
+// arguments. The storetest subpackage supplies reusable adapter conformance tests.
 type Store interface {
 	Load(context.Context, string) (Credentials, error)
 	SaveRefresh(context.Context, string, string, string, Credentials) (string, error)
