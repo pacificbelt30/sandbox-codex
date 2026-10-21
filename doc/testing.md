@@ -289,3 +289,46 @@ go test ./internal/authproxy -run '^$' -bench '^BenchmarkWorkerRequest$' -benchm
 ```
 
 発行・再発行・異なる値／同じ値でのrestore・失効・期限切れ回収・実行／ケースの失効・Proxy停止で、古いstreamの取消、旧トークンの拒否、別ワーカーへのトークン重複割当拒否を確認しました。全Goテストのrace検査、vet、lintも成功しました。
+
+### Kata資産の再検証
+
+CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。資産ファイル間の検証を最大4並列にし、全資産の再読込・所有権・パス・実行権限・checksum・設定との結び付けの検査を維持しています。タイムスタンプを根拠にしたキャッシュは追加していません。並列数はGOMAXPROCSも上限とするため、GOMAXPROCS=1では1ファイルずつ検証します。
+
+実際に固定した256 MiBのguest imageとruntime・kernel・containerdなどを含むmanifestで、CPU profileを無効にして測定した `BenchmarkLoadPinnedManifest` は970.55 → 636.43 ms（34.4%短縮）でした。各3回の平均を5標本取り、その中央値を比較しています。既にpage cacheが温まった、複数CPUのある同一ホストでの結果です。総ハッシュ量を減らす変更ではなく、空いているCPUを使って待ち時間を短縮しています。ディスク読み出しやCPU数が制約になるホスト、SHA命令を持つCPUで同じ改善率を保証するものではありません。CPU飽和時のthroughputは未測定です。
+
+既存manifestを読み取り専用で使う再計測例です。manifestを読めるnode運用者の権限で実行します。
+
+```bash
+CODEX_DOCK_BENCH_MANIFEST=/path/to/kata-assets.json \
+  go test ./internal/kataguard -run '^$' -bench '^BenchmarkLoadPinnedManifest$' -benchmem -benchtime=3x -count=5
+```
+
+公開Go APIのExec全体を測る `BenchmarkKataExec` も追加しています。先に通常の手順で停止しないアイドル状態の管理Kataワーカーを作成し、完全なIDを指定してください。benchmarkはそのVMで `/bin/true` を実行し、ワーカーの作成・削除は呼出側が管理します。Openとwarmupは計測から除き、Execごとの資産・ホスト・ゲストの全検証、実行と終了確認を含みます。allocation値はクライアント側の値です。nodeとclientは同じ測定用BuildVersionでビルドします。次の例では `dev` を使っています。
+
+```bash
+CODEX_DOCK_KATA_NODE_SOCKET=/run/codex-dock-node.sock \
+CODEX_DOCK_BENCH_WORKER=FULL_WORKER_ID \
+  go test -ldflags '-X github.com/pacificbelt30/codex-dock/internal/buildinfo.Version=dev' \
+    ./pkg/cxd -run '^$' -bench '^BenchmarkKataExec$' -benchmem -benchtime=3x -count=5
+```
+
+同じcompact VM・同じクライアントバイナリーを維持し、変更前後のnodeを交互に起動して5組比較しました。各標本は3 Execの平均で、実行順も組ごとに入れ替えています。中央値は2.4478 → 1.7615秒（28.0%短縮）でした。比較中にエラー・VM再作成はなく、測定後にワーカーとfixture Proxyを回収しました。これは上記ホストでの短いコマンドの結果で、長い計算ジョブやAI推論時間の28%短縮を意味しません。
+
+### 停止処理の回帰確認
+
+停止時はcontainerdの終了通知に含まれる終了コードと時刻を保存します。通知後の状態再取得に依存すると、runtimeが終了済みタスクを忘れた場合に成功した停止をNotFound扱いしてしまいます。単体テストでこの順序を再現し、保存済みの終了コード・時刻を確認しました。終了通知自体のエラーや、結果なしで閉じたchannelは引き続き失敗として扱います。task削除前の停止・不在確認とKataのretirement検証は維持しています。
+
+初回の実Kata受入では停止APIのNotFoundが1件ありました。エラーに処理段階を付けた診断用nodeで同じ受入を再実行すると193.725秒で通過し、最初の失敗が上記の競合だったかは断定できていません。単体テストでは競合を再現して修正を検証し、実機での初回失敗と再実行の結果を区別しています。
+
+最終実装で `make kata-e2e VERSION=dev` を再実行し、4スイートが連続で成功しました（Go test全体432.713秒）。
+
+| スイート | 結果 |
+|---|---|
+| Kata基本受入 | PASS、188.03秒。停止・再起動・削除・孤児回収を含む |
+| 共有 | 8ケースPASS、143.87秒 |
+| 通信・実行ポリシー | PASS、39.84秒 |
+| 公開Go API | PASS、60.91秒。ExecのEOF・取消、small/standard、ケース分離・失効・削除を含む |
+
+全Goテストのrace検査、vet、lint、Linux arm64・macOS arm64クロスビルド、ドキュメントのstrict buildも成功しました。
+
+追加のGo API受入も、固定CLI 0.163.0と架空の資格情報で全9ケースが成功しました（406.251秒）。明示HTTP/SSE、compact、起動取消・通信中失効、OAuth保存失敗・版競合・Proxy再起動、容量付き一時領域、組み込みサンプル、登録プロファイルのnode/VM再起動後の制約を確認しています。検証用VM・コンテナ・ネットワーク・サービス・状態を回収し、既存サービスは変更していません。

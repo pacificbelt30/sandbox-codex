@@ -110,6 +110,30 @@ address=%q
 			t.Fatal(err)
 		}
 	}
+	// Every validation must read the bytes, even if the path, inode, size and
+	// mtime match a previously successful validation.
+	imageInfo, err := os.Stat(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageBytes, err := os.ReadFile(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := append([]byte(nil), imageBytes...)
+	changed[0] ^= 1
+	if err := os.WriteFile(image, changed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(image, imageInfo.ModTime(), imageInfo.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(manifest); err == nil {
+		t.Fatal("same-size image mutation with restored mtime was accepted")
+	}
+	if err := os.WriteFile(image, imageBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Chmod(image, 0666); err != nil {
 		t.Fatal(err)
 	}

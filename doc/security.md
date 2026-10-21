@@ -33,7 +33,7 @@ Kata外側の隔離を検証したworkerでは、Codexの内側sandboxを `dange
 
 nodeのoperator groupとBuildKit利用者はroot相当で、image・command・host bind mountを選べる信頼済み利用者である。guestにはoperator socketを公開しない。プロキシはrunc、workerは既定でKata。`--runtime runc` は同じcontainerd上で明示選択する互換モードで、独立kernelを提供しない。
 
-manifestでroot所有・一般ユーザーから書き換え不可のruntime、kernel、guest image、bootstrap、IO logger、containerd設定と本体、network操作ツールを固定する。実プロセスはinode、cmdlineのworker ID、start ticks、実cgroup所属で照合する。manifestはchecksum記録であり、配布物の署名・出所の確認の代わりではない。
+manifestでroot所有・一般ユーザーから書き換え不可のruntime、kernel、guest image、bootstrap、IO logger、containerd設定と本体、network操作ツールを固定する。実プロセスはinode、cmdlineのworker ID、start ticks、実cgroup所属で照合する。manifestはchecksum記録であり、配布物の署名・出所の確認の代わりではない。 資産検証は毎回全ファイルを再読込し、SHA-256を計算する。ファイル間の並列数はGOMAXPROCS以下・最大4に制限し、更新時刻などを根拠とする検証結果のキャッシュは使わない。
 
 Dragonball終了時のcgroup回収は同じ上限内のsibling leafへ移す。起動失敗の回収と孤児の強制停止は、専用予約の全占有プロセスを確認した場合だけ `cgroup.kill` を使う。他サービスのgroup・任意PID・不明なnamespaceを採用しない。管理層に接続できない場合はunknownとし、孤児として削除しない。
 

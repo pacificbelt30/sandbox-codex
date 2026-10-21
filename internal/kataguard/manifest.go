@@ -12,8 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 )
 
 const Profile = "kata-dragonball-containerd-guard-v2"
@@ -276,26 +278,8 @@ func Load(path string) (Manifest, error) {
 			return m, fmt.Errorf("missing asset %s", name)
 		}
 	}
-	for name, asset := range m.Assets {
-		if err = trustedPath(asset.Path, false); err != nil {
-			return m, err
-		}
-		if executableAsset(name) {
-			info, err := os.Stat(asset.Path)
-			if err != nil {
-				return m, err
-			}
-			if info.Mode().Perm()&0111 == 0 {
-				return m, fmt.Errorf("asset is not executable: %s", name)
-			}
-		}
-		actual, err := hash(asset.Path)
-		if err != nil {
-			return m, err
-		}
-		if len(asset.SHA256) != 64 || actual != asset.SHA256 {
-			return m, fmt.Errorf("kata asset checksum mismatch: %s", name)
-		}
+	if err = verifyAssets(m.Assets); err != nil {
+		return m, err
 	}
 	if asset, ok := m.Assets["guest-policy"]; ok {
 		supported, err := readGuestPolicy(asset.Path, m.Assets["image"].SHA256)
@@ -322,6 +306,54 @@ func Load(path string) (Manifest, error) {
 	}
 	return m, nil
 }
+
+// Each validation still reads and hashes every asset. Bound concurrency to
+// avoid multiplying disk readers and buffers with the number of pinned files.
+// No checksum is reused based on timestamps or a previous validation.
+func verifyAssets(assets map[string]Asset) error {
+	limit := min(4, runtime.GOMAXPROCS(0))
+	slots := make(chan struct{}, limit)
+	var workers sync.WaitGroup
+	var failed sync.Once
+	var firstErr error
+	for name, asset := range assets {
+		slots <- struct{}{}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			defer func() { <-slots }()
+			if err := verifyAsset(name, asset); err != nil {
+				failed.Do(func() { firstErr = err })
+			}
+		}()
+	}
+	workers.Wait()
+	return firstErr
+}
+
+func verifyAsset(name string, asset Asset) error {
+	if err := trustedPath(asset.Path, false); err != nil {
+		return err
+	}
+	if executableAsset(name) {
+		info, err := os.Stat(asset.Path)
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm()&0111 == 0 {
+			return fmt.Errorf("asset is not executable: %s", name)
+		}
+	}
+	actual, err := hash(asset.Path)
+	if err != nil {
+		return err
+	}
+	if len(asset.SHA256) != 64 || actual != asset.SHA256 {
+		return fmt.Errorf("kata asset checksum mismatch: %s", name)
+	}
+	return nil
+}
+
 func executableAsset(name string) bool {
 	return name == "launcher" || name == "runtime" || name == "containerd" || name == "ip" || name == "nft" || name == "sysctl" || name == "runc" || name == "runc-shim" || name == "logger"
 }
