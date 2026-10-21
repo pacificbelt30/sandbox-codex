@@ -27,6 +27,7 @@ The execution host must be Linux x86_64. Cross-compiling the CLI does not make K
 | Use the proxy by itself | [Standalone proxy](proxy-standalone.md) |
 | Look up flags and settings | [Commands](commands.md), [configuration](configuration.md) |
 | Manage workers from a host product | [Go API](go-api.md) |
+| Measure performance and compare revisions | [Performance and benchmarks](performance.md) |
 | Diagnose a failure | [Troubleshooting](../troubleshooting.md) (Japanese) |
 | Understand the design | [Architecture](architecture.md), [security](security.md) |
 | Check test coverage | [Testing](../testing.md) (Japanese) |

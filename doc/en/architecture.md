@@ -52,11 +52,21 @@ Shared workspaces use inline virtio-fs with `virtio_fs_cache = "none"` and `open
 Only the auth proxy injects real credentials. The egress proxy has no credentials.
 `--no-internet` leaves the egress proxy disconnected while keeping fixed AI routes available.
 
+## Verification and authentication work
+
+Each asset validation rereads and checks every file with at most `min(4, GOMAXPROCS)` concurrent readers.
+It does not reuse verification results based on file timestamps, and the host/guest verification gate remains enforced.
+The auth proxy uses a token-value index to find issuance records, updating it under the same lock as issuance, restore and revocation.
+See [performance and benchmarks](performance.md) for measurement scope and comparison steps, and the [measurement record](../testing.md#2026-10-21の性能計測) (Japanese) for results.
+
 ## State and recovery
 
 Stopped containers and snapshots remain in containerd. Restart uses the same ID.
 The node stores allocations and engine state under `/var/lib/codex-dock-node`.
 Console I/O is owned by the shim so restarting the node service does not stop the guest or its logs.
+
+Stop records the exit code and time from containerd's exit notification.
+When waiting for a running task to exit, a failed notification or a channel closed without a result remains an error. Task deletion retains stopped/absent checks and Kata retirement verification.
 
 Deletion intent is persisted before resources are removed. Failed cleanup can be retried.
 The node only manages resources whose ownership it can verify.

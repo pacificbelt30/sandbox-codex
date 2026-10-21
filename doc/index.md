@@ -29,6 +29,7 @@ Docker EngineとDocker CLIは不要です。
 | 起動や通信の問題を調べる | [トラブルシューティング](troubleshooting.md) |
 | フラグや設定名を調べる | [コマンド](commands.md)・[設定](configuration.md) |
 | 製品からワーカーを操作する | [製品組み込み用 Go API](go-api.md) |
+| 性能を測り、変更前後を比較する | [性能とベンチマーク](performance.md) |
 
 ## 仕組みと開発
 

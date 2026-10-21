@@ -38,7 +38,7 @@ Admin operations are on a separate listener, unreachable from worker networks.
 Node socket and BuildKit access are root-equivalent: operators can select commands, images and host mounts.
 Runtime assets, tools and configuration are pinned in a root-owned manifest.
 The manifest does not replace verification of release provenance or checksums.
-Every validation rereads and hashes every asset. Files are checked in parallel, limited to GOMAXPROCS and at most four readers. Verification results are never cached based on file timestamps.
+Every validation rereads and hashes every asset. Each validation checks files in parallel, limited to GOMAXPROCS and at most four readers. Verification results are never cached based on file timestamps. See the [measurement guide](performance.md).
 
 Recovery verifies all occupants of a dedicated resource group before using `cgroup.kill`.
 It does not adopt arbitrary PIDs or other products' VMs.

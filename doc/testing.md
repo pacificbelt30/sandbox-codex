@@ -273,6 +273,8 @@ Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功し�
 
 ## 2026-10-21の性能計測
 
+対象の実装は、[認証トークンの索引化（61c9665）](https://github.com/pacificbelt30/sandbox-codex/commit/61c9665c4077b312162ea4b5bd84e21dcede2b8d)、[停止時の終了通知の保存（b6746b6）](https://github.com/pacificbelt30/sandbox-codex/commit/b6746b6f24003ce91712e8ca8df672fa978be660)、[資産検証の並列化（cd4f68f）](https://github.com/pacificbelt30/sandbox-codex/commit/cd4f68f4bad31e6231095b7e8c5c7acfe16c4f5d)です。再計測手順は[性能とベンチマーク](performance.md)にまとめています。
+
 Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmarkを変更前後の別バイナリーで順次実行しました。各500msを5回、中央値で比較しています。測定中に他のテストやビルドを並行実行していません。`BenchmarkWorkerRequest` は認証ヘッダーの解析、期限・経路の確認、request contextの生成と解放を含み、ネットワーク・実AIへの通信は含みません。
 
 | 同一Proxyのトークン数 | 認証成功：変更前 → 変更後 | 時間短縮 |
@@ -284,9 +286,7 @@ Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmark
 
 未発行トークンの拒否は4,096件で52,668 → 133.8 ns（99.7%短縮）でした。トークン値の索引を追加した効果であり、AI応答全体の改善率ではありません。小規模Proxyでは元の認証コストも小さく、同等の体感改善を意味しません。
 
-```bash
-go test ./internal/authproxy -run '^$' -bench '^BenchmarkWorkerRequest$' -benchmem -count=5 -benchtime=500ms
-```
+再計測は[Proxy認証のbenchmark手順](performance.md#proxy認証)を参照してください。
 
 発行・再発行・異なる値／同じ値でのrestore・失効・期限切れ回収・実行／ケースの失効・Proxy停止で、古いstreamの取消、旧トークンの拒否、別ワーカーへのトークン重複割当拒否を確認しました。全Goテストのrace検査、vet、lintも成功しました。
 
@@ -296,27 +296,13 @@ CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。資産�
 
 実際に固定した256 MiBのguest imageとruntime・kernel・containerdなどを含むmanifestで、CPU profileを無効にして測定した `BenchmarkLoadPinnedManifest` は970.55 → 636.43 ms（34.4%短縮）でした。各3回の平均を5標本取り、その中央値を比較しています。既にpage cacheが温まった、複数CPUのある同一ホストでの結果です。総ハッシュ量を減らす変更ではなく、空いているCPUを使って待ち時間を短縮しています。ディスク読み出しやCPU数が制約になるホスト、SHA命令を持つCPUで同じ改善率を保証するものではありません。CPU飽和時のthroughputは未測定です。
 
-既存manifestを読み取り専用で使う再計測例です。manifestを読めるnode運用者の権限で実行します。
+再計測は[固定資産の検証](performance.md#固定資産の検証)と[実KataのExec](performance.md#実kataのexec)を参照してください。公開Go APIの `BenchmarkKataExec` は、Openとwarmupを計測から除き、Execごとの資産・ホスト・guestの検証、`/bin/true` の実行と終了確認を含みます。allocation値はクライアント側の値です。
 
-```bash
-CODEX_DOCK_BENCH_MANIFEST=/path/to/kata-assets.json \
-  go test ./internal/kataguard -run '^$' -bench '^BenchmarkLoadPinnedManifest$' -benchmem -benchtime=3x -count=5
-```
-
-公開Go APIのExec全体を測る `BenchmarkKataExec` も追加しています。先に通常の手順で停止しないアイドル状態の管理Kataワーカーを作成し、完全なIDを指定してください。benchmarkはそのVMで `/bin/true` を実行し、ワーカーの作成・削除は呼出側が管理します。Openとwarmupは計測から除き、Execごとの資産・ホスト・ゲストの全検証、実行と終了確認を含みます。allocation値はクライアント側の値です。nodeとclientは同じ測定用BuildVersionでビルドします。次の例では `dev` を使っています。
-
-```bash
-CODEX_DOCK_KATA_NODE_SOCKET=/run/codex-dock-node.sock \
-CODEX_DOCK_BENCH_WORKER=FULL_WORKER_ID \
-  go test -ldflags '-X github.com/pacificbelt30/codex-dock/internal/buildinfo.Version=dev' \
-    ./pkg/cxd -run '^$' -bench '^BenchmarkKataExec$' -benchmem -benchtime=3x -count=5
-```
-
-同じcompact VM・同じクライアントバイナリーを維持し、変更前後のnodeを交互に起動して5組比較しました。各標本は3 Execの平均で、実行順も組ごとに入れ替えています。中央値は2.4478 → 1.7615秒（28.0%短縮）でした。比較中にエラー・VM再作成はなく、測定後にワーカーとfixture Proxyを回収しました。これは上記ホストでの短いコマンドの結果で、長い計算ジョブやAI推論時間の28%短縮を意味しません。
+同じcompact VM・同じクライアントバイナリーを維持し、変更前後のnodeを切り替えて5組比較しました。各標本は3 Execの平均で、組ごとの実行順は「旧版→新版」と「新版→旧版」を交互にしています。中央値は2.4478 → 1.7615秒（28.0%短縮）でした。比較中にエラー・VM再作成はなく、測定後にワーカーとfixture Proxyを回収しました。これは上記ホストでの短いコマンドの結果で、長い計算ジョブやAI推論時間の28%短縮を意味しません。
 
 ### 停止処理の回帰確認
 
-停止時はcontainerdの終了通知に含まれる終了コードと時刻を保存します。通知後の状態再取得に依存すると、runtimeが終了済みタスクを忘れた場合に成功した停止をNotFound扱いしてしまいます。単体テストでこの順序を再現し、保存済みの終了コード・時刻を確認しました。終了通知自体のエラーや、結果なしで閉じたchannelは引き続き失敗として扱います。task削除前の停止・不在確認とKataのretirement検証は維持しています。
+停止時はcontainerdの終了通知に含まれる終了コードと時刻を保存します。通知後の状態再取得に依存すると、runtimeが終了済みタスクを忘れた場合に成功した停止をNotFound扱いしてしまいます。単体テストでこの順序を再現し、保存済みの終了コード・時刻を確認しました。実行中taskの終了を待つとき、終了通知自体のエラーや、結果なしで閉じたchannelは引き続き失敗として扱います。task削除前の停止・不在確認とKataのretirement検証は維持しています。
 
 初回の実Kata受入では停止APIのNotFoundが1件ありました。エラーに処理段階を付けた診断用nodeで同じ受入を再実行すると193.725秒で通過し、最初の失敗が上記の競合だったかは断定できていません。単体テストでは競合を再現して修正を検証し、実機での初回失敗と再実行の結果を区別しています。
 
