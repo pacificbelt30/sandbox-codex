@@ -69,7 +69,8 @@ def main():
         subprocess.run([binary, "build", "-t", image, "-f", "Dockerfile"], cwd=work, check=True)
         passed = run_acceptance(["go", "test", "-json", "-ldflags", version_flag, "./pkg/cxd", "-run", args.run, "-count=1", "-v", "-timeout=20m"], repo,
                                 dict(os.environ, CODEX_DOCK_KATA_API_E2E="1", CODEX_DOCK_KATA_API_PROXY_IMAGE=image,
-                                     CODEX_DOCK_KATA_API_OWN_IMAGE="1", CODEX_DOCK_KATA_EMBEDDING_BINARY=str(work / "embedding")))
+                                     CODEX_DOCK_KATA_API_OWN_IMAGE="1", CODEX_DOCK_KATA_EMBEDDING_BINARY=str(work / "embedding"),
+                                     CODEX_DOCK_KATA_TEST_BINARY=binary))
         print(f"Verified {len(passed)} API acceptance subtests.", file=sys.stdout)
 
 

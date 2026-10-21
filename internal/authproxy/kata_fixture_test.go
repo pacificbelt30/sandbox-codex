@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
@@ -34,9 +35,23 @@ func runKataFixtureProxy() int {
 	f.StringVar(&socket, "credential-store-socket", "", "")
 	f.StringVar(&role, "role", "auth", "")
 	f.BoolVar(&block, "block-private", false, "")
+	f.BoolVar(&cfg.ForwardPolicy.DefaultDeny, "forward-default-deny", false, "")
+	f.Func("forward-allow-cidr", "", func(v string) error {
+		cfg.ForwardPolicy.AllowCIDRs = append(cfg.ForwardPolicy.AllowCIDRs, v)
+		return nil
+	})
+	f.Func("forward-allow-port", "", func(v string) error {
+		n, err := strconv.Atoi(v)
+		cfg.ForwardPolicy.AllowPorts = append(cfg.ForwardPolicy.AllowPorts, n)
+		return err
+	})
 	f.Func("allow-model", "", func(v string) error { cfg.AllowedModels = append(cfg.AllowedModels, v); return nil })
 	if err := f.Parse(os.Args[3:]); err != nil {
 		return 2
+	}
+	if role == RoleEgress {
+		cfg.Role, cfg.BlockPrivate = RoleEgress, block
+		return runKataEgressFixture(cfg)
 	}
 	store, err := credentialstore.NewUnixClient(socket)
 	if err != nil {

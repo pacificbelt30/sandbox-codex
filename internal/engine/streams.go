@@ -71,6 +71,11 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 		return
 	}
 	if action == "exec" {
+		if err = executionAllowed(rec); err != nil {
+			b.mu.Unlock()
+			failure(w, err)
+			return
+		}
 		var cfg container.ExecOptions
 		err = decode(r, &cfg)
 		if err == nil && (cfg.Privileged || cfg.User != "" || len(cfg.Cmd) == 0) {
@@ -242,7 +247,10 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		failure(w, fmt.Errorf("exec already started"))
 		return
 	}
-	_, c, err := b.load(ctx, e.Container)
+	rec, c, err := b.load(ctx, e.Container)
+	if err == nil {
+		err = executionAllowed(rec)
+	}
 	if err != nil {
 		b.mu.Unlock()
 		failure(w, err)

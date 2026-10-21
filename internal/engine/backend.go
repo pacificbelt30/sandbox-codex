@@ -84,6 +84,7 @@ type record struct {
 	LastActivity            time.Time
 	NetNSDevice, NetNSInode uint64
 	FailedCreate            bool
+	Quarantined             bool `json:",omitempty"`
 }
 type execution struct {
 	cancel     context.CancelFunc `json:"-"`
@@ -549,6 +550,8 @@ func (b *Backend) inspect(ctx context.Context, value string) (container.InspectR
 		r.Config.Labels["codex-dock.last-activity"] = r.LastActivity.Format(time.RFC3339Nano)
 	}
 	r.Config.Labels["codex-dock.active-executions"] = strconv.Itoa(b.activeExecutions(r.ID))
+	// This status belongs to the node's durable record, not launch labels.
+	r.Config.Labels[workerpolicy.QuarantinedLabel] = strconv.FormatBool(r.Quarantined)
 	// Docker's current API still requires NetworkSettingsBase for published ports.
 	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: r.ID, Name: "/" + r.Name, Created: r.Created.Format(time.RFC3339Nano), State: state, HostConfig: &r.Host}, Config: &r.Config, NetworkSettings: &container.NetworkSettings{NetworkSettingsBase: container.NetworkSettingsBase{Ports: r.Host.PortBindings}, Networks: r.Networks}}, nil //nolint:staticcheck
 }
@@ -573,6 +576,9 @@ func (b *Backend) FindRequest(ctx context.Context, name string) (id, key, finger
 }
 
 func (b *Backend) start(ctx context.Context, r *record, c cd.Container) error {
+	if err := executionAllowed(r); err != nil {
+		return err
+	}
 	if t, err := c.Task(ctx, nil); err == nil {
 		status, e := t.Status(ctx)
 		if e != nil {
@@ -808,7 +814,7 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			failure(w, err)
 			return
 		}
-		features := [][2]string{{"cxd.worker-policy", "1"}, {"cxd.idle-safe", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}}
+		features := [][2]string{{"cxd.worker-policy", "1"}, {"cxd.idle-safe", "1"}, {"cxd.exec-options", "1"}, {"cxd.jobs", "1"}, {"cxd.quarantine", "1"}}
 		if b.opts.TemporaryStorage {
 			features = append(features, [2]string{"cxd.temporary-storage", "1"})
 		}
@@ -974,6 +980,16 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "start":
 		err = b.start(ctx, rec, c)
+	case "quarantine":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if value != rec.ID {
+			failure(w, fmt.Errorf("quarantine requires the full worker ID"))
+			return
+		}
+		err = b.quarantine(ctx, rec, c)
 	case "idle-stop":
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)

@@ -634,10 +634,22 @@ func (m *Manager) StartContext(parent context.Context, containerID string) (star
 		return err
 	}
 	defer unlock()
+	// Quarantine or removal may have completed while this start waited for
+	// the lifecycle lock. Never restore credentials from a stale inspection.
+	v, err = m.cli.ContainerInspect(ctx, v.ID)
+	if err != nil {
+		return err
+	}
+	if v.ContainerJSONBase == nil || v.Config == nil || v.HostConfig == nil || v.Config.Labels[labelManaged] != "true" {
+		return fmt.Errorf("worker is missing its managed configuration")
+	}
 	if _, err := m.readCleanup(v.ID); err == nil {
 		return fmt.Errorf("worker removal is pending; retry rm before creating another worker")
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	if v.Config.Labels[workerpolicy.QuarantinedLabel] == "true" {
+		return fmt.Errorf("worker is quarantined; create a new worker to apply the new policy")
 	}
 	kata := v.Config.Labels[labelIsolation] == RuntimeKata
 	if kata {

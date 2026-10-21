@@ -70,6 +70,7 @@ With no `Agent`, `Launch` starts an idle worker for repeated `Exec` calls. `Agen
 | `Exec` / `Wait` | Execute a command in a worker / wait for its main process |
 | `Start` / `Stop` / `Remove` | Restart a stopped worker / stop it and revoke its auth token / remove its resources |
 | `Request` / `RemoveRequest` | Query durable launch state by request ID / retry cleanup after a lost response |
+| `Quarantine(ctx, worker)` | Stop ALL execution/network access and persist restart denial at the node; retain workspace/worktree/logs. Resume with a new worker under new policy |
 | `Profiles(ctx)` | Query the running node's CPU, guest RAM, host memory reservation, and PID limits. These are reservation limits, not measured RSS |
 | `Capabilities()` / `ProxyCapabilities(ctx)` | Query node build, protocol, and features / connected auth proxy features |
 
@@ -170,3 +171,5 @@ The example reads `CODEX_DOCK_KATA_NODE_SOCKET`, `CXD_EXAMPLE_PROXY_ADMIN_URL`, 
 The example removes its request at exit. Use a new RequestID for another completed attempt. After an uncertain response or cleanup failure, use the reported ID with `Request` / `RemoveRequest`. Caller authorization, business state, database adapters, review/approval and Git workflows stay in the host application. Reuse the conformance suite above for Credential Store adapters.
 
 `make kata-api-e2e VERSION=<matching-node-version>` builds and runs this executable with synthetic upstreams in real Kata. Select it alone with `scripts/verify-go-api.py --binary ./cxd --version <version> --run '^TestKataAPIIntegration/embedding-example$'`. A run with no executed subtests or only skips fails. See the [acceptance setup](../testing.md#公開go-apiの障害系受入).
+
+See [quarantine](sandbox-features.md#stop-communication-and-quarantine) for completion, retries and retained worktree cleanup. `Policy.Quarantined` means the prohibition was persisted; `QuarantinePending` means its stop is unconfirmed. Never treat an error from `Quarantine` as success.

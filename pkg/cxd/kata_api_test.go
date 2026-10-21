@@ -129,7 +129,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example", "egress-default-deny", "egress-exact"}
+	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example", "egress-default-deny", "egress-exact", "quarantine"}
 	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
 		modes = append(modes, "custom-profile")
 	}
@@ -186,12 +186,19 @@ func TestKataAPIIntegration(t *testing.T) {
 				}
 			}()
 			options := Options{NodeSocket: engine.Socket(), ProxyAdminURL: proxy.AdminURL, ProxyContainerURL: proxy.ContainerURL, ProxyAdminSecret: proxyOpts.AdminSecret, StateDir: filepath.Join(root, "state")}
-			if strings.HasPrefix(mode, "egress-") {
+			if strings.HasPrefix(mode, "egress-") || mode == "quarantine" {
 				options.EgressPolicy.DefaultDeny = true
 				if mode == "egress-exact" {
 					options.EgressPolicy.AllowDomains = []string{"=example.com"}
 					options.EgressPolicy.AllowPorts = []int{443}
 					options.EgressProxyImage = os.Getenv("CODEX_DOCK_KATA_PROXY_IMAGE")
+				}
+				if mode == "quarantine" {
+					options.EgressPolicy.AllowCIDRs = []string{"203.0.113.1/32"}
+					options.EgressPolicy.AllowPorts = []int{80, 443}
+					options.EgressProxyImage = proxyImage
+				}
+				if mode == "egress-exact" || mode == "quarantine" {
 					rules := options.EgressPolicy.rules()
 					name := workeregress.Name(rules)
 					if _, err := engineClient.ContainerInspect(ctx, name); !errdefs.IsNotFound(err) {
@@ -274,7 +281,7 @@ func TestKataAPIIntegration(t *testing.T) {
 				return
 			}
 			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: runIdentity, ModelPolicy: &identity.ModelPolicy{AllowedModels: []string{"allowed", "outside-global"}}}
-			if strings.HasPrefix(mode, "egress-") {
+			if strings.HasPrefix(mode, "egress-") || mode == "quarantine" {
 				// No worker allowlist: the host maximum must still be enforced.
 				req.NoInternet = false
 				req.Profile = "compact"
@@ -422,6 +429,10 @@ for line in ['CONNECT sub.example.com:443 HTTP/1.1', 'GET http://sub.example.com
 			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("allowed model: %s", got)
+			}
+			if mode == "quarantine" {
+				verifyQuarantineAPI(t, ctx, c, engineClient, options, req, w, project)
+				return
 			}
 			if strings.HasPrefix(mode, "egress-") {
 				return

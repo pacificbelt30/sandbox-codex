@@ -51,6 +51,8 @@ workspaceと追加mountのreadonly指定を保つ。worktreeでのcommit互換�
 短命トークンはBearer認証で、送信元コンテナIDとの照合は行わない。盗まれた有効トークンは失効まで利用され得る。
 一般通信のルールは選択したegressプロキシ単位で固定する。ワーカー別の許可リストはポリシー別proxyで強制し、同じ規則のワーカーはproxyを共有できる。既定拒否は明示選択であり、省略時の空リストは公開宛て通信を許可する。ホットリロードは提供しない。
 
+対象ワーカーを即時停止し再起動を禁止する `policy quarantine` / Go API `Quarantine` を提供する。一般通信だけでなくAI通信・全ジョブも終了する。workspaceは保持し、新しい規則での再開は新規ワーカーとする。隔離状態はnodeで永続化するが、エラー時は停止完了と判断せず再試行する。[停止と隔離](sandbox-features.md#通信の停止と隔離)を参照。
+
 [実機試験と実AI試験](testing.md)では、隔離・権限・資源・機能と、既存auth.jsonによるWebSocket/HTTP SSE推論を確認した。
 長期間の実OAuth更新、対話キーボード操作、任意のカスタムイメージは別途確認が必要。
 隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。

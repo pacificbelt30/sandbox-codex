@@ -33,6 +33,12 @@ func (b *Backend) recover(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if r.Quarantined {
+			if err = b.stop(ctx, r, c, 0); err != nil {
+				return fmt.Errorf("complete quarantined worker stop %s: %w", r.ID, err)
+			}
+			continue
+		}
 		h, err := newHub()
 		if err != nil {
 			return err

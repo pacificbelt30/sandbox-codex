@@ -7,6 +7,7 @@ import (
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"github.com/pacificbelt30/codex-dock/internal/policyevents"
 	"github.com/pacificbelt30/codex-dock/internal/proxysettings"
+	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,7 +18,7 @@ func configuredPolicy() proxysettings.Settings {
 }
 
 func newPolicyCommand() *cobra.Command {
-	policy := &cobra.Command{Use: "policy", Short: "Inspect and explain immutable egress policies without changing running workers"}
+	policy := &cobra.Command{Use: "policy", Short: "Inspect immutable egress policies or quarantine a selected worker"}
 	var worker, preset string
 	var domains []string
 	var asJSON, resolve bool
@@ -48,6 +49,14 @@ func newPolicyCommand() *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(s)
 			}
+			if s.Quarantined {
+				if s.QuarantinePending {
+					_, err = fmt.Fprintln(cmd.OutOrStdout(), "QUARANTINE PENDING: stop not confirmed; network access may continue. Retry policy quarantine for this worker.")
+					return err
+				}
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), "QUARANTINED: all execution and network access stopped; restart forbidden. Create a new worker to apply a new policy.")
+				return err
+			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\nPolicy: %s\nGeneral egress: %t\nPrivate destinations blocked: %t\nDefault deny without domain/CIDR grants: %t\nDomains: bare names include subdomains; =name is exact.\nAllow domains: %v\nDeny domains: %v\nAllow ports: %v\nDeny ports: %v\nAllow IP/CIDRs: %v\nDeny IP/CIDRs: %v\nFixed AI routes use their own live-token authorization.\n", s.Source, s.PolicyID, s.GeneralEgress, !s.GeneralEgress || s.Rules.BlockPrivate, s.Rules.DefaultDeny, s.Rules.AllowDomains, s.Rules.DenyDomains, s.Rules.AllowPorts, s.Rules.DenyPorts, s.Rules.AllowCIDRs, s.Rules.DenyCIDRs)
 			return err
 		}})
@@ -55,6 +64,16 @@ func newPolicyCommand() *cobra.Command {
 	explain := &cobra.Command{Use: "explain HOST[:PORT]", Short: "Explain a destination without opening an upstream connection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := get(cmd)
 		if err != nil {
+			return err
+		}
+		if s.Quarantined {
+			if s.QuarantinePending {
+				return fmt.Errorf("quarantine stop not confirmed; retry policy quarantine for this worker")
+			}
+			if asJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(networkpolicy.Decision{Code: "worker_quarantined", Complete: true})
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "DENY worker_quarantined (all execution and network access stopped)")
 			return err
 		}
 		if !s.GeneralEgress {
@@ -101,6 +120,24 @@ func newPolicyCommand() *cobra.Command {
 	}}
 	events.Flags().BoolVar(&follow, "follow", false, "Follow denial events until canceled")
 	policy.AddCommand(events)
+	policy.AddCommand(&cobra.Command{Use: "quarantine", Aliases: []string{"revoke"}, Short: "Stop ALL work/network access for --worker and forbid restart; keep workspace/logs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if worker == "" || preset != "" || len(domains) > 0 {
+			return fmt.Errorf("quarantine requires --worker and cannot use --preset or --allow-domain")
+		}
+		mgr, err := sandbox.NewManager(managementConfig())
+		if err != nil {
+			return err
+		}
+		defer func() { _ = mgr.Close() }()
+		if err = mgr.QuarantineContext(cmd.Context(), worker); err != nil {
+			return err
+		}
+		if asJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"worker": worker, "quarantined": true, "restart_allowed": false})
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Worker %s quarantined: all work and network access stopped; workspace/logs retained. Create a new worker to apply a new policy.\n", worker)
+		return err
+	}})
 	return policy
 }
 func init() { rootCmd.AddCommand(newPolicyCommand()) }

@@ -12,15 +12,18 @@ import (
 
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 )
 
 type Snapshot struct {
-	Source        string              `json:"source"`
-	Worker        string              `json:"worker,omitempty"`
-	Proxy         string              `json:"proxy,omitempty"`
-	PolicyID      string              `json:"policy_id,omitempty"`
-	GeneralEgress bool                `json:"general_egress"`
-	Rules         networkpolicy.Rules `json:"rules"`
+	Source            string              `json:"source"`
+	Worker            string              `json:"worker,omitempty"`
+	Proxy             string              `json:"proxy,omitempty"`
+	PolicyID          string              `json:"policy_id,omitempty"`
+	GeneralEgress     bool                `json:"general_egress"`
+	Quarantined       bool                `json:"quarantined,omitempty"`
+	QuarantinePending bool                `json:"quarantine_pending,omitempty"`
+	Rules             networkpolicy.Rules `json:"rules"`
 }
 
 // Inspect reads the actual immutable proxy selected by a managed worker. It
@@ -38,7 +41,13 @@ func Inspect(ctx context.Context, socket, worker string) (Snapshot, error) {
 	if v.Config == nil || v.Config.Labels[managedLabel] != "true" {
 		return Snapshot{}, fmt.Errorf("worker is not managed by cxd")
 	}
-	result := Snapshot{Source: "running worker configuration", Worker: v.ID}
+	result := Snapshot{Source: "running worker configuration", Worker: v.ID, Quarantined: v.Config.Labels[workerpolicy.QuarantinedLabel] == "true"}
+	if result.Quarantined {
+		result.QuarantinePending = v.State == nil || v.State.Running || v.State.Paused || v.State.Status != "created" && v.State.Status != "exited"
+		if !result.QuarantinePending {
+			return result, nil
+		}
+	}
 	endpoint := ""
 	for _, env := range v.Config.Env {
 		if strings.HasPrefix(env, "HTTP_PROXY=") {

@@ -48,6 +48,8 @@ It does not adopt arbitrary PIDs or other products' VMs.
 Worker-to-proxy traffic is plain HTTP on dedicated networks; TLS is not provided.
 Tokens are bearer credentials, without source container-ID attestation.
 General egress rules are immutable per proxy. Worker-specific allowlists select policy-specific proxies; identical policies can share a proxy. Default deny is opt-in; an omitted empty allowlist retains public-destination access. Hot reload is not provided.
+
+`policy quarantine` / Go API `Quarantine` stops one worker and durably prohibits restart at the node. It ends all work, general communication and AI communication, retaining the workspace. Resume under new rules with a new worker. Errors do not establish completed isolation; retry. See [quarantine semantics](sandbox-features.md#stop-communication-and-quarantine).
 Explicitly shared files and Git metadata can still be modified where writable.
 Isolation also depends on maintaining the host kernel, KVM, Kata and guest kernel.
 

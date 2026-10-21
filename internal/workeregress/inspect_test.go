@@ -1,10 +1,18 @@
 package workeregress
 
 import (
+	"context"
+	"encoding/json"
 	"github.com/docker/docker/api/types/container"
 	dn "github.com/docker/docker/api/types/network"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -54,5 +62,48 @@ func TestInspectRejectsProxyAddressOrNetworkDrift(t *testing.T) {
 	proxy.NetworkSettings.Networks["front"].IPAddress = "10.253.1.8"
 	if proxySharesAddress(worker, proxy, address) {
 		t.Fatal("changed proxy address accepted")
+	}
+}
+
+func TestInspectDistinguishesPendingQuarantineFromCompletedStop(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		state   *container.State
+		pending bool
+	}{
+		{"exited", &container.State{Status: "exited"}, false},
+		{"created", &container.State{Status: "created"}, false},
+		{"running", &container.State{Running: true, Status: "running"}, true},
+		{"paused", &container.State{Paused: true, Status: "paused"}, true},
+		{"unknown", nil, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir, err := os.MkdirTemp("", "cxd-policy-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(dir)
+			socket := filepath.Join(dir, "node.sock")
+			ln, err := net.Listen("unix", socket)
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.HasSuffix(r.URL.Path, "/containers/worker/json") {
+					t.Errorf("unexpected lookup: %s", r.URL.Path)
+					w.WriteHeader(500)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: "worker", State: test.state}, Config: &container.Config{Labels: map[string]string{managedLabel: "true", "codex-dock.quarantined": "true"}}})
+			}))
+			_ = server.Listener.Close()
+			server.Listener = ln
+			server.Start()
+			defer server.Close()
+			snapshot, err := Inspect(context.Background(), socket, "worker")
+			if err != nil || !snapshot.Quarantined || snapshot.QuarantinePending != test.pending {
+				t.Fatalf("quarantine status misrepresented: %+v %v", snapshot, err)
+			}
+		})
 	}
 }

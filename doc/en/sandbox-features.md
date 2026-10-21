@@ -37,9 +37,26 @@ Worker inspection reads its actual selected proxy configuration and policy ID. W
 
 `offline` and `test` disable general egress while preserving fixed AI routes. Configured fixed credential-broker routes also remain available independently of general egress rules. `dependencies` selects common npm, Python and Go registries; `api` requires explicit domains. Presets cannot widen the host allowlist or override denials/private-address blocking.
 
-In the existing TUI, **P** opens proxy settings and **E** opens denial history. Standalone `proxy configure` works without a running node. It edits the six allow/deny lists, upstream proxy URL and CA path, validates destinations and saves without exposing secrets or overwriting unrelated settings. Concurrent edits are detected. Unsupported multiline arrays are rejected safely and can be edited in a text editor. Saving does not update running proxies. Drain workers and explicitly recreate the selected proxies to apply changes.
+In the existing TUI, **P** opens proxy settings and **E** opens denial history. Standalone `proxy configure` works without a running node. It edits the six allow/deny lists, empty-list default denial, upstream proxy URL and CA path, validates destinations and saves without exposing secrets or overwriting unrelated settings. Concurrent edits are detected. Unsupported multiline arrays are rejected safely and can be edited in a text editor. Saving does not update running proxies. Drain workers and explicitly recreate the selected proxies to apply changes.
 
 Denial events contain time, reason code, observed source address, destination authority and policy ID. They exclude paths, queries, headers and credentials. Egress proxy history is shared by its workers; source addresses are not authenticated run identities. Use separate proxies for cases requiring separate history. The in-process ring retains 512 records; CLI/API read the last 1000 retained console lines. Each proxy process writes at most 100000 events, emits `event_log_limit`, then stops writing events to bound diagnostic disk use. This is diagnostic history rather than a persistent audit log across proxy recreation.
+
+## Stop communication and quarantine
+
+To stop communication from an existing worker, run these commands on the host:
+
+```bash
+cxd policy quarantine --worker WORKER
+cxd policy show --worker WORKER --json
+```
+
+`policy revoke` is an alias. **This stops ALL execution in the selected worker, including general HTTP/CONNECT, fixed AI communication, background jobs and agents.** Other workers and shared proxies remain running. The quarantine operation retains the workspace, managed worktree, container and logs. Existing retention policies through `reap` and explicit deletion still apply; export artifacts that need longer preservation. Saving settings or using ordinary `stop` does not quarantine a worker.
+
+An updated node durably records the restart prohibition in its private OCI record before stopping without a grace period. The node rejects start, VM start, exec and background-job execution, and completes interrupted stops during node recovery. Accepted stops continue after a client disconnect with a node-owned 90-second deadline. A different client's `StateDir` or replaying the same RequestID cannot clear it. This requires a supporting node; reclaim retained workers before downgrading to an older node. Check `worker-quarantine-v1`; unsupported nodes reject the operation.
+
+Success requires the node's stop acknowledgment, stopped/quarantined status, AI placeholder revocation and Kata reservation release. Lost responses, failed stops or credential-management failures return errors; retry the same worker. A persisted request whose stop is unconfirmed reports `quarantine_pending`, and destination explanation cannot claim completed denial.
+
+Resume with a new worker and RequestID under the new policy. Unquarantine, policy hot reload and keeping execution alive while selectively cutting general egress are not provided. VM termination stops further communication from the guest. It cannot undo operations already accepted by a remote service and does not wait for every upstream socket in the shared egress proxy to close. Preserve artifacts before reclaiming the retained worker with ordinary `rm` / `RemoveRequest`; removing a managed worktree also deletes that worktree.
 
 ## Files, execution and recovery
 

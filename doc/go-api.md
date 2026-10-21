@@ -72,6 +72,7 @@ func main() {
 | `ResourceUsage(ctx, worker)` | 検証済みVMのホストcgroupの現在値・peak・OOM kill数と、資源プロファイルの上限を別々に取得 |
 | `Start` / `Stop` / `Remove` | 停止済みワーカーの再起動／停止／回収。`Stop` は認証トークンを失効させる |
 | `Request` / `RemoveRequest` | 要求IDから永続起動状態を照会する／応答消失後も同じ要求IDで回収を再試行する |
+| `Quarantine(ctx, worker)` | 対象の全実行・通信を停止し、nodeで再起動禁止を永続化。workspace・worktree・ログは保持。新規ワーカーで新しいポリシーを適用 |
 | `Profiles(ctx)` | 稼働中ノードの CPU、guest RAM、ホスト側予約メモリ、PID 上限を取得する。値は予約・制限の契約であり、実測 RSS ではない |
 | `Capabilities()` / `ProxyCapabilities(ctx)` | nodeのビルド版・プロトコル・対応機能／接続先認証Proxyの対応機能を調べる |
 
@@ -174,3 +175,5 @@ go build -o /var/tmp/cxd-embedding ./examples/embedding
 この例は終了時に自分の要求を削除します。終了後の再試行には新しいRequestIDを使ってください。応答不明・回収失敗の場合は表示された要求IDで `Request` / `RemoveRequest` を再試行できます。利用者の認可、業務状態、DB Adapter、レビュー・承認・Git運用は呼び出し側に残します。Credential Store Adapterは上の適合テストを再利用してください。
 
 `make kata-api-e2e VERSION=<nodeと同じ版>` は例をビルドし、架空の上流と実Kata上で同じ実行ファイルを検証します。`scripts/verify-go-api.py --binary ./cxd --version <版> --run '^TestKataAPIIntegration/embedding-example$'` で絞り込めます。実行対象が0件またはskipだけの場合は成功にしません。[障害系受入の準備](testing.md#公開go-apiの障害系受入)も参照してください。
+
+隔離の完了条件、再試行、保持したworktreeの回収は[停止と隔離](sandbox-features.md#通信の停止と隔離)を参照してください。`Policy` の `Quarantined` は永続化済みの隔離要求、`QuarantinePending` は停止未確認を表します。`Quarantine` のエラーを成功として扱わないでください。

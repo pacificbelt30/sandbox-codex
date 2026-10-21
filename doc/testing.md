@@ -394,3 +394,19 @@ python3 scripts/verify-go-api.py --binary "$PWD/cxd" --version "$(./cxd --versio
 全Goテストのrace/coverage、vet、lint、MkDocs strictビルドが成功しました。独立した実Kataで `make kata-e2e VERSION=dev` の全4スイートも成功しました（427.897秒）。
 追加のGo API受入 `egress-default-deny` / `egress-exact` は59.958秒で成功し、ワーカー個別許可リストを省略してもホスト設定が適用されること、厳格な空リストで一般Proxyへ接続されないこと、完全一致の子ドメインへのHTTP/CONNECTが403になること、固定AIルートは独立した認可で利用できることを確認しています。公開の外部サービスに対する通信成功を必要としない拒否試験です。
 追加試験の初回は拒否動作自体が成功した後、対象外のOAuth保存失敗用の分岐へ進んで失敗しました。通信試験はその検証後に終了するよう修正し、両ケースを再実行しています。
+
+
+## 対象ワーカーの隔離・再起動禁止
+
+2026-10-21、`policy quarantine` / Go API `Quarantine` を追加しました。共有Proxyの規則を途中で書き換える方式ではなく、対象VMを停止し、再起動禁止をnodeのprivate recordに保存します。workspace・worktreeは隔離操作では削除せず、新規ワーカーと要求IDで新しい規則を適用します。既存の保持期限による回収は引き続き有効です。
+
+独立Kata nodeで追加のGo API全4ケースが199.974秒で成功しました。空リストの明示拒否、ドメイン完全一致、隔離、PID 256の登録プロファイルが対象です。CPU 2・guest 512 MiB・host 768 MiB・PID 256の値はnodeとVMの再起動後にも一致しました。
+
+隔離試験は、一般HTTPのstreamとCONNECT echoを、実proxy handler・private IP制限・検証済みIPへのdialを通して開きます。インターネット上のサービスに依存しないよう、信頼した上流proxy chainだけをloopbackのfixtureに置き換えます。AI SSEも架空の上流を用います。通信が開始した後で対象VMを隔離し、背景ジョブの終了、VM停止、共有proxyを使う別VMの一般HTTP/CONNECTと固定AI経路の継続、API・直接node APIからの再開拒否、node再起動後の拒否、CLIの成功応答、別StateDirからの拒否、同一要求の再送、新しい規則での作り直しとworkspace保持を確認しました。共有proxyの全上流socketの終了待ちや、外部サービスの受理済み処理の取消を保証する試験ではありません。
+
+初回は、`Create` の要求を `Launch` として再送する不正な試験条件でfingerprint競合になりました。同じ段階の `Create` を再送するよう修正し、既存の段階的実行契約を維持しています。
+
+受理後の停止がクライアント切断で中断されないよう、node所有の90秒上限を追加しました。取消済みcontextからの停止続行・期限上限は単体試験で確認し、変更後の隔離受入も77.240秒で成功しました。失敗した停止・保存、未対応node、偽の成功応答、停止未確認、隔離待ちのstart、node再読込後の再起動禁止もrace付き単体試験の対象です。
+
+最終の `make kata-e2e VERSION=dev` も全4スイートが418.462秒で成功しました。VM受入186.32秒（実Codexツール実行39.67秒）、共有8ケース134.39秒、追加制御38.53秒、Go API59.22秒です。全Goテストのrace/coverage、vet、lint、Linux arm64・macOS arm64のクロスビルド、MkDocs strictビルドも成功しました。
+検証用のVM・コンテナ・task・ネットワークが0件であることを確認した後、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存の3サービスは元のPIDで稼働し、既存nodeのhealth応答200と元ネットワークの所有権も維持されています。

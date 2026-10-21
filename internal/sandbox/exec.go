@@ -11,6 +11,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/pacificbelt30/codex-dock/internal/workerpolicy"
 )
 
 // Exec runs argv in an existing managed worker. It returns the guest exit code
@@ -147,6 +148,9 @@ func (m *Manager) verifyExecWorker(ctx context.Context, name string) (string, er
 	}
 	if v.Config == nil || v.Config.Labels[labelManaged] != "true" {
 		return "", fmt.Errorf("worker %s is not managed", name)
+	}
+	if v.Config.Labels[workerpolicy.QuarantinedLabel] == "true" {
+		return "", fmt.Errorf("worker %s is quarantined", name)
 	}
 	if v.Config.Labels[labelIsolation] == RuntimeKata {
 		if err := m.CheckRuntime(ctx, RunOptions{Runtime: RuntimeKata, KataRuntime: v.Config.Labels[labelRuntime], ResourceProfile: v.Config.Labels[labelPrefix+"resource-profile"]}); err != nil {

@@ -44,7 +44,7 @@ cxd proxy run \
 
 ルールは起動時に検証して固定する。未知のロール、誤ったドメイン/CIDR/ポートは起動エラー。ホットリロードは提供しない。通常のワーカーは共有egress proxyを使用する。`cxd run --egress-allow-domain api.example.com` を指定したワーカーは、ポリシーの識別子を持つ専用egress proxyに接続する。異なる許可リストのワーカーはproxyを共有しない。同じ許可リストのワーカーは共有できる。プロジェクトの `codex-dock.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。ホストのグローバル許可ドメインがある場合、ワーカーの指定はその範囲内に限る。`--no-internet` は一般通信を止める。
 
-許可ルールの変更は新しいproxyと新しいワーカーに適用される。既存のCONNECTや通信中のストリームを途中で打ち切る機能はない。不要になったポリシーproxyは、利用ワーカーを停止した後に `cxd proxy rm --name <proxy名> --force` で回収できる。
+許可ルールの変更は新しいproxyと新しいワーカーに適用される。設定編集だけでは既存のCONNECTや通信中のストリームを打ち切らない。緊急時は `cxd policy quarantine --worker <ID>` で対象ワーカーを停止・隔離する。一般通信だけでなくAI通信と全ジョブも終了し、再起動は禁止される。workspace・worktree・ログは保持する。新しいルールで再開するには新しいワーカー・要求IDを使う。隔離の詳細と失敗時の扱いは[追加制御](sandbox-features.md#通信の停止と隔離)を参照。不要になったポリシーproxyは、利用ワーカーを停止した後に `cxd proxy rm --name <proxy名> --force` で回収できる。
 
 既定拒否はTUIの `Default deny` でも選べる。CLIでの新規ワーカー作成時に既定拒否で宛先が未許可なら、一般egressへ接続しない。Go APIでは `Options.EgressPolicy.DefaultDeny` を使う。ホスト側に許可が一つもない場合、ワーカー側から許可ドメインを追加して緩めることはできない。
 Go APIのホストポリシーは `LaunchRequest.EgressAllowDomains` を省略しても管理proxyで強制する。`=api.example.com` のホスト規則をワーカーが `api.example.com` に広げることも拒否する。設定内容は不変の要求条件に含まれ、同じRequestIDへ異なるポリシーを送ると競合する。
