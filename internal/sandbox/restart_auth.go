@@ -52,14 +52,30 @@ func (m *Manager) restoreWorkerToken(v container.InspectResponse) error {
 	if ttl <= 0 {
 		ttl = 3600
 	}
+	var id identity.Identity
 	if raw := v.Config.Labels[labelPrefix+"token-identity"]; raw != "" {
-		var id identity.Identity
 		if err := json.Unmarshal([]byte(raw), &id); err != nil {
 			return fmt.Errorf("invalid saved worker token identity: %w", err)
 		}
 		if err := id.Validate(); err != nil {
 			return err
 		}
+	}
+	if raw := v.Config.Labels[labelPrefix+"token-model-policy"]; raw != "" {
+		var policy identity.ModelPolicy
+		if err := json.Unmarshal([]byte(raw), &policy); err != nil {
+			return fmt.Errorf("invalid saved model policy: %w", err)
+		}
+		if err := policy.Validate(); err != nil {
+			return err
+		}
+		restorer, ok := p.(authproxy.PolicyRestorer)
+		if !ok {
+			return fmt.Errorf("auth proxy does not support token model policy restore")
+		}
+		return restorer.RestoreTokenWithPolicy(strings.TrimPrefix(v.Name, "/"), token, ttl, id, &policy)
+	}
+	if !id.Empty() {
 		identityRestorer, ok := p.(authproxy.IdentityRestorer)
 		if !ok {
 			return fmt.Errorf("auth proxy does not support token identity restore")

@@ -1,6 +1,8 @@
 package authproxy
 
 import (
+	"fmt"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -57,35 +59,49 @@ func TestModelPolicyChecksActualBodyBeforeCredentialInjection(t *testing.T) {
 }
 
 func TestModelPolicyRejectsWebSocketAndRedirectBypass(t *testing.T) {
-	var hits atomic.Int32
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		http.Redirect(w, r, "/unrestricted", http.StatusTemporaryRedirect)
-	}))
-	defer up.Close()
-	p := newTestProxy(t)
-	p.cfg.AllowedModels = []string{"allowed"}
-	token := issuedTestToken(t, p)
-	for _, ws := range []bool{false, true} {
-		r := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"allowed"}`))
-		r.Header.Set("Authorization", "Bearer "+token)
-		r.Header.Set("Content-Type", "application/json")
-		if ws {
-			r.Header.Set("Upgrade", "websocket")
-			r.Header.Set("Connection", "Upgrade")
-		}
-		w := httptest.NewRecorder()
-		p.reverseProxy(w, r, "/v1", up.URL, func(http.Header) {})
-		want := 307
-		if ws {
-			want = 403
-		}
-		if w.Code != want {
-			t.Fatalf("ws=%v status=%d", ws, w.Code)
-		}
-	}
-	if hits.Load() != 1 {
-		t.Fatal("unsupported request or redirect reached upstream")
+	for _, perToken := range []bool{false, true} {
+		t.Run(fmt.Sprint(perToken), func(t *testing.T) {
+			var hits atomic.Int32
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				http.Redirect(w, r, "/unrestricted", http.StatusTemporaryRedirect)
+			}))
+			defer up.Close()
+			p := newTestProxy(t)
+			var token string
+			if perToken {
+				var err error
+				token, err = p.IssueTokenWithPolicy("worker", 60, identity.Identity{}, &identity.ModelPolicy{AllowedModels: []string{"allowed"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				p.cfg.AllowedModels = []string{"allowed"}
+				token = issuedTestToken(t, p)
+			}
+			for _, ws := range []bool{false, true} {
+				r := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"allowed"}`))
+				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("Content-Type", "application/json")
+				if ws {
+					r.Header.Set("Upgrade", "websocket")
+					r.Header.Set("Connection", "Upgrade")
+				}
+				w := httptest.NewRecorder()
+				p.reverseProxy(w, r, "/v1", up.URL, func(http.Header) {})
+				want := 307
+				if ws {
+					want = 403
+				}
+				if w.Code != want {
+					t.Fatalf("ws=%v status=%d", ws, w.Code)
+				}
+			}
+			if hits.Load() != 1 {
+				t.Fatal("unsupported request or redirect reached upstream")
+			}
+
+		})
 	}
 }
 

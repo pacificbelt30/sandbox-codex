@@ -11,6 +11,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 // CredentialRoute is trusted host configuration. The worker selects a route
@@ -101,6 +103,13 @@ func (p *Proxy) handleBroker(w http.ResponseWriter, r *http.Request) {
 	}
 	defer done()
 	r = authenticated
+	// Arbitrary credential routes have no model schema. A restricted token
+	// cannot use one to bypass authorization on the fixed AI routes.
+	if policy, _ := r.Context().Value(modelPolicyKey{}).(*identity.ModelPolicy); policy != nil {
+		w.Header().Set("X-Cxd-Policy-Reason", "model_policy_route_denied")
+		http.Error(w, "model_policy_route_denied", http.StatusForbidden)
+		return
+	}
 	requested := "/" + relative
 	// Disallow alternate encodings and path normalization surprises before injecting.
 	if r.URL.RawPath != "" || strings.ContainsAny(requested, "%\\") || path.Clean(requested) != requested {

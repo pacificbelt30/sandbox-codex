@@ -21,6 +21,7 @@ func (c *Client) Capabilities() Capabilities {
 
 type ProxyCapabilities struct {
 	ModelAuthorization bool
+	TokenModelPolicy   bool
 	ModelPolicyActive  bool
 	CaseProxy          bool
 	CredentialBroker   bool
@@ -37,5 +38,5 @@ func (c *Client) ProxyCapabilities(ctx context.Context) (ProxyCapabilities, erro
 	if err != nil {
 		return ProxyCapabilities{}, err
 	}
-	return ProxyCapabilities{ModelAuthorization: p.SupportsModelAuthorization(), ModelPolicyActive: p.ModelPolicyActive(), CredentialBroker: p.SupportsCredentialBroker(), CaseProxy: p.IsCaseProxy(), TokenIdentity: p.SupportsTokenIdentity(), OpenAIOAuth: p.IsOAuthMode(), Anthropic: p.IsAnthropicMode(), AnthropicOAuth: p.IsAnthropicOAuthMode()}, nil
+	return ProxyCapabilities{TokenModelPolicy: p.SupportsTokenModelPolicy(), ModelAuthorization: p.SupportsModelAuthorization(), ModelPolicyActive: p.ModelPolicyActive(), CredentialBroker: p.SupportsCredentialBroker(), CaseProxy: p.IsCaseProxy(), TokenIdentity: p.SupportsTokenIdentity(), OpenAIOAuth: p.IsOAuthMode(), Anthropic: p.IsAnthropicMode(), AnthropicOAuth: p.IsAnthropicOAuthMode()}, nil
 }

@@ -2,6 +2,7 @@ package authproxy
 
 import (
 	"context"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 	"net/http"
 	"strings"
 	"time"
@@ -39,12 +40,14 @@ func (p *Proxy) workerRequest(r *http.Request, allowAPIKey bool) (*http.Request,
 	}
 	p.mu.RLock()
 	var lease context.Context
+	var policy *identity.ModelPolicy
 	for _, rec := range p.tokens {
 		if rec.Token == token && time.Now().Before(rec.ExpiresAt) && rec.context != nil && rec.context.Err() == nil {
 			if !p.brokerProviderAllowed(rec.Identity.Provider, r.URL.Path) {
 				break
 			}
 			lease = rec.context
+			policy = rec.ModelPolicy
 			break
 		}
 	}
@@ -52,7 +55,7 @@ func (p *Proxy) workerRequest(r *http.Request, allowAPIKey bool) (*http.Request,
 	if lease == nil {
 		return nil, nil, false
 	}
-	ctx, cancel := context.WithCancel(r.Context())
+	ctx, cancel := context.WithCancel(context.WithValue(r.Context(), modelPolicyKey{}, policy))
 	stop := context.AfterFunc(lease, cancel)
 	return r.WithContext(ctx), func() { stop(); cancel() }, true
 }

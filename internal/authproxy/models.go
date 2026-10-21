@@ -3,10 +3,11 @@ package authproxy
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -15,21 +16,14 @@ const modelBodyLimit = 8 << 20
 // ValidateAllowedModels accepts exact upstream IDs only. Empty preserves the
 // unrestricted legacy proxy. No alias expansion or wildcard matching occurs.
 func ValidateAllowedModels(models []string) error {
-	if len(models) > 256 {
-		return fmt.Errorf("at most 256 allowed models may be configured")
-	}
-	for _, model := range models {
-		if model == "" || len(model) > 256 || strings.ContainsAny(model, "*?,\\\" \t\r\n\x00") {
-			return fmt.Errorf("allowed models must be exact, nonempty upstream IDs")
-		}
-	}
-	return nil
+	return (&identity.ModelPolicy{AllowedModels: models}).Validate()
 }
 
 // authorizeModel runs after token authentication and before credential injection
 // or upstream I/O. Unsupported transports and endpoints fail closed when enabled.
 func (p *Proxy) authorizeModel(w http.ResponseWriter, r *http.Request) bool {
-	if len(p.cfg.AllowedModels) == 0 {
+	policy, _ := r.Context().Value(modelPolicyKey{}).(*identity.ModelPolicy)
+	if !p.modelPolicyActive(r) {
 		return true
 	}
 	deny := func(code string, status int) bool {
@@ -96,14 +90,18 @@ func (p *Proxy) authorizeModel(w http.ResponseWriter, r *http.Request) bool {
 	if err := d.Decode(&extra); err != io.EOF {
 		return deny("model_policy_invalid_body", http.StatusBadRequest)
 	}
-	allowed := false
-	for _, id := range p.cfg.AllowedModels {
-		allowed = allowed || id == model
-	}
-	if !allowed {
+	if model == "" || len(p.cfg.AllowedModels) != 0 && !slices.Contains(p.cfg.AllowedModels, model) || policy != nil && !slices.Contains(policy.AllowedModels, model) {
 		return deny("model_not_allowed", http.StatusForbidden)
 	}
+
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
 	return true
+}
+
+type modelPolicyKey struct{}
+
+func (p *Proxy) modelPolicyActive(r *http.Request) bool {
+	policy, _ := r.Context().Value(modelPolicyKey{}).(*identity.ModelPolicy)
+	return len(p.cfg.AllowedModels) != 0 || policy != nil
 }

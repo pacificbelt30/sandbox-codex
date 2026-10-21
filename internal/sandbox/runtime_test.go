@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/errdefs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,6 +93,7 @@ type engineFixture struct {
 	missingKata, startError, wrongRuntime, removeError bool
 	networkRemoveError                                 bool
 	removeReplyLost                                    bool
+	removeNotFound                                     int
 }
 
 func newEngineFixture(t *testing.T) (*engineFixture, *Manager) {
@@ -261,6 +263,11 @@ func (f *engineFixture) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 	case strings.HasPrefix(p, "/containers/") && r.Method == http.MethodDelete:
 		if f.worker == nil {
+			notFound()
+			return
+		}
+		if f.removeNotFound > 0 {
+			f.removeNotFound--
 			notFound()
 			return
 		}
@@ -467,5 +474,34 @@ func TestKataRejectsUnexpectedNetworkPeer(t *testing.T) {
 	}
 	if f.front == nil || f.networksRemoved != 0 {
 		t.Fatal("another worker's network removed")
+	}
+}
+
+func TestRemovalConfirmsContainerAbsenceAfterNestedNotFound(t *testing.T) {
+	for _, failures := range []int{1, 3} {
+		t.Run(fmt.Sprint(failures), func(t *testing.T) {
+			f, m := newEngineFixture(t)
+			id, err := m.Run(RunOptions{Name: "delete-retry", ProjectDir: t.TempDir(), Detach: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.removeNotFound = failures
+			err = m.Remove(id, true)
+			if failures == 1 {
+				if err != nil || f.worker != nil || f.front != nil {
+					t.Fatalf("transient deletion not recovered: %v", err)
+				}
+			} else {
+				if err == nil || f.worker == nil || f.front == nil || f.networksRemoved != 0 {
+					t.Fatalf("unconfirmed removal discarded ownership: %v", err)
+				}
+				if errdefs.IsNotFound(err) {
+					t.Fatal("retained worker reported as absent")
+				}
+				if err := m.Remove(id, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }

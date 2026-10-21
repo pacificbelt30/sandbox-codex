@@ -17,6 +17,13 @@ func (p *Proxy) RestoreToken(name, token string, ttl int) error {
 }
 
 func (p *Proxy) RestoreTokenWithIdentity(name, token string, ttl int, id identity.Identity) error {
+	return p.RestoreTokenWithPolicy(name, token, ttl, id, nil)
+}
+
+func (p *Proxy) RestoreTokenWithPolicy(name, token string, ttl int, id identity.Identity, policy *identity.ModelPolicy) error {
+	if err := policy.Validate(); err != nil {
+		return err
+	}
 	if err := p.checkCaseGeneration(); err != nil {
 		return err
 	}
@@ -56,6 +63,7 @@ func (p *Proxy) RestoreTokenWithIdentity(name, token string, ttl int, id identit
 	}
 	rec := newTokenRecord(name, token, ttl)
 	rec.Identity = id
+	rec.ModelPolicy = policy.Clone()
 	p.tokens[name] = rec
 	return nil
 }
@@ -69,16 +77,17 @@ func (p *Proxy) handleAdminRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Container string            `json:"container"`
-		Token     string            `json:"token"`
-		TTL       int               `json:"ttl"`
-		Identity  identity.Identity `json:"identity"`
+		Container   string                `json:"container"`
+		Token       string                `json:"token"`
+		TTL         int                   `json:"ttl"`
+		Identity    identity.Identity     `json:"identity"`
+		ModelPolicy *identity.ModelPolicy `json:"model_policy,omitempty"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 96<<10)).Decode(&req); err != nil {
 		http.Error(w, "invalid json", 400)
 		return
 	}
-	if err := p.RestoreTokenWithIdentity(req.Container, req.Token, req.TTL, req.Identity); err != nil {
+	if err := p.RestoreTokenWithPolicy(req.Container, req.Token, req.TTL, req.Identity, req.ModelPolicy); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
@@ -90,10 +99,19 @@ func (r *RemoteProxy) RestoreToken(name, token string, ttl int) error {
 }
 
 func (r *RemoteProxy) RestoreTokenWithIdentity(name, token string, ttl int, id identity.Identity) error {
+	return r.RestoreTokenWithPolicy(name, token, ttl, id, nil)
+}
+func (r *RemoteProxy) RestoreTokenWithPolicy(name, token string, ttl int, id identity.Identity, policy *identity.ModelPolicy) error {
+	if err := policy.Validate(); err != nil {
+		return err
+	}
+	if policy != nil && !r.tokenModelPolicy {
+		return fmt.Errorf("auth proxy does not support token model policy")
+	}
 	if !id.Empty() && !r.identityMode {
 		return fmt.Errorf("auth proxy does not support token identity")
 	}
-	body, err := json.Marshal(map[string]any{"container": name, "token": token, "ttl": ttl, "identity": id})
+	body, err := json.Marshal(map[string]any{"container": name, "token": token, "ttl": ttl, "identity": id, "model_policy": policy})
 	if err != nil {
 		return err
 	}

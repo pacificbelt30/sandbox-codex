@@ -72,7 +72,7 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 	inject(req.Header)
 
 	client := p.httpClient
-	if len(p.cfg.AllowedModels) != 0 {
+	if p.modelPolicyActive(r) {
 		copy := *client
 		copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client = &copy

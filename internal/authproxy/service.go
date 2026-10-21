@@ -35,3 +35,12 @@ type IdentityRestorer interface {
 type TokenRevoker interface {
 	RevokeTokenChecked(containerName string) error
 }
+
+// PolicyIssuer and PolicyRestorer are optional, fail-closed capabilities.
+// A nil policy retains the legacy proxy-wide authorization contract.
+type PolicyIssuer interface {
+	IssueTokenWithPolicy(string, int, identity.Identity, *identity.ModelPolicy) (string, error)
+}
+type PolicyRestorer interface {
+	RestoreTokenWithPolicy(string, string, int, identity.Identity, *identity.ModelPolicy) error
+}

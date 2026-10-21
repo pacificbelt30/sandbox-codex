@@ -102,3 +102,11 @@ The public Go signatures do not expose internal node DTOs. Deploy the CLI, libra
 [Additional policy, execution and recovery APIs](sandbox-features.md)
 
 `Create(ctx, request)` creates a stopped Kata worker; `Start(ctx, worker)` boots and verifies it before token activation and hook/agent execution. `Launch` retains its combined create/start behavior. `ResourceUsage(ctx, worker)` separates observed host cgroup current/peak memory and OOM kills from the profile budgets. See [operating conditions](sandbox-features.md#model-authorization-and-staged-startup).
+
+### Per-execution model authorization
+
+Set `LaunchRequest.ModelPolicy` to `&identity.ModelPolicy{AllowedModels: []string{"model-id"}}` to constrain the actual upstream request model per token. The effective set intersects the proxy-wide allowlist. A `nil` policy preserves inherited behavior; an explicitly empty policy denies every model. `Model` selects an agent model and is not authorization.
+
+Check `ProxyCapabilities.TokenModelPolicy` for support. Unsupported proxies reject the request. Policies are immutable creation inputs and survive stop/restart. Restricted tokens permit validated HTTP/SSE AI routes only; WebSocket and redirects are denied. General egress has a separate policy: use `NoInternet` or appropriate destination restrictions when bypass prevention is required.
+
+A worker model policy must fit within 4 KiB including its serialized JSON and label name.

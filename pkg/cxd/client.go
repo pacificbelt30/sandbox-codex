@@ -142,6 +142,7 @@ type LaunchRequest struct {
 	Mounts             []Mount
 	TokenTTL           time.Duration
 	Identity           identity.Identity
+	ModelPolicy        *identity.ModelPolicy `json:",omitempty"`
 }
 
 // Mount is an additional host bind mount. Node socket access already grants
@@ -182,6 +183,10 @@ func (c *Client) Create(ctx context.Context, req LaunchRequest) (Worker, error) 
 }
 
 func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool) (Worker, error) {
+	if err := req.ModelPolicy.Validate(); err != nil {
+		return Worker{}, err
+	}
+	req.ModelPolicy = req.ModelPolicy.Clone()
 	if err := req.Filesystem.Validate(); err != nil {
 		return Worker{}, err
 	}
@@ -303,6 +308,9 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 		abortErr := c.abortClaim(key, claim.Lease, "")
 		return Worker{}, errors.Join(fmt.Errorf("connecting auth proxy: %w", err), abortErr)
 	}
+	if req.ModelPolicy != nil && !proxy.SupportsTokenModelPolicy() {
+		return Worker{}, errors.Join(fmt.Errorf("auth proxy does not support token model policy"), c.abortClaim(key, claim.Lease, ""))
+	}
 	if proxy.IsCaseProxy() && req.Identity.Empty() {
 		return Worker{}, errors.Join(fmt.Errorf("case proxy requires a token identity"), c.abortClaim(key, claim.Lease, ""))
 	}
@@ -331,7 +339,7 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 		ReadOnly: req.ReadOnly, ReadOnlyRootFS: req.ReadOnlyRootFS, NoGitMetadata: req.NoGitMetadata,
 		NoInternet: req.NoInternet, WatchPolling: req.WatchPolling,
 		ContainerUser: req.User, TokenTTL: int(req.TokenTTL / time.Second), Detach: true,
-		TokenIdentity: req.Identity,
+		TokenIdentity: req.Identity, TokenModelPolicy: req.ModelPolicy,
 	}
 	for _, mount := range req.Mounts {
 		launch.Mounts = append(launch.Mounts, sandbox.MountSpec{Source: mount.Source, Target: mount.Target, ReadOnly: mount.ReadOnly})

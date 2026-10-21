@@ -28,6 +28,7 @@ type RemoteProxy struct {
 	credentialBroker   bool
 	modelAuthorization bool
 	modelPolicyActive  bool
+	tokenModelPolicy   bool
 	httpClient         *http.Client
 	adminSecretHeader  string
 }
@@ -60,6 +61,7 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 	r.credentialBroker = mode["credential_broker"]
 	r.modelAuthorization = mode["model_authorization"]
 	r.modelPolicyActive = mode["model_policy_active"]
+	r.tokenModelPolicy = mode["token_model_policy"]
 	return r, nil
 }
 
@@ -75,10 +77,19 @@ func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, erro
 }
 
 func (r *RemoteProxy) IssueTokenWithIdentity(containerName string, ttlSec int, id identity.Identity) (string, error) {
+	return r.IssueTokenWithPolicy(containerName, ttlSec, id, nil)
+}
+func (r *RemoteProxy) IssueTokenWithPolicy(containerName string, ttlSec int, id identity.Identity, policy *identity.ModelPolicy) (string, error) {
+	if err := policy.Validate(); err != nil {
+		return "", err
+	}
+	if policy != nil && !r.tokenModelPolicy {
+		return "", fmt.Errorf("auth proxy does not support token model policy")
+	}
 	if !id.Empty() && !r.identityMode {
 		return "", fmt.Errorf("auth proxy does not support token identity; rebuild it before launching this worker")
 	}
-	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec, "identity": id})
+	body, _ := json.Marshal(map[string]interface{}{"container": containerName, "ttl": ttlSec, "identity": id, "model_policy": policy})
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.adminURL+"/admin/issue", bytes.NewReader(body))
 	if err != nil {
 		return "", err
@@ -205,3 +216,5 @@ func (r *RemoteProxy) SupportsCredentialBroker() bool { return r.credentialBroke
 
 func (r *RemoteProxy) SupportsModelAuthorization() bool { return r.modelAuthorization }
 func (r *RemoteProxy) ModelPolicyActive() bool          { return r.modelPolicyActive }
+
+func (r *RemoteProxy) SupportsTokenModelPolicy() bool { return r.tokenModelPolicy }

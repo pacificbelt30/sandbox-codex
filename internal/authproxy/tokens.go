@@ -19,6 +19,7 @@ type tokenRecord struct {
 	ExpiresAt     time.Time
 	IssuedAt      time.Time
 	Identity      identity.Identity
+	ModelPolicy   *identity.ModelPolicy
 	context       context.Context
 	cancel        context.CancelFunc
 }
@@ -36,6 +37,13 @@ func (p *Proxy) IssueToken(containerName string, ttlSec int) (string, error) {
 }
 
 func (p *Proxy) IssueTokenWithIdentity(containerName string, ttlSec int, id identity.Identity) (string, error) {
+	return p.IssueTokenWithPolicy(containerName, ttlSec, id, nil)
+}
+
+func (p *Proxy) IssueTokenWithPolicy(containerName string, ttlSec int, id identity.Identity, policy *identity.ModelPolicy) (string, error) {
+	if err := policy.Validate(); err != nil {
+		return "", err
+	}
 	if err := p.checkCaseGeneration(); err != nil {
 		return "", err
 	}
@@ -55,6 +63,7 @@ func (p *Proxy) IssueTokenWithIdentity(containerName string, ttlSec int, id iden
 
 	rec := newTokenRecord(containerName, token, ttlSec)
 	rec.Identity = id
+	rec.ModelPolicy = policy.Clone()
 
 	p.mu.Lock()
 	if p.caseRevoked || p.revokedRuns[id] {

@@ -300,7 +300,7 @@ func (m *Manager) removeDurably(parent context.Context, value string, force bool
 	if err = m.writeCleanup(record); err != nil {
 		return fmt.Errorf("persist cleanup intent: %w", err)
 	}
-	if err = m.cli.ContainerRemove(ctx, record.ID, container.RemoveOptions{Force: record.Force}); err != nil && !errdefs.IsNotFound(err) {
+	if err = m.removeContainerConfirmed(ctx, record.ID, record.Force); err != nil {
 		return err
 	}
 	v = recordInspection(record)
@@ -346,4 +346,35 @@ func (m *Manager) removeDurably(parent context.Context, value string, force bool
 	}
 	defer func() { _ = d.Close() }()
 	return d.Sync()
+}
+
+// A nested task can disappear during deletion while its container still
+// exists. Do not interpret that 404 as proof that the worker was removed, or
+// disconnect its network while it remains an attached peer.
+func (m *Manager) removeContainerConfirmed(ctx context.Context, id string, force bool) error {
+	for attempt := 0; attempt < 3; attempt++ {
+		err := m.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: force})
+		if err == nil || !errdefs.IsNotFound(err) {
+			return err
+		}
+		v, inspectErr := m.cli.ContainerInspect(ctx, id)
+		if errdefs.IsNotFound(inspectErr) {
+			return nil
+		}
+		if inspectErr != nil {
+			return fmt.Errorf("could not confirm worker deletion (%v): %w", err, inspectErr)
+		}
+		if v.ID != id || v.Config == nil || v.Config.Labels[labelManaged] != "true" {
+			return fmt.Errorf("worker ownership changed during deletion")
+		}
+		if attempt == 2 {
+			return fmt.Errorf("worker still exists after deletion returned not found: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("worker deletion was not confirmed")
 }

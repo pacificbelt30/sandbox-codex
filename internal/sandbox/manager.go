@@ -345,6 +345,19 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		labels[labelPrefix+"proxy-container-url"] = m.proxy.ContainerEndpoint()
 		labels[labelPrefix+"proxy-admin-url"] = m.proxyAdminURL
 		labels[labelPrefix+"token-ttl"] = strconv.Itoa(opts.TokenTTL)
+		if opts.TokenModelPolicy != nil {
+			if err := opts.TokenModelPolicy.Validate(); err != nil {
+				return "", err
+			}
+			encoded, err := json.Marshal(opts.TokenModelPolicy)
+			if err != nil {
+				return "", err
+			}
+			if len(encoded)+len(labelPrefix+"token-model-policy") > 4096 {
+				return "", fmt.Errorf("worker model policy exceeds container label limit")
+			}
+			labels[labelPrefix+"token-model-policy"] = string(encoded)
+		}
 		if !opts.TokenIdentity.Empty() {
 			encoded, err := json.Marshal(opts.TokenIdentity)
 			if err != nil {
@@ -1021,7 +1034,13 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		token := opts.pendingPlaceholder
 		if token == "" {
 			var err error
-			if opts.TokenIdentity.Empty() {
+			if opts.TokenModelPolicy != nil {
+				issuer, ok := m.proxy.(authproxy.PolicyIssuer)
+				if !ok {
+					return nil, fmt.Errorf("auth proxy does not support token model policy")
+				}
+				token, err = issuer.IssueTokenWithPolicy(name, opts.TokenTTL, opts.TokenIdentity, opts.TokenModelPolicy)
+			} else if opts.TokenIdentity.Empty() {
 				token, err = m.proxy.IssueToken(name, opts.TokenTTL)
 			} else if issuer, ok := m.proxy.(authproxy.IdentityIssuer); ok {
 				token, err = issuer.IssueTokenWithIdentity(name, opts.TokenTTL, opts.TokenIdentity)

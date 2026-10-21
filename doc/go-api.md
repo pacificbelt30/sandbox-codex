@@ -106,3 +106,11 @@ func main() {
 [追加のポリシー・実行・回収API](sandbox-features.md)
 
 `Create` の後に `Start` を呼ぶ段階的な起動も可能です。[運用条件](sandbox-features.md#モデル認可と段階的な起動)を確認してください。`Launch` の作成と初回起動が一体である従来の動作は維持します。
+
+### 実行ごとのモデル認可
+
+`LaunchRequest.ModelPolicy` に `&identity.ModelPolicy{AllowedModels: []string{"model-id"}}` を指定すると、実際の上流リクエストのモデルをトークンごとに制限します。Proxy 全体の許可集合との積集合を使います。`nil` は従来どおり Proxy 設定を継承し、空のポリシーは全モデルを拒否します。`Model` はモデル選択にすぎず、認可ではありません。
+
+`ProxyCapabilities.TokenModelPolicy` で対応を確認できます。未対応 Proxy への指定は失敗します。ポリシーは不変の作成条件に含まれ、停止・再起動時も復元されます。モデル制限のあるトークンは HTTP/SSE の検証可能な AI ルートだけを許可し、WebSocket とリダイレクトは許可しません。一般 egress は別ポリシーなので、迂回を防ぐ必要がある実行では `NoInternet` または適切な宛先制限も設定してください。
+
+ワーカーに保存するモデルポリシーは、ラベル名を含むJSON表現で4KiB以内にしてください。

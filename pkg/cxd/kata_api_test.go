@@ -118,7 +118,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			port := ln.Addr().(*net.TCPAddr).Port
 			_ = ln.Close()
-			proxyOpts := CaseProxyOptions{NodeSocket: engine.Socket(), Name: fmt.Sprintf("cxd-api-%x", time.Now().UnixNano()), CaseID: "fixture-case", StoreSocket: socket, AdminPort: port, AdminSecret: strings.Repeat("fixture-", 5), Image: proxyImage, AllowedModels: []string{"allowed"}}
+			proxyOpts := CaseProxyOptions{NodeSocket: engine.Socket(), Name: fmt.Sprintf("cxd-api-%x", time.Now().UnixNano()), CaseID: "fixture-case", StoreSocket: socket, AdminPort: port, AdminSecret: strings.Repeat("fixture-", 5), Image: proxyImage, AllowedModels: []string{"allowed", "costly"}}
 			proxy, err := EnsureCaseProxy(ctx, proxyOpts)
 			if err != nil {
 				t.Fatal(err)
@@ -139,11 +139,11 @@ func TestKataAPIIntegration(t *testing.T) {
 				t.Fatalf("referenced proxy image removal was not rejected: %v", err)
 			}
 			caps, err := c.ProxyCapabilities(ctx)
-			if err != nil || !caps.ModelAuthorization || !caps.ModelPolicyActive {
+			if err != nil || !caps.ModelAuthorization || !caps.ModelPolicyActive || !caps.TokenModelPolicy {
 				t.Fatalf("model capabilities: %+v %v", caps, err)
 			}
-			identity := identity.Identity{CaseID: "fixture-case", RunID: "run-" + mode, ConnectionVersion: "connection-1", Provider: "openai"}
-			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: identity}
+			runIdentity := identity.Identity{CaseID: "fixture-case", RunID: "run-" + mode, ConnectionVersion: "connection-1", Provider: "openai"}
+			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: runIdentity, ModelPolicy: &identity.ModelPolicy{AllowedModels: []string{"allowed", "outside-global"}}}
 			if mode == "compact" {
 				req.Profile = "compact"
 			}
@@ -172,6 +172,12 @@ func TestKataAPIIntegration(t *testing.T) {
 			if err != nil || again.ID != w.ID {
 				t.Fatalf("create replay: %+v %v", again, err)
 			}
+			changedPolicy := req
+			changedPolicy.ModelPolicy = req.ModelPolicy.Clone()
+			changedPolicy.ModelPolicy.AllowedModels = []string{"different"}
+			if _, err := c.Create(ctx, changedPolicy); !errors.Is(err, ErrConflict) {
+				t.Fatalf("model policy changed on replay: %v", err)
+			}
 			if _, err := c.Launch(ctx, req); err == nil {
 				t.Fatal("Create and Launch shared a request identity")
 			}
@@ -195,6 +201,9 @@ func TestKataAPIIntegration(t *testing.T) {
 			if got := request("/v1/responses", `{"model":"other"}`); got != "403" {
 				t.Fatalf("model bypass: %s", got)
 			}
+			if got := request("/v1/responses", `{"model":"costly"}`); got != "403" {
+				t.Fatalf("token policy bypass: %s", got)
+			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("allowed model: %s", got)
 			}
@@ -210,6 +219,8 @@ func TestKataAPIIntegration(t *testing.T) {
 				otherReq := req
 				otherReq.RequestID += "/concurrent"
 				otherReq.Identity.RunID = "compact-concurrent"
+				otherReq.ModelPolicy = req.ModelPolicy.Clone()
+				otherReq.ModelPolicy.AllowedModels = nil
 				other, err := c.Launch(ctx, otherReq)
 				if err != nil {
 					t.Fatal(err)
@@ -221,6 +232,11 @@ func TestKataAPIIntegration(t *testing.T) {
 						t.Error(err)
 					}
 				}()
+				var denied bytes.Buffer
+				code, err := c.Exec(ctx, other.ID, ExecRequest{Argv: []string{"python3", "-c", apiHTTPRequest, "/v1/responses", `{"model":"allowed"}`}, Stdout: &denied})
+				if err != nil || code != 0 || strings.TrimSpace(denied.String()) != "403" {
+					t.Fatalf("per-token policy: %s %v", denied.String(), err)
+				}
 				for _, id := range []string{w.ID, other.ID} {
 					u, err := c.ResourceUsage(ctx, id)
 					if err != nil || u.OOMKills != 0 || u.HostMemoryCurrentBytes >= u.Profile.HostMemoryBytes {
@@ -293,7 +309,7 @@ func TestKataAPIIntegration(t *testing.T) {
 				if actions, err := c.Reap(ctx, false); err != nil || len(actions) != 0 {
 					t.Fatalf("streaming exec reaped: %+v %v", actions, err)
 				}
-				if err := c.RevokeRun(ctx, identity); err != nil {
+				if err := c.RevokeRun(ctx, runIdentity); err != nil {
 					t.Fatal(err)
 				}
 				select {
@@ -405,6 +421,9 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			if err := c.Start(ctx, w.ID); err != nil {
 				t.Fatal(err)
+			}
+			if got := request("/v1/responses", `{"model":"costly"}`); got != "403" {
+				t.Fatalf("token policy bypass: %s", got)
 			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("restored worker: %s", got)

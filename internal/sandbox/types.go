@@ -143,6 +143,7 @@ type RunOptions struct {
 	NoInternet         bool
 	TokenTTL           int
 	TokenIdentity      identity.Identity
+	TokenModelPolicy   *identity.ModelPolicy
 	AgentsMD           string
 	Detach             bool
 	Parallel           int

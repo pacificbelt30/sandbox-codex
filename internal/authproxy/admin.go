@@ -27,11 +27,12 @@ func (p *Proxy) handleAdminIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Container string            `json:"container"`
-		TTL       int               `json:"ttl"`
-		Identity  identity.Identity `json:"identity"`
+		Container   string                `json:"container"`
+		TTL         int                   `json:"ttl"`
+		Identity    identity.Identity     `json:"identity"`
+		ModelPolicy *identity.ModelPolicy `json:"model_policy,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 96<<10)).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
@@ -42,7 +43,7 @@ func (p *Proxy) handleAdminIssue(w http.ResponseWriter, r *http.Request) {
 	if req.TTL <= 0 {
 		req.TTL = p.cfg.TokenTTL
 	}
-	t, err := p.IssueTokenWithIdentity(req.Container, req.TTL, req.Identity)
+	t, err := p.IssueTokenWithPolicy(req.Container, req.TTL, req.Identity, req.ModelPolicy)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -122,6 +123,7 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 		"anthropic_available":  p.IsAnthropicMode(),
 		"anthropic_oauth_mode": p.IsAnthropicOAuthMode(),
 		"token_identity":       true,
+		"token_model_policy":   true,
 		"case_proxy":           p.cfg.CredentialStore != nil,
 	})
 }
