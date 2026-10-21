@@ -15,7 +15,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		os.Exit(1)
 	}
-	for key, value := range map[string]string{"HOME": dir, "XDG_CONFIG_HOME": dir, "CODEX_HOME": dir, "OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""} {
+	for key, value := range map[string]string{"HOME": dir, "XDG_CONFIG_HOME": dir, "CODEX_HOME": dir, "OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": "", "CLAUDE_CODE_OAUTH_TOKEN": ""} {
 		if err := os.Setenv(key, value); err != nil {
 			os.Exit(1)
 		}

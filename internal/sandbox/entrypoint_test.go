@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -143,5 +144,48 @@ func TestDirectCodexUsesKataSandboxConfigAsDefault(t *testing.T) {
 				t.Fatalf("direct=%s sandbox flag present=%t; want %t; args=%q", tc.direct, hasSandbox, tc.wantSandbox, output)
 			}
 		})
+	}
+}
+
+func TestEntrypointDirectClaudePreservesArgumentsAndApprovesOnlyPlaceholder(t *testing.T) {
+	source, err := os.ReadFile("../../docker/sandbox/entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, oauth := range []bool{false, true} {
+		root := t.TempDir()
+		// Only relocate the fixed image workspace for a host-side script test.
+		entrypoint := filepath.Join(root, "entrypoint.sh")
+		if err := os.WriteFile(entrypoint, []byte(strings.Replace(string(source), "cd /workspace", `cd "${HOME}"`, 1)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		fake := filepath.Join(root, "claude")
+		if err := os.WriteFile(fake, []byte("#!/bin/bash\nprintf '%s\\0' \"$@\"\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command("bash", entrypoint)
+		command.Env = []string{"PATH=" + root + ":/usr/bin:/bin", "HOME=" + root, "DOCK_AGENT=claude", "DOCK_DIRECT_AGENT=1", `DOCK_AGENT_ARGS_JSON=["-p","literal $text and spaces","--output-format","json"]`, "ANTHROPIC_BASE_URL=http://auth/anthropic"}
+		if oauth {
+			command.Env = append(command.Env, "CLAUDE_CODE_OAUTH_TOKEN=cdx-subscription")
+		} else {
+			command.Env = append(command.Env, "ANTHROPIC_API_KEY=cdx-api-key")
+		}
+		output, err := command.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(output) != "-p\x00literal $text and spaces\x00--output-format\x00json\x00" {
+			t.Fatalf("Claude argv changed: %q", output)
+		}
+		config, err := os.ReadFile(filepath.Join(root, ".claude.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(config, []byte("cdx-subscription")) {
+			t.Fatal("OAuth placeholder written into API-key approvals")
+		}
+		if !oauth && !bytes.Contains(config, []byte("cdx-api-key")) {
+			t.Fatal("API placeholder not approved")
+		}
 	}
 }

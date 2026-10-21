@@ -58,6 +58,34 @@ func TestModelPolicyChecksActualBodyBeforeCredentialInjection(t *testing.T) {
 	}
 }
 
+func TestAnthropicModelPolicyAllowsOnlySDKBetaQuery(t *testing.T) {
+	p := newAnthropicAPIKeyProxy(t, "fixture")
+	p.cfg.AllowedModels = []string{"cheap"}
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	defer up.Close()
+	p.anthropicUpstreamURL = up.URL
+	for _, tc := range []struct {
+		path, model string
+		code        int
+	}{
+		{"/anthropic/v1/messages?beta=true", "cheap", 204},
+		{"/anthropic/v1/messages/count_tokens?beta=true", "cheap", 204},
+		{"/anthropic/v1/messages?beta=true", "costly", 403},
+		{"/anthropic/v1/messages?beta=true&model=costly", "cheap", 403},
+		{"/anthropic/v1/messages?beta=true&beta=false", "cheap", 403},
+		{"/v1/responses?beta=true", "cheap", 403},
+	} {
+		r := httptest.NewRequest("POST", tc.path, strings.NewReader(`{"model":"`+tc.model+`"}`))
+		r.Header.Set("Content-Type", "application/json")
+		authorizeTestRequest(t, p, r)
+		w := httptest.NewRecorder()
+		p.handleAnthropicProxy(w, r)
+		if w.Code != tc.code {
+			t.Fatalf("%s model %s: got %d want %d", tc.path, tc.model, w.Code, tc.code)
+		}
+	}
+}
+
 func TestModelPolicyRejectsWebSocketAndRedirectBypass(t *testing.T) {
 	for _, perToken := range []bool{false, true} {
 		t.Run(fmt.Sprint(perToken), func(t *testing.T) {

@@ -44,11 +44,14 @@ func BuildAt(ctx context.Context, socket, tag, dockerfile, buildContext string, 
 	}
 	c := exec.CommandContext(ctx, "buildctl", "--addr", addr, "build", "--progress=plain", "--frontend", "dockerfile.v0", "--local", "context="+dir, "--local", "dockerfile="+filepath.Dir(df), "--opt", "filename="+filepath.Base(df), "--opt", "image-resolve-mode=local", "--output", "type=oci,name="+name+",dest=-")
 	c.Args = append(c.Args, "--opt", "build-arg:CODEX_DOCK_BUILD_VERSION="+buildinfo.Version)
-	if version := os.Getenv("CODEX_DOCK_CODEX_VERSION"); version != "" {
-		if !codexVersionPattern.MatchString(version) {
-			return fmt.Errorf("invalid CODEX_DOCK_CODEX_VERSION %q: expected an exact semver", version)
+	for _, agent := range []string{"CODEX", "CLAUDE"} {
+		key := "CODEX_DOCK_" + agent + "_VERSION"
+		if version := os.Getenv(key); version != "" {
+			if !codexVersionPattern.MatchString(version) {
+				return fmt.Errorf("invalid %s %q: expected an exact semver", key, version)
+			}
+			c.Args = append(c.Args, "--opt", "build-arg:"+agent+"_CLI_VERSION="+version)
 		}
-		c.Args = append(c.Args, "--opt", "build-arg:CODEX_CLI_VERSION="+version)
 	}
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy"} {
 		if value := os.Getenv(key); value != "" {

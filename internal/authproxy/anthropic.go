@@ -26,8 +26,7 @@ func (p *Proxy) handleAnthropicProxy(w http.ResponseWriter, r *http.Request) {
 //   - OAuth mode:  sets Authorization: Bearer <access_token>, removes x-api-key,
 //     and adds the required anthropic-beta OAuth header.
 //
-// In OAuth mode the access token is refreshed first if it has expired.
-// Safe to call concurrently.
+// The authenticated reverse route refreshes OAuth before reaching this injector.
 func (p *Proxy) injectAnthropicCredentials(h http.Header) {
 	// Anthropic requires anthropic-version; supply a default if the client omits it.
 	if h.Get("anthropic-version") == "" {
@@ -35,7 +34,6 @@ func (p *Proxy) injectAnthropicCredentials(h http.Header) {
 	}
 
 	if p.anthropicOAuth != nil {
-		p.refreshAnthropicOAuthIfNeeded(context.Background())
 		p.mu.RLock()
 		accessToken := p.anthropicOAuth.AccessToken
 		p.mu.RUnlock()
@@ -67,15 +65,20 @@ func mergeBetaHeader(h http.Header, value string) {
 }
 
 // refreshAnthropicOAuthIfNeeded refreshes the host's Anthropic OAuth access token
-// when it is missing an expiry or within 60s of expiring. The refresh token stays
-// on the host; only the resulting access token is ever injected into requests.
-func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
+// within 60s of expiring. Unknown expiry (setup-token) is used as supplied.
+// The refresh token never leaves the proxy. Failures prevent upstream inference.
+func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) error {
+	// Provider mode is fixed at proxy construction. API-key requests must not
+	// wait behind an unrelated OpenAI OAuth refresh on the shared refresh lock.
+	if p.anthropicOAuth == nil {
+		return nil
+	}
 	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
 	p.mu.RLock()
 	if p.anthropicOAuth == nil {
 		p.mu.RUnlock()
-		return
+		return nil
 	}
 	expiresAt := p.anthropicOAuth.ExpiresAt
 	refreshToken := p.anthropicOAuth.RefreshToken
@@ -83,12 +86,20 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 
 	// expiresAt == 0 means unknown; in that case do not attempt a refresh
 	// (the current token is assumed valid).
-	if expiresAt == 0 || refreshToken == "" {
-		return
+	if expiresAt == 0 {
+		return nil
 	}
 	if time.Now().UnixMilli() < expiresAt-60_000 {
-		return
+		return nil
 	}
+	if refreshToken == "" {
+		if time.Now().UnixMilli() >= expiresAt {
+			return fmt.Errorf("anthropic OAuth credential expired without refresh token")
+		}
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 
 	body, _ := json.Marshal(map[string]string{
 		"grant_type":    "refresh_token",
@@ -97,7 +108,7 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.anthropicOAuthTokenURL, bytes.NewReader(body))
 	if err != nil {
-		return
+		return fmt.Errorf("creating Anthropic refresh request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -106,15 +117,15 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 		if p.cfg.Verbose {
 			fmt.Printf("Anthropic OAuth refresh failed: %v\n", err)
 		}
-		return
+		return fmt.Errorf("anthropic refresh request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if p.cfg.Verbose {
 			fmt.Printf("Anthropic OAuth refresh returned status %d\n", resp.StatusCode)
 		}
-		return
+		return fmt.Errorf("anthropic refresh returned status %d", resp.StatusCode)
 	}
 
 	var tr struct {
@@ -122,8 +133,11 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int64  `json:"expires_in"`
 	}
-	if err := json.Unmarshal(respBody, &tr); err != nil || tr.AccessToken == "" {
-		return
+	if len(respBody) > 1<<20 {
+		return fmt.Errorf("anthropic refresh response too large")
+	}
+	if err := json.Unmarshal(respBody, &tr); err != nil || tr.AccessToken == "" || tr.ExpiresIn <= 0 || tr.ExpiresIn > 365*24*3600 {
+		return fmt.Errorf("invalid Anthropic refresh response")
 	}
 
 	p.mu.RLock()
@@ -140,7 +154,7 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 		if p.cfg.Verbose {
 			fmt.Printf("Anthropic OAuth refresh state save failed: %v\n", err)
 		}
-		return
+		return fmt.Errorf("saving Anthropic refresh state: %w", err)
 	}
 	p.mu.Lock()
 	*p.anthropicOAuth = next
@@ -148,4 +162,5 @@ func (p *Proxy) refreshAnthropicOAuthIfNeeded(ctx context.Context) {
 	if p.cfg.Verbose {
 		fmt.Println("Anthropic OAuth access token refreshed")
 	}
+	return nil
 }

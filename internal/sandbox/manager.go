@@ -25,6 +25,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
+	"github.com/pacificbelt30/codex-dock/internal/agentconfig"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
@@ -1090,8 +1091,8 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 			return nil, err
 		}
 
-		wantCodex := opts.Agent == AgentCodex || opts.Agent == AgentNone
-		wantClaude := opts.Agent == AgentClaude || opts.Agent == AgentNone
+		wantCodex := (opts.Agent == AgentCodex || opts.Agent == AgentNone) && (opts.TokenIdentity.Provider == "" || opts.TokenIdentity.Provider == "openai")
+		wantClaude := (opts.Agent == AgentClaude || opts.Agent == AgentNone) && (opts.TokenIdentity.Provider == "" || opts.TokenIdentity.Provider == "anthropic")
 
 		if wantCodex {
 			restricted := opts.TokenModelPolicy != nil
@@ -1123,14 +1124,17 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 			}
 		}
 
-		// Claude Code is fully env-driven: ANTHROPIC_BASE_URL points at the proxy's
-		// /anthropic route and ANTHROPIC_API_KEY carries the placeholder token. The
-		// proxy injects the host's real API key or OAuth bearer on outbound requests.
+		// Preserve the official CLI's distinct subscription and API-key paths.
 		if wantClaude && m.proxy.IsAnthropicMode() {
-			env = append(env,
-				"ANTHROPIC_BASE_URL="+containerProxyURL+"/anthropic",
-				"ANTHROPIC_API_KEY="+token,
-			)
+			oauth := false
+			if mode, ok := m.proxy.(interface{ IsAnthropicOAuthMode() bool }); ok {
+				oauth = mode.IsAnthropicOAuthMode()
+			}
+			claudeEnv, err := agentconfig.ClaudeEnv(containerProxyURL+"/anthropic", token, oauth)
+			if err != nil {
+				return nil, err
+			}
+			env = append(env, claudeEnv...)
 		}
 
 		// Route general egress (git/npm/pip/curl) through the dedicated egress proxy

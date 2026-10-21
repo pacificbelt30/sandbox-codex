@@ -54,6 +54,15 @@ func runKataFixtureProxy() int {
 			_, _ = io.WriteString(w, `{"access_token":"fixture-access-rotated","refresh_token":"fixture-refresh-rotated"}`)
 			return
 		}
+		if r.URL.Path == "/anthropic/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"access_token":"fixture-anthropic-access","refresh_token":"fixture-anthropic-refresh-rotated","expires_in":3600}`)
+			return
+		}
+		if r.URL.Path == "/v1/messages" || r.URL.Path == "/v1/messages/count_tokens" {
+			serveClaudeFixture(w, r, p.IsAnthropicOAuthMode())
+			return
+		}
 		var body struct {
 			Stream bool            `json:"stream"`
 			Input  json.RawMessage `json:"input"`
@@ -86,6 +95,7 @@ func runKataFixtureProxy() int {
 	}))
 	defer up.Close()
 	p.oauthTokenURL = up.URL + "/oauth/token"
+	p.anthropicOAuthTokenURL = up.URL + "/anthropic/oauth/token"
 	p.apiUpstreamURL, p.chatgptURL, p.anthropicUpstreamURL = up.URL, up.URL, up.URL
 	if err := p.Start(); err != nil {
 		return 1

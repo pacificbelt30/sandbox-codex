@@ -12,13 +12,16 @@ import (
 )
 
 func TestNativeProxyConfigurationSeparatesCredentialsAndPorts(t *testing.T) {
-	a := proxyRunArgs{name: "auth", image: "proxy:dev", role: authproxy.RoleAuth, networkName: "egress", mountCreds: true, apiKeyEnv: "fixture", listenAddr: "0.0.0.0:18080", adminPort: 18081}
+	a := proxyRunArgs{name: "auth", image: "proxy:dev", role: authproxy.RoleAuth, networkName: "egress", mountCreds: true, apiKeyEnv: "fixture", claudeOAuthEnv: "fixture-claude-subscription", listenAddr: "0.0.0.0:18080", adminPort: 18081}
 	c, h, err := proxyConfiguration(a)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(c.Env, "OPENAI_API_KEY=fixture") || !slices.Contains(c.Env, "HOME="+proxyCredentialHome) || len(h.PortBindings) != 1 || h.Runtime != "runc" {
 		t.Fatalf("auth configuration differs: %v %v", c, h)
+	}
+	if !slices.Contains(c.Env, "CLAUDE_CODE_OAUTH_TOKEN=fixture-claude-subscription") {
+		t.Fatal("host subscription token was not supplied to the auth proxy")
 	}
 	a.role = authproxy.RoleEgress
 	a.mountCreds = false

@@ -19,7 +19,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "cxd",
 	Version:       buildinfo.Version,
-	Short:         "AI Sandbox Container Manager for Codex CLI",
+	Short:         "AI Sandbox Container Manager for Codex CLI and Claude Code",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Long: `cxd runs Codex CLI and Claude Code in Kata VM-isolated workers

@@ -83,6 +83,7 @@ func TestKataWorkspaceSharing(t *testing.T) {
 	write(t, config, fmt.Sprintf("proxy_image = %s\n[proxy]\nadmin_url = %s\ncontainer_url = %s\nadmin_secret = \"sharing-fixture\"\n", strconv.Quote(proxyImage), strconv.Quote(fmt.Sprintf("http://127.0.0.1:%d", port)), strconv.Quote("http://"+authName+":18080")), 0600)
 	t.Setenv("OPENAI_API_KEY", "sk-sharing-fixture-never-valid")
 	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	cli := func(t *testing.T, cwd string, args ...string) string {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)

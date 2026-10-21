@@ -23,6 +23,13 @@ func (p *Proxy) reverseProxy(w http.ResponseWriter, r *http.Request, stripPrefix
 	if !p.authorizeModel(w, r) {
 		return
 	}
+	if stripPrefix == "/anthropic" {
+		if err := p.refreshAnthropicOAuthIfNeeded(r.Context()); err != nil {
+			// Do not expose upstream response bodies, tokens or store errors.
+			http.Error(w, "Anthropic credential refresh failed", http.StatusBadGateway)
+			return
+		}
+	}
 	// Preserve the encoded path so a newly added upstream endpoint can use its
 	// own path syntax without the proxy decoding and re-encoding it.
 	path := strings.TrimPrefix(r.URL.EscapedPath(), stripPrefix)

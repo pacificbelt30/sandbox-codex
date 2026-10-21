@@ -130,6 +130,10 @@ func claudeCredentialsPath() (string, error) {
 // ~/.claude/.credentials.json. Returns an error if the file is missing,
 // unparseable, or contains no access token.
 func LoadAnthropicOAuthCredentials() (*AnthropicOAuthCredentials, error) {
+	if token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"); token != "" {
+		// setup-token credentials have no local refresh token or known expiry.
+		return &AnthropicOAuthCredentials{AccessToken: token}, nil
+	}
 	path, err := claudeCredentialsPath()
 	if err != nil {
 		return nil, err
@@ -154,9 +158,17 @@ func LoadAnthropicOAuthCredentials() (*AnthropicOAuthCredentials, error) {
 	}, nil
 }
 
-// IsAnthropicOAuth returns true when ~/.claude/.credentials.json contains a
-// Claude subscription (OAuth) refresh token.
+// IsAnthropicOAuth selects an explicit setup-token or saved Claude OAuth login,
+// unless the host explicitly requests API billing with ANTHROPIC_API_KEY.
 func IsAnthropicOAuth() bool {
+	// Explicit environment credentials let callers choose billing even when
+	// an older subscription login is present on disk.
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		return false
+	}
+	if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") != "" {
+		return true
+	}
 	path, err := claudeCredentialsPath()
 	if err != nil {
 		return false

@@ -224,6 +224,7 @@ func startProxyContainer(ctx context.Context) error {
 		storedKeyPath:    filepath.Join(home, ".config", "codex-dock", "apikey"),
 		oauthJSONPath:    filepath.Join(home, ".codex", "auth.json"),
 		anthropicKeyEnv:  os.Getenv("ANTHROPIC_API_KEY"),
+		claudeOAuthEnv:   os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"),
 		anthropicKeyPath: filepath.Join(home, ".config", "codex-dock", "anthropic-apikey"),
 		claudeCredsPath:  filepath.Join(home, ".claude", ".credentials.json"),
 		oauthStateDir:    stateDir,
@@ -473,6 +474,7 @@ type proxyRunArgs struct {
 
 	// Anthropic / Claude Code credential sources (used when mountCreds).
 	anthropicKeyEnv  string // ANTHROPIC_API_KEY env value
+	claudeOAuthEnv   string // CLAUDE_CODE_OAUTH_TOKEN from host setup-token
 	anthropicKeyPath string // ~/.config/codex-dock/anthropic-apikey
 	claudeCredsPath  string // ~/.claude/.credentials.json
 	oauthStateDir    string // private writable host directory
@@ -524,6 +526,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 		}
 		if a.anthropicKeyEnv != "" {
 			args = append(args, "-e", "ANTHROPIC_API_KEY="+a.anthropicKeyEnv)
+		}
+		if a.claudeOAuthEnv != "" {
+			args = append(args, "-e", "CLAUDE_CODE_OAUTH_TOKEN="+a.claudeOAuthEnv)
 		}
 		if _, err := os.Stat(a.storedKeyPath); err == nil {
 			args = append(args, "-v", a.storedKeyPath+":/root/.config/codex-dock/apikey:ro")

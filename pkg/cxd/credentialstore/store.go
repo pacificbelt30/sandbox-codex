@@ -34,7 +34,9 @@ type OpenAIOAuth struct {
 }
 
 type AnthropicOAuth struct {
-	AccessToken      string   `json:"access_token"`
+	AccessToken string `json:"access_token"`
+	// RefreshToken is optional for credentials created by claude setup-token.
+	// Without it, expiry requires replacement/reconnection by the host product.
 	RefreshToken     string   `json:"refresh_token"`
 	ExpiresAt        int64    `json:"expires_at"`
 	SubscriptionType string   `json:"subscription_type"`

@@ -36,7 +36,7 @@ func (s *caseStore) SaveRefresh(_ context.Context, id, version, provider string,
 	if current.Version != version {
 		return "", credentialstore.ErrConflict
 	}
-	if provider != "openai" {
+	if provider != "openai" && provider != "anthropic" {
 		return "", errors.New("unexpected provider")
 	}
 	next.Version = version + "-next"
@@ -124,5 +124,75 @@ func TestExternalCredentialCasesDoNotReadHostOrMixRefreshes(t *testing.T) {
 	}
 	if _, err := NewProxy(Config{CredentialStore: store, CaseID: "user-a", OAuthStateDir: t.TempDir(), AdminSecret: "fixture-admin-secret-long-enough-0001", AdminListenAddr: "127.0.0.1:0"}); err == nil {
 		t.Fatal("external store mixed with local OAuth state")
+	}
+}
+
+func TestAnthropicExternalStoreRefreshAndAccessOnlyToken(t *testing.T) {
+	for _, mode := range []string{"access-only", "refresh", "conflict", "save-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			creds := &credentialstore.AnthropicOAuth{AccessToken: "initial"}
+			if mode != "access-only" {
+				creds.RefreshToken, creds.ExpiresAt = "refresh", time.Now().Add(-time.Minute).UnixMilli()
+			}
+			store := &caseStore{items: map[string]credentialstore.Credentials{"case": {Version: "v1", ConnectionVersion: "c1", AnthropicOAuth: creds}}}
+			p, err := NewProxy(Config{CredentialStore: store, CaseID: "case", AdminSecret: "fixture-admin-secret-long-enough-0001", AdminListenAddr: "127.0.0.1:0"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			token, err := p.IssueTokenWithIdentity("worker", 60, identity.Identity{CaseID: "case", RunID: "run", ConnectionVersion: "c1", Provider: "anthropic"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest("POST", "/anthropic/v1/messages", nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			lease, done, ok := p.workerRequest(request, true)
+			if !ok {
+				t.Fatal("cannot acquire worker lease")
+			}
+			defer done()
+			if mode == "conflict" {
+				next := store.items["case"]
+				next.Version = "v2"
+				store.items["case"] = next
+			}
+			if mode == "save-failure" {
+				store.fail = true
+			}
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"access_token":"updated","refresh_token":"rotated","expires_in":3600}`))
+			}))
+			defer up.Close()
+			p.anthropicOAuthTokenURL = up.URL
+			err = p.refreshAnthropicOAuthIfNeeded(context.Background())
+			failed := mode == "conflict" || mode == "save-failure"
+			if (err != nil) != failed {
+				t.Fatalf("refresh mode=%s: %v", mode, err)
+			}
+			if failed {
+				select {
+				case <-lease.Context().Done():
+				case <-time.After(time.Second):
+					t.Fatal("failed refresh retained active lease")
+				}
+				if _, cleanup, ok := p.workerRequest(request, true); ok {
+					cleanup()
+					t.Fatal("failed refresh retained worker authorization")
+				}
+				if p.anthropicOAuth.AccessToken != "initial" {
+					t.Fatal("failed save published updated credential")
+				}
+			} else if mode == "refresh" {
+				got := store.items["case"]
+				if got.Version != "v1-next" || got.ConnectionVersion != "c1" || got.AnthropicOAuth.RefreshToken != "rotated" {
+					t.Fatal("refresh violated generation or durability contract")
+				}
+				restarted, err := NewProxy(p.cfg)
+				if err != nil || restarted.anthropicOAuth.AccessToken != "updated" {
+					t.Fatalf("restart lost refresh: %v", err)
+				}
+			} else if p.anthropicOAuth.AccessToken != "initial" {
+				t.Fatal("access-only token changed")
+			}
+		})
 	}
 }

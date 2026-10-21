@@ -86,6 +86,22 @@ func TestIsAnthropicOAuth(t *testing.T) {
 	}
 }
 
+func TestAnthropicExplicitCredentialSelection(t *testing.T) {
+	home, cleanup := withTempHome(t)
+	defer cleanup()
+	writeClaudeCreds(t, home, map[string]interface{}{"accessToken": "saved-oauth"})
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "setup-token-fixture")
+	p, err := NewProxy(Config{})
+	if err != nil || !p.IsAnthropicOAuthMode() || p.anthropicOAuth.AccessToken != "setup-token-fixture" {
+		t.Fatalf("explicit subscription selection: %v", err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "explicit-api-key")
+	p, err = NewProxy(Config{})
+	if err != nil || p.IsAnthropicOAuthMode() || p.anthropicAPIKey != "explicit-api-key" {
+		t.Fatalf("explicit API billing selection: %v", err)
+	}
+}
+
 func TestLoadAnthropicAPIKey_EnvPriority(t *testing.T) {
 	home, cleanup := withTempHome(t)
 	defer cleanup()

@@ -14,6 +14,7 @@ import (
 type WorkerConnection struct {
 	Provider, BaseURL, Placeholder string
 	ModelPolicyActive              bool
+	TokenEnvironment               string
 }
 
 func (m *Manager) WorkerConnections(ctx context.Context, reference string) ([]WorkerConnection, error) {
@@ -49,10 +50,13 @@ func (m *Manager) WorkerConnections(ctx context.Context, reference string) ([]Wo
 	}
 	var result []WorkerConnection
 	if endpoint, token := env["CODEX_AUTH_PROXY_URL"], env["CODEX_TOKEN"]; endpoint != "" && strings.HasPrefix(token, "cdx-") && (id.Provider == "" || id.Provider == "openai") {
-		result = append(result, WorkerConnection{"openai", strings.TrimRight(endpoint, "/") + "/v1", token, restricted})
+		result = append(result, WorkerConnection{Provider: "openai", BaseURL: strings.TrimRight(endpoint, "/") + "/v1", Placeholder: token, ModelPolicyActive: restricted})
 	}
-	if endpoint, token := env["ANTHROPIC_BASE_URL"], env["ANTHROPIC_API_KEY"]; endpoint != "" && strings.HasPrefix(token, "cdx-") && (id.Provider == "" || id.Provider == "anthropic") {
-		result = append(result, WorkerConnection{"anthropic", endpoint, token, restricted})
+	for _, key := range []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"} {
+		if endpoint, token := env["ANTHROPIC_BASE_URL"], env[key]; endpoint != "" && strings.HasPrefix(token, "cdx-") && (id.Provider == "" || id.Provider == "anthropic") {
+			result = append(result, WorkerConnection{Provider: "anthropic", BaseURL: endpoint, Placeholder: token, ModelPolicyActive: restricted, TokenEnvironment: key})
+			break
+		}
 	}
 	return result, nil
 }

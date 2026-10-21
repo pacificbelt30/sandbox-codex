@@ -43,7 +43,10 @@ func (c *Client) Connections(ctx context.Context, worker string) ([]ConnectionIn
 		if v.Provider == "anthropic" {
 			info.AuthHeader = "X-Api-Key"
 			info.AuthScheme = ""
-			info.TokenEnvironment = "ANTHROPIC_API_KEY"
+			info.TokenEnvironment = v.TokenEnvironment
+			if v.TokenEnvironment == agentconfig.ClaudeOAuthEnv {
+				info.AuthHeader, info.AuthScheme = "Authorization", "Bearer"
+			}
 		}
 		result = append(result, info)
 	}
@@ -51,11 +54,32 @@ func (c *Client) Connections(ctx context.Context, worker string) ([]ConnectionIn
 }
 
 // AgentCommand contains a short-lived placeholder in Env. Do not log Env.
-// Append the desired subcommand (exec, app-server, ...) to Argv. Its -c
-// overrides work independently of generated ~/.codex/config.toml.
+// Append native agent arguments to Argv. Connection settings work independently
+// of generated user configuration.
 type AgentCommand struct {
 	Argv []string
 	Env  []string `json:"-"`
+}
+
+// ClaudeCommand selects the worker's saved API-key or subscription connection.
+// User/project settings are disabled for a reproducible invocation; callers can
+// append explicit CLI options. Neither argv nor Env contains host credentials.
+func (c *Client) ClaudeCommand(ctx context.Context, worker string) (AgentCommand, error) {
+	connections, err := c.manager.WorkerConnections(ctx, worker)
+	if err != nil {
+		return AgentCommand{}, classify(err)
+	}
+	for _, v := range connections {
+		if v.Provider != "anthropic" {
+			continue
+		}
+		env, err := agentconfig.ClaudeEnv(v.BaseURL, v.Placeholder, v.TokenEnvironment == agentconfig.ClaudeOAuthEnv)
+		if err != nil {
+			return AgentCommand{}, err
+		}
+		return AgentCommand{Argv: []string{"claude", "--setting-sources", ""}, Env: env}, nil
+	}
+	return AgentCommand{}, fmt.Errorf("worker has no Anthropic proxy connection")
 }
 
 // CodexHTTPCommand explicitly selects HTTP/SSE for this invocation. Other

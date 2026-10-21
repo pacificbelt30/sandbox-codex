@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -227,6 +228,78 @@ func TestRefreshAnthropicOAuthIfNeeded_SkipsWhenValid(t *testing.T) {
 	}
 	if p.anthropicOAuth.AccessToken != "oat-valid" {
 		t.Errorf("AccessToken changed unexpectedly: %q", p.anthropicOAuth.AccessToken)
+	}
+}
+
+func TestAnthropicAPIKeyDoesNotWaitForAnotherProvidersRefresh(t *testing.T) {
+	p := newAnthropicAPIKeyProxy(t, "fixture-key")
+	p.refreshMu.Lock()
+	done := make(chan error, 1)
+	go func() { done <- p.refreshAnthropicOAuthIfNeeded(context.Background()) }()
+	select {
+	case err := <-done:
+		p.refreshMu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		p.refreshMu.Unlock()
+		<-done
+		t.Fatal("Anthropic API-key traffic waited on another provider's OAuth refresh")
+	}
+}
+
+func TestAnthropicRefreshFailuresPreventInference(t *testing.T) {
+	for _, mode := range []string{"http-error", "invalid-response", "save-error", "expired-without-refresh", "canceled"} {
+		t.Run(mode, func(t *testing.T) {
+			refreshes, inference := 0, 0
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/token" {
+					refreshes++
+					if mode == "http-error" {
+						w.WriteHeader(401)
+						return
+					}
+					if mode == "invalid-response" {
+						_, _ = w.Write([]byte(`{"access_token":"new-without-expiry"}`))
+						return
+					}
+					_, _ = w.Write([]byte(`{"access_token":"new","refresh_token":"rotated","expires_in":3600}`))
+					return
+				}
+				inference++
+				w.WriteHeader(200)
+			}))
+			defer up.Close()
+			p := newAnthropicOAuthProxy(t, "expired")
+			p.anthropicOAuth.RefreshToken, p.anthropicOAuth.ExpiresAt = "old-refresh", time.Now().Add(-time.Minute).UnixMilli()
+			p.anthropicUpstreamURL, p.anthropicOAuthTokenURL = up.URL, up.URL+"/token"
+			if mode == "expired-without-refresh" {
+				p.anthropicOAuth.RefreshToken = ""
+			}
+			if mode == "save-error" {
+				path := t.TempDir() + "/file"
+				if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				p.cfg.OAuthStateDir = path
+			}
+			r := httptest.NewRequest("POST", "/anthropic/v1/messages", strings.NewReader(`{}`))
+			authorizeTestRequest(t, p, r)
+			if mode == "canceled" {
+				ctx, cancel := context.WithCancel(r.Context())
+				cancel()
+				r = r.WithContext(ctx)
+			}
+			w := httptest.NewRecorder()
+			p.handleAnthropicProxy(w, r)
+			if w.Code != 502 || inference != 0 || p.anthropicOAuth.AccessToken != "expired" {
+				t.Fatalf("refresh failure reached inference or published credential: status=%d inference=%d refreshes=%d", w.Code, inference, refreshes)
+			}
+			if mode == "canceled" && refreshes != 0 {
+				t.Fatal("canceled request refreshed credentials")
+			}
+		})
 	}
 }
 

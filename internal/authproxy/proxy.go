@@ -61,7 +61,7 @@ type Proxy struct {
 
 	// Anthropic upstream + OAuth refresh endpoint; overridable for testing.
 	anthropicUpstreamURL   string // default: "https://api.anthropic.com"
-	anthropicOAuthTokenURL string // default: "https://console.anthropic.com/v1/oauth/token"
+	anthropicOAuthTokenURL string // default: "https://platform.claude.com/v1/oauth/token"
 	anthropicOAuthClientID string // Claude Code public OAuth client id
 }
 
@@ -124,7 +124,7 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		apiUpstreamURL:         "https://api.openai.com/v1",
 		chatgptURL:             "https://chatgpt.com/backend-api",
 		anthropicUpstreamURL:   "https://api.anthropic.com",
-		anthropicOAuthTokenURL: "https://console.anthropic.com/v1/oauth/token",
+		anthropicOAuthTokenURL: "https://platform.claude.com/v1/oauth/token",
 		anthropicOAuthClientID: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 	}
 
@@ -190,7 +190,7 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		if loaded.OpenAIAPIKey == "" && loaded.OpenAIOAuth == nil && loaded.AnthropicAPIKey == "" && loaded.AnthropicOAuth == nil {
 			return nil, fmt.Errorf("external credential generation has no enabled provider")
 		}
-		if loaded.OpenAIOAuth != nil && (loaded.OpenAIOAuth.AccessToken == "" || loaded.OpenAIOAuth.RefreshToken == "") || loaded.AnthropicOAuth != nil && (loaded.AnthropicOAuth.AccessToken == "" || loaded.AnthropicOAuth.RefreshToken == "") {
+		if loaded.OpenAIOAuth != nil && (loaded.OpenAIOAuth.AccessToken == "" || loaded.OpenAIOAuth.RefreshToken == "") || loaded.AnthropicOAuth != nil && loaded.AnthropicOAuth.AccessToken == "" {
 			return nil, fmt.Errorf("external OAuth credential is incomplete")
 		}
 		p.storeCreds, p.storeVersion, p.caseConnectionVersion = loaded, loaded.Version, loaded.ConnectionVersion

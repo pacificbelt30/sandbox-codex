@@ -55,7 +55,7 @@ func init() {
 			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run cxd auth set; then rerun init")
 		}
 		if agent == "claude" && !state.anthropicAvailable {
-			return fmt.Errorf("anthropic credentials missing: run claude login or set ANTHROPIC_API_KEY; then rerun init --agent claude")
+			return fmt.Errorf("anthropic credentials missing: run `claude auth login`, or set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN; then rerun init --agent claude")
 		}
 		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Credentials configured (contents are never printed)."); err != nil {
 			return err

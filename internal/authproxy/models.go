@@ -34,7 +34,7 @@ func (p *Proxy) authorizeModel(w http.ResponseWriter, r *http.Request) bool {
 	if isWebSocketRequest(r) {
 		return deny("model_policy_websocket_unsupported", http.StatusForbidden)
 	}
-	if r.Method != http.MethodPost || r.URL.RawQuery != "" || r.URL.EscapedPath() != r.URL.Path || r.Header.Get("Content-Encoding") != "" {
+	if r.Method != http.MethodPost || !modelQueryAllowed(r) || r.URL.EscapedPath() != r.URL.Path || r.Header.Get("Content-Encoding") != "" {
 		return deny("model_policy_route_denied", http.StatusForbidden)
 	}
 	switch r.URL.Path {
@@ -104,4 +104,13 @@ type modelPolicyKey struct{}
 func (p *Proxy) modelPolicyActive(r *http.Request) bool {
 	policy, _ := r.Context().Value(modelPolicyKey{}).(*identity.ModelPolicy)
 	return len(p.cfg.AllowedModels) != 0 || policy != nil
+}
+
+// The official Claude SDK adds beta=true to Messages requests. It selects
+// the API dialect, never the model; reject every other query and duplicates.
+func modelQueryAllowed(r *http.Request) bool {
+	if r.URL.RawQuery == "" {
+		return true
+	}
+	return (r.URL.Path == "/anthropic/v1/messages" || r.URL.Path == "/anthropic/v1/messages/count_tokens") && r.URL.RawQuery == "beta=true"
 }

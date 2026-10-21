@@ -205,11 +205,20 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	// A project build with the same tag must not replace that template.
 	buildCfg := projectBuildConfigForRun(cmd, projectCfg)
 	if runOpts.DirectAgent {
-		if codexOptionPresent(runOpts.AgentArgs, "--model", "-m", "--profile", "-p") || codexConfigOverridePresent(runOpts.AgentArgs, "model") {
-			runOpts.Model = ""
-		}
-		if codexOptionPresent(runOpts.AgentArgs, "--ask-for-approval", "-a", "--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--profile", "-p") || codexConfigOverridePresent(runOpts.AgentArgs, "approval_policy") {
-			approvalModeFlag = "suggest"
+		if agentFlag == string(sandbox.AgentClaude) {
+			if codexOptionPresent(runOpts.AgentArgs, "--model") {
+				runOpts.Model = ""
+			}
+			if codexOptionPresent(runOpts.AgentArgs, "--permission-mode", "--dangerously-skip-permissions") {
+				approvalModeFlag = "suggest"
+			}
+		} else {
+			if codexOptionPresent(runOpts.AgentArgs, "--model", "-m", "--profile", "-p") || codexConfigOverridePresent(runOpts.AgentArgs, "model") {
+				runOpts.Model = ""
+			}
+			if codexOptionPresent(runOpts.AgentArgs, "--ask-for-approval", "-a", "--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--profile", "-p") || codexConfigOverridePresent(runOpts.AgentArgs, "approval_policy") {
+				approvalModeFlag = "suggest"
+			}
 		}
 	}
 	image, commandArgs := resolveRunPositionals(args, cmd.ArgsLenAtDash(), cmd.Flags().Changed("image") || cmd.Flags().Changed("template"))
@@ -321,7 +330,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	if runOpts.Agent == sandbox.AgentClaude && !proxy.IsAnthropicMode() {
 		return fmt.Errorf("--agent claude requires Anthropic credentials on the auth proxy; " +
-			"set ANTHROPIC_API_KEY or run `claude` OAuth login (~/.claude/.credentials.json) before starting the proxy")
+			"set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN or run `claude auth login` (~/.claude/.credentials.json) before starting the proxy")
 	}
 	if len(runEgressAllow) > 0 && !runOpts.NoInternet {
 		if cmd.Flags().Changed("http-proxy-url") || httpProxyURL != "http://codex-http-proxy:18082" {

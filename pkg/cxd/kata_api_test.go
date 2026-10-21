@@ -87,7 +87,7 @@ func (s *apiFixtureStore) SaveRefresh(_ context.Context, _ string, version, prov
 	if version != s.creds.Version {
 		return "", credentialstore.ErrConflict
 	}
-	if provider != "openai" {
+	if provider != "openai" && provider != "anthropic" {
 		return "", fmt.Errorf("unexpected provider")
 	}
 	next.Version = version + "-next"
@@ -128,7 +128,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	modes := []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example"}
+	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example"}
 	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
 		modes = append(modes, "custom-profile")
 	}
@@ -143,6 +143,15 @@ func TestKataAPIIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := &apiFixtureStore{mode: mode, creds: credentialstore.Credentials{Version: "version-1", ConnectionVersion: "connection-1", OpenAIOAuth: &credentialstore.OpenAIOAuth{AccessToken: "fixture-access-initial", RefreshToken: "fixture-refresh-initial"}}}
+			claude := strings.HasPrefix(mode, "claude-")
+			if claude {
+				store.creds.OpenAIOAuth = nil
+				store.creds.AnthropicAPIKey = "fixture-anthropic-key"
+				if strings.HasSuffix(mode, "oauth") {
+					store.creds.AnthropicAPIKey = ""
+					store.creds.AnthropicOAuth = &credentialstore.AnthropicOAuth{AccessToken: "fixture-anthropic-expired", RefreshToken: "fixture-anthropic-refresh", ExpiresAt: time.Now().Add(-time.Minute).UnixMilli(), SubscriptionType: "max", Scopes: []string{"user:inference"}}
+				}
+			}
 			storeCtx, stopStore := context.WithCancel(ctx)
 			done := make(chan error, 1)
 			socket := filepath.Join(root, "c.sock")
@@ -161,6 +170,9 @@ func TestKataAPIIntegration(t *testing.T) {
 			port := ln.Addr().(*net.TCPAddr).Port
 			_ = ln.Close()
 			proxyOpts := CaseProxyOptions{NodeSocket: engine.Socket(), Name: fmt.Sprintf("cxd-api-%x", time.Now().UnixNano()), CaseID: "fixture-case", StoreSocket: socket, AdminPort: port, AdminSecret: strings.Repeat("fixture-", 5), Image: proxyImage, AllowedModels: []string{"allowed", "costly"}}
+			if claude {
+				proxyOpts.AllowedModels = append(proxyOpts.AllowedModels, "claude-sonnet-4-6")
+			}
 			proxy, err := EnsureCaseProxy(ctx, proxyOpts)
 			if err != nil {
 				t.Fatal(err)
@@ -185,6 +197,9 @@ func TestKataAPIIntegration(t *testing.T) {
 				t.Fatalf("model capabilities: %+v %v", caps, err)
 			}
 			runIdentity := identity.Identity{CaseID: "fixture-case", RunID: "run-" + mode, ConnectionVersion: "connection-1", Provider: "openai"}
+			if claude {
+				runIdentity.Provider = "anthropic"
+			}
 			if mode == "embedding-example" {
 				binary := os.Getenv("CODEX_DOCK_KATA_EMBEDDING_BINARY")
 				if binary == "" {
@@ -229,6 +244,13 @@ func TestKataAPIIntegration(t *testing.T) {
 				return
 			}
 			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: runIdentity, ModelPolicy: &identity.ModelPolicy{AllowedModels: []string{"allowed", "outside-global"}}}
+			if claude {
+				req.ModelPolicy.AllowedModels = append(req.ModelPolicy.AllowedModels, "claude-sonnet-4-6")
+				if strings.HasPrefix(mode, "claude-direct-") {
+					req.Agent = "claude"
+					req.AgentArgs = []string{"--setting-sources", "", "-p", "Run the fixture command.", "--model", "claude-sonnet-4-6", "--tools", "Bash", "--allowedTools", "Bash", "--max-turns", "3"}
+				}
+			}
 			if mode == "custom-profile" {
 				req.Profile = os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE")
 			}
@@ -288,11 +310,38 @@ func TestKataAPIIntegration(t *testing.T) {
 			if err := c.Start(ctx, w.ID); err != nil {
 				t.Fatal(err)
 			}
+			if strings.HasPrefix(mode, "claude-direct-") {
+				waitCtx, stopWait := context.WithTimeout(ctx, time.Minute)
+				code, err := c.Wait(waitCtx, w.ID)
+				stopWait()
+				if err != nil || code != 0 {
+					t.Fatalf("direct Claude exit=%d err=%v", code, err)
+				}
+				logs, err := engineClient.ContainerLogs(ctx, w.ID, container.LogsOptions{ShowStdout: true, ShowStderr: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				output, err := io.ReadAll(logs)
+				_ = logs.Close()
+				if err != nil || !strings.Contains(string(output), "CXD_CLAUDE_SSE_OK") {
+					t.Fatalf("direct Claude response: %s %v", output, err)
+				}
+				marker, err := os.ReadFile(filepath.Join(project, "cxd-claude-tool.txt"))
+				if err != nil || string(marker) != "CXD_CLAUDE_TOOL_OK" {
+					t.Fatalf("direct Claude tool: %q %v", marker, err)
+				}
+				t.Log("verified Claude as the worker's main process with native argv, tool execution and final SSE response")
+				return
+			}
 			usage, err := c.ResourceUsage(ctx, w.ID)
 			if err != nil || usage.OOMKills != 0 {
 				t.Fatalf("resource usage: %+v %v", usage, err)
 			}
 			t.Logf("%s idle: host current=%d peak=%d guest budget=%d host ceiling=%d", req.Profile, usage.HostMemoryCurrentBytes, usage.HostMemoryPeakBytes, usage.Profile.GuestMemoryBytes, usage.Profile.HostMemoryBytes)
+			if claude {
+				verifyClaudeAPI(t, ctx, c, w.ID, project, mode == "claude-oauth", store)
+				return
+			}
 			request := func(path, body string) string {
 				t.Helper()
 				var out, stderr bytes.Buffer

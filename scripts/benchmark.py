@@ -55,7 +55,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='codex-dock-benchmark-') as tmp:
         home = Path(tmp)
         env = dict(os.environ, HOME=tmp, XDG_CONFIG_HOME=str(home/'config'), XDG_STATE_HOME=str(home/'xdg-state'),
-                   CODEX_DOCK_STATE_DIR=str(home/'state'), OPENAI_API_KEY='sk-benchmark-fixture-never-valid', ANTHROPIC_API_KEY='')
+                   CODEX_DOCK_STATE_DIR=str(home/'state'), OPENAI_API_KEY='sk-benchmark-fixture-never-valid', ANTHROPIC_API_KEY='', CLAUDE_CODE_OAUTH_TOKEN='')
         logs = args.output
         sequence = 0
         def run(argv, label, cwd=home, check=True, docker_call=False):

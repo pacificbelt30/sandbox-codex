@@ -35,7 +35,7 @@ func workerPlaceholder(v container.InspectResponse) string {
 	}
 	for _, entry := range v.Config.Env {
 		key, value, ok := strings.Cut(entry, "=")
-		if ok && (key == "CODEX_TOKEN" || key == "ANTHROPIC_API_KEY") && strings.HasPrefix(value, "cdx-") {
+		if ok && (key == "CODEX_TOKEN" || key == "ANTHROPIC_API_KEY" || key == "CLAUDE_CODE_OAUTH_TOKEN") && strings.HasPrefix(value, "cdx-") {
 			return value
 		}
 	}

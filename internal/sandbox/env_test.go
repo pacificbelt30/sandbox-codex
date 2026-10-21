@@ -1,9 +1,12 @@
 package sandbox
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
 func TestBuildEnvDirectCodexArguments(t *testing.T) {
@@ -36,20 +39,22 @@ func TestBuildEnvDirectCodexArguments(t *testing.T) {
 
 // fakeProxy implements authproxy.Service for env-building tests.
 type fakeProxy struct {
-	oauth     bool
-	anthropic bool
-	endpoint  string
-	issued    []string
+	oauth          bool
+	anthropic      bool
+	anthropicOAuth bool
+	endpoint       string
+	issued         []string
 }
 
 func (f *fakeProxy) IssueToken(name string, ttlSec int) (string, error) {
 	f.issued = append(f.issued, name)
 	return "cdx-faketoken", nil
 }
-func (f *fakeProxy) RevokeToken(name string)   {}
-func (f *fakeProxy) IsOAuthMode() bool         { return f.oauth }
-func (f *fakeProxy) IsAnthropicMode() bool     { return f.anthropic }
-func (f *fakeProxy) ContainerEndpoint() string { return f.endpoint }
+func (f *fakeProxy) RevokeToken(name string)    {}
+func (f *fakeProxy) IsOAuthMode() bool          { return f.oauth }
+func (f *fakeProxy) IsAnthropicMode() bool      { return f.anthropic }
+func (f *fakeProxy) IsAnthropicOAuthMode() bool { return f.anthropicOAuth }
+func (f *fakeProxy) ContainerEndpoint() string  { return f.endpoint }
 
 // envValue returns the value of key=... in env, or ("", false) if absent.
 func envValue(env []string, key string) (string, bool) {
@@ -231,6 +236,53 @@ func TestBuildEnv_ClaudeWithoutAnthropicCreds(t *testing.T) {
 	}
 	if _, ok := envValue(env, "ANTHROPIC_BASE_URL"); ok {
 		t.Error("ANTHROPIC_BASE_URL should be omitted when the proxy has no Anthropic creds")
+	}
+}
+
+func TestBuildEnvClaudeSubscriptionAndRestore(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://auth:18080", anthropic: true, anthropicOAuth: true})
+	env, err := m.buildEnv("claude", RunOptions{Agent: AgentClaude}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key, _ := envValue(env, "ANTHROPIC_API_KEY"); key != "" {
+		t.Fatal("subscription selected API billing")
+	}
+	if token, _ := envValue(env, "CLAUDE_CODE_OAUTH_TOKEN"); token != "cdx-faketoken" {
+		t.Fatal("missing subscription placeholder")
+	}
+	f, manager := newEngineFixture(t)
+	manager.proxy = &runtimeProxy{fakeProxy: fakeProxy{endpoint: "http://auth:18080", anthropic: true, anthropicOAuth: true}}
+	id, err := manager.Run(RunOptions{Name: "claude-subscription", ProjectDir: t.TempDir(), Agent: AgentClaude, Detach: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := manager.Remove(id, true); err != nil {
+			t.Error(err)
+		}
+	}()
+	if workerPlaceholder(*f.worker) == "" {
+		t.Fatal("subscription placeholder cannot be restored/revoked")
+	}
+	connections, err := manager.WorkerConnections(context.Background(), id)
+	if err != nil || len(connections) != 1 || connections[0].TokenEnvironment != "CLAUDE_CODE_OAUTH_TOKEN" {
+		t.Fatalf("subscription connection: %+v %v", connections, err)
+	}
+}
+
+func TestProviderBoundShellDoesNotFetchAnotherProvidersCredentials(t *testing.T) {
+	m := newTestManager(&fakeProxy{endpoint: "http://auth:18080", anthropic: true, anthropicOAuth: true})
+	for _, provider := range []string{"openai", "anthropic"} {
+		env, err := m.buildEnv("worker", RunOptions{Agent: AgentNone, pendingPlaceholder: "cdx-fixture", TokenIdentity: identity.Identity{Provider: provider}}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		codex, _ := envValue(env, "CODEX_TOKEN")
+		claude, _ := envValue(env, "CLAUDE_CODE_OAUTH_TOKEN")
+		if (codex != "") != (provider == "openai") || (claude != "") != (provider == "anthropic") {
+			t.Fatalf("provider=%s bootstrap would acquire another provider's credentials", provider)
+		}
 	}
 }
 

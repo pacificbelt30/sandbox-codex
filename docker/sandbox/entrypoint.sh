@@ -162,11 +162,8 @@ EOF
 fi
 
 # ── Claude Code (Anthropic) auth setup ────────────────────────────────────────
-# Claude Code is fully env-driven: ANTHROPIC_BASE_URL points at the proxy's
-# /anthropic route and ANTHROPIC_API_KEY carries a placeholder. The proxy
-# overwrites the credential with the host's real API key or OAuth bearer token
-# on every outbound request, so the real Anthropic credential never reaches the
-# container (mirrors the Codex flow).
+# The official CLI selects API billing with ANTHROPIC_API_KEY and subscription
+# authentication with CLAUDE_CODE_OAUTH_TOKEN. Both hold only placeholders.
 if [[ -n "${ANTHROPIC_BASE_URL:-}" ]]; then
     CLAUDE_HOME="$(resolve_codex_home)"
     export HOME="${CLAUDE_HOME}"
@@ -176,6 +173,24 @@ if [[ -n "${ANTHROPIC_BASE_URL:-}" ]]; then
 {"hasCompletedOnboarding": true}
 EOF
         chmod 600 "${CLAUDE_HOME}/.claude.json"
+    fi
+    # Approve only our issued placeholder to avoid the interactive API-key prompt.
+    if [[ "${ANTHROPIC_API_KEY:-}" == cdx-* ]]; then
+        python3 - <<'PYCLAUDE'
+import json, os
+path = os.path.join(os.environ['HOME'], '.claude.json')
+with open(path) as src:
+    settings = json.load(src)
+responses = settings.setdefault('customApiKeyResponses', {})
+key = os.environ['ANTHROPIC_API_KEY'][-20:]
+approved = responses.setdefault('approved', [])
+if key not in approved:
+    approved.append(key)
+responses['rejected'] = [item for item in responses.get('rejected', []) if item != key]
+with open(path, 'w') as out:
+    json.dump(settings, out)
+os.chmod(path, 0o600)
+PYCLAUDE
     fi
     log "Claude Code auth configured via proxy (${ANTHROPIC_BASE_URL}); real credential injected by proxy on outbound requests."
 fi
@@ -385,6 +400,17 @@ for arg in json.loads(os.environ["DOCK_AGENT_ARGS_JSON"]):
         ;;
     claude)
         build_claude_args
+        if [[ "${DOCK_DIRECT_AGENT:-0}" == 1 ]]; then
+            CLAUDE_EXTRA_ARGS=()
+            if [[ -n "${DOCK_AGENT_ARGS_JSON:-}" ]]; then
+                mapfile -d '' -t CLAUDE_EXTRA_ARGS < <(python3 -c '
+import json, os, sys
+for arg in json.loads(os.environ["DOCK_AGENT_ARGS_JSON"]):
+    sys.stdout.buffer.write(arg.encode() + b"\0")
+')
+            fi
+            exec claude "${CLAUDE_ARGS[@]}" "${CLAUDE_EXTRA_ARGS[@]}"
+        fi
         log "Starting Claude Code..."
         if [[ -n "${CODEX_TASK:-}" ]]; then
             log "Task: ${CODEX_TASK}"
