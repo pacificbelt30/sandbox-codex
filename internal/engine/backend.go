@@ -599,6 +599,16 @@ func (b *Backend) start(ctx context.Context, r *record, c cd.Container) error {
 		_ = h.Close()
 		return b.failedStart(ctx, r, c, err)
 	}
+	if !r.Config.OpenStdin && !r.Config.Tty {
+		if closer, ok := h.io.(interface{ CloseInput() error }); ok {
+			if err = closer.CloseInput(); err != nil {
+				return b.failedStart(ctx, r, c, err)
+			}
+		}
+		if err = t.CloseIO(ctx, cd.WithStdinCloser); err != nil && !errdefs.IsNotFound(err) {
+			return b.failedStart(ctx, r, c, err)
+		}
+	}
 	r.FailedCreate = false
 	r.StartedAt = time.Now().UTC()
 	r.LastActivity = r.StartedAt

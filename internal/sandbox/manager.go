@@ -55,27 +55,29 @@ type ManagerConfig struct {
 	Debug        bool
 	// Used by management commands to reconnect without putting the admin
 	// secret in worker labels or its VM. Only the URLs are persisted.
-	ProxyAdminURL  string
-	ProxyConnector func(adminURL, containerURL string) (authproxy.Service, error)
-	KataConfig     *kataguard.Config
-	StateDir       string
+	ProxyAdminURL         string
+	ProxyConnector        func(adminURL, containerURL string) (authproxy.Service, error)
+	ProxyConnectorContext func(context.Context, string, string) (authproxy.Service, error)
+	KataConfig            *kataguard.Config
+	StateDir              string
 }
 
 // Manager handles container lifecycle for codex-dock workers.
 type Manager struct {
-	cli            *client.Client
-	proxy          authproxy.Service
-	network        *network.Manager
-	httpProxyURL   string
-	verbose        bool
-	debug          bool
-	proxyAdminURL  string
-	proxyConnector func(adminURL, containerURL string) (authproxy.Service, error)
-	kataConfig     *kataguard.Config
-	guard          kataNode
-	guardMu        sync.Mutex
-	stateDir       string
-	execProbe      func(context.Context, string, []string) ([]byte, error)
+	cli                   *client.Client
+	proxy                 authproxy.Service
+	network               *network.Manager
+	httpProxyURL          string
+	verbose               bool
+	debug                 bool
+	proxyAdminURL         string
+	proxyConnector        func(adminURL, containerURL string) (authproxy.Service, error)
+	proxyConnectorContext func(context.Context, string, string) (authproxy.Service, error)
+	kataConfig            *kataguard.Config
+	guard                 kataNode
+	guardMu               sync.Mutex
+	stateDir              string
+	execProbe             func(context.Context, string, []string) ([]byte, error)
 }
 
 // NewManager connects to the dedicated containerd node's compatibility API.
@@ -91,16 +93,17 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("connecting to containerd node: %w", err)
 	}
 	return &Manager{
-		cli:            cli,
-		proxy:          cfg.Proxy,
-		network:        cfg.Network,
-		httpProxyURL:   cfg.HTTPProxyURL,
-		verbose:        cfg.Verbose,
-		debug:          cfg.Debug,
-		proxyAdminURL:  cfg.ProxyAdminURL,
-		proxyConnector: cfg.ProxyConnector,
-		kataConfig:     cfg.KataConfig,
-		stateDir:       cfg.StateDir,
+		cli:                   cli,
+		proxy:                 cfg.Proxy,
+		network:               cfg.Network,
+		httpProxyURL:          cfg.HTTPProxyURL,
+		verbose:               cfg.Verbose,
+		debug:                 cfg.Debug,
+		proxyAdminURL:         cfg.ProxyAdminURL,
+		proxyConnector:        cfg.ProxyConnector,
+		proxyConnectorContext: cfg.ProxyConnectorContext,
+		kataConfig:            cfg.KataConfig,
+		stateDir:              cfg.StateDir,
 	}, nil
 }
 
@@ -1063,6 +1066,13 @@ func (m *Manager) buildEnv(name string, opts RunOptions, installScript string) (
 		wantClaude := opts.Agent == AgentClaude || opts.Agent == AgentNone
 
 		if wantCodex {
+			restricted := opts.TokenModelPolicy != nil
+			if source, ok := m.proxy.(interface{ ModelPolicyActive() bool }); ok {
+				restricted = restricted || source.ModelPolicyActive()
+			}
+			if restricted {
+				env = append(env, "CODEX_DOCK_CODEX_HTTP=1")
+			}
 			env = append(env,
 				"CODEX_AUTH_PROXY_URL="+containerProxyURL,
 				"CODEX_TOKEN="+token,

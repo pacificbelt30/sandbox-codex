@@ -84,6 +84,16 @@ func (b *Backend) startJob(ctx context.Context, e *execution, task cd.Task, base
 		_, _ = p.Delete(ctx, cd.WithProcessKill)
 		return err
 	}
+	if closer, ok := p.IO().(interface{ CloseInput() error }); ok {
+		if err = closer.CloseInput(); err != nil {
+			_, _ = p.Delete(ctx, cd.WithProcessKill)
+			return err
+		}
+	}
+	if err = p.CloseIO(ctx, cd.WithStdinCloser); err != nil && !errdefs.IsNotFound(err) {
+		_, _ = p.Delete(ctx, cd.WithProcessKill)
+		return err
+	}
 	go b.watchJob(e, p, wait)
 	return nil
 }

@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,8 +14,14 @@ import (
 )
 
 func (m *Manager) workerProxy(v container.InspectResponse) (authproxy.Service, error) {
+	return m.workerProxyContext(context.Background(), v)
+}
+func (m *Manager) workerProxyContext(ctx context.Context, v container.InspectResponse) (authproxy.Service, error) {
 	if m.proxy != nil {
 		return m.proxy, nil
+	}
+	if m.proxyConnectorContext != nil {
+		return m.proxyConnectorContext(ctx, v.Config.Labels[labelPrefix+"proxy-admin-url"], v.Config.Labels[labelPrefix+"proxy-container-url"])
 	}
 	if m.proxyConnector == nil {
 		return nil, fmt.Errorf("auth proxy connection is required to restart this worker")

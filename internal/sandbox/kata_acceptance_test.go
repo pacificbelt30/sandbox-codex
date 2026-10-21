@@ -292,6 +292,9 @@ while True:
 	}
 	t.Log("verified: guest kernel boot ID differs from execution host")
 	if requestDir := os.Getenv("CODEX_DOCK_NODE_RESTART_REQUEST_DIR"); requestDir != "" {
+		if err := os.Remove(filepath.Join(requestDir, "complete")); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
 		readLogs := func() string {
 			rc, err := c.ContainerLogs(ctx, w1, container.LogsOptions{ShowStdout: true, ShowStderr: true, Tail: "all"})
 			if err != nil {

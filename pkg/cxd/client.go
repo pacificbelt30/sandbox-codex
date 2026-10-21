@@ -65,14 +65,14 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 	}
 	mgr, err := sandbox.NewManager(sandbox.ManagerConfig{
 		Socket: opts.NodeSocket, KataConfig: &kataguard.Config{Socket: opts.NodeSocket}, StateDir: opts.StateDir,
-		ProxyConnector: func(adminURL, containerURL string) (authproxy.Service, error) {
+		ProxyConnectorContext: func(ctx context.Context, adminURL, containerURL string) (authproxy.Service, error) {
 			if adminURL == "" {
 				adminURL = opts.ProxyAdminURL
 			}
 			if containerURL == "" {
 				containerURL = opts.ProxyContainerURL
 			}
-			return authproxy.NewRemoteProxy(adminURL, containerURL, opts.ProxyAdminSecret)
+			return authproxy.NewRemoteProxyContext(ctx, adminURL, containerURL, opts.ProxyAdminSecret)
 		},
 	})
 	if err != nil {

@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--run", default="^TestKataAPIIntegration$", help="Go test name/subtest expression")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parent.parent
     binary = str(Path(args.binary).resolve())
@@ -37,7 +38,7 @@ def main():
             f'LABEL io.codex-dock.proxy-build="{args.version}"\n'
         )
         subprocess.run([binary, "build", "-t", image, "-f", "Dockerfile"], cwd=work, check=True)
-        subprocess.run(["go", "test", "-ldflags", version_flag, "./pkg/cxd", "-run", "^TestKataAPIIntegration$", "-count=1", "-v", "-timeout=20m"], cwd=repo,
+        subprocess.run(["go", "test", "-ldflags", version_flag, "./pkg/cxd", "-run", args.run, "-count=1", "-v", "-timeout=20m"], cwd=repo,
                        env=dict(os.environ, CODEX_DOCK_KATA_API_E2E="1", CODEX_DOCK_KATA_API_PROXY_IMAGE=image, CODEX_DOCK_KATA_API_OWN_IMAGE="1"), check=True)
 
 

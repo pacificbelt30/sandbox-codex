@@ -110,3 +110,11 @@ Set `LaunchRequest.ModelPolicy` to `&identity.ModelPolicy{AllowedModels: []strin
 Check `ProxyCapabilities.TokenModelPolicy` for support. Unsupported proxies reject the request. Policies are immutable creation inputs and survive stop/restart. Restricted tokens permit validated HTTP/SSE AI routes only; WebSocket and redirects are denied. General egress has a separate policy: use `NoInternet` or appropriate destination restrictions when bypass prevention is required.
 
 A worker model policy must fit within 4 KiB including its serialized JSON and label name.
+
+### Connection metadata and Codex HTTP/SSE
+
+`Connections(ctx, workerID)` returns the guest URL, authentication header/scheme, token environment variable name, transports and model-policy status. It contains no token values or host credentials. A created worker still requires `Start` before token activation.
+
+`CodexHTTPCommand(ctx, workerID)` returns explicit HTTP/SSE `Argv` and `Env` containing only a short-lived placeholder. Append `exec` or `app-server` and its arguments, then pass both to `ExecRequest`. Connection settings use CLI `-c` overrides even when a caller ignores generated user configuration. Do not log `Env`. Verification targets the worker image's pinned Codex 0.163.0.
+
+Normal launches with model restrictions disable WebSocket and request compression; unrestricted defaults are preserved. The explicit helper also disables compression so the proxy can validate JSON. See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [CLI configuration overrides](https://learn.chatgpt.com/docs/config-file/config-advanced).

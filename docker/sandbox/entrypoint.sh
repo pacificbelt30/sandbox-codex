@@ -119,6 +119,7 @@ chatgpt_base_url = "${CODEX_AUTH_PROXY_URL}/chatgpt/"
 
 [features]
 apps = false
+$(if [[ "${CODEX_DOCK_CODEX_HTTP:-}" == "1" ]]; then printf 'responses_websockets = false\nresponses_websockets_v2 = false\nenable_request_compression = false\n'; fi)
 EOF
         chmod 600 "${CODEX_HOME}/.codex/config.toml"
 
@@ -148,6 +149,7 @@ $(codex_sandbox_config)
 
 [features]
 apps = false
+$(if [[ "${CODEX_DOCK_CODEX_HTTP:-}" == "1" ]]; then printf 'responses_websockets = false\nresponses_websockets_v2 = false\nenable_request_compression = false\n'; fi)
 EOF
         chmod 600 "${CODEX_HOME}/.codex/config.toml"
 

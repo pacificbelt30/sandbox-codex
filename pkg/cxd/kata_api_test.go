@@ -90,7 +90,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	for _, mode := range []string{"compact", "lifecycle", "save-failure", "conflict", "restart"} {
+	for _, mode := range []string{"codex-http", "compact", "lifecycle", "save-failure", "conflict", "restart"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.Chmod(root, 0700); err != nil {
@@ -206,6 +206,57 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("allowed model: %s", got)
+			}
+			if mode == "codex-http" {
+				eofCtx, cancelEOF := context.WithTimeout(ctx, 5*time.Second)
+				code, eofErr := c.Exec(eofCtx, w.ID, ExecRequest{Argv: []string{"python3", "-c", "import sys; assert sys.stdin.read() == ''"}})
+				cancelEOF()
+				if eofErr != nil || code != 0 {
+					t.Fatalf("unattached guest stdin did not reach EOF: %d %v", code, eofErr)
+				}
+				job, err := c.StartJob(ctx, w.ID, ExecRequest{Argv: []string{"python3", "-c", "import sys; assert sys.stdin.read() == ''"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				awaitAPI(t, ctx, func() bool {
+					status, err := c.Job(ctx, w.ID, job.ID)
+					return err == nil && !status.Running && status.ExitCode == 0
+				})
+				connections, err := c.Connections(ctx, w.ID)
+				if err != nil || len(connections) != 1 || !connections[0].ModelPolicyActive {
+					t.Fatalf("connection descriptor: %+v %v", connections, err)
+				}
+				for _, transport := range connections[0].Transports {
+					if transport == TransportWebSocket {
+						t.Fatal("restricted connection advertised WebSocket")
+					}
+				}
+				var version bytes.Buffer
+				code, err = c.Exec(ctx, w.ID, ExecRequest{Argv: []string{"codex", "--version"}, Stdout: &version})
+				if err != nil || code != 0 || strings.TrimSpace(version.String()) != "codex-cli 0.163.0" {
+					t.Fatalf("pinned CLI: %q %v", version.String(), err)
+				}
+				command, err := c.CodexHTTPCommand(ctx, w.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// An empty CODEX_HOME prevents relying on generated user config. All
+				// connection settings must come from the helper's explicit CLI overrides.
+				var setup bytes.Buffer
+				code, err = c.Exec(ctx, w.ID, ExecRequest{Argv: []string{"mkdir", "-p", "/var/tmp/cxd-http-empty-config"}, Stderr: &setup})
+				if err != nil || code != 0 {
+					t.Fatalf("empty config directory: %d %v %s", code, err, setup.String())
+				}
+				command.Env = append(command.Env, "CODEX_HOME=/var/tmp/cxd-http-empty-config")
+				command.Argv = append(command.Argv, "exec", "--skip-git-repo-check", "-m", "allowed", "Say fixture complete.")
+				var output bytes.Buffer
+				callCtx, cancelCall := context.WithTimeout(ctx, 60*time.Second)
+				code, err = c.Exec(callCtx, w.ID, ExecRequest{Argv: command.Argv, Env: command.Env, Stdout: &output, Stderr: &output})
+				cancelCall()
+				if err != nil || code != 0 || !strings.Contains(output.String(), "CXD_HTTP_SSE_OK") {
+					t.Fatalf("Codex HTTP/SSE: code=%d err=%v output=%s", code, err, output.String())
+				}
+				return
 			}
 			if mode == "compact" {
 				job, err := c.StartJob(ctx, w.ID, ExecRequest{Argv: []string{"python3", "-c", "import time; x=bytearray(256*1024*1024); print('allocated',flush=True); time.sleep(60)"}})

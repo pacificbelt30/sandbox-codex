@@ -114,3 +114,11 @@ func main() {
 `ProxyCapabilities.TokenModelPolicy` で対応を確認できます。未対応 Proxy への指定は失敗します。ポリシーは不変の作成条件に含まれ、停止・再起動時も復元されます。モデル制限のあるトークンは HTTP/SSE の検証可能な AI ルートだけを許可し、WebSocket とリダイレクトは許可しません。一般 egress は別ポリシーなので、迂回を防ぐ必要がある実行では `NoInternet` または適切な宛先制限も設定してください。
 
 ワーカーに保存するモデルポリシーは、ラベル名を含むJSON表現で4KiB以内にしてください。
+
+### 接続情報とCodexのHTTP/SSE
+
+`Connections(ctx, workerID)` はゲスト内から使うURL、認証ヘッダー・方式、トークン用環境変数名、トランスポート、モデル制限の有無を返します。トークン値やホストの資格情報は含みません。作成済みでも `Start` 前はトークンが有効ではありません。
+
+`CodexHTTPCommand(ctx, workerID)` はHTTP/SSEを明示する `Argv` と、短命のプレースホルダーだけを含む `Env` を返します。`Argv` に `exec` や `app-server` と引数を追加し、`ExecRequest` に渡してください。生成済みユーザー設定を読まない呼び出し元でも、接続設定はCLIの `-c` で渡されます。`Env` はログに出さないでください。組み込みワーカーのCodex 0.163.0を検証対象にしています。
+
+モデル制限付きの通常起動はWebSocketとリクエスト圧縮を無効化します。制限なしの既定起動は従来どおりです。明示接続ヘルパーも圧縮を無効にし、ProxyがJSONを検証できるようにします。[公式設定リファレンス](https://learn.chatgpt.com/docs/config-file/config-reference)と[CLIによる設定上書き](https://learn.chatgpt.com/docs/config-file/config-advanced)に対応します。

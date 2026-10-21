@@ -19,6 +19,7 @@ import (
 
 	cd "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/cio"
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.org/x/sys/unix"
@@ -323,6 +324,12 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		processSpec.Cwd = cfg.WorkingDir
 	}
 	var input io.Reader
+	var eof *execInputEOF
+	if !cfg.AttachStdin && !cfg.Tty {
+		eof = newExecInputEOF()
+		input = eof
+		defer eof.Close()
+	}
 	if cfg.AttachStdin {
 		input = rw
 	}
@@ -333,7 +340,8 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		stopCancel := context.AfterFunc(execCtx, stop)
 		defer stopCancel()
 		ctx = streamCtx
-		p, err = t.Exec(ctx, eid, &processSpec, cio.NewCreator(cio.WithStreams(input, out, stderr), func(s *cio.Streams) { s.Terminal = cfg.Tty }))
+		creator := cio.NewCreator(cio.WithStreams(input, out, stderr), func(s *cio.Streams) { s.Terminal = cfg.Tty })
+		p, err = t.Exec(ctx, eid, &processSpec, creator)
 	}
 	exit := 125
 	if err == nil {
@@ -341,6 +349,18 @@ func (b *Backend) execHTTP(w http.ResponseWriter, r *http.Request, ctx context.C
 		wait, err = p.Wait(ctx)
 		if err == nil {
 			err = p.Start(ctx)
+			if err == nil && eof != nil {
+				eof.Close()
+			}
+		}
+		if err == nil && !cfg.AttachStdin && !cfg.Tty {
+			// Kata may keep an empty stdin pipe open even when no FIFO was
+			// supplied. Explicit EOF prevents noninteractive CLIs waiting for
+			// additional input forever. Attached streams retain their own EOF.
+			err = p.CloseIO(ctx, cd.WithStdinCloser)
+			if errdefs.IsNotFound(err) {
+				err = nil
+			}
 		}
 		if err == nil {
 			select {

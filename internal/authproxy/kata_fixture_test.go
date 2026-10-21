@@ -55,9 +55,26 @@ func runKataFixtureProxy() int {
 			return
 		}
 		var body struct {
-			Stream bool `json:"stream"`
+			Stream bool            `json:"stream"`
+			Input  json.RawMessage `json:"input"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Stream && len(body.Input) > 0 {
+			if r.Method != http.MethodPost || r.URL.Path != "/codex/responses" || r.Header.Get("Authorization") != "Bearer fixture-access-initial" {
+				http.Error(w, "fixture transport/auth mismatch", 400)
+				return
+			}
+			item := map[string]any{"type": "message", "id": "msg_http", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "CXD_HTTP_SSE_OK", "annotations": []any{}}}}
+			response := map[string]any{"id": "resp_http", "object": "response", "status": "completed", "output": []any{item}, "usage": map[string]int{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}
+			events := []map[string]any{{"type": "response.created", "response": map[string]any{"id": "resp_http", "object": "response", "status": "in_progress", "output": []any{}}}, {"type": "response.output_item.added", "output_index": 0, "item": item}, {"type": "response.output_item.done", "output_index": 0, "item": item}, {"type": "response.completed", "response": response}}
+			w.Header().Set("Content-Type", "text/event-stream")
+			for _, event := range events {
+				encoded, _ := json.Marshal(event)
+				_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event["type"], encoded)
+				w.(http.Flusher).Flush()
+			}
+			return
+		}
 		if body.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			_, _ = io.WriteString(w, "data: {\"fixture\":true}\n\n")
