@@ -71,10 +71,7 @@ func (p *Proxy) IssueTokenWithPolicy(containerName string, ttlSec int, id identi
 		rec.cancel()
 		return "", fmt.Errorf("credential case or run was revoked")
 	}
-	if old := p.tokens[containerName]; old != nil && old.cancel != nil {
-		old.cancel()
-	}
-	p.tokens[containerName] = rec
+	p.replaceTokenLocked(rec)
 	p.mu.Unlock()
 
 	if p.cfg.Verbose {
@@ -86,10 +83,7 @@ func (p *Proxy) IssueTokenWithPolicy(containerName string, ttlSec int, id identi
 // RevokeToken immediately revokes the token for a container.
 func (p *Proxy) RevokeToken(containerName string) {
 	p.mu.Lock()
-	if rec := p.tokens[containerName]; rec != nil && rec.cancel != nil {
-		rec.cancel()
-	}
-	delete(p.tokens, containerName)
+	p.removeTokenLocked(containerName)
 	p.mu.Unlock()
 	if p.cfg.Verbose {
 		fmt.Printf("Token revoked for %s\n", containerName)
@@ -110,13 +104,7 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p.mu.RLock()
-	var found *tokenRecord
-	for _, rec := range p.tokens {
-		if rec.Token == token {
-			found = rec
-			break
-		}
-	}
+	found := p.tokensByValue[token]
 	p.mu.RUnlock()
 
 	if found == nil || time.Now().After(found.ExpiresAt) {
@@ -186,20 +174,7 @@ func (p *Proxy) expireLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		now := time.Now()
-		p.mu.Lock()
-		for name, rec := range p.tokens {
-			if now.After(rec.ExpiresAt) {
-				if rec.cancel != nil {
-					rec.cancel()
-				}
-				delete(p.tokens, name)
-				if p.cfg.Verbose {
-					fmt.Printf("Token expired for %s\n", name)
-				}
-			}
-		}
-		p.mu.Unlock()
+		p.expireTokens(time.Now())
 	}
 }
 
@@ -230,9 +205,39 @@ func (p *Proxy) RevokeRun(ctx context.Context, in identity.Identity) error {
 	p.revokedRuns[in] = true
 	for name, rec := range p.tokens {
 		if rec.Identity == in {
-			rec.cancel()
-			delete(p.tokens, name)
+			p.removeTokenLocked(name)
 		}
 	}
 	return nil
+}
+
+// Both indexes and lease cancellation change under the same lock. In
+// particular, replacing or restoring a worker must remove its previous value.
+func (p *Proxy) replaceTokenLocked(rec *tokenRecord) {
+	p.removeTokenLocked(rec.ContainerName)
+	p.tokens[rec.ContainerName] = rec
+	p.tokensByValue[rec.Token] = rec
+}
+
+func (p *Proxy) removeTokenLocked(name string) {
+	if rec := p.tokens[name]; rec != nil {
+		if rec.cancel != nil {
+			rec.cancel()
+		}
+		delete(p.tokensByValue, rec.Token)
+		delete(p.tokens, name)
+	}
+}
+
+func (p *Proxy) expireTokens(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for name, rec := range p.tokens {
+		if now.After(rec.ExpiresAt) {
+			p.removeTokenLocked(name)
+			if p.cfg.Verbose {
+				fmt.Printf("Token expired for %s\n", name)
+			}
+		}
+	}
 }

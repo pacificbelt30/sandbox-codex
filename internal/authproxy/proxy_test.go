@@ -270,15 +270,8 @@ func TestExpireLoop(t *testing.T) {
 	p.tokens["expire-me"].ExpiresAt = time.Now().Add(-2 * time.Second)
 	p.mu.Unlock()
 
-	// Run expiry manually (simulating the ticker)
-	now := time.Now()
-	p.mu.Lock()
-	for name, rec := range p.tokens {
-		if now.After(rec.ExpiresAt) {
-			delete(p.tokens, name)
-		}
-	}
-	p.mu.Unlock()
+	// Exercise the same cleanup used by the ticker.
+	p.expireTokens(time.Now())
 
 	p.mu.RLock()
 	_, ok := p.tokens["expire-me"]

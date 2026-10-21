@@ -37,8 +37,7 @@ func (p *Proxy) revokeCaseTokens() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.caseRevoked = true
-	for name, rec := range p.tokens {
-		rec.cancel()
-		delete(p.tokens, name)
+	for name := range p.tokens {
+		p.removeTokenLocked(name)
 	}
 }

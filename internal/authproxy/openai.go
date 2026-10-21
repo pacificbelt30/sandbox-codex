@@ -41,13 +41,7 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	}
 
 	p.mu.RLock()
-	var found *tokenRecord
-	for _, rec := range p.tokens {
-		if rec.Token == cdxToken {
-			found = rec
-			break
-		}
-	}
+	found := p.tokensByValue[cdxToken]
 	p.mu.RUnlock()
 
 	if found == nil || time.Now().After(found.ExpiresAt) || found.Identity.Provider == "anthropic" {

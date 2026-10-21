@@ -270,3 +270,22 @@ Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功し�
 最終のKata回帰ではWorkspaceSharing（8ケース、145.60秒）、PolicyFeatures（46.83秒）、GoAPI（85.14秒）が成功しました。Acceptanceの初回は、追加したnamespace観測が通常ユーザーからroot専用パスをstatして失敗しました。権限を緩和せず、ホスト側の故障注入supervisorによる実測証跡を照合する方式へ直して、Acceptanceを再実行し成功しました（176.486秒）。所有権・task不在・空のcgroup・保存済みinodeを確認した停止済みnamespaceを実際に削除し、再起動後の新しいinode、VM再起動と孤児回収まで確認しています。単なる再起動をnamespace復旧として合格させない回帰試験も追加しました。これにより全4スイートの合格を確認しています。
 
 最後に試験用コンテナ・task・VM割当・ネットワークが0件であることを確認し、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存の3サービスは同じPIDで稼働し、既存nodeのhealth応答も正常でした。各機能は汎用API・設定・適合テストとして実装しており、別オーケストレータ自身のAdapterやDBへの組み込み試験は対象に含みません。
+
+## 2026-10-21の性能計測
+
+Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmarkを変更前後の別バイナリーで順次実行しました。各500msを5回、中央値で比較しています。測定中に他のテストやビルドを並行実行していません。`BenchmarkWorkerRequest` は認証ヘッダーの解析、期限・経路の確認、request contextの生成と解放を含み、ネットワーク・実AIへの通信は含みません。
+
+| 同一Proxyのトークン数 | 認証成功：変更前 → 変更後 | 時間短縮 |
+|---|---|---|
+| 1 | 831.1 → 807.4 ns | 2.9% |
+| 32 | 1,096 → 820.9 ns | 25.1% |
+| 256 | 2,846 → 882.3 ns | 69.0% |
+| 4,096 | 47,522 → 1,012 ns | 97.9% |
+
+未発行トークンの拒否は4,096件で52,668 → 133.8 ns（99.7%短縮）でした。トークン値の索引を追加した効果であり、AI応答全体の改善率ではありません。小規模Proxyでは元の認証コストも小さく、同等の体感改善を意味しません。
+
+```bash
+go test ./internal/authproxy -run '^$' -bench '^BenchmarkWorkerRequest$' -benchmem -count=5 -benchtime=500ms
+```
+
+発行・再発行・異なる値／同じ値でのrestore・失効・期限切れ回収・実行／ケースの失効・Proxy停止で、古いstreamの取消、旧トークンの拒否、別ワーカーへのトークン重複割当拒否を確認しました。全Goテストのrace検査、vet、lintも成功しました。

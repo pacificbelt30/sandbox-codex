@@ -37,6 +37,7 @@ type Proxy struct {
 	storeVersion          string                      // protected by refreshMu
 	caseConnectionVersion string                      // immutable after initialization
 	tokens                map[string]*tokenRecord     // containerName -> record
+	tokensByValue         map[string]*tokenRecord     // token -> same record, protected by mu
 	revokedRuns           map[identity.Identity]bool
 	caseRevoked           bool
 	addr                  string
@@ -116,6 +117,7 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		cfg:                    cfg,
 		oauthSource:            make(map[string]string),
 		tokens:                 make(map[string]*tokenRecord),
+		tokensByValue:          make(map[string]*tokenRecord),
 		revokedRuns:            make(map[identity.Identity]bool),
 		httpClient:             http.DefaultClient,
 		oauthTokenURL:          "https://auth.openai.com/oauth/token",
@@ -438,6 +440,7 @@ func (p *Proxy) Stop() {
 		}
 	}
 	p.tokens = make(map[string]*tokenRecord)
+	p.tokensByValue = make(map[string]*tokenRecord)
 	p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -73,6 +73,8 @@ Revocation, expiry and token replacement also cancel active HTTP streams and Web
 Tokens default to 3600 seconds, are revoked on stop and restored on managed restart.
 See [tokens](auth-proxy/tokens.md).
 
+Token values use a direct lookup index, updated under the same lock as issuance, restore and revocation. Authentication no longer scans every worker. Expiry, provider/model restrictions and active-stream cancellation remain enforced. See the [performance measurements](../testing.md#2026-10-21の性能計測) (Japanese).
+
 ## Upstream authentication
 
 | Mode | Upstream | Injected credentials |

@@ -53,18 +53,13 @@ func (p *Proxy) RestoreTokenWithPolicy(name, token string, ttl int, id identity.
 	if p.caseRevoked || p.revokedRuns[id] {
 		return fmt.Errorf("credential case or run was revoked")
 	}
-	for owner, rec := range p.tokens {
-		if owner != name && rec.Token == token {
-			return fmt.Errorf("placeholder already belongs to another worker")
-		}
-	}
-	if old := p.tokens[name]; old != nil && old.cancel != nil {
-		old.cancel()
+	if rec := p.tokensByValue[token]; rec != nil && rec.ContainerName != name {
+		return fmt.Errorf("placeholder already belongs to another worker")
 	}
 	rec := newTokenRecord(name, token, ttl)
 	rec.Identity = id
 	rec.ModelPolicy = policy.Clone()
-	p.tokens[name] = rec
+	p.replaceTokenLocked(rec)
 	return nil
 }
 
