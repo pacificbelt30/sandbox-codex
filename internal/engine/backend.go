@@ -687,15 +687,15 @@ func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout i
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("loading task to stop: %w", err)
 	}
 	wait, err := t.Wait(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("subscribing to task exit for stop: %w", err)
 	}
 	status, err := t.Status(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("reading task status before stop: %w", err)
 	}
 	if status.Status != cd.Stopped {
 		stopSignal := syscall.SIGTERM
@@ -716,24 +716,34 @@ func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout i
 			timer.Stop()
 			deadline = nil
 		}
+		var exit cd.ExitStatus
+		var received bool
 		select {
-		case <-wait:
+		case exit, received = <-wait:
 		case <-deadline:
 			if err = t.Kill(ctx, syscall.SIGKILL, cd.WithKillAll); err != nil && !errdefs.IsNotFound(err) {
 				return err
 			}
 			select {
-			case <-wait:
+			case exit, received = <-wait:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	}
-	status, err = t.Status(ctx)
-	if err != nil {
-		return err
+		if !received {
+			return fmt.Errorf("task exit channel closed without a result")
+		}
+		code, at, err := exit.Result()
+		if err != nil {
+			return fmt.Errorf("waiting for task exit during stop: %w", err)
+		}
+		// Wait already supplied authoritative exit evidence. A second Status
+		// RPC can race the runtime forgetting the exited task and lose both the
+		// successful stop and its actual exit code. deleteTask still checks that
+		// the task is stopped/absent before retirement and deletion.
+		status = cd.Status{Status: cd.Stopped, ExitStatus: code, ExitTime: at}
 	}
 	r.ExitCode = int(status.ExitStatus)
 	r.FinishedAt = status.ExitTime.Format(time.RFC3339Nano)
@@ -748,7 +758,10 @@ func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout i
 		_ = h.Close()
 		delete(b.hubs, r.ID)
 	}
-	return b.deleteTask(ctx, r, t)
+	if err := b.deleteTask(ctx, r, t); err != nil {
+		return fmt.Errorf("deleting stopped task: %w", err)
+	}
+	return nil
 }
 
 func reply(w http.ResponseWriter, value any) {
