@@ -132,6 +132,9 @@ ResourceUsage returns a verified running VM's host cgroup current memory, option
 
 ## Operator resource profiles
 
+PID limits are configured per profile. For example, `cxd profile define compact-256 --base compact --pids-limit 256` prints a JSON array with compact's CPU/memory budgets and a 256-PID ceiling. It does not edit files or node configuration. If definitions already exist, add the generated element to their array.
+`cxd profile --node --json` queries built-in and registered profiles on the running node; `cxd profile compact-256 --node` displays one selected budget. Without `--node`, the command continues to display built-in defaults.
+
 Built-in `standard`, `small` and `compact` budgets are unchanged. Operators can register additional CPU, guest/host memory and PID combinations in a root-owned JSON file with no group/world write permission. Load it with `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`:
 
 ```json

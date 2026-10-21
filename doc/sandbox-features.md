@@ -136,6 +136,9 @@ Go APIの `Create` は、既存 `Launch` と同じ検証済み設定で初回起
 
 ## 管理者定義の資源プロファイル
 
+PID上限はプロファイルごとに指定できます。たとえば、`cxd profile define compact-256 --base compact --pids-limit 256` は、compactのCPU・メモリ予算を維持した256 PIDのJSON配列を標準出力へ生成します。ファイルやnode設定は自動で変更しません。既存の定義がある場合は、生成した要素をその配列に追加してください。
+`cxd profile --node --json` は稼働中nodeの組み込み・登録済みプロファイルを取得し、`cxd profile compact-256 --node` は選んだ上限を表示します。`--node` なしの一覧は従来どおり組み込み値です。
+
 組み込みの `standard`・`small`・`compact` は変更しません。管理者はroot所有でグループ・全体への書き込みを許可しないJSONファイルに、追加の名前とCPU・guest/hostメモリ・PID上限を登録できます。`node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で読み込みます。例は次のとおりです。
 
 ```json

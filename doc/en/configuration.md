@@ -202,3 +202,5 @@ Host `[proxy].allowed_models` optionally allows exact upstream model IDs. Empty 
 ## Operator resource profiles
 
 `run.profile_size` selects a built-in or node-registered name. The root node operator registers additional budgets through `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`, independently of user TOML. See [bounds, guest assets and immutable reservations](sandbox-features.md#operator-resource-profiles).
+
+Generate registration JSON with `cxd profile define compact-256 --pids-limit 256` and inspect active PID ceilings with `cxd profile --node --json`. Limits apply on both host and guest.

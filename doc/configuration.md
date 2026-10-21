@@ -236,3 +236,5 @@ Claude Codeのサブスク認証にはホストの `CLAUDE_CODE_OAUTH_TOKEN` も
 ## ノード管理者の資源プロファイル
 
 `run.profile_size` は組み込みまたはnodeに登録された名前を選びます。追加の予算は、rootのnode管理者が `node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で登録します。利用者のTOMLで上限を新規登録する仕組みではありません。[許容範囲・guest資産・予約の固定](sandbox-features.md#管理者定義の資源プロファイル)を参照してください。
+
+`cxd profile define compact-256 --pids-limit 256` で登録用JSONを生成でき、`cxd profile --node --json` で実際に有効なPID上限を確認できます。PIDはhost・guestの両方で制限します。

@@ -24,3 +24,45 @@ func TestProfileJSONMatchesKataLimits(t *testing.T) {
 		t.Fatalf("profile = %+v", got)
 	}
 }
+
+func TestProfileDefinitionIsValidNodeInput(t *testing.T) {
+	command := newProfileCommand()
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetArgs([]string{"define", "compact-256", "--pids-limit", "256"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var profiles []kataguard.ResourceProfile
+	if err := json.Unmarshal(output.Bytes(), &profiles); err != nil || len(profiles) != 1 {
+		t.Fatalf("invalid node JSON: %s %v", output.Bytes(), err)
+	}
+	profile := profiles[0]
+	if profile.Name != "compact-256" || profile.PIDLimit != 256 || profile.GuestMemoryBytes != kataguard.CompactGuestMemory || profile.HostMemoryBytes != kataguard.CompactHostMemory {
+		t.Fatalf("unexpected profile: %+v", profile)
+	}
+	if err := kataguard.ValidateCustomResourceProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProfileDefinitionRejectsUnboundedAndReservedInputs(t *testing.T) {
+	for _, args := range [][]string{
+		{"define", "task"},
+		{"define", "task", "--pids-limit", "0"},
+		{"define", "task", "--pids-limit", "63"},
+		{"define", "task", "--pids-limit", "4097"},
+		{"define", "compact", "--pids-limit", "256"},
+		{"define", "task", "--base", "unknown", "--pids-limit", "256"},
+	} {
+		command := newProfileCommand()
+		var output bytes.Buffer
+		command.SetOut(&output)
+		command.SetErr(&bytes.Buffer{})
+		command.SilenceUsage, command.SilenceErrors = true, true
+		command.SetArgs(args)
+		if err := command.Execute(); err == nil || output.Len() != 0 {
+			t.Fatalf("invalid definition accepted: args=%v output=%s error=%v", args, output.Bytes(), err)
+		}
+	}
+}

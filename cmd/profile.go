@@ -5,22 +5,39 @@ import (
 	"fmt"
 
 	"github.com/pacificbelt30/codex-dock/internal/kataguard"
+	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/spf13/cobra"
 )
 
 func newProfileCommand() *cobra.Command {
-	var asJSON bool
+	var asJSON, fromNode bool
 	command := &cobra.Command{
-		Use: "profile [standard|small|compact]", Short: "Show Kata worker resource profiles",
+		Use: "profile [NAME]", Short: "Show or define bounded Kata worker resource profiles",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			profiles := kataguard.ResourceProfiles()
+			if fromNode {
+				manager, err := sandbox.NewManager(managementConfig())
+				if err != nil {
+					return err
+				}
+				defer func() { _ = manager.Close() }()
+				profiles, err = manager.ResourceProfiles(cmd.Context())
+				if err != nil {
+					return err
+				}
+			}
 			if len(args) != 0 {
-				profile, ok := kataguard.LookupResourceProfile(args[0])
-				if !ok {
+				found := false
+				for _, profile := range profiles {
+					if profile.Name == args[0] {
+						profiles, found = []kataguard.ResourceProfile{profile}, true
+						break
+					}
+				}
+				if !found {
 					return fmt.Errorf("unknown resource profile %q", args[0])
 				}
-				profiles = []kataguard.ResourceProfile{profile}
 			}
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(profiles)
@@ -35,7 +52,35 @@ func newProfileCommand() *cobra.Command {
 		},
 	}
 	command.Flags().BoolVar(&asJSON, "json", false, "Print a machine-readable resource profile")
+	command.Flags().BoolVar(&fromNode, "node", false, "Query the running node, including operator-defined PID and resource limits")
 	command.ValidArgsFunction = cobra.FixedCompletions([]cobra.Completion{"standard", "small", "compact"}, cobra.ShellCompDirectiveNoFileComp)
+	command.AddCommand(newProfileDefinitionCommand())
+	return command
+}
+
+func newProfileDefinitionCommand() *cobra.Command {
+	var base string
+	var pids int64
+	command := &cobra.Command{
+		Use: "define NAME", Short: "Print a node resource-profile JSON array with an explicit PID ceiling",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			profile, ok := kataguard.LookupResourceProfile(base)
+			if !ok {
+				return fmt.Errorf("unknown built-in base profile %q", base)
+			}
+			profile.Name, profile.PIDLimit = args[0], pids
+			if err := kataguard.ValidateCustomResourceProfile(profile); err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			return encoder.Encode([]kataguard.ResourceProfile{profile})
+		},
+	}
+	command.Flags().StringVar(&base, "base", "compact", "Built-in CPU/memory budget to copy: standard, small or compact")
+	command.Flags().Int64Var(&pids, "pids-limit", 0, "Host and guest PID limit (64..4096; required)")
+	_ = command.MarkFlagRequired("pids-limit")
 	return command
 }
 
