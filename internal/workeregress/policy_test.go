@@ -33,3 +33,36 @@ func TestPolicyIDIsOrderIndependent(t *testing.T) {
 		t.Fatal("equivalent policies selected different proxies")
 	}
 }
+
+func TestStrictHostPolicyCannotBeWidened(t *testing.T) {
+	if _, err := Rules(networkpolicy.Rules{DefaultDeny: true}, []string{"=example.com"}); err == nil {
+		t.Fatal("worker widened an empty host grant")
+	}
+	host := networkpolicy.Rules{DefaultDeny: true, AllowDomains: []string{"=api.example.com"}}
+	if _, err := Rules(host, []string{"api.example.com"}); err == nil {
+		t.Fatal("worker added subdomains to an exact host rule")
+	}
+	if _, err := Rules(host, []string{"=api.example.com."}); err != nil {
+		t.Fatal("equivalent exact host was rejected:", err)
+	}
+	if _, offline, err := ResolvePreset(networkpolicy.Rules{DefaultDeny: true}, "", nil); err != nil || !offline {
+		t.Fatalf("empty strict policy did not select offline: %t %v", offline, err)
+	}
+}
+
+func TestLegacyPolicyIdentityDoesNotChangeOnUpgrade(t *testing.T) {
+	rules := networkpolicy.Rules{AllowDomains: []string{"example.com"}, BlockPrivate: true}
+	const previous = "eb75769a902660894af7cc31dfabfbceca930c8421e9645c4e6444c30be83a25"
+	if ID(rules) != previous {
+		t.Fatal("omitted new settings changed the identity of an existing proxy")
+	}
+	rules.DefaultDeny = true
+	if ID(rules) == previous {
+		t.Fatal("strict policy reused the legacy proxy identity")
+	}
+	rules.DefaultDeny = false
+	rules.AllowDomains = []string{"=example.com"}
+	if ID(rules) == previous {
+		t.Fatal("exact policy reused a subdomain policy identity")
+	}
+}

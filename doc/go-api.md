@@ -12,6 +12,8 @@
 
 プロキシの既定接続先は、ホスト側管理 API が `http://127.0.0.1:18081`、ワーカー側認証 API が `http://codex-auth-proxy:18080`、一般通信プロキシが `http://codex-http-proxy:18082` です。配置が異なる場合は `Options.ProxyAdminURL`、`ProxyContainerURL`、`HTTPProxyURL` を指定します。管理 API にシークレットを設定している場合は `Options.ProxyAdminSecret` にホスト側だけで渡してください。
 
+一般通信を原則拒否にするには `Options.EgressPolicy.DefaultDeny: true` を指定します。ホスト側の許可ドメイン・CIDRがともに空なら一般通信を無効にし、ワーカーから許可を追加することも拒否します。許可がある場合は、ワーカー側のリストが省略されても管理proxyでホスト上限を強制します。ドメインは `example.com` がサブドメイン込み、`=example.com` が完全一致です。ゼロ値は従来の公開宛て許可を維持します。固定AI経路は別の認証・モデル権限で制御します。
+
 ## 実行例
 
 ```go

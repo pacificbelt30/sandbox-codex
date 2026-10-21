@@ -83,6 +83,17 @@ func ParseProxyRules(args []string) (networkpolicy.Rules, error) {
 	role := ""
 	for i := 0; i < len(args); i++ {
 		key, value, inline := strings.Cut(args[i], "=")
+		if key == "--forward-default-deny" {
+			rules.DefaultDeny = true
+			if inline {
+				parsed, err := strconv.ParseBool(value)
+				if err != nil {
+					return rules, fmt.Errorf("invalid default-deny policy flag")
+				}
+				rules.DefaultDeny = parsed
+			}
+			continue
+		}
 		if key == "--block-private" {
 			if !inline {
 				rules.BlockPrivate = true

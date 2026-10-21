@@ -168,6 +168,7 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 | `container_url` | `http://codex-auth-proxy:18080` | `run --proxy-container-url` |
 | `admin_url` | `http://127.0.0.1:18081` | `run --proxy-admin-url`、ワーカー管理 |
 | `admin_secret` | 未設定 | 管理クライアントの認証。サーバー起動には `proxy run --admin-secret` も指定する |
+| `forward_default_deny` | `false` | `proxy run --forward-default-deny`。許可ドメイン・CIDRの両方が空なら一般通信を拒否 |
 | `forward_allow_domains` / `forward_deny_domains` | 空配列 | `proxy run --forward-allow-domain` / `--forward-deny-domain` |
 | `forward_allow_cidrs` / `forward_deny_cidrs` | 空配列 | `--forward-allow-cidr` / `--forward-deny-cidr` |
 | `forward_allow_ports` / `forward_deny_ports` | 空配列 | `--forward-allow-port` / `--forward-deny-port` |
@@ -178,6 +179,7 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 
 通信ルールは一般egressプロキシにだけ適用します。
 拒否を優先し、空でない許可リストはすべて満たす必要があります。
+`forward_default_deny = true` は空の宛先許可リストでも拒否します。省略時の空リストは公開宛て通信を許可する従来動作です。ドメインは `example.com` ならサブドメイン込み、`=example.com` なら完全一致です。
 private IP等の遮断は、許可ルールでは解除できません。
 変更はプロキシの再作成後に反映します。[通信ポリシー](proxy-policy.md)を参照してください。
 

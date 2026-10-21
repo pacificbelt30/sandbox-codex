@@ -176,10 +176,14 @@ admin_url = "http://127.0.0.1:18081"
 # An empty/omitted list adds no domain restriction; private IPs remain blocked.       flag: --forward-allow-domain
 #
 # Example: only allow common package registries and source hosts.
-# forward_allow_domains = ["github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
+# Default deny requires an explicit domain or CIDR grant. Ports alone do not grant destinations.
+# false/omitted preserves legacy behavior: empty allowlists permit public destinations.
+# forward_default_deny = true
+# Bare domains include subdomains; prefix = for exact match, e.g. "=api.github.com".
+# forward_allow_domains = ["github.com", "=registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
 
-# Denials override allowances. Domain entries include all subdomains.
-# Nonempty domain/CIDR/port allowlists must ALL match. Empty = no extra limit.
+# Denials override allowances. Bare domains include subdomains; =name is exact.
+# Nonempty domain/CIDR/port allowlists must ALL match. Default deny changes empty-list behavior above.
 # The managed egress proxy always blocks private/LAN/metadata destinations.
 # forward_deny_domains = ["blocked.example.com"]
 # forward_allow_cidrs = []

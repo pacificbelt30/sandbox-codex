@@ -52,6 +52,9 @@ func Open(ctx context.Context, opts Options) (*Client, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if _, err := networkpolicy.Compile(opts.EgressPolicy.rules()); err != nil {
+		return nil, fmt.Errorf("invalid host egress policy: %w", err)
+	}
 	if opts.NodeSocket == "" {
 		opts.NodeSocket = engine.Socket()
 	}
@@ -264,11 +267,9 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 	}
 	var egressRules networkpolicy.Rules
 	var egressPolicyID string
-	if len(req.EgressAllowDomains) != 0 {
-		egressRules, err = workeregress.Rules(c.opts.EgressPolicy.rules(), req.EgressAllowDomains)
-		if err != nil {
-			return Worker{}, err
-		}
+	managedEgress := !req.NoInternet && (len(req.EgressAllowDomains) != 0 || workeregress.Configured(c.opts.EgressPolicy.rules()))
+	if managedEgress {
+		egressRules = resolved
 		egressPolicyID = workeregress.ID(egressRules)
 	}
 	autoBranch := req.UseWorktree && req.Branch == ""
@@ -316,7 +317,7 @@ func (c *Client) launch(ctx context.Context, req LaunchRequest, createOnly bool)
 	}
 	launchtiming.Next(ctx, "proxy_setup")
 	httpProxyURL := c.opts.HTTPProxyURL
-	if len(req.EgressAllowDomains) != 0 {
+	if managedEgress {
 		var policyErr error
 		httpProxyURL, policyErr = workeregress.Ensure(ctx, c.opts.NodeSocket, c.opts.EgressProxyImage, egressRules)
 		if policyErr != nil {

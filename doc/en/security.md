@@ -47,7 +47,7 @@ It does not adopt arbitrary PIDs or other products' VMs.
 
 Worker-to-proxy traffic is plain HTTP on dedicated networks; TLS is not provided.
 Tokens are bearer credentials, without source container-ID attestation.
-General egress rules are shared by a proxy instance; per-worker policies and hot reload are not provided.
+General egress rules are immutable per proxy. Worker-specific allowlists select policy-specific proxies; identical policies can share a proxy. Default deny is opt-in; an omitted empty allowlist retains public-destination access. Hot reload is not provided.
 Explicitly shared files and Git metadata can still be modified where writable.
 Isolation also depends on maintaining the host kernel, KVM, Kata and guest kernel.
 

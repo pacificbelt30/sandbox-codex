@@ -138,7 +138,7 @@ func init() {
   Trailing ":ro" mounts it read-only; ":rw" (default) mounts it read-write.`)
 	f.BoolVar(&runOpts.NoInternet, "no-internet", false, "Disable general egress for the worker: do not set HTTP(S)_PROXY, so only the auth proxy's API routes are reachable (no git/npm/pip egress through the router)")
 	f.StringVar(&runPolicyPreset, "policy-preset", "", "Opt-in egress preset: offline, test, dependencies, api")
-	f.StringArrayVar(&runEgressAllow, "egress-allow-domain", nil, "Allow general egress only to these domains and subdomains (repeatable; per-worker)")
+	f.StringArrayVar(&runEgressAllow, "egress-allow-domain", nil, "Allow general egress to domain and subdomains; prefix = for exact match (repeatable; per-worker)")
 	f.IntVar(&runOpts.TokenTTL, "token-ttl", 3600, "Token TTL in seconds")
 	f.StringVar(&runOpts.AgentsMD, "agents-md", "", "Path to additional AGENTS.md")
 	f.StringVar(&proxyAdminURL, "proxy-admin-url", "http://127.0.0.1:18081", "External auth proxy admin URL (host-published admin port)")
@@ -332,7 +332,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--agent claude requires Anthropic credentials on the auth proxy; " +
 			"set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN or run `claude auth login` (~/.claude/.credentials.json) before starting the proxy")
 	}
-	if len(runEgressAllow) > 0 && !runOpts.NoInternet {
+	if (len(runEgressAllow) > 0 || configuredPolicy().DefaultDeny) && !runOpts.NoInternet {
 		if cmd.Flags().Changed("http-proxy-url") || httpProxyURL != "http://codex-http-proxy:18082" {
 			return fmt.Errorf("--egress-allow-domain requires the managed egress proxy")
 		}

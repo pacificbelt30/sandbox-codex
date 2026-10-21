@@ -63,6 +63,9 @@ type Rules struct {
 	AllowPorts   []int
 	DenyPorts    []int
 	BlockPrivate bool
+	// DefaultDeny requires a domain or CIDR grant. Ports alone never grant a
+	// destination. Omission retains the legacy public-destination behavior.
+	DefaultDeny bool `json:",omitempty"`
 }
 
 type compiled struct {
@@ -71,20 +74,25 @@ type compiled struct {
 	allowCIDRs, denyCIDRs             []netip.Prefix
 	allowPorts, denyPorts             map[uint16]bool
 	blockPrivate                      bool
+	defaultDeny                       bool
 }
 
 // Compile validates all rules up front. Denials override allowances; nonempty
-// domain, CIDR and port allowlists are intersected. Empty lists add no limit.
+// domain, CIDR and port allowlists are intersected. In DefaultDeny mode, empty
+// domain AND CIDR allowlists deny all general destinations, even with ports set.
 func Compile(r Rules) (Policy, error) {
-	p := &compiled{blockPrivate: r.BlockPrivate}
+	p := &compiled{blockPrivate: r.BlockPrivate, defaultDeny: r.DefaultDeny}
 	for _, pair := range []struct {
 		input  []string
 		output *[]string
 	}{{r.AllowDomains, &p.allowDomains}, {r.DenyDomains, &p.denyDomains}} {
 		for _, value := range pair.input {
-			host, err := normalizeHost(strings.TrimPrefix(strings.TrimSpace(value), "."))
+			host, exact, err := parseDomain(value)
 			if err != nil {
 				return nil, fmt.Errorf("invalid policy domain %q: %w", value, err)
+			}
+			if exact {
+				host = "=" + host
 			}
 			*pair.output = append(*pair.output, host)
 		}
@@ -142,6 +150,9 @@ func (p *compiled) CheckDestination(ctx context.Context, d Destination) error {
 	if p.denyPorts[d.Port] {
 		return &Denial{Code: "port_denied", Destination: d}
 	}
+	if p.defaultDeny && len(p.allowDomains) == 0 && len(p.allowCIDRs) == 0 {
+		return &Denial{Code: "default_denied", Destination: d}
+	}
 	if len(p.allowDomains) > 0 && !p.allowDomainIndex.matches(host) {
 		return &Denial{Code: "domain_not_allowed", Destination: d}
 	}
@@ -156,6 +167,9 @@ func (p *compiled) CheckAddress(ctx context.Context, d Destination, ip netip.Add
 		return err
 	}
 	ip = ip.Unmap()
+	if p.defaultDeny && len(p.allowDomains) == 0 && len(p.allowCIDRs) == 0 {
+		return &Denial{Code: "default_denied", Destination: d}
+	}
 	if !ip.IsValid() || ip.Zone() != "" {
 		return &Denial{Code: "invalid_address", Destination: d}
 	}
@@ -206,12 +220,46 @@ type domainIndex struct{ exact, suffix map[string]bool }
 func indexDomains(domains []string) domainIndex {
 	index := domainIndex{exact: make(map[string]bool, len(domains)), suffix: make(map[string]bool, len(domains))}
 	for _, domain := range domains {
+		domain, exact := strings.CutPrefix(domain, "=")
 		index.exact[domain] = true
-		if _, err := netip.ParseAddr(domain); err != nil {
+		if _, err := netip.ParseAddr(domain); err != nil && !exact {
 			index.suffix[domain] = true
 		}
 	}
 	return index
+}
+
+// DomainWithin reports whether every host matched by child is also matched by
+// parent. Bare names include subdomains; =name is exact. IP literals are exact.
+func DomainWithin(child, parent string) (bool, error) {
+	c, childExact, err := parseDomain(child)
+	if err != nil {
+		return false, err
+	}
+	p, parentExact, err := parseDomain(parent)
+	if err != nil {
+		return false, err
+	}
+	if _, err := netip.ParseAddr(p); err == nil {
+		parentExact = true
+	}
+	if _, err := netip.ParseAddr(c); err == nil {
+		childExact = true
+	}
+	if parentExact {
+		return childExact && c == p, nil
+	}
+	return c == p || strings.HasSuffix(c, "."+p), nil
+}
+
+func parseDomain(value string) (string, bool, error) {
+	value = strings.TrimSpace(value)
+	host, exact := strings.CutPrefix(value, "=")
+	if !exact {
+		host = strings.TrimPrefix(host, ".") // Legacy spelling includes subdomains.
+	}
+	host, err := normalizeHost(host)
+	return host, exact, err
 }
 func (index domainIndex) matches(host string) bool {
 	if index.exact[host] {

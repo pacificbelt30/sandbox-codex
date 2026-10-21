@@ -145,6 +145,7 @@ Under `[proxy]`:
 | `container_url` | `http://codex-auth-proxy:18080` | `run --proxy-container-url` |
 | `admin_url` | `http://127.0.0.1:18081` | `run --proxy-admin-url`, worker management |
 | `admin_secret` | Unset | Admin client; also supply the server secret with `proxy run --admin-secret` |
+| `forward_default_deny` | `false` | `--forward-default-deny`; deny general egress when both domain and CIDR grants are empty |
 | `forward_allow_domains`, `forward_deny_domains` | Empty | `--forward-allow-domain`, `--forward-deny-domain` |
 | `forward_allow_cidrs`, `forward_deny_cidrs` | Empty | `--forward-allow-cidr`, `--forward-deny-cidr` |
 | `forward_allow_ports`, `forward_deny_ports` | Empty | `--forward-allow-port`, `--forward-deny-port` |
@@ -154,6 +155,7 @@ General egress uses `run --http-proxy-url`.
 The legacy `firewall.proxy_container_url` key is still read, but use `[proxy]` for new config.
 
 Rules apply only to general egress. Denials win and all nonempty allowlists must match.
+Set `forward_default_deny = true` to deny empty destination allowlists; omission retains the legacy behavior permitting public destinations. A port alone is not a destination grant. Bare `example.com` includes subdomains; `=example.com` matches that name exactly, for both allow and deny rules.
 Private address blocking cannot be overridden by an allowlist.
 Recreate the proxy to apply changes. See [policy rules](../proxy-policy.md) (Japanese).
 

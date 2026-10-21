@@ -18,10 +18,11 @@ func TestProxyFormSavesOnlyPolicyAndMasksNoSecrets(t *testing.T) {
 	page := proxySettingsPage(path, func() {}).(*tview.Flex)
 	form := page.GetItem(0).(*tview.Form)
 	form.GetFormItem(0).(*tview.InputField).SetText("example.com")
+	form.GetFormItem(8).(*tview.Checkbox).SetChecked(true)
 	button := form.GetButton(2)
 	button.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 	got, _, err := proxysettings.Load(path)
-	if err != nil || len(got.AllowDomains) != 1 || got.AllowDomains[0] != "example.com" {
+	if err != nil || !got.DefaultDeny || len(got.AllowDomains) != 1 || got.AllowDomains[0] != "example.com" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	data, _ := os.ReadFile(path)

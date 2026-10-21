@@ -35,10 +35,11 @@ func checkProxyPolicy(actual string, a proxyRunArgs) error {
 
 func bindForwardPolicyFlags(cmd *cobra.Command) {
 	flags := cmd.Flags()
+	flags.BoolVar(&proxyForwardRules.DefaultDeny, "forward-default-deny", false, "Deny general egress when no domain or CIDR is allowed; ports alone do not grant destinations")
 	flags.StringVar(&proxyUpstreamURL, "upstream-proxy", "", "Chain through an explicit HTTP(S) proxy using verified destination IPs")
 	flags.StringVar(&proxyCAFile, "ca-bundle", "", "Additional PEM CA bundle for proxy upstream TLS")
-	flags.StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Allow these domains and subdomains (repeatable; empty allows all)")
-	flags.StringArrayVar(&proxyForwardRules.DenyDomains, "forward-deny-domain", nil, "Deny these domains and subdomains (repeatable; deny overrides allow)")
+	flags.StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Allow domain and subdomains; prefix = for exact match (repeatable; empty allows public destinations unless --forward-default-deny)")
+	flags.StringArrayVar(&proxyForwardRules.DenyDomains, "forward-deny-domain", nil, "Deny domain and subdomains; prefix = for exact match (repeatable; deny overrides allow)")
 	flags.StringArrayVar(&proxyForwardRules.AllowCIDRs, "forward-allow-cidr", nil, "Allow only these destination IPs/CIDRs (repeatable)")
 	flags.StringArrayVar(&proxyForwardRules.DenyCIDRs, "forward-deny-cidr", nil, "Deny these destination IPs/CIDRs (repeatable)")
 	flags.IntSliceVar(&proxyForwardRules.AllowPorts, "forward-allow-port", nil, "Allow only these destination ports (comma-separated or repeatable)")
@@ -46,6 +47,9 @@ func bindForwardPolicyFlags(cmd *cobra.Command) {
 }
 
 func applyForwardPolicyDefaults(cmd *cobra.Command) {
+	if !cmd.Flags().Changed("forward-default-deny") {
+		proxyForwardRules.DefaultDeny = viper.GetBool("proxy.forward_default_deny")
+	}
 	if cmd.Flags().Lookup("allow-model") == nil || !cmd.Flags().Changed("allow-model") {
 		proxyAllowedModels = viper.GetStringSlice("proxy.allowed_models")
 	}

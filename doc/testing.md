@@ -386,3 +386,11 @@ python3 scripts/verify-go-api.py --binary "$PWD/cxd" --version "$(./cxd --versio
 
 
 検証終了後、専用VM・コンテナ・task・空のネットワークの消滅を確認してから、専用node・BuildKit・containerd・mount・cgroup・状態領域を回収しました。元の3サービスと元ネットワークの所有権・node疎通も確認しており、既存サービスには更新を適用していません。
+
+
+## 明示的な通信拒否・ドメイン完全一致の受入
+
+2026-10-21、既存の公開宛て通信を維持したまま、`forward_default_deny` と `=example.com` の完全一致を追加しました。PID上限のカスタムプロファイル定義CLIと稼働nodeの参照も対象です。
+全Goテストのrace/coverage、vet、lint、MkDocs strictビルドが成功しました。独立した実Kataで `make kata-e2e VERSION=dev` の全4スイートも成功しました（427.897秒）。
+追加のGo API受入 `egress-default-deny` / `egress-exact` は59.958秒で成功し、ワーカー個別許可リストを省略してもホスト設定が適用されること、厳格な空リストで一般Proxyへ接続されないこと、完全一致の子ドメインへのHTTP/CONNECTが403になること、固定AIルートは独立した認可で利用できることを確認しています。公開の外部サービスに対する通信成功を必要としない拒否試験です。
+追加試験の初回は拒否動作自体が成功した後、対象外のOAuth保存失敗用の分岐へ進んで失敗しました。通信試験はその検証後に終了するよう修正し、両ケースを再実行しています。

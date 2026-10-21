@@ -8,6 +8,7 @@
 
 ```toml
 [proxy]
+forward_default_deny = true
 forward_allow_domains = ["github.com", "npmjs.org", "pypi.org", "pythonhosted.org"]
 forward_deny_domains = ["blocked.github.com"]
 forward_allow_ports = [80, 443]
@@ -30,8 +31,9 @@ cxd proxy run \
 判定規則:
 
 - 拒否ルールを優先する。許可リストへの追加で拒否を打ち消すことはできない。
-- ドメインは大文字小文字を区別せず、指定した名前とその全サブドメインに一致する。`*.example.com`やURLではなく`example.com`を指定する。国際化ドメインはASCIIのPunycode表記を使う。
-- 各許可リストが空ならその種類の追加制限はない。複数種類を指定した場合、ドメイン・接続IP・ポートのすべてが一致する必要がある。全許可リストが空の場合は、拒否リストとprivate IP遮断のみが適用される。
+- ドメインは大文字小文字を区別しない。`example.com` はその名前と全サブドメイン、`=api.example.com` はその名前だけに一致する。許可・拒否の両方で使える。`*.example.com`やURLは指定しない。国際化ドメインはASCIIのPunycode表記を使う。
+- `forward_default_deny = true`（CLI `--forward-default-deny`）では、ドメインとCIDRの許可リストが両方とも空なら一般通信を拒否する。ポートだけの指定では宛先を許可しない。固定AI経路の認証は独立している。
+- `forward_default_deny` がfalseまたは省略の場合、空の許可リストはその種類の追加制限を加えない。全許可リストが空でも公開宛て通信を許可する従来動作であり、「空＝通信禁止」ではない。複数種類を指定した場合は、ドメイン・接続IP・ポートのすべてを満たす必要がある。
 - 管理するプロキシはprivate/loopback/link-local/metadata/CGNATへの接続を常に拒否する。CIDR許可リストでこれを解除できない。
 - ドメインとポートはDNS問い合わせ前に検証する。DNS応答に拒否IPが一つでも含まれれば接続しない。確認済みIPへ直接接続し、接続時に名前を再解決しない。
 - HTTPリダイレクト先も同じ判定を行う。CONNECTは要求された接続先ホスト・ポート・接続IPを検査する。TLS内のURLやSNIを復号・検査する機能ではない。
@@ -43,6 +45,9 @@ cxd proxy run \
 ルールは起動時に検証して固定する。未知のロール、誤ったドメイン/CIDR/ポートは起動エラー。ホットリロードは提供しない。通常のワーカーは共有egress proxyを使用する。`cxd run --egress-allow-domain api.example.com` を指定したワーカーは、ポリシーの識別子を持つ専用egress proxyに接続する。異なる許可リストのワーカーはproxyを共有しない。同じ許可リストのワーカーは共有できる。プロジェクトの `codex-dock.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。ホストのグローバル許可ドメインがある場合、ワーカーの指定はその範囲内に限る。`--no-internet` は一般通信を止める。
 
 許可ルールの変更は新しいproxyと新しいワーカーに適用される。既存のCONNECTや通信中のストリームを途中で打ち切る機能はない。不要になったポリシーproxyは、利用ワーカーを停止した後に `cxd proxy rm --name <proxy名> --force` で回収できる。
+
+既定拒否はTUIの `Default deny` でも選べる。CLIでの新規ワーカー作成時に既定拒否で宛先が未許可なら、一般egressへ接続しない。Go APIでは `Options.EgressPolicy.DefaultDeny` を使う。ホスト側に許可が一つもない場合、ワーカー側から許可ドメインを追加して緩めることはできない。
+Go APIのホストポリシーは `LaunchRequest.EgressAllowDomains` を省略しても管理proxyで強制する。`=api.example.com` のホスト規則をワーカーが `api.example.com` に広げることも拒否する。設定内容は不変の要求条件に含まれ、同じRequestIDへ異なるポリシーを送ると競合する。
 
 `proxy run`は既存egressコンテナのポリシー識別子と要求した設定を照合し、古い版や設定の不一致をエラーにする。既存コンテナへ設定を反映したことにはせず、稼働中プロキシも自動で削除しない。設定ファイルの編集だけでは稼働中プロキシは変化しない。
 

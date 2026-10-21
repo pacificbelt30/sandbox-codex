@@ -14,11 +14,12 @@ import (
 // workerEgressSpec creates an immutable policy-specific egress proxy. A worker
 // network connects to exactly this instance rather than the unrestricted one.
 func workerEgressSpec(cmd *cobra.Command, domains []string) (proxyRunArgs, error) {
-	if len(domains) == 0 {
-		return proxyRunArgs{}, fmt.Errorf("empty worker egress allowlist")
-	}
 	applyForwardPolicyDefaults(cmd)
-	rules, err := workeregress.Rules(forwardPolicyRules(), domains)
+	host := forwardPolicyRules()
+	if len(domains) == 0 && !host.DefaultDeny {
+		return proxyRunArgs{}, fmt.Errorf("empty worker egress allowlist requires default-deny mode")
+	}
+	rules, _, err := workeregress.ResolvePreset(host, "", domains)
 	if err != nil {
 		return proxyRunArgs{}, err
 	}

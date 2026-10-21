@@ -13,7 +13,7 @@ import (
 )
 
 func configuredPolicy() proxysettings.Settings {
-	return proxysettings.Settings{UpstreamProxy: viper.GetString("proxy.upstream_proxy"), CAFile: viper.GetString("proxy.ca_bundle"), AllowDomains: viper.GetStringSlice("proxy.forward_allow_domains"), DenyDomains: viper.GetStringSlice("proxy.forward_deny_domains"), AllowCIDRs: viper.GetStringSlice("proxy.forward_allow_cidrs"), DenyCIDRs: viper.GetStringSlice("proxy.forward_deny_cidrs"), AllowPorts: viper.GetIntSlice("proxy.forward_allow_ports"), DenyPorts: viper.GetIntSlice("proxy.forward_deny_ports")}
+	return proxysettings.Settings{DefaultDeny: viper.GetBool("proxy.forward_default_deny"), UpstreamProxy: viper.GetString("proxy.upstream_proxy"), CAFile: viper.GetString("proxy.ca_bundle"), AllowDomains: viper.GetStringSlice("proxy.forward_allow_domains"), DenyDomains: viper.GetStringSlice("proxy.forward_deny_domains"), AllowCIDRs: viper.GetStringSlice("proxy.forward_allow_cidrs"), DenyCIDRs: viper.GetStringSlice("proxy.forward_deny_cidrs"), AllowPorts: viper.GetIntSlice("proxy.forward_allow_ports"), DenyPorts: viper.GetIntSlice("proxy.forward_deny_ports")}
 }
 
 func newPolicyCommand() *cobra.Command {
@@ -48,7 +48,7 @@ func newPolicyCommand() *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(s)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\nPolicy: %s\nGeneral egress: %t\nPrivate destinations blocked: %t\nAllow domains: %v\nDeny domains: %v\nAllow ports: %v\nDeny ports: %v\nAllow IP/CIDRs: %v\nDeny IP/CIDRs: %v\nFixed AI routes use their own live-token authorization.\n", s.Source, s.PolicyID, s.GeneralEgress, !s.GeneralEgress || s.Rules.BlockPrivate, s.Rules.AllowDomains, s.Rules.DenyDomains, s.Rules.AllowPorts, s.Rules.DenyPorts, s.Rules.AllowCIDRs, s.Rules.DenyCIDRs)
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\nPolicy: %s\nGeneral egress: %t\nPrivate destinations blocked: %t\nDefault deny without domain/CIDR grants: %t\nDomains: bare names include subdomains; =name is exact.\nAllow domains: %v\nDeny domains: %v\nAllow ports: %v\nDeny ports: %v\nAllow IP/CIDRs: %v\nDeny IP/CIDRs: %v\nFixed AI routes use their own live-token authorization.\n", s.Source, s.PolicyID, s.GeneralEgress, !s.GeneralEgress || s.Rules.BlockPrivate, s.Rules.DefaultDeny, s.Rules.AllowDomains, s.Rules.DenyDomains, s.Rules.AllowPorts, s.Rules.DenyPorts, s.Rules.AllowCIDRs, s.Rules.DenyCIDRs)
 			return err
 		}})
 	}

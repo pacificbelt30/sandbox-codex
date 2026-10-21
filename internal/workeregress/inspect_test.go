@@ -3,9 +3,21 @@ package workeregress
 import (
 	"github.com/docker/docker/api/types/container"
 	dn "github.com/docker/docker/api/types/network"
+	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 	"net/netip"
 	"testing"
 )
+
+func TestInspectParsesStrictPolicyWithoutChangingIdentity(t *testing.T) {
+	rules, err := ParseProxyRules([]string{"proxy", "serve", "--role", "egress", "--block-private", "--forward-default-deny", "--forward-allow-domain", "=example.com"})
+	want := networkpolicy.Rules{DefaultDeny: true, BlockPrivate: true, AllowDomains: []string{"=example.com"}}
+	if err != nil || ID(rules) != ID(want) {
+		t.Fatalf("running policy differed from its configuration: %+v %v", rules, err)
+	}
+	if _, err := ParseProxyRules([]string{"--role", "egress", "--forward-default-deny=maybe"}); err == nil {
+		t.Fatal("invalid boolean accepted")
+	}
+}
 
 func TestInspectResolvesOnlyAdvertisedPinnedProxyIdentity(t *testing.T) {
 	worker := container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{HostConfig: &container.HostConfig{ExtraHosts: []string{"auth:10.253.1.2", "egress:10.253.1.3", "unadvertised:10.253.1.9"}}}, Config: &container.Config{Labels: map[string]string{"codex-dock.proxy-hosts": `["auth","egress"]`}}}

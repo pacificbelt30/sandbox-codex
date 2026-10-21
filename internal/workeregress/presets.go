@@ -25,7 +25,8 @@ func Presets() []Preset {
 func ResolvePreset(host networkpolicy.Rules, name string, domains []string) (networkpolicy.Rules, bool, error) {
 	if name == "" {
 		if len(domains) == 0 {
-			return host, false, nil
+			_, err := networkpolicy.Compile(host)
+			return host, host.DefaultDeny && len(host.AllowDomains) == 0 && len(host.AllowCIDRs) == 0, err
 		}
 		r, err := Rules(host, domains)
 		return r, false, err

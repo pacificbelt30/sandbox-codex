@@ -112,3 +112,26 @@ func TestInvalidPolicyRejectedBeforeServing(t *testing.T) {
 		t.Fatal("unknown role accepted")
 	}
 }
+
+func TestStrictAndExactRulesRejectHTTPAndCONNECTBeforeDial(t *testing.T) {
+	for _, rules := range []networkpolicy.Rules{
+		{DefaultDeny: true},
+		{DefaultDeny: true, AllowPorts: []int{443}},
+		{DefaultDeny: true, AllowDomains: []string{"=example.com"}},
+	} {
+		p := newEgressFixture(t, rules)
+		for _, method := range []string{http.MethodGet, http.MethodConnect} {
+			r := httptest.NewRequest(method, "http://sub.example.com:443/", nil)
+			rec := httptest.NewRecorder()
+			if method == http.MethodConnect {
+				r.Host = "sub.example.com:443"
+				p.handleForwardConnect(rec, r)
+			} else {
+				p.handleForwardHTTP(rec, r)
+			}
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("strict rule was bypassed: method=%s rules=%+v status=%d", method, rules, rec.Code)
+			}
+		}
+	}
+}

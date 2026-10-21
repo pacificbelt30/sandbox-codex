@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
 )
@@ -17,16 +16,21 @@ func Rules(host networkpolicy.Rules, domains []string) (networkpolicy.Rules, err
 	if len(domains) == 0 {
 		return networkpolicy.Rules{}, fmt.Errorf("empty worker egress allowlist")
 	}
+	if _, err := networkpolicy.Compile(host); err != nil {
+		return networkpolicy.Rules{}, err
+	}
+	if host.DefaultDeny && len(host.AllowDomains) == 0 && len(host.AllowCIDRs) == 0 {
+		return networkpolicy.Rules{}, fmt.Errorf("host default-deny policy grants no destinations")
+	}
 	for _, domain := range domains {
-		clean := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(domain)), ".")
-		if clean == "" {
-			return networkpolicy.Rules{}, fmt.Errorf("empty egress domain")
-		}
 		if len(host.AllowDomains) > 0 {
 			within := false
 			for _, allowed := range host.AllowDomains {
-				allowed = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(allowed)), ".")
-				if clean == allowed || strings.HasSuffix(clean, "."+allowed) {
+				matches, err := networkpolicy.DomainWithin(domain, allowed)
+				if err != nil {
+					return networkpolicy.Rules{}, err
+				}
+				if matches {
 					within = true
 					break
 				}
@@ -42,6 +46,11 @@ func Rules(host networkpolicy.Rules, domains []string) (networkpolicy.Rules, err
 		return networkpolicy.Rules{}, err
 	}
 	return host, nil
+}
+
+// Configured reports restrictions beyond mandatory private-address blocking.
+func Configured(r networkpolicy.Rules) bool {
+	return r.DefaultDeny || len(r.AllowDomains)+len(r.DenyDomains)+len(r.AllowCIDRs)+len(r.DenyCIDRs)+len(r.AllowPorts)+len(r.DenyPorts) > 0
 }
 
 // ID uses the existing CLI policy identity format so both callers select the

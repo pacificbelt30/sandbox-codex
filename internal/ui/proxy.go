@@ -23,11 +23,13 @@ func proxySettingsPage(path string, back func()) tview.Primitive {
 	status.SetText("Changes apply when creating new proxies/workers. Running policies stay immutable.")
 	fields := make([]*tview.InputField, 8)
 	form := tview.NewForm()
-	labels := []string{"Allow domains", "Deny domains", "Allow CIDRs", "Deny CIDRs", "Allow ports", "Deny ports", "Upstream proxy URL", "Host CA bundle path"}
+	labels := []string{"Allow domains (= exact)", "Deny domains (= exact)", "Allow CIDRs", "Deny CIDRs", "Allow ports", "Deny ports", "Upstream proxy URL", "Host CA bundle path"}
 	for i, label := range labels {
 		fields[i] = tview.NewInputField().SetLabel(label + ": ").SetFieldWidth(60)
 		form.AddFormItem(fields[i])
 	}
+	defaultDeny := tview.NewCheckbox().SetLabel("Default deny (empty destination allowlists block): ")
+	form.AddFormItem(defaultDeny)
 	destination := tview.NewInputField().SetLabel("Test HOST:PORT: ").SetFieldWidth(60)
 	form.AddFormItem(destination)
 	var rev string
@@ -38,14 +40,15 @@ func proxySettingsPage(path string, back func()) tview.Primitive {
 			return
 		}
 		rev = revision
+		defaultDeny.SetChecked(s.DefaultDeny)
 		values := []string{strings.Join(s.AllowDomains, ", "), strings.Join(s.DenyDomains, ", "), strings.Join(s.AllowCIDRs, ", "), strings.Join(s.DenyCIDRs, ", "), portsText(s.AllowPorts), portsText(s.DenyPorts), s.UpstreamProxy, s.CAFile}
 		for i, value := range values {
 			fields[i].SetText(value)
 		}
-		status.SetText("Loaded " + path + "\nChanges apply to new proxies/workers; existing policies remain unchanged.")
+		status.SetText("Loaded " + path + "\nEmpty allowlists permit public destinations unless Default deny is checked. Bare domains include subdomains; =name is exact. Changes apply to new proxies/workers.")
 	}
 	collect := func() (proxysettings.Settings, error) {
-		s := proxysettings.Settings{UpstreamProxy: strings.TrimSpace(fields[6].GetText()), CAFile: strings.TrimSpace(fields[7].GetText()), AllowDomains: proxysettings.Split(fields[0].GetText()), DenyDomains: proxysettings.Split(fields[1].GetText()), AllowCIDRs: proxysettings.Split(fields[2].GetText()), DenyCIDRs: proxysettings.Split(fields[3].GetText())}
+		s := proxysettings.Settings{DefaultDeny: defaultDeny.IsChecked(), UpstreamProxy: strings.TrimSpace(fields[6].GetText()), CAFile: strings.TrimSpace(fields[7].GetText()), AllowDomains: proxysettings.Split(fields[0].GetText()), DenyDomains: proxysettings.Split(fields[1].GetText()), AllowCIDRs: proxysettings.Split(fields[2].GetText()), DenyCIDRs: proxysettings.Split(fields[3].GetText())}
 		var err error
 		s.AllowPorts, err = proxysettings.ParsePorts(fields[4].GetText())
 		if err != nil {

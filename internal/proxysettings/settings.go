@@ -24,6 +24,7 @@ import (
 var ErrConflict = errors.New("configuration changed; reload before saving")
 
 type Settings struct {
+	DefaultDeny   bool     `toml:"forward_default_deny" json:"default_deny"`
 	UpstreamProxy string   `toml:"upstream_proxy" json:"upstream_proxy"`
 	CAFile        string   `toml:"ca_bundle" json:"ca_bundle"`
 	AllowDomains  []string `toml:"forward_allow_domains" json:"allow_domains"`
@@ -35,10 +36,10 @@ type Settings struct {
 }
 
 func (s Settings) Rules() networkpolicy.Rules {
-	return networkpolicy.Rules{AllowDomains: s.AllowDomains, DenyDomains: s.DenyDomains, AllowCIDRs: s.AllowCIDRs, DenyCIDRs: s.DenyCIDRs, AllowPorts: s.AllowPorts, DenyPorts: s.DenyPorts, BlockPrivate: true}
+	return networkpolicy.Rules{AllowDomains: s.AllowDomains, DenyDomains: s.DenyDomains, AllowCIDRs: s.AllowCIDRs, DenyCIDRs: s.DenyCIDRs, AllowPorts: s.AllowPorts, DenyPorts: s.DenyPorts, BlockPrivate: true, DefaultDeny: s.DefaultDeny}
 }
 func FromRules(r networkpolicy.Rules) Settings {
-	return Settings{AllowDomains: r.AllowDomains, DenyDomains: r.DenyDomains, AllowCIDRs: r.AllowCIDRs, DenyCIDRs: r.DenyCIDRs, AllowPorts: r.AllowPorts, DenyPorts: r.DenyPorts}
+	return Settings{AllowDomains: r.AllowDomains, DenyDomains: r.DenyDomains, AllowCIDRs: r.AllowCIDRs, DenyCIDRs: r.DenyCIDRs, AllowPorts: r.AllowPorts, DenyPorts: r.DenyPorts, DefaultDeny: r.DefaultDeny}
 }
 func (s Settings) Validate() error {
 	if s.UpstreamProxy != "" {
@@ -191,7 +192,7 @@ func Save(path, expected string, settings Settings) error {
 	if err := toml.Unmarshal(result, &verify); err != nil {
 		return fmt.Errorf("refusing invalid resulting configuration: %w", err)
 	}
-	if verify.Proxy.UpstreamProxy != settings.UpstreamProxy || verify.Proxy.CAFile != settings.CAFile || !slices.Equal(verify.Proxy.AllowDomains, settings.AllowDomains) || !slices.Equal(verify.Proxy.DenyDomains, settings.DenyDomains) || !slices.Equal(verify.Proxy.AllowCIDRs, settings.AllowCIDRs) || !slices.Equal(verify.Proxy.DenyCIDRs, settings.DenyCIDRs) || !slices.Equal(verify.Proxy.AllowPorts, settings.AllowPorts) || !slices.Equal(verify.Proxy.DenyPorts, settings.DenyPorts) {
+	if verify.Proxy.DefaultDeny != settings.DefaultDeny || verify.Proxy.UpstreamProxy != settings.UpstreamProxy || verify.Proxy.CAFile != settings.CAFile || !slices.Equal(verify.Proxy.AllowDomains, settings.AllowDomains) || !slices.Equal(verify.Proxy.DenyDomains, settings.DenyDomains) || !slices.Equal(verify.Proxy.AllowCIDRs, settings.AllowCIDRs) || !slices.Equal(verify.Proxy.DenyCIDRs, settings.DenyCIDRs) || !slices.Equal(verify.Proxy.AllowPorts, settings.AllowPorts) || !slices.Equal(verify.Proxy.DenyPorts, settings.DenyPorts) {
 		return fmt.Errorf("could not safely update all proxy fields")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

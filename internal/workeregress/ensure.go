@@ -29,8 +29,8 @@ const (
 // Ensure creates or resumes an immutable, credential-free policy proxy. It
 // never replaces a mismatched proxy because retained workers pin its address.
 func Ensure(ctx context.Context, socket, image string, rules networkpolicy.Rules) (string, error) {
-	if !rules.BlockPrivate || len(rules.AllowDomains) == 0 {
-		return "", fmt.Errorf("worker egress requires a domain allowlist and private address blocking")
+	if !rules.BlockPrivate || !Configured(rules) {
+		return "", fmt.Errorf("worker egress requires an explicit policy and private address blocking")
 	}
 	if _, err := networkpolicy.Compile(rules); err != nil {
 		return "", err
@@ -74,6 +74,9 @@ func Ensure(ctx context.Context, socket, image string, rules networkpolicy.Rules
 		}
 	} else if errdefs.IsNotFound(err) {
 		args := []string{"proxy", "serve", "--listen", "0.0.0.0:" + strconv.Itoa(proxyPort), "--role", "egress", "--block-private"}
+		if rules.DefaultDeny {
+			args = append(args, "--forward-default-deny")
+		}
 		for _, pair := range []struct {
 			flag   string
 			values []string

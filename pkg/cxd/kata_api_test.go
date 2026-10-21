@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
@@ -128,7 +129,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example"}
+	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example", "egress-default-deny", "egress-exact"}
 	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
 		modes = append(modes, "custom-profile")
 	}
@@ -184,7 +185,36 @@ func TestKataAPIIntegration(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			c, err := Open(ctx, Options{NodeSocket: engine.Socket(), ProxyAdminURL: proxy.AdminURL, ProxyContainerURL: proxy.ContainerURL, ProxyAdminSecret: proxyOpts.AdminSecret, StateDir: filepath.Join(root, "state")})
+			options := Options{NodeSocket: engine.Socket(), ProxyAdminURL: proxy.AdminURL, ProxyContainerURL: proxy.ContainerURL, ProxyAdminSecret: proxyOpts.AdminSecret, StateDir: filepath.Join(root, "state")}
+			if strings.HasPrefix(mode, "egress-") {
+				options.EgressPolicy.DefaultDeny = true
+				if mode == "egress-exact" {
+					options.EgressPolicy.AllowDomains = []string{"=example.com"}
+					options.EgressPolicy.AllowPorts = []int{443}
+					options.EgressProxyImage = os.Getenv("CODEX_DOCK_KATA_PROXY_IMAGE")
+					rules := options.EgressPolicy.rules()
+					name := workeregress.Name(rules)
+					if _, err := engineClient.ContainerInspect(ctx, name); !errdefs.IsNotFound(err) {
+						t.Fatalf("isolated egress fixture name must be unused: %v", err)
+					}
+					defer func() {
+						clean, stop := context.WithTimeout(context.Background(), time.Minute)
+						defer stop()
+						v, err := engineClient.ContainerInspect(clean, name)
+						if errdefs.IsNotFound(err) {
+							return
+						}
+						if err != nil || v.Config == nil || v.Config.Labels["io.codex-dock.forward-policy"] != workeregress.ID(rules) {
+							t.Errorf("egress fixture identity changed; retain resources: %v", err)
+							return
+						}
+						if err := engineClient.ContainerRemove(clean, v.ID, container.RemoveOptions{Force: true}); err != nil {
+							t.Error("egress fixture cleanup:", err)
+						}
+					}()
+				}
+			}
+			c, err := Open(ctx, options)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -244,6 +274,11 @@ func TestKataAPIIntegration(t *testing.T) {
 				return
 			}
 			req := LaunchRequest{RequestID: proxy.Name + "/worker", ProjectDir: project, Image: workerImage, Profile: "small", NoInternet: true, User: strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), Identity: runIdentity, ModelPolicy: &identity.ModelPolicy{AllowedModels: []string{"allowed", "outside-global"}}}
+			if strings.HasPrefix(mode, "egress-") {
+				// No worker allowlist: the host maximum must still be enforced.
+				req.NoInternet = false
+				req.Profile = "compact"
+			}
 			if claude {
 				req.ModelPolicy.AllowedModels = append(req.ModelPolicy.AllowedModels, "claude-sonnet-4-6")
 				if strings.HasPrefix(mode, "claude-direct-") {
@@ -338,6 +373,34 @@ func TestKataAPIIntegration(t *testing.T) {
 				t.Fatalf("resource usage: %+v %v", usage, err)
 			}
 			t.Logf("%s idle: host current=%d peak=%d guest budget=%d host ceiling=%d", req.Profile, usage.HostMemoryCurrentBytes, usage.HostMemoryPeakBytes, usage.Profile.GuestMemoryBytes, usage.Profile.HostMemoryBytes)
+			if strings.HasPrefix(mode, "egress-") {
+				snapshot, err := c.Policy(ctx, w.ID)
+				if err != nil || snapshot.GeneralEgress != (mode == "egress-exact") {
+					t.Fatalf("host policy was ignored without a worker list: %+v %v", snapshot, err)
+				}
+				probe := `import os; assert not os.environ.get('HTTP_PROXY') and not os.environ.get('HTTPS_PROXY')`
+				if mode == "egress-exact" {
+					if !snapshot.Rules.DefaultDeny || len(snapshot.Rules.AllowDomains) != 1 || snapshot.Rules.AllowDomains[0] != "=example.com" {
+						t.Fatalf("running strict/exact policy mismatch: %+v", snapshot)
+					}
+					allowed, err := c.ExplainPolicy(ctx, w.ID, "example.com:443", false)
+					if err != nil || !allowed.Allowed || allowed.Complete {
+						t.Fatalf("exact name preflight: %+v %v", allowed, err)
+					}
+					probe = `import os,socket,urllib.parse
+u=urllib.parse.urlsplit(os.environ['HTTP_PROXY'])
+for line in ['CONNECT sub.example.com:443 HTTP/1.1', 'GET http://sub.example.com:443/ HTTP/1.1']:
+    with socket.create_connection((u.hostname,u.port),timeout=5) as s:
+        s.sendall((line+'\r\nHost: sub.example.com:443\r\nConnection: close\r\n\r\n').encode())
+        assert s.makefile('rb').readline().split()[1] == b'403'
+`
+				}
+				var output bytes.Buffer
+				if code, err := c.Exec(ctx, w.ID, ExecRequest{Argv: []string{"python3", "-c", probe}, Stdout: &output, Stderr: &output}); err != nil || code != 0 {
+					t.Fatalf("strict/exact guest probe: code=%d err=%v output=%s", code, err, output.String())
+				}
+				t.Log("verified host policy without worker allowlist, default deny/exact HTTP+CONNECT; fixed AI routes checked below")
+			}
 			if claude {
 				verifyClaudeAPI(t, ctx, c, w.ID, project, mode == "claude-oauth", store)
 				return
@@ -359,6 +422,9 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 			if got := request("/v1/responses", `{"model":"allowed"}`); got != "204" {
 				t.Fatalf("allowed model: %s", got)
+			}
+			if strings.HasPrefix(mode, "egress-") {
+				return
 			}
 			if mode == "temporary-storage" {
 				execOK := func(args ...string) {

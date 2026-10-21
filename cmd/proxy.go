@@ -582,6 +582,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 		args = append(args, "--credential-store-socket", "/run/cxd-credential-store.sock", "--case-id", a.caseID)
 	}
 	rules := effectiveForwardRules(a)
+	if rules.DefaultDeny {
+		args = append(args, "--forward-default-deny")
+	}
 	for _, d := range rules.AllowDomains {
 		args = append(args, "--forward-allow-domain", d)
 	}
