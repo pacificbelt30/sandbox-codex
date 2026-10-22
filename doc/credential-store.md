@@ -29,9 +29,17 @@ OAuth保存失敗時は新規要求と通信中streamを失効させます。保
 
 公式Claude Codeのサブスクでは、`AnthropicOAuth` にaccess tokenだけのsetup-tokenを指定でき、`RefreshToken` は省略可能です。その場合、期限切れ時は製品側で資格情報を再発行し再接続します。refresh tokenと既知の期限を持つログインは、更新結果をCAS保存してから使います。[Claude Code](claude-code.md)を参照してください。
 
+## 初期実装：0600ファイル保存
+
+`credentialstore.NewFileStore(directory)` は、将来のVaultと同じ`Store`契約を持つ平文ファイル実装です。保存ディレクトリは実行ユーザー所有の`0700`、各`<profile>.json`とlockファイルは`0600`です。権限不備・symlink・hardlink・不正なprofile名を拒否し、ホストCLIや認証用環境変数にはfallbackしません。
+
+`Create(ctx, name, credentials)` は新しい資格情報版と接続世代を生成し、既存profileを上書きしません。`Load`と`SaveRefresh`はプロセス間lockを使い、更新は期待する版を比較してから一時ファイル・fsync・atomic renameで保存します。別providerや接続世代をRefreshで変更できません。保存後のディレクトリfsyncで失敗した場合など、更新結果が不確実な失敗はProxy側で実行を失効させる既存契約に従います。
+
+この実装は暗号化しません。WSLではLinux側の私有ディレクトリを使い、共有フォルダー・バックアップからの秘密保護は別途必要です。ファイル版Storeを利用する場合も、上記のケース別Unix socketを通じてAuth Proxyだけに公開できます。
+
 ## 独立した認証管理の設計要件：WSL・VM・ヘッドレス
 
-この節は今後の製品内Vaultの要件です。暗号化Vault、鍵backend、解除UI、専用loginフローは未実装です。現在の通常CLIはホストの認証ファイル等を読み、製品のAPIキーファイルとローカルOAuth更新状態は権限制限付きの平文です。外部Storeの暗号化は組み込み側が担当します。
+この節は今後の製品内Vaultの要件です。暗号化Vault、鍵backend、解除UI、専用loginフローは未実装です。初期のFileStoreと、既存の製品APIキーファイル・ローカルOAuth更新状態は権限制限付きの平文です。外部Storeの暗号化は組み込み側が担当します。
 
 ### 制御環境と作業VMを分ける
 

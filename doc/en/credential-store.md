@@ -29,9 +29,17 @@ OAuth save failures revoke new requests and active stream leases. Storage recove
 
 For official Claude Code subscriptions, `AnthropicOAuth` accepts an access-only setup-token record without `RefreshToken`. Expiry then requires host-side credential replacement and reconnection. A login record with a refresh token and known expiry is refreshed and saved with CAS before use. See [Claude Code](claude-code.md).
 
+## Initial implementation: 0600 files
+
+`credentialstore.NewFileStore(directory)` implements the same `Store` contract as a future vault, using plaintext files. Its directory must be owned by the process user with mode `0700`; each `<profile>.json` and lock file uses `0600`. It rejects unsafe permissions, symlinks, hardlinks and invalid names, without host CLI or authentication-environment fallback.
+
+`Create(ctx, name, credentials)` generates new credential and connection versions and never overwrites an existing profile. `Load` and `SaveRefresh` use a cross-process lock. Refresh compares the expected version before persisting through a temporary file, fsync and atomic rename. Refresh cannot change another provider or the connection generation. Ambiguous persistence failures, including a directory-fsync failure after rename, follow the existing proxy contract that revokes affected runs.
+
+This backend does not encrypt secrets. In WSL, use a private Linux-side directory; shared folders and backups need separate protection. FileStore can also serve a case-scoped Unix socket mounted only into its auth proxy as described above.
+
 ## Independent credential management: WSL, VMs and headless systems
 
-This section specifies future product-vault requirements. The encrypted vault, key backends, unlock UI and dedicated login flow are not implemented. The normal CLI still reads host credentials; product API-key files and local OAuth rotation state are permission-restricted plaintext. External Store encryption belongs to the embedding product.
+This section specifies future product-vault requirements. The encrypted vault, key backends, unlock UI and dedicated login flow are not implemented. The initial FileStore, existing product API-key files and local OAuth rotation state are permission-restricted plaintext. External Store encryption belongs to the embedding product.
 
 ### Separate control environments from work VMs
 
