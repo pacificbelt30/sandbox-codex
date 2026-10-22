@@ -1,0 +1,112 @@
+# Installation
+
+[日本語](../installation.md) | **English**
+
+| Current state | Next step |
+|---|---|
+| New Ubuntu 26.04 host | Follow steps 1–4 below |
+| Execution host already prepared | [Choose credentials and start a worker](getting-started.md#2-prepare-credentials) |
+| Updating an installed node | [Update procedure](../setup.md#更新する) (Japanese) |
+| Other Linux distributions | [Manual installation](../kata.md) (Japanese) |
+
+## 1. Requirements
+
+| Item | Requirement |
+|---|---|
+| OS and CPU | Ubuntu 26.04, Linux x86_64 |
+| Host features | systemd, KVM (`/dev/kvm`), cgroup v2 with `cpu memory pids` |
+| Account | A normal user with `sudo` access |
+| Build tools | Git, Make, Go 1.24.7 or later, Python 3.11 or later |
+| Memory guidance | At least 8 GiB for the default two-worker configuration; allow extra capacity for builds |
+| Network | Access to source, pinned runtime archives, OS packages and container images |
+| WSL or a VM host | All requirements above, plus nested virtualization |
+
+- Docker Engine, Docker CLI and QEMU are not required.
+- Operator group membership grants root-equivalent host management access. Choose trusted users only.
+
+## 2. Get tools and source
+
+**Run in a normal user's shell.**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git make python3 golang-go
+
+go version
+python3 --version
+test -c /dev/kvm && echo 'KVM device found'
+cat /sys/fs/cgroup/cgroup.controllers
+
+git clone https://github.com/pacificbelt30/sandbox-codex.git
+cd sandbox-codex
+```
+
+- Check the reported versions: Go 1.24.7 or later and Python 3.11 or later.
+- Check that the controller list includes `cpu memory pids`.
+- Missing KVM: meet the [host requirements](../kata.md#必要なホスト) (Japanese) before continuing.
+- Retain this checkout until initial setup completes; the first proxy image build also uses the source.
+
+## 3. Review the plan and install
+
+**Run from the cloned `sandbox-codex` directory.**
+
+```bash
+./scripts/install.sh
+./scripts/install.sh --apply
+```
+
+| Command or option | Behavior |
+|---|---|
+| No options | Build matching CLI/helpers, verify the bundle and display the installation plan |
+| `--apply` | Apply through `sudo` after the plan succeeds |
+| No operator option | Register the invoking normal user |
+| `--operator USER` | Register another existing normal user; required when invoking the script as root |
+
+| Installed component | Main location or name |
+|---|---|
+| CLI and compatibility commands | `/usr/local/bin/oaiso`, `cxd`, `codex-dock` |
+| Kata, containerd, BuildKit and runc | Managed assets under `/opt/codex-dock/releases/` |
+| Services | `codex-dock-node`, `codex-dock-containerd`, `codex-dock-buildkit` |
+| Operator group | `codex-dock` |
+| Bash, Zsh and Fish completion | Under `/usr/local/share/` |
+
+- Existing Docker and default containerd packages are retained.
+- Network setup, verification and recovery: [setup details](../setup.md) (Japanese).
+
+## 4. Log in again and verify
+
+1. Log out, then log in again as the registered normal user.
+2. Run:
+
+```bash
+command -v oaiso
+oaiso --version
+id -nG
+oaiso runtime-check
+```
+
+| Check | Expected result |
+|---|---|
+| CLI | Command path and version are displayed |
+| Group | `id -nG` includes `codex-dock` |
+| Runtime | `runtime-check` succeeds |
+
+## Next: credentials and first worker
+
+1. [Choose credentials](getting-started.md#2-prepare-credentials): independent profile or legacy host integration.
+2. From the source root, run `oaiso init`; use `oaiso init --agent claude` for Claude Code.
+3. From your project, run `oaiso codex` or `oaiso run --agent claude`.
+
+- Normal `init` and `run` operations do not require `sudo`.
+- Real API keys and OAuth tokens stay in the Auth Proxy; work VMs receive short-lived placeholders.
+- General egress defaults to denial. [Allow destinations](../proxy-policy.md) (Japanese) when Git or package downloads are needed.
+
+## Other installation paths
+
+| Method | Scope and reference |
+|---|---|
+| Manual host installation | [Kata host setup](../kata.md) (Japanese) |
+| Trusted prebuilt bundle | [Setup](../setup.md) (Japanese); `--bundle PATH` |
+| Offline installation | [Offline setup](../setup.md#オフライン配置) (Japanese) |
+| Build and install CLI, helpers and completion | `make build` / `sudo make install`; excludes Kata and host services |
+| Updates and rollback | [Update and recovery](../setup.md#更新する) (Japanese) |

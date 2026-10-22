@@ -15,7 +15,7 @@
 
 | 読む順序 | 内容 |
 |---|---|
-| 1. [実行ホストの準備](kata.md) | 管理者向け。Linux/KVM、Kata、containerd、BuildKitを配置する |
+| 1. [Installation — インストール](installation.md) | 依存ツールの取得・CLIと実行基盤の配置・動作確認 |
 | 2. [クイックスタート](getting-started.md) | 利用者向け。認証・イメージを用意して最初のワーカーを起動する |
 | 3. [日常の運用](operations.md) | 一覧、ログ、停止、再起動、更新、後片付け |
 

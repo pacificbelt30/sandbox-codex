@@ -13,6 +13,40 @@
 
 [日本語ドキュメント](doc/index.md) · [English documentation](doc/en/index.md)
 
+## Installation — インストール
+
+- 対象：**Ubuntu 26.04・x86_64・systemd・KVM・cgroup v2**。
+- 実行者：`sudo` が使える通常ユーザー。管理操作はスクリプトが昇格。
+- ビルド要件：Go 1.24.7以上・Python 3.11以上。
+- ほかのLinux：[手動配置](doc/kata.md)。WSL／VM：上記要件とnested virtualizationが必要。
+
+**1. 依存ツール・ソースを取得し、インストール**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git make python3 golang-go
+go version
+
+git clone https://github.com/pacificbelt30/sandbox-codex.git
+cd sandbox-codex
+
+./scripts/install.sh          # 配置計画を確認
+./scripts/install.sh --apply  # CLI・Kata・containerd・BuildKit・サービスを配置
+```
+
+**2. ログアウト・再ログイン後、確認**
+
+```bash
+oaiso --version
+oaiso runtime-check
+```
+
+**3. 認証を選び、初回起動**
+
+- [クイックスタートの「認証方式を選ぶ」](doc/getting-started.md#2-認証方式を選ぶ)へ進む。
+- 詳細・配置先・更新：[Installation](doc/installation.md)。
+- `make install` はCLI・補助ツール・補完の配置のみ。実行ホストの準備には上の手順を使用。
+
 ## できること
 
 | 目的 | 機能・参照先 |
@@ -30,7 +64,7 @@
 
 | 順序 | 担当 | 実施内容 |
 |---|---|---|
-| 1 | 管理者 | [実行ホストを準備](doc/setup.md)。Ubuntu 26.04対応ホストでは `./scripts/install.sh` で計画、`--apply` で適用 |
+| 1 | 管理者 | [インストール](doc/installation.md)。Ubuntu 26.04対応ホストでは `./scripts/install.sh` で計画、`--apply` で適用 |
 | 2 | 利用者 | [認証とイメージを準備](doc/getting-started.md)。ホストと分ける場合は[独立プロファイル](doc/commands/auth.md#独立プロファイル)を選択 |
 | 3 | 利用者 | プロジェクトでワーカーを起動 |
 

@@ -40,6 +40,7 @@ plugins:
 nav:
   - ホーム: index.md
   - はじめに:
+      - インストール: installation.md
       - クイックスタート: getting-started.md
       - Claude Code: claude-code.md
       - 導入と更新の自動化: setup.md
@@ -82,6 +83,7 @@ nav:
       - 旧firewallコマンド: commands/firewall.md
   - English:
       - Home: en/index.md
+      - Installation: en/installation.md
       - Quick start: en/getting-started.md
       - Claude Code: en/claude-code.md
       - Commands:

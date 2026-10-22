@@ -4,7 +4,7 @@
 
 | Current state | Start here |
 |---|---|
-| No execution host yet | Ask an administrator to complete [Kata / Dragonball setup](../setup.md) (Japanese) |
+| No execution host yet | Complete [Installation](installation.md) first |
 | Host is ready | Follow steps 1–4 below |
 | Updating an existing installation | [Operations](../operations.md) (Japanese) |
 
