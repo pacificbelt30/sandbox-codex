@@ -76,6 +76,8 @@ func Ensure(ctx context.Context, socket, image string, rules networkpolicy.Rules
 		args := []string{"proxy", "serve", "--listen", "0.0.0.0:" + strconv.Itoa(proxyPort), "--role", "egress", "--block-private"}
 		if rules.DefaultDeny {
 			args = append(args, "--forward-default-deny")
+		} else {
+			args = append(args, "--forward-default-deny=false")
 		}
 		for _, pair := range []struct {
 			flag   string

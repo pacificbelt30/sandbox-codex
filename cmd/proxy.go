@@ -656,6 +656,8 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	rules := effectiveForwardRules(a)
 	if rules.DefaultDeny {
 		args = append(args, "--forward-default-deny")
+	} else {
+		args = append(args, "--forward-default-deny=false")
 	}
 	for _, d := range rules.AllowDomains {
 		args = append(args, "--forward-allow-domain", d)

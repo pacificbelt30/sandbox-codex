@@ -35,10 +35,10 @@ func checkProxyPolicy(actual string, a proxyRunArgs) error {
 
 func bindForwardPolicyFlags(cmd *cobra.Command) {
 	flags := cmd.Flags()
-	flags.BoolVar(&proxyForwardRules.DefaultDeny, "forward-default-deny", false, "Deny general egress when no domain or CIDR is allowed; ports alone do not grant destinations")
+	flags.BoolVar(&proxyForwardRules.DefaultDeny, "forward-default-deny", true, "Deny general egress when no domain or CIDR is allowed; set =false to permit public destinations without grants")
 	flags.StringVar(&proxyUpstreamURL, "upstream-proxy", "", "Chain through an explicit HTTP(S) proxy using verified destination IPs")
 	flags.StringVar(&proxyCAFile, "ca-bundle", "", "Additional PEM CA bundle for proxy upstream TLS")
-	flags.StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Allow domain and subdomains; prefix = for exact match (repeatable; empty allows public destinations unless --forward-default-deny)")
+	flags.StringArrayVar(&proxyForwardAllow, "forward-allow-domain", nil, "Allow domain and subdomains; prefix = for exact match (repeatable; empty destination grants deny general egress by default)")
 	flags.StringArrayVar(&proxyForwardRules.DenyDomains, "forward-deny-domain", nil, "Deny domain and subdomains; prefix = for exact match (repeatable; deny overrides allow)")
 	flags.StringArrayVar(&proxyForwardRules.AllowCIDRs, "forward-allow-cidr", nil, "Allow only these destination IPs/CIDRs (repeatable)")
 	flags.StringArrayVar(&proxyForwardRules.DenyCIDRs, "forward-deny-cidr", nil, "Deny these destination IPs/CIDRs (repeatable)")
@@ -48,7 +48,7 @@ func bindForwardPolicyFlags(cmd *cobra.Command) {
 
 func applyForwardPolicyDefaults(cmd *cobra.Command) {
 	if !cmd.Flags().Changed("forward-default-deny") {
-		proxyForwardRules.DefaultDeny = viper.GetBool("proxy.forward_default_deny")
+		proxyForwardRules.DefaultDeny = configuredPolicy().DefaultDeny
 	}
 	if cmd.Flags().Lookup("allow-model") == nil || !cmd.Flags().Changed("allow-model") {
 		proxyAllowedModels = viper.GetStringSlice("proxy.allowed_models")

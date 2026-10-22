@@ -45,7 +45,7 @@ func proxySettingsPage(path string, back func()) tview.Primitive {
 		for i, value := range values {
 			fields[i].SetText(value)
 		}
-		status.SetText("Loaded " + path + "\nEmpty allowlists permit public destinations unless Default deny is checked. Bare domains include subdomains; =name is exact. Changes apply to new proxies/workers.")
+		status.SetText("Loaded " + path + "\nDefault deny is enabled unless explicitly disabled. Empty destination grants block general egress. Bare domains include subdomains; =name is exact. Changes apply to new proxies/workers.")
 	}
 	collect := func() (proxysettings.Settings, error) {
 		s := proxysettings.Settings{DefaultDeny: defaultDeny.IsChecked(), UpstreamProxy: strings.TrimSpace(fields[6].GetText()), CAFile: strings.TrimSpace(fields[7].GetText()), AllowDomains: proxysettings.Split(fields[0].GetText()), DenyDomains: proxysettings.Split(fields[1].GetText()), AllowCIDRs: proxysettings.Split(fields[2].GetText()), DenyCIDRs: proxysettings.Split(fields[3].GetText())}

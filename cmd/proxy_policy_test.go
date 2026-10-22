@@ -1,14 +1,72 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/networkpolicy"
+	"github.com/pacificbelt30/codex-dock/internal/workeregress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+func TestForwardPolicyDefaultsAndExplicitOverrides(t *testing.T) {
+	oldRules, oldAllow := proxyForwardRules, proxyForwardAllow
+	t.Cleanup(func() { proxyForwardRules, proxyForwardAllow = oldRules, oldAllow; viper.Reset() })
+	for _, tc := range []struct {
+		name       string
+		configured string
+		flag       string
+		deny       bool
+	}{
+		{name: "omitted", deny: true},
+		{name: "config opt out", configured: "false"},
+		{name: "flag opt out", configured: "true", flag: "false"},
+		{name: "flag deny overrides config", configured: "false", flag: "true", deny: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			proxyForwardRules = networkpolicy.Rules{}
+			proxyForwardAllow = nil
+			if tc.configured != "" {
+				viper.Set("proxy.forward_default_deny", tc.configured == "true")
+			}
+			c := &cobra.Command{Use: "test"}
+			bindForwardPolicyFlags(c)
+			if tc.flag != "" {
+				if err := c.Flags().Set("forward-default-deny", tc.flag); err != nil {
+					t.Fatal(err)
+				}
+			}
+			applyForwardPolicyDefaults(c)
+			rules := forwardPolicyRules()
+			policy, err := networkpolicy.Compile(rules)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = policy.CheckDestination(context.Background(), networkpolicy.Destination{Host: "example.com", Port: 443})
+			if errors.Is(err, networkpolicy.ErrDenied) != tc.deny {
+				t.Fatalf("destination decision = %v, want deny %t", err, tc.deny)
+			}
+			_, offline, err := workeregress.ResolvePreset(rules, "", nil)
+			if err != nil || offline != tc.deny {
+				t.Fatalf("worker offline = %t, %v", offline, err)
+			}
+			a := proxyRunArgs{role: authproxy.RoleEgress, blockPrivate: true, forwardPolicy: rules}
+			args := buildProxyRunArgs(a)
+			actual, err := workeregress.ParseProxyRules(args)
+			if err != nil || workeregress.ID(actual) != forwardPolicyID(a) || actual.DefaultDeny != tc.deny {
+				t.Fatalf("proxy launch policy = %+v, %v", actual, err)
+			}
+			if !tc.deny && !slices.Contains(args, "--forward-default-deny=false") {
+				t.Fatal("public access depends on the proxy's default flag value")
+			}
+		})
+	}
+}
 
 func TestForwardPolicyConfigAndFlags(t *testing.T) {
 	oldRules, oldAllow := proxyForwardRules, proxyForwardAllow

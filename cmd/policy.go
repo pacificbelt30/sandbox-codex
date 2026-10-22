@@ -14,7 +14,11 @@ import (
 )
 
 func configuredPolicy() proxysettings.Settings {
-	return proxysettings.Settings{DefaultDeny: viper.GetBool("proxy.forward_default_deny"), UpstreamProxy: viper.GetString("proxy.upstream_proxy"), CAFile: viper.GetString("proxy.ca_bundle"), AllowDomains: viper.GetStringSlice("proxy.forward_allow_domains"), DenyDomains: viper.GetStringSlice("proxy.forward_deny_domains"), AllowCIDRs: viper.GetStringSlice("proxy.forward_allow_cidrs"), DenyCIDRs: viper.GetStringSlice("proxy.forward_deny_cidrs"), AllowPorts: viper.GetIntSlice("proxy.forward_allow_ports"), DenyPorts: viper.GetIntSlice("proxy.forward_deny_ports")}
+	defaultDeny := true
+	if viper.IsSet("proxy.forward_default_deny") {
+		defaultDeny = viper.GetBool("proxy.forward_default_deny")
+	}
+	return proxysettings.Settings{DefaultDeny: defaultDeny, UpstreamProxy: viper.GetString("proxy.upstream_proxy"), CAFile: viper.GetString("proxy.ca_bundle"), AllowDomains: viper.GetStringSlice("proxy.forward_allow_domains"), DenyDomains: viper.GetStringSlice("proxy.forward_deny_domains"), AllowCIDRs: viper.GetStringSlice("proxy.forward_allow_cidrs"), DenyCIDRs: viper.GetStringSlice("proxy.forward_deny_cidrs"), AllowPorts: viper.GetIntSlice("proxy.forward_allow_ports"), DenyPorts: viper.GetIntSlice("proxy.forward_deny_ports")}
 }
 
 func newPolicyCommand() *cobra.Command {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,6 +23,9 @@ var rootCmd = &cobra.Command{
 	Short:         "AI Sandbox Container Manager for Codex CLI and Claude Code",
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		return initConfig()
+	},
 	Long: `cxd runs Codex CLI and Claude Code in Kata VM-isolated workers
 managed through containerd and Dragonball, with auth proxy, network separation and parallel workers.
 Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,
@@ -39,8 +43,6 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
-
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/codex-dock/config.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug output")
@@ -51,7 +53,7 @@ func init() {
 	_ = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 }
 
-func initConfig() {
+func initConfig() error {
 	// Built-in defaults so commands that read settings via viper (e.g. the
 	// proxy image used by `proxy build`/`proxy run`) work even when no config
 	// file or environment override is present.
@@ -59,6 +61,7 @@ func initConfig() {
 	viper.SetDefault("proxy_image", "codex-dock-proxy:latest")
 	viper.SetDefault("default_token_ttl", 3600)
 	viper.SetDefault("network_name", "dock-net-proxy")
+	viper.SetDefault("proxy.forward_default_deny", true)
 
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -73,7 +76,16 @@ func initConfig() {
 
 	viper.AutomaticEnv()
 
-	if err := viper.ReadInConfig(); err == nil && debug {
+	if err := viper.ReadInConfig(); err != nil {
+		var missing viper.ConfigFileNotFoundError
+		if cfgFile != "" || !errors.As(err, &missing) {
+			return fmt.Errorf("reading configuration: %w", err)
+		}
+	} else if debug {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
 	}
+	if _, err := strconv.ParseBool(fmt.Sprint(viper.Get("proxy.forward_default_deny"))); err != nil {
+		return fmt.Errorf("proxy.forward_default_deny must be a boolean: %w", err)
+	}
+	return nil
 }

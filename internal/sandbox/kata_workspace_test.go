@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -80,7 +81,7 @@ func TestKataWorkspaceSharing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(t, config, fmt.Sprintf("proxy_image = %s\n[proxy]\nadmin_url = %s\ncontainer_url = %s\nadmin_secret = \"sharing-fixture\"\n", strconv.Quote(proxyImage), strconv.Quote(fmt.Sprintf("http://127.0.0.1:%d", port)), strconv.Quote("http://"+authName+":18080")), 0600)
+	write(t, config, fmt.Sprintf("proxy_image = %s\n[proxy]\nadmin_url = %s\ncontainer_url = %s\nadmin_secret = \"sharing-fixture\"\nforward_default_deny = false\n", strconv.Quote(proxyImage), strconv.Quote(fmt.Sprintf("http://127.0.0.1:%d", port)), strconv.Quote("http://"+authName+":18080")), 0600)
 	t.Setenv("OPENAI_API_KEY", "sk-sharing-fixture-never-valid")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -544,6 +545,46 @@ result={}`)
 		}
 		hostContent(t, filepath.Join(repo, "original-only"), "original")
 		t.Log("PASS: worktree uses a separate checkout, preserves ownership and Git commit, and removes only the managed checkout")
+	})
+
+	t.Run("default-egress-denied", func(t *testing.T) {
+		original, err := os.ReadFile(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, config, strings.Replace(string(original), "forward_default_deny = false\n", "", 1), 0600)
+		t.Cleanup(func() { write(t, config, string(original), 0600) })
+		w := launch(t, t.TempDir(), "--no-internet=false")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		inspect, err := c.ContainerInspect(ctx, w.name)
+		if err != nil || inspect.Config == nil {
+			t.Fatalf("inspect default worker: %v", err)
+		}
+		authEndpoint, ok := envValue(inspect.Config.Env, "CODEX_AUTH_PROXY_URL")
+		if !ok || authEndpoint == "" {
+			t.Fatal("default worker has no pinned auth endpoint")
+		}
+		guest(t, w, `import socket,urllib.request
+assert not os.environ.get('HTTP_PROXY') and not os.environ.get('HTTPS_PROXY')
+assert not any(line.split()[1]=='00000000' for line in Path('/proc/net/route').read_text().splitlines()[1:])
+try:
+    socket.create_connection(('203.0.113.1',443),timeout=1)
+except OSError:
+    pass
+else:
+    raise AssertionError('direct external connection succeeded')
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+with opener.open(`+strconv.Quote(authEndpoint+"/health")+`,timeout=5) as response:
+    assert response.status==200
+result={}`)
+		var policy struct {
+			GeneralEgress bool `json:"general_egress"`
+		}
+		if err := json.Unmarshal([]byte(cli(t, w.control, "policy", "show", "--worker", w.name, "--json")), &policy); err != nil || policy.GeneralEgress {
+			t.Fatalf("default worker has general egress: %+v %v", policy, err)
+		}
+		t.Log("PASS: omitted policy disables general egress and direct external access while keeping auth reachable")
 	})
 
 	t.Run("effective-policy-with-pinned-IP", func(t *testing.T) {

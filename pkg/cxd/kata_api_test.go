@@ -129,7 +129,7 @@ func TestKataAPIIntegration(t *testing.T) {
 			}
 		}()
 	}
-	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example", "egress-default-deny", "egress-exact", "quarantine"}
+	modes := []string{"codex-http", "claude-api", "claude-oauth", "claude-direct-api", "claude-direct-oauth", "compact", "lifecycle", "save-failure", "conflict", "restart", "temporary-storage", "embedding-example", "egress-zero-value", "egress-default-deny", "egress-exact", "quarantine"}
 	if os.Getenv("CODEX_DOCK_KATA_CUSTOM_PROFILE") != "" {
 		modes = append(modes, "custom-profile")
 	}
@@ -187,7 +187,9 @@ func TestKataAPIIntegration(t *testing.T) {
 			}()
 			options := Options{NodeSocket: engine.Socket(), ProxyAdminURL: proxy.AdminURL, ProxyContainerURL: proxy.ContainerURL, ProxyAdminSecret: proxyOpts.AdminSecret, StateDir: filepath.Join(root, "state")}
 			if strings.HasPrefix(mode, "egress-") || mode == "quarantine" {
-				options.EgressPolicy.DefaultDeny = true
+				if mode != "egress-zero-value" {
+					options.EgressPolicy.DefaultDeny = true
+				}
 				if mode == "egress-exact" {
 					options.EgressPolicy.AllowDomains = []string{"=example.com"}
 					options.EgressPolicy.AllowPorts = []int{443}

@@ -33,8 +33,16 @@ func TestProxyImageRequiresMatchingBuildAndProtocol(t *testing.T) {
 func TestInitConfigDefaults(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
+	oldConfig := cfgFile
+	t.Cleanup(func() { cfgFile = oldConfig })
+	cfgFile = filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfgFile, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 
-	initConfig()
+	if err := initConfig(); err != nil {
+		t.Fatal(err)
+	}
 
 	if got := viper.GetString("proxy_image"); got != "codex-dock-proxy:latest" {
 		t.Errorf("proxy_image default = %q; want codex-dock-proxy:latest", got)
@@ -44,6 +52,41 @@ func TestInitConfigDefaults(t *testing.T) {
 	}
 	if got := viper.GetInt("default_token_ttl"); got != 3600 {
 		t.Errorf("default_token_ttl default = %d; want 3600", got)
+	}
+	if !configuredPolicy().DefaultDeny {
+		t.Fatal("omitted network policy permits public destinations")
+	}
+}
+
+func TestInitConfigRejectsUnreadableOrInvalidPolicy(t *testing.T) {
+	oldConfig := cfgFile
+	t.Cleanup(func() { cfgFile = oldConfig; viper.Reset() })
+	for _, tc := range []struct {
+		name, content string
+		missing       bool
+		wantErr       bool
+	}{
+		{name: "explicit public access", content: "[proxy]\nforward_default_deny = false\n"},
+		{name: "missing explicit file", missing: true, wantErr: true},
+		{name: "malformed file", content: "[proxy\n", wantErr: true},
+		{name: "invalid boolean", content: "[proxy]\nforward_default_deny = 'invalid'\n", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			cfgFile = filepath.Join(t.TempDir(), "config.toml")
+			if !tc.missing {
+				if err := os.WriteFile(cfgFile, []byte(tc.content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := initConfig()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("configuration error = %v, want error %t", err, tc.wantErr)
+			}
+			if !tc.wantErr && configuredPolicy().DefaultDeny {
+				t.Fatal("explicit public access was ignored")
+			}
+		})
 	}
 }
 
