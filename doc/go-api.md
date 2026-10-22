@@ -117,7 +117,7 @@ func main() {
 
 - `Open` はソケットとノードのバージョンを確認します。
 - `Launch` には、ビルド済みのイメージと起動中の認証プロキシが必要です。
-- `client.PrepareProject(ctx, dir, requestID, log)` は CLI と共通の `codex-dock.toml` 検証を使い、必要なイメージを BuildKit で作成して `LaunchRequest` を返します。
+- `client.PrepareProject(ctx, dir, requestID, log)` は CLI と共通の `oaiso.toml` 検証を使い、必要なイメージを BuildKit で作成して `LaunchRequest` を返します。
 - `client.Build` と `client.BuildTemplate` も個別に利用できます。
 - 製品側で設定を確認・補足してから `Launch` を呼べます。
 

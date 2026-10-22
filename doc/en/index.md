@@ -62,5 +62,6 @@
 | Formal name | 御AgentIsolation; 御 adds politeness and respect |
 | English name / pronunciation | Oaiso / “oh-eye-so” |
 | CLI | `oaiso` only; legacy commands are no longer provided |
-| Retained identifiers | Configuration, credentials, service names and Go API |
+| Project settings | `oaiso.toml`; rename the old `codex-dock.toml` |
+| Existing user settings and credentials | Storage paths, service names and Go API names are unchanged |
 | Details | [Migration compatibility](../migration.md#oaisoへの名称変更) (Japanese) |

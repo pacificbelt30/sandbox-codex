@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,51 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+func TestProjectInitCreatesOaisoConfigAndRequiresMigration(t *testing.T) {
+	command, _, err := rootCmd.Find([]string{"project", "init"})
+	if err != nil || command.RunE == nil {
+		t.Fatalf("project init unavailable: %v", err)
+	}
+	output := new(bytes.Buffer)
+	previous := command.OutOrStdout()
+	command.SetOut(output)
+	t.Cleanup(func() { command.SetOut(previous) })
+	for _, oldExists := range []bool{false, true} {
+		name := "fresh project"
+		if oldExists {
+			name = "old project"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			if oldExists {
+				if err := os.WriteFile("codex-dock.toml", []byte("[run]\nread_only = true\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := command.RunE(command, nil)
+			if oldExists {
+				if err == nil || !strings.Contains(err.Error(), "obsolete project config") {
+					t.Fatalf("project init should require migration: %v", err)
+				}
+				if _, err := os.Stat("oaiso.toml"); !os.IsNotExist(err) {
+					t.Fatalf("new file unexpectedly created: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat("oaiso.toml"); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(output.String(), filepath.Join(dir, "oaiso.toml")) {
+				t.Fatalf("missing new filename in output: %s", output)
+			}
+		})
+	}
+}
 
 func writeProjectConfig(t *testing.T, dir, content string) {
 	t.Helper()

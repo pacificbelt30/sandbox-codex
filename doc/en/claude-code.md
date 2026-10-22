@@ -33,7 +33,7 @@ oaiso claude -p 'Explain this project.' --model claude-sonnet-4-6
 ```
 
 - `oaiso claude` forwards native Claude arguments, including `-p`, `--output-format`, `--resume` and `--model`.
-- Configure mounts and authentication profiles globally; images and resource profiles also accept [allowed project keys](configuration.md#allowed-project-keys) in `codex-dock.toml`.
+- Configure mounts and authentication profiles globally; images and resource profiles also accept [allowed project keys](configuration.md#allowed-project-keys) in `oaiso.toml`.
 - Existing `oaiso run --agent claude` and `oaiso default claude` remain available.
 - `run --task` supplies an initial prompt; use `oaiso claude -p` for non-interactive execution.
 

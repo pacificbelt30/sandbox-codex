@@ -8,9 +8,32 @@
 
 ## Project settings
 
-- Run `oaiso project init` at the repository root to create a tracked `codex-dock.toml`, and `oaiso project check` to validate it.
-- `init`, `run`, `codex`, and `build` read the file from the current directory; `run --project DIR` reads `DIR/codex-dock.toml`.
+- **`oaiso.toml` is optional. Workers can start without it using user settings and built-in defaults.**
+- Create it to customize a project or share settings with a team. The filename is lowercase.
+- Without a project file, `project init` and `project check` are unnecessary.
+- Run `oaiso project init` at the repository root to create `oaiso.toml`, and `oaiso project check` to validate it. Commit it to share settings.
+- `init`, `run`, `codex`, and `build` read the file from the current directory; `run --project DIR` reads `DIR/oaiso.toml`.
 - Parent directories are not searched.
+
+```bash
+oaiso project init
+oaiso project check
+git add oaiso.toml
+```
+
+**Example output**
+
+```text
+$ oaiso project init
+/home/user/my-project/oaiso.toml
+$ oaiso project check
+Project config: /home/user/my-project/oaiso.toml
+build.template = plain
+run.image = codex-dock:latest
+```
+
+- Paths vary. `project check` validates settings without starting a VM or connecting to an AI provider.
+- An old `codex-dock.toml` blocks loading until [renamed](../migration.md#プロジェクト設定を-oaisotoml-に変更する) (Japanese); its restrictions are never silently discarded.
 
 You can also change the agent started by a plain `oaiso run` from the CLI. `oaiso default` shows the effective value and where it came from.
 
@@ -20,7 +43,7 @@ oaiso default claude --local # this project only
 oaiso default shell          # restore the authenticated shell
 ```
 
-- `--local` creates or updates `codex-dock.toml` in this directory.
+- `--local` creates or updates `oaiso.toml` in this directory.
 - Commit the file to share it.
 - An explicit `--agent`, `--exec`, `IMAGE COMMAND`, or `-- COMMAND` overrides the default.
 - `oaiso codex` always starts Codex.
@@ -78,7 +101,7 @@ tag = "my-project:dev"
 | Location | `start_hooks` | `readiness` |
 |---|---|---|
 | Global `config.toml` | Shell strings, e.g. `["npm ci"]` | Shell string, e.g. `"test -d node_modules"` |
-| Project `codex-dock.toml` | Array of argv arrays, e.g. `[["npm", "ci"]]` | Argv array, e.g. `["test", "-d", "node_modules"]` |
+| Project `oaiso.toml` | Array of argv arrays, e.g. `[["npm", "ci"]]` | Argv array, e.g. `["test", "-d", "node_modules"]` |
 
 - Project hooks run inside the guest; review cloned settings and shared paths before `init` or `run`.
 - File denials append to host restrictions.

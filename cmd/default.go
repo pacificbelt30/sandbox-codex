@@ -43,7 +43,7 @@ var defaultCmd = &cobra.Command{
 	Use:   "default [shell|codex|claude]",
 	Short: "Show or change the agent started by a plain oaiso run",
 	Long: `Show the effective agent for a plain oaiso run, or save a new default.
-Changes are global unless --local is used to write codex-dock.toml in the current project.
+Changes are global unless --local is used to write oaiso.toml in the current project.
 An explicit --agent, --exec, IMAGE COMMAND, or -- COMMAND overrides the default.
 The native oaiso codex command always starts Codex.`,
 	Args: cobra.MaximumNArgs(1),
@@ -51,7 +51,7 @@ The native oaiso codex command always starts Codex.`,
 }
 
 func init() {
-	defaultCmd.Flags().BoolVar(&defaultLocal, "local", false, "Save the default in this project's codex-dock.toml")
+	defaultCmd.Flags().BoolVar(&defaultLocal, "local", false, "Save the default in this project's oaiso.toml")
 	rootCmd.AddCommand(defaultCmd)
 }
 
@@ -152,7 +152,7 @@ func writeRunAgent(path, value string, local bool) error {
 			return fmt.Errorf("parsing %s: %w", path, err)
 		}
 	}
-	if local && len(data) > 0 {
+	if local {
 		if _, err := loadProjectConfig(filepath.Dir(path)); err != nil {
 			return err
 		}

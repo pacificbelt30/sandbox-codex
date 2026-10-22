@@ -1,4 +1,4 @@
-# 旧環境からの移行
+# 旧版からの更新・移行
 
 - 現行構成は **containerd → Kata runtime-rs → Dragonball** です。
 - Docker Engine・Docker CLI・QEMUは実行時に使いません。
@@ -10,8 +10,48 @@
 
 - 提供するコマンドは `oaiso` のみ。旧 `cxd` / `codex-dock` の互換コマンド・補完は生成しません。
 - シェルスクリプト・CI・ショートカット内の旧コマンド名を `oaiso` に置換してください。
-- GoでCLIのみ配置する場合は `go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest`。rootパッケージではなく、明示したentry pointを使用します。
+- GoでCLIだけを配置する場合は `go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest` を使用します。
 - `cmd/oaiso` を含むリリース公開前は、取得済みソースのルートで `go install ./cmd/oaiso`。旧 `v0.0.1` では新しいentry pointを利用できません。
+
+## プロジェクト設定を oaiso.toml に変更する
+
+- 新しいファイル名は小文字の **`oaiso.toml`**。設定の書式は同じです。
+- 旧 `codex-dock.toml` があるプロジェクトでは、起動・ビルド・設定変更の前に名前を変更してください。
+- プロジェクト設定を使っていなかった場合：ファイルの作成も移行も不要です。
+
+**Gitで管理していて、新しい名前のファイルがまだない場合**
+
+```bash
+git mv codex-dock.toml oaiso.toml
+oaiso project check
+```
+
+| 状態 | 必要な操作 |
+|---|---|
+| Gitで管理していない | `mv -n -- codex-dock.toml oaiso.toml` → `oaiso project check` |
+| 両方の名前のファイルがある | 内容を比較・統合し、旧名のファイルを取り除いてから `project check`。移動で上書きしない |
+| `obsolete project config` と表示される | 旧名のファイルが残っている。表示されたパスを確認し、上の手順で変更 |
+
+- `read_only`・`no_internet`・ファイルの拒否設定なども含めて移してください。
+- 旧名の設定は自動で読み込みません。制限が失われないよう、旧名が残っていれば処理を停止します。
+- `project init` / `default --local` も、旧名の設定を残したまま新しいファイルを作成しません。
+- CLIとGo APIのプロジェクト設定は、どちらも同じ名前と検証方法を使います。
+
+## 変更しない保存先・サービス名
+
+| 対象 | 更新後も使う場所・名前 |
+|---|---|
+| 利用者ごとの設定・認証プロファイル | `~/.config/codex-dock/` |
+| 従来のホスト認証で更新したOAuth情報 | `~/.local/state/codex-dock/oauth/` |
+| 追加パッケージの一覧 | `packages.dock` |
+| 管理サービス・グループ・イメージ・環境変数 | 既存の名前を使用 |
+| Goライブラリ・リポジトリURL | Go moduleと `pkg/cxd` のimport、リポジトリURLは変更なし |
+
+- 設定や認証情報をコピーし直したり、名前の変更だけを理由に再ログインしたりする必要はありません。
+- 導入済みノードの更新：[通常の更新手順](setup.md)。作業中のワーカーや保存領域を、名前の変更だけを理由に削除しないでください。
+- 新しい `oaiso` の配置先に別のファイルがある場合、セットアップは上書きせず停止します。
+
+## 旧コマンドを削除する
 
 | 旧版の導入方法 | 更新時の旧コマンドの扱い |
 |---|---|
@@ -20,27 +60,15 @@
 | Go・手動コピー・独自配置 | 配置元を自動判定しない。`command -v cxd` / `command -v codex-dock` で場所を確認し、自分で導入した旧実行ファイル・補完を削除 |
 
 - 無関係な同名ファイル・内容を変更した旧ファイルは自動削除しません。
-- 旧releaseの内部バイナリはロールバック用に保持。通常のCLIとして再配置しません。
-
-- 以下は引き継ぎ用の識別子として維持します。
-- 名称変更に伴うコピーや再ログインは不要です。
-
-- グローバル設定と独立認証：`~/.config/codex-dock/`、OAuth更新状態：`~/.local/state/codex-dock/oauth/`
-- プロジェクト設定：`codex-dock.toml`、`packages.dock`、既存の環境変数名
-- サービス・operator group・socket・イメージ・ワーカーlabel・Proxy wire protocol
-- リポジトリURL、Go moduleと `pkg/cxd` のimport・公開API
-
-- 導入済みノードは、通常の[更新手順](setup.md)で新しいCLIを配置してください。
-- 新しい `oaiso` の配置先や補完ファイルに管理外のファイルがある場合、セットアップは停止し、退避を求めます。
-- 名称変更だけを理由に既存ワーカーや保存領域を削除しないでください。
+- 旧版の内部バイナリは、更新失敗時に以前の状態へ戻すために保持。通常のCLIとして再配置しません。
 
 ## 引き継げるもの
 
-| 引き継ぐもの | 扱い |
+| 既存のファイル・資産 | 必要な作業 |
 |---|---|
 | プロジェクト、Gitリポジトリ | 同じパスを指定して利用できる |
 | Dockerfile、テンプレート、`packages.dock` | BuildKitで再ビルドする |
-| 設定ファイル、ホスト認証ファイル | 現行設定を確認して再利用する |
+| 利用者ごとの設定、ホスト認証ファイル | 現行設定を確認して再利用する。プロジェクト設定だけは上の手順で名前を変更 |
 | 旧コンテナID、snapshot、ネットワーク | 自動移植しない。新しいワーカーを作成する |
 | 旧QEMU/Docker用manifest、VM予約 | 採用しない。現行資産を検証して作成する |
 

@@ -101,7 +101,7 @@ oaiso run --agent claude
 **起動時の要点**
 
 - 初回のProxyイメージ作成：リポジトリのルートで `init` を実行。
-- 通常操作：operator groupの利用者で実行。
+- 通常操作：管理グループ（`codex-dock`）に所属する通常ユーザーで実行。
 - `oaiso run` の組み込み既定値：認証済みシェル。
 - Codexを既定にする：`oaiso default codex`。
 - プロジェクト限定は `--local`。
@@ -137,18 +137,29 @@ oaiso ui
 | `stop` | 再起動用にワーカーを保持 |
 | 前面実行 | 終了時に削除。保持する場合は `run --keep` |
 
-## プロジェクトごとの設定
+## プロジェクトごとの設定（任意）
 
-1. リポジトリのルートで `oaiso project init`。
-2. 生成した `codex-dock.toml` をコミット。
-3. クローン先でホストと認証を準備。
-4. `oaiso project check` → `oaiso init` → `oaiso codex`。
+- **`oaiso.toml` がなくても起動できます。** 指定がない項目は、利用者ごとの設定と既定値を使います。
+- プロジェクトごとにイメージ・エージェント・モデルを変える場合や、チームで同じ設定を使う場合に作成します。
+- ファイル名は小文字の **`oaiso.toml`**。作業するリポジトリの一番上に置きます。
+
+```bash
+oaiso project init       # oaiso.tomlを作成。既存ファイルは上書きしない
+oaiso project check      # 設定の書式・指定内容を確認
+git add oaiso.toml       # チームで共有する場合
+```
+
+- ホストの準備と認証は、各利用者が[クイックスタート](doc/getting-started.md)で設定します。
+- 旧 `codex-dock.toml` を使っていた場合：[ファイル名を変更する手順](doc/migration.md#プロジェクト設定を-oaisotoml-に変更する)。
 
 | 設定先 | 書く内容 |
 |---|---|
-| `codex-dock.toml` | イメージ・ビルド元・モデルなど。独自環境はプロジェクトのDockerfileを `[build]` で指定 |
+| `oaiso.toml` | イメージ・ビルド元・モデルなど。独自環境はプロジェクトのDockerfileを `[build]` で指定 |
 | `packages.dock` | チームで共有する追加パッケージ |
-| グローバル設定／明示CLIフラグ | 認証情報・containerd/Kata接続先・Proxy・追加ホストマウント |
+| `~/.config/codex-dock/config.toml` | 利用者ごとの設定。使う認証プロファイル・Proxy・VM接続先・追加で共有するホストのフォルダー |
+
+- APIキー・ログイントークン：`oaiso.toml` やGitへ保存せず、[認証プロファイル](doc/guides/authentication.md)で管理。
+- 利用者ごとの設定・認証情報は、既存の保存先をそのまま使えます。再登録は不要です。
 
 [設定例と優先順位](doc/configuration.md#プロジェクト設定)
 
@@ -169,6 +180,7 @@ oaiso ui
 - 必要なツール：Go 1.24.7以上・Make。
 - `make build`：CLI・ワーカー起動用guard・IO loggerを作成。
 - ホストへの配置：[Kataの手順](doc/kata.md)。
+- ドキュメントを修正する場合：[ページの追加・修正手順](doc/development/documentation.md)。
 
 ```bash
 make build
@@ -176,24 +188,16 @@ make test
 make vet
 ```
 
-### ドキュメントの編集方針
+## 安全に使うための注意点
 
-- ページの冒頭：目的・前提条件・最初の操作を示す。
-- 操作の順序：番号付き手順と実行コマンドで示す。
-- 選択肢・設定・既定値・制限：表で比較する。
-- 補足事項：1項目1要点の短い箇条書きにする。
-- 詳細仕様・検証記録：専用ページへ分け、利用手順からリンクする。
-- 章の分類・追加先：[ドキュメントの構成と編集](doc/development/documentation.md)。
-
-## 引き継ぐ設定と保護の範囲
-
-| 項目 | 扱い |
+| 確認すること | 動作・注意点 |
 |---|---|
-| グローバル設定 | `~/.config/codex-dock/config.toml`。[記述例](configs/config.toml.example) |
-| 名称変更後の互換性 | 設定・認証情報の保存先、サービス・イメージ名、Go module・`pkg/cxd` を維持 |
-| 従来モードのOAuth更新 | `~/.local/state/codex-dock/oauth/` に0700/0600で保存。Proxy再起動後も復元 |
-| 再ログイン | 元の認証ファイルが変わると、以前のOAuth更新結果は使わない |
-| 共有ファイル | workspace・追加マウントは指定した権限で変更可能 |
-| ホスト管理権限 | 管理socketとBuildKitの利用者はroot相当 |
+| APIキー・ログイントークン | 認証Proxyで保持。作業VMには短命トークンだけを渡す |
+| 認証情報の保存 | 現在は権限を `0600` に制限した平文。ファイル自体の暗号化は未対応 |
+| プロジェクトの共有 | 既定では読み書き可能。エージェントの変更・削除はホストの共有ファイルにも反映される |
+| 外部通信 | AI用の接続先とは別に、Git・パッケージ取得先などを許可する。一般通信は既定で拒否 |
+| 管理グループ `codex-dock` | メンバーはホストのroot相当の操作が可能。信頼する利用者だけを登録 |
+| `--runtime runc` | 明示して選ぶ互換モード。ワーカーごとのVM隔離は使われない |
 
-[セキュリティ設計と制限](doc/security.md)
+- 詳しい動作：[認証情報とファイルの保護・制限](doc/security.md)。
+- 旧版からの変更：[更新・移行手順](doc/migration.md)。

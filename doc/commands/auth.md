@@ -110,7 +110,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 | `oaiso codex` / `oaiso claude` | 引数をエージェントCLIへ渡すため、プロファイルはグローバル設定で選択 |
 | `auth show` | 選択したプロファイルのモードだけを表示 |
 
-- プロジェクトの `codex-dock.toml` に認証設定を置かない。
+- プロジェクトの `oaiso.toml` に認証設定を置かない。
 
 **設定後、ソースのルートで1つだけ実行**
 

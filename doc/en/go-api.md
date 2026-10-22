@@ -114,7 +114,7 @@ func main() {
 
 | Image preparation | Contract |
 |---|---|
-| `client.PrepareProject(ctx, dir, requestID, log)` | Validate `codex-dock.toml`, build missing/stale images through BuildKit, return `LaunchRequest` for product review |
+| `client.PrepareProject(ctx, dir, requestID, log)` | Validate `oaiso.toml`, build missing/stale images through BuildKit, return `LaunchRequest` for product review |
 | `client.Build` / `client.BuildTemplate` | Available separately |
 | `Launch` prerequisites | Built image and running auth proxy |
 

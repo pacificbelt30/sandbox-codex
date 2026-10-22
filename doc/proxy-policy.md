@@ -94,7 +94,7 @@ oaiso proxy run \
 - `oaiso run --egress-allow-domain api.example.com` を指定したワーカーは、ポリシーの識別子を持つ専用egress proxyに接続する。
 - 異なる許可リストのワーカーはproxyを共有しない。
 - 同じ許可リストのワーカーは共有できる。
-- プロジェクトの `codex-dock.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。
+- プロジェクトの `oaiso.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。
 - ホストのグローバル許可ドメインがある場合、ワーカーの指定はその範囲内に限る。
 - `--no-internet` は一般通信を止める。
 

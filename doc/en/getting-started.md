@@ -158,8 +158,10 @@ oaiso run -- ls -la
 
 ### Share an environment with a team
 
+- Optional: no `oaiso.toml` is needed for individual use with the default settings.
+
 1. Run `oaiso project init` at the repository root.
-2. Commit `codex-dock.toml`.
+2. Commit `oaiso.toml`.
 3. Point `[build]` to a project Dockerfile for extra tools.
 4. After cloning, prepare the host and credentials.
 5. Run `oaiso project check`, then `oaiso init`.

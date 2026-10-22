@@ -1,6 +1,9 @@
-# Documentation structure and editing
+# Add or update documentation
 
 [日本語](../../development/documentation.md) | **English**
+
+- For contributors editing documentation.
+- To use Oaiso, start with [Installation](../installation.md) or the [quick start](../getting-started.md).
 
 ## Chapters
 

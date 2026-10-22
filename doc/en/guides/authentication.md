@@ -15,7 +15,7 @@
 
 - Selected independent profiles never fall back to host authentication.
 - Current independent profile storage: permission-restricted plaintext.
-- Keep credentials and profile selection out of project `codex-dock.toml` files.
+- Keep credentials and profile selection out of project `oaiso.toml` files.
 
 ## 2. Choose the agent and authentication method
 

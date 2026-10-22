@@ -34,7 +34,7 @@ oaiso claude -p 'このプロジェクトの構成を説明して' --model claud
 
 - `oaiso claude` はClaude CLIの引数をそのまま渡します。
 - `-p`、`--output-format`、`--resume`、`--model`などはClaudeのオプションです。
-- mount・認証プロファイルはグローバル設定。image・資源プロファイルなどはプロジェクトの `codex-dock.toml` でも[許可された範囲](configuration.md#プロジェクトで指定できる項目)を指定できます。
+- mount・認証プロファイルはグローバル設定。image・資源プロファイルなどはプロジェクトの `oaiso.toml` でも[許可された範囲](configuration.md#プロジェクトで指定できる項目)を指定できます。
 - 既存の `oaiso run --agent claude` と `oaiso default claude` も使えます。
 - `run --task` は初期プロンプトであり、非対話実行には `oaiso claude -p` を使ってください。
 

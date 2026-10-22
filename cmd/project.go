@@ -29,10 +29,13 @@ template = "plain"
 `
 
 func init() {
-	project := &cobra.Command{Use: "project", Short: "Manage repository-local worker configuration"}
-	project.AddCommand(&cobra.Command{Use: "init", Short: "Create a tracked codex-dock.toml in the current directory", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	project := &cobra.Command{Use: "project", Short: "Manage optional repository-local worker settings"}
+	project.AddCommand(&cobra.Command{Use: "init", Short: "Create oaiso.toml in the current directory (optional project settings)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
+			return err
+		}
+		if _, err := loadProjectConfig(cwd); err != nil {
 			return err
 		}
 		path := filepath.Join(cwd, projectConfigName)

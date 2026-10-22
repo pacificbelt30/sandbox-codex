@@ -86,7 +86,7 @@ func (c *Client) buildTemplate(ctx context.Context, name, tag string, log io.Wri
 	return c.Build(ctx, BuildRequest{Tag: tag, Dockerfile: dockerfile, ContextDir: dir, Log: log})
 }
 
-// PrepareProject validates the portable codex-dock.toml, builds its image if
+// PrepareProject validates the portable oaiso.toml, builds its image if
 // missing or stale, and returns a launch request for the product to review and
 // submit. Host credentials and runtime settings remain the product's choice.
 func (c *Client) PrepareProject(ctx context.Context, dir, requestID string, log io.Writer) (LaunchRequest, error) {

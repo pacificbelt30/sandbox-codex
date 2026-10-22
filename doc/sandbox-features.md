@@ -182,7 +182,7 @@ oaiso run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.
 - 既定のhook/probe期限は60秒、起動全体には既存の180秒上限もあります。
 - 対応ラベルのない旧イメージではhookを拒否します。
 
-- プロジェクトの `codex-dock.toml` の `[run]` に `policy_preset`、`deny_read`、`deny_write`、`max_lifetime`、`idle_timeout`、`retention`、argv配列の `start_hooks` と `readiness`、`readiness_timeout` を指定できます。
+- プロジェクトの `oaiso.toml` の `[run]` に `policy_preset`、`deny_read`、`deny_write`、`max_lifetime`、`idle_timeout`、`retention`、argv配列の `start_hooks` と `readiness`、`readiness_timeout` を指定できます。
 - ホストの秘密・追加mount・runtime・プロキシURLは引き続き指定できません。
 
 ## 資格情報と互換性

@@ -16,7 +16,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-const Filename = "codex-dock.toml"
+const Filename = "oaiso.toml"
 
 // Config contains only portable worker settings. Host credentials,
 // runtime selection, proxy endpoints and extra host mounts remain global or
@@ -67,6 +67,13 @@ func Load(dir string) (*Config, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
+	}
+	// Do not silently discard restrictions left in the previous filename.
+	legacy := filepath.Join(root, "codex-dock.toml")
+	if _, err := os.Lstat(legacy); err == nil {
+		return nil, fmt.Errorf("obsolete project config %s: move its settings to %s and remove the old filename before continuing; if both files exist, merge them first", legacy, filepath.Join(root, Filename))
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("checking old project config %s: %w", legacy, err)
 	}
 	path := filepath.Join(root, Filename)
 	data, err := os.ReadFile(path)

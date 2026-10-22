@@ -87,6 +87,26 @@ func TestWriteRunAgentCreatesPrivateGlobalConfig(t *testing.T) {
 	}
 }
 
+func TestWriteLocalDefaultRequiresProjectFilenameMigration(t *testing.T) {
+	dir := t.TempDir()
+	old := filepath.Join(dir, "codex-dock.toml")
+	const content = "[run]\nread_only = true\n"
+	if err := os.WriteFile(old, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "oaiso.toml")
+	if err := writeRunAgent(path, "codex", true); err == nil || !strings.Contains(err.Error(), "obsolete project config") {
+		t.Fatalf("default --local should require migration: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("new project file was unexpectedly written: %v", err)
+	}
+	data, err := os.ReadFile(old)
+	if err != nil || string(data) != content {
+		t.Fatalf("old settings changed: %q, %v", data, err)
+	}
+}
+
 func TestWriteRunAgentRejectsMalformedInputWithoutChangingIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	bad := []byte("[run]\nagent = [\n")

@@ -168,8 +168,10 @@ oaiso run -- ls -la
 
 ### チームで同じ環境を使う場合
 
+- この手順は任意。個人で既定の設定を使う場合、`oaiso.toml` は不要。
+
 1. リポジトリのルートで `oaiso project init`。
-2. `codex-dock.toml` をコミット。
+2. `oaiso.toml` をコミット。
 3. 独自ツールはプロジェクトのDockerfileを `[build]` で指定。
 4. クローン先でホストと認証を準備。
 5. `oaiso project check` → `oaiso init`。

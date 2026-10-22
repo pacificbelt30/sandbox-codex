@@ -19,7 +19,7 @@
 | 既定エージェント | `oaiso default codex`。プロジェクト限定は `--local`、確認は `oaiso default` |
 | イメージ | 不足時は自動ビルド。テンプレートのタグ、または既定Dockerfileを使用 |
 | 再ビルド | [auto_build](../configuration.md#auto_build)で設定 |
-| プロジェクト設定 | カレントの `codex-dock.toml` の `[run]` / `[build]`。`--project DIR` は `DIR` の設定を使用 |
+| プロジェクト設定 | カレントの `oaiso.toml` の `[run]` / `[build]`。`--project DIR` は `DIR` の設定を使用 |
 
 - 初回準備：[導入](../getting-started.md)。
 - ネットワーク：[通信の仕組み](../network.md)。
@@ -280,7 +280,7 @@ oaiso run --shell --shell-type zsh
 - 承認モードは独立した設定です。
 - 非対話execではエージェント自身が承認動作を選ぶ場合もあります。
 - 共有workspaceや追加mountは、指定した権限で変更できます。
-- [保護の範囲](../security.md)を参照してください。
+- [認証情報の扱い・共有ファイルへの影響・制限](../security.md)を参照してください。
 
 ```bash
 # エージェント既定の承認設定

@@ -9,7 +9,7 @@
 # Precedence (highest first):
 #   1. command-line flag        (e.g. --image)
 #   2. documented environment override (runtime / admin client settings)
-#   3. repository codex-dock.toml (portable run/build settings only)
+#   3. repository oaiso.toml (portable run/build settings only)
 #   4. this config file
 #   5. built-in default
 #
@@ -112,7 +112,7 @@ user = "current"
 #   suggest | auto-edit | full-auto | danger
 approval_mode = "suggest"
 
-# Optional per-user defaults; a repository's codex-dock.toml can override
+# Optional per-user defaults; a repository's oaiso.toml can override
 # these portable values, and explicit CLI flags still take priority.
 # model = "..."
 # read_only = false

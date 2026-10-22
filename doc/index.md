@@ -53,11 +53,11 @@
 
 - [アーキテクチャ](architecture.md)：各コンポーネントと起動の流れ
 - [ネットワーク](network.md)：ワーカーと2種類のプロキシの接続
-- [セキュリティ](security.md)：保護する範囲と制限
+- [セキュリティ](security.md)：認証情報の保存方法・共有ファイルへの影響・管理権限
 - [認証API](auth-proxy/endpoints.md)・[短命トークン](auth-proxy/tokens.md)
 - [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
 - [今後の対応](future-work.md)：追加するコーディングエージェントと対応条件
-- [ドキュメントの構成と編集](development/documentation.md)：章立て・編集方針・参考にした公式ドキュメント
+- [ドキュメントを追加・修正する](development/documentation.md)：開発者向け。ページの書き方と確認コマンド
 
 [追加のサンドボックス制御](sandbox-features.md)
 
@@ -68,5 +68,6 @@
 | 正式名称 | 御AgentIsolation。「御」は丁寧さ・敬意を表す |
 | 英字表記・読み | Oaiso／おあいそ |
 | CLI | `oaiso` のみ。旧コマンドは提供しない |
-| 引き継ぐもの | 設定・認証情報・サービス・Go APIの既存識別子 |
+| プロジェクト設定 | `oaiso.toml`。旧 `codex-dock.toml` は名前の変更が必要 |
+| 既存の設定・認証情報 | 保存先は変更なし。サービス名・Go APIの名前も変更なし |
 | 詳細 | [名称変更と互換性](migration.md#oaisoへの名称変更) |

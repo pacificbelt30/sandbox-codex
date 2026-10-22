@@ -110,7 +110,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 | `oaiso codex` / `oaiso claude` | Forward arguments to the agent; select profiles through global settings |
 | `auth show` | Redacted metadata for the selected profile |
 
-- Never put authentication configuration in the project's `codex-dock.toml`.
+- Never put authentication configuration in the project's `oaiso.toml`.
 
 **After configuring, run one preparation command from the source root:**
 

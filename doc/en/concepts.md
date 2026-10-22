@@ -38,7 +38,7 @@
 | Working project | Repository the agent edits; launch `oaiso codex` or `oaiso claude` here |
 | Guest `/workspace` | Shared project; writable by default, with changes reflected on the host |
 | `~/.config/codex-dock/config.toml` | Host user settings: credential selection, proxies and launch defaults |
-| Project `codex-dock.toml` | Shared team settings; excludes credentials and extra host mounts |
+| Project `oaiso.toml` | Optional project settings; excludes credentials and extra host mounts |
 | Independent profile storage | Owner-only `0700` directories and `0600` files; outside all worker shares |
 
 ## Stop and resume

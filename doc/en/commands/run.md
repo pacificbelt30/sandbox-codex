@@ -19,7 +19,7 @@
 | Default agent | `oaiso default codex`; add `--local` for this project; inspect with `oaiso default` |
 | Images | Missing images are built from the matching template or default Dockerfile |
 | Rebuilds | [auto_build](../configuration.md#auto_build) |
-| Project settings | `[run]` / `[build]` in the current repository's `codex-dock.toml`; `--project DIR` selects that directory |
+| Project settings | `[run]` / `[build]` in the current repository's `oaiso.toml`; `--project DIR` selects that directory |
 
 - Initial setup: [quick start](../getting-started.md).
 - Network: [network guide](../network.md).

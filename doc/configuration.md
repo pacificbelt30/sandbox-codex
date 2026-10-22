@@ -2,22 +2,39 @@
 
 **日本語** | [English](en/configuration.md)
 
-- 利用者の設定は `~/.config/codex-dock/config.toml` に記述します。
+- 利用者ごとの設定（グローバル設定）は `~/.config/codex-dock/config.toml` に記述します。
 - 別ファイルを使う場合は `oaiso --config PATH COMMAND` と指定します。
 - ソース配置では `make install-config` で例を配置できます。
 - 既存ファイルは上書きしません。
 
 ## プロジェクト設定
 
-- リポジトリ直下に `codex-dock.toml` を置くと、そのディレクトリからの `oaiso init`、`oaiso run`、`oaiso codex`、`oaiso build` が読み込みます。
-- `run --project DIR` は `DIR/codex-dock.toml` を使います。
+- **`oaiso.toml` は任意です。なくても既定の設定で起動できます。**
+- プロジェクトごとに設定を変える場合や、チームで同じ設定を使う場合に作成します。
+- ファイル名は小文字の `oaiso.toml`。このファイルを使わない場合、`project init` / `project check` は不要です。
+- リポジトリ直下に `oaiso.toml` を置くと、そのディレクトリからの `oaiso init`、`oaiso run`、`oaiso codex`、`oaiso build` が読み込みます。
+- `run --project DIR` は `DIR/oaiso.toml` を使います。
 - 親ディレクトリの設定は自動探索しないため、リポジトリのルートで実行してください。
 
 ```bash
 oaiso project init
 oaiso project check
-git add codex-dock.toml
+git add oaiso.toml
 ```
+
+**作成・確認時の出力例**
+
+```text
+$ oaiso project init
+/home/user/my-project/oaiso.toml
+$ oaiso project check
+Project config: /home/user/my-project/oaiso.toml
+build.template = plain
+run.image = codex-dock:latest
+```
+
+- パスは実行したディレクトリに変わります。`project check` は設定の確認だけで、VM起動やAIへの接続は行いません。
+- 旧 `codex-dock.toml` がある場合は、[名前を変更](migration.md#プロジェクト設定を-oaisotoml-に変更する)してから実行してください。旧名の設定を無視して起動することはありません。
 
 - `oaiso run` で起動するエージェントの既定値は CLI からも設定できます。
 - `oaiso default` は現在有効な値と設定元を表示します。
@@ -28,7 +45,7 @@ oaiso default claude --local # このプロジェクトだけ
 oaiso default shell          # 認証済みシェルへ戻す
 ```
 
-- `--local` はこのディレクトリの `codex-dock.toml` を作成または更新します。
+- `--local` はこのディレクトリの `oaiso.toml` を作成または更新します。
 - 共有したい場合はコミットしてください。
 - 明示した `--agent`、`--exec`、`IMAGE COMMAND`、`-- COMMAND` は既定値より優先されます。
 - `oaiso codex` は設定に関係なく Codex を起動します。
@@ -92,7 +109,7 @@ tag = "my-project:dev"
 | 設定先 | `start_hooks` | `readiness` |
 |---|---|---|
 | グローバル `config.toml` | 文字列配列。例：`["npm ci"]` | shell文字列。例：`"test -d node_modules"` |
-| プロジェクト `codex-dock.toml` | argvの配列。例：`[["npm", "ci"]]` | argv配列。例：`["test", "-d", "node_modules"]` |
+| プロジェクト `oaiso.toml` | argvの配列。例：`[["npm", "ci"]]` | argv配列。例：`["test", "-d", "node_modules"]` |
 
 - プロジェクト例はguest内で実行。`init` / `run` 前に、cloneした設定のコマンドと共有範囲を確認。
 - ファイル拒否リスト：ホスト設定へ追加して適用。
@@ -132,7 +149,7 @@ forward_allow_ports = [80, 443]
 
 ## 優先順位
 
-- 通常の優先順位は **明示したCLIフラグ > プロジェクトの `codex-dock.toml` > グローバルの `config.toml` > 組み込み既定値** です。
+- 通常の優先順位は **明示したCLIフラグ > プロジェクトの `oaiso.toml` > グローバルの `config.toml` > 組み込み既定値** です。
 - プロジェクトの `read_only` と `no_internet` は制限を追加する場合に限ります。
 - `run`・`build` 専用の設定がある場合は、グローバル設定より優先します。
 - 環境変数は[下記の対応項目](#環境変数)を参照してください。

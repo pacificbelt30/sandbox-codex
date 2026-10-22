@@ -37,7 +37,7 @@ oaiso run --image codex-dock:codex-0.163.0 --agent codex
 - `--template` と `-f` は同時に指定できません。
 - `run` 時にイメージがない場合は、対応するテンプレートまたは既定Dockerfileから自動ビルドします。
 - 任意のイメージ名を指定する場合は、先にそのタグをビルドしてください。
-- プロジェクトの `codex-dock.toml` に `[build]` を記述すると、`oaiso build`、`init`、`run` が同じビルド元を使えます。
+- プロジェクトの `oaiso.toml` に `[build]` を記述すると、`oaiso build`、`init`、`run` が同じビルド元を使えます。
 - クローン先でも不足するイメージを自動ビルドします。
 - 設定例は[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
 

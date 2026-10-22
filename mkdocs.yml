@@ -92,7 +92,7 @@ nav:
       - 上流仕様の変更検知: upstream-compatibility.md
       - テストと動作確認: testing.md
       - 今後の対応: future-work.md
-      - ドキュメントの編集: development/documentation.md
+      - ドキュメントの追加・修正: development/documentation.md
       - 廃止機能:
           - firewall: firewall.md
           - 旧firewallコマンド: commands/firewall.md
