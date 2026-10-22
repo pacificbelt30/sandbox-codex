@@ -21,7 +21,6 @@
 | Network | Access to source, pinned runtime archives, OS packages and container images |
 | WSL or a VM host | All requirements above, plus nested virtualization |
 
-- Docker Engine, Docker CLI and QEMU are not required.
 - Operator group membership grants root-equivalent host management access. Choose trusted users only.
 
 ## 2. Get tools and source

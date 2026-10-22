@@ -1,7 +1,6 @@
 # Kata実行ホストの準備
 
 - ワーカーは **containerd → Kata runtime-rs → Dragonball** で起動する。
-- Docker Engine・Docker CLI・QEMUは実行時に使わない。
 - CLIはroot管理サービスのUnixソケットを使い、管理サービスが公式containerd Go SDKで専用namespace `codex-dock` を操作する。
 - 既存のCLI/TUI、認証プロキシ、イメージ・テンプレート、worktreeの操作は維持する。
 

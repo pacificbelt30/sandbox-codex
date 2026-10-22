@@ -21,7 +21,6 @@
 | 通信 | ソース・固定ランタイム配布物・OSパッケージ・コンテナイメージの取得先に到達可能 |
 | WSL／VM | 上記要件に加え、nested virtualizationが必要 |
 
-- Docker Engine・Docker CLI・QEMUのインストールは不要。
 - operator groupにはホストのroot相当の管理権限を付与。信頼する利用者だけを指定。
 
 ## 2. ツールとソースを取得

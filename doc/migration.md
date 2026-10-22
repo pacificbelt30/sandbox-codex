@@ -1,12 +1,10 @@
 # 旧版からの更新・移行
 
 - 現行構成は **containerd → Kata runtime-rs → Dragonball** です。
-- Docker Engine・Docker CLI・QEMUは実行時に使いません。
 
 ## Oaisoへの名称変更
 
 - 正式名称は **御AgentIsolation**、英字表記は **Oaiso**、CLIは **`oaiso`** です。
-- 「御」は丁寧さ・敬意を添える接頭辞で、略称は「おあいそ」と読みます。
 
 - 提供するコマンドは `oaiso` のみ。旧 `cxd` / `codex-dock` の互換コマンド・補完は生成しません。
 - シェルスクリプト・CI・ショートカット内の旧コマンド名を `oaiso` に置換してください。

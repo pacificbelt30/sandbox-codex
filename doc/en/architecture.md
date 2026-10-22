@@ -3,7 +3,6 @@
 [日本語](../architecture.md) | **English**
 
 - The default execution path is **containerd → Kata runtime-rs → Dragonball**.
-- Docker Engine and Docker CLI are not used.
 - Images keep the OCI/Dockerfile format and are built with standalone BuildKit.
 
 ```mermaid

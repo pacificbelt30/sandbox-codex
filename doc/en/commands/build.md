@@ -3,7 +3,6 @@
 [日本語](../../commands/build.md) | **English**
 
 - `oaiso build` uses standalone BuildKit and imports OCI output into the worker's containerd namespace.
-- Dockerfile format is supported without Docker Engine or Docker CLI.
 
 ## Commands
 

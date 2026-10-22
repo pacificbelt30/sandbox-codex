@@ -7,7 +7,7 @@
 | 用途 | Codex CLI・Claude CodeをKata VMで隔離実行 |
 | コマンド | `oaiso` |
 | 実行基盤 | containerdが管理、DragonballがVMを実行 |
-| 実行ホスト | Linux x86_64。Docker Engine・Docker CLIは不要 |
+| 実行ホスト | Linux x86_64 |
 
 - CLIのクロスビルドだけでは、各OSでKataを実行できません。
 - 用語・保存先・停止と再開：[Oaisoの概要](concepts.md)。
@@ -65,7 +65,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 正式名称 | 御AgentIsolation。「御」は丁寧さ・敬意を表す |
+| 正式名称 | 御AgentIsolation |
 | 英字表記・読み | Oaiso／おあいそ |
 | CLI | `oaiso` のみ。旧コマンドは提供しない |
 | プロジェクト設定 | `oaiso.toml`。旧 `codex-dock.toml` は名前の変更が必要 |

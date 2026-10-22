@@ -8,7 +8,7 @@
 | Command | `oaiso` |
 | Runtime | Containerd manages workers; Dragonball runs VMs |
 | Images | Built with BuildKit |
-| Host | Linux x86_64; Docker Engine, Docker CLI and QEMU are not runtime requirements |
+| Host | Linux x86_64 |
 
 - Components, directories and stop/restart behavior: [Overview and terminology](concepts.md).
 
@@ -59,7 +59,7 @@
 
 | Item | Meaning or compatibility |
 |---|---|
-| Formal name | 御AgentIsolation; 御 adds politeness and respect |
+| Formal name | 御AgentIsolation |
 | English name / pronunciation | Oaiso / “oh-eye-so” |
 | CLI | `oaiso` only; legacy commands are no longer provided |
 | Project settings | `oaiso.toml`; rename the old `codex-dock.toml` |

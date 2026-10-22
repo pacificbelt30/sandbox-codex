@@ -3,7 +3,6 @@
 **日本語** | [English](../en/commands/build.md)
 
 - `oaiso build` はBuildKitでOCIイメージを作り、ワーカーと同じcontainerd namespaceへ取り込みます。
-- Dockerfile形式を使いますが、Docker EngineとDocker CLIは不要です。
 
 ## 基本操作
 
