@@ -10,6 +10,16 @@
 | Images | Built with BuildKit |
 | Host | Linux x86_64; Docker Engine, Docker CLI and QEMU are not runtime requirements |
 
+## Browse chapters
+
+| Chapter | Contents | Entry point |
+|---|---|---|
+| Getting started | Installation, credentials and first worker | [Installation](installation.md) → [Quick start](getting-started.md) |
+| Guides | Agents, workspace, authentication, networking and isolation | [Guides](guides/index.md) |
+| Reference | CLI, configuration and embedding API contracts | [Reference](reference/index.md) |
+| Administration | Daily operations, host updates, VM management and recovery | [Administration](administration/index.md) |
+| Development | Concepts, upstream compatibility, testing and future work | [Architecture](architecture.md), [upstream compatibility](upstream-compatibility.md) |
+
 ## Start here
 
 1. Follow [Installation](installation.md) to install the CLI and execution host, then verify the setup.
@@ -23,7 +33,8 @@
 
 | Task | Guide |
 |---|---|
-| Run Claude Code with API or subscription auth | [Claude Code](claude-code.md) |
+| Run Codex or Claude Code | [Agents](guides/agents.md), [Claude Code](claude-code.md) |
+| Separate product authentication from the host | [Authentication and profiles](guides/authentication.md) |
 | Move from Docker | [Migration](../migration.md) (Japanese) |
 | Understand shared files and ownership | [Workspace](../workspace.md) (Japanese) |
 | Inspect and manage VMs | [VM management](../vm.md) (Japanese) |
@@ -38,6 +49,7 @@
 | Understand the design | [Architecture](architecture.md), [security](security.md) |
 | Check test coverage | [Testing](../testing.md) (Japanese) |
 | See planned coding agent integrations | [Future work](future-work.md) |
+| Contribute documentation | [Structure and editing](development/documentation.md) |
 
 [Additional sandbox controls](sandbox-features.md)
 

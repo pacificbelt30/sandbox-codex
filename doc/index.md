@@ -11,6 +11,16 @@
 
 - CLIのクロスビルドだけでは、各OSでKataを実行できません。
 
+## 章から探す
+
+| 章 | 内容 | 入口 |
+|---|---|---|
+| はじめに | インストール・認証の準備・初回起動 | [インストール](installation.md) → [クイックスタート](getting-started.md) |
+| 利用ガイド | エージェント・作業環境・認証・通信と隔離 | [利用ガイド](guides/index.md) |
+| リファレンス | CLI・設定・組み込みAPIの指定と契約 | [リファレンス](reference/index.md) |
+| 管理・運用 | 日常操作・ホスト更新・VM管理・障害対応 | [日常操作](operations.md)・[配置と更新](setup.md) |
+| 開発 | 仕組み・上流追従・テスト・今後の対応 | [構成](architecture.md)・[検証](testing.md) |
+
 ## 初めて使う
 
 | 読む順序 | 内容 |
@@ -25,7 +35,8 @@
 
 | 目的 | ページ |
 |---|---|
-| Claude CodeをAPIキー・サブスクで使う | [Claude Code](claude-code.md) |
+| Codex／Claude Codeを使う | [エージェント](guides/agents.md)・[Claude Code](claude-code.md) |
+| ホストと製品の認証を分ける | [認証方式とプロファイル](guides/authentication.md) |
 | ファイル共有・所有者・権限を確認する | [workspace](workspace.md) |
 | VMの状態や残存資源を調べる | [VM管理](vm.md) |
 | カスタムイメージやテンプレートを作る | [build](commands/build.md) |
@@ -45,6 +56,7 @@
 - [認証API](auth-proxy/endpoints.md)・[短命トークン](auth-proxy/tokens.md)
 - [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
 - [今後の対応](future-work.md)：追加するコーディングエージェントと対応条件
+- [ドキュメントの構成と編集](development/documentation.md)：章立て・編集方針・参考にした公式ドキュメント
 
 [追加のサンドボックス制御](sandbox-features.md)
 

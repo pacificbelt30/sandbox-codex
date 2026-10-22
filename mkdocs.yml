@@ -25,7 +25,7 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
-    - navigation.expand
+    - navigation.indexes
     - navigation.top
     - search.highlight
     - search.share
@@ -42,77 +42,107 @@ nav:
   - はじめに:
       - インストール: installation.md
       - クイックスタート: getting-started.md
-      - Claude Code: claude-code.md
-      - 導入と更新の自動化: setup.md
-      - 実行ホストの手動準備: kata.md
-      - 旧環境からの移行: migration.md
-  - 運用:
-      - 日常の操作と更新: operations.md
-      - ファイル共有と所有者: workspace.md
-      - Kata VMの管理: vm.md
-      - 通信の許可・拒否: proxy-policy.md
-      - 追加のサンドボックス制御: sandbox-features.md
-      - トラブルシューティング: troubleshooting.md
+  - 利用ガイド:
+      - 概要: guides/index.md
+      - エージェント:
+          - 起動方法と対応状況: guides/agents.md
+          - Claude Code: claude-code.md
+      - ファイル共有とworktree: workspace.md
+      - 認証:
+          - 認証方式とプロファイル: guides/authentication.md
+          - 認証プロキシ: auth-proxy.md
+          - 短命トークン: auth-proxy/tokens.md
+          - プロキシの単体利用: proxy-standalone.md
+      - 通信と隔離:
+          - 通信の許可・拒否: proxy-policy.md
+          - 追加のサンドボックス制御: sandbox-features.md
+          - セキュリティと制限: security.md
   - リファレンス:
-      - コマンド一覧: commands.md
-      - シェル補完: commands/completion.md
-      - ワーカー起動: commands/run.md
-      - ワーカー管理: commands/worker.md
-      - イメージの作成: commands/build.md
-      - プロキシ管理: commands/proxy.md
-      - 認証管理: commands/auth.md
-      - ネットワーク管理: commands/network-cmd.md
-      - TUI: commands/ui.md
-      - CLIの更新: commands/update.md
+      - 概要: reference/index.md
+      - CLI:
+          - コマンド一覧: commands.md
+          - ワーカー起動: commands/run.md
+          - ワーカー管理: commands/worker.md
+          - イメージの作成: commands/build.md
+          - プロキシ管理: commands/proxy.md
+          - 認証管理: commands/auth.md
+          - ネットワーク管理: commands/network-cmd.md
+          - TUI: commands/ui.md
+          - シェル補完: commands/completion.md
+          - CLIの更新: commands/update.md
       - 設定: configuration.md
-      - 製品組み込み用 Go API: go-api.md
-      - ケース別の認証: credential-store.md
-      - 認証API: auth-proxy/endpoints.md
-  - 仕組みと開発:
-      - アーキテクチャ: architecture.md
-      - 認証プロキシ: auth-proxy.md
-      - 短命トークン: auth-proxy/tokens.md
-      - プロキシの単体利用: proxy-standalone.md
-      - ネットワーク: network.md
-      - セキュリティ: security.md
+      - 組み込みAPI:
+          - Go API: go-api.md
+          - Credential Store: credential-store.md
+          - 認証API: auth-proxy/endpoints.md
+  - 管理・運用:
+      - 日常の操作と更新: operations.md
+      - ホストの配置と更新: setup.md
+      - 実行ホストの手動準備: kata.md
+      - Kata VMの管理: vm.md
+      - 移行: migration.md
+      - トラブルシューティング: troubleshooting.md
       - 性能とベンチマーク: performance.md
+  - 開発:
+      - 仕組み:
+          - アーキテクチャ: architecture.md
+          - ネットワーク: network.md
       - 上流仕様の変更検知: upstream-compatibility.md
-      - 今後の対応: future-work.md
       - テストと動作確認: testing.md
-      - 廃止したfirewall機能: firewall.md
-      - 旧firewallコマンド: commands/firewall.md
+      - 今後の対応: future-work.md
+      - ドキュメントの編集: development/documentation.md
+      - 廃止機能:
+          - firewall: firewall.md
+          - 旧firewallコマンド: commands/firewall.md
   - English:
       - Home: en/index.md
-      - Installation: en/installation.md
-      - Quick start: en/getting-started.md
-      - Claude Code: en/claude-code.md
-      - Commands:
-          - Overview: en/commands.md
-          - Completion: en/commands/completion.md
-          - Run: en/commands/run.md
-          - Workers: en/commands/worker.md
-          - Build: en/commands/build.md
-          - Proxy: en/commands/proxy.md
-          - Auth: en/commands/auth.md
-          - Network: en/commands/network-cmd.md
-          - TUI: en/commands/ui.md
-          - Update: en/commands/update.md
-      - Configuration: en/configuration.md
-      - Go API: en/go-api.md
-      - Additional sandbox controls: en/sandbox-features.md
-      - Case credentials: en/credential-store.md
-      - Architecture: en/architecture.md
-      - Auth proxy: en/auth-proxy.md
-      - Auth API: en/auth-proxy/endpoints.md
-      - Tokens: en/auth-proxy/tokens.md
-      - Standalone proxy: en/proxy-standalone.md
-      - Network: en/network.md
-      - Security: en/security.md
-      - Performance and benchmarks: en/performance.md
-      - Upstream compatibility: en/upstream-compatibility.md
-      - Future work: en/future-work.md
-      - Removed firewall: en/firewall.md
-      - Removed firewall command: en/commands/firewall.md
+      - Getting started:
+          - Installation: en/installation.md
+          - Quick start: en/getting-started.md
+      - Guides:
+          - Overview: en/guides/index.md
+          - Agents:
+              - Launch methods and support: en/guides/agents.md
+              - Claude Code: en/claude-code.md
+          - Authentication:
+              - Authentication and profiles: en/guides/authentication.md
+              - Auth proxy: en/auth-proxy.md
+              - Short-lived tokens: en/auth-proxy/tokens.md
+              - Standalone proxy: en/proxy-standalone.md
+          - Networking and isolation:
+              - Additional sandbox controls: en/sandbox-features.md
+              - Security and limitations: en/security.md
+      - Reference:
+          - Overview: en/reference/index.md
+          - CLI:
+              - Command overview: en/commands.md
+              - Run: en/commands/run.md
+              - Workers: en/commands/worker.md
+              - Build: en/commands/build.md
+              - Proxy: en/commands/proxy.md
+              - Auth: en/commands/auth.md
+              - Network: en/commands/network-cmd.md
+              - TUI: en/commands/ui.md
+              - Completion: en/commands/completion.md
+              - Update: en/commands/update.md
+          - Configuration: en/configuration.md
+          - Embedding API:
+              - Go API: en/go-api.md
+              - Credential Store: en/credential-store.md
+              - Auth API: en/auth-proxy/endpoints.md
+      - Administration:
+          - Overview: en/administration/index.md
+          - Performance and benchmarks: en/performance.md
+      - Development:
+          - Concepts:
+              - Architecture: en/architecture.md
+              - Networking: en/network.md
+          - Upstream compatibility: en/upstream-compatibility.md
+          - Future work: en/future-work.md
+          - Documentation editing: en/development/documentation.md
+          - Removed features:
+              - Firewall: en/firewall.md
+              - Firewall command: en/commands/firewall.md
 
 markdown_extensions:
   - admonition

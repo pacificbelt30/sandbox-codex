@@ -144,19 +144,13 @@ oaiso ui
 
 | 目的 | ドキュメント |
 |---|---|
-| 初めて使う | [クイックスタート](doc/getting-started.md) |
-| 実行ホストを用意・更新する | [自動セットアップ](doc/setup.md) / [手動配置](doc/kata.md) |
-| 停止・再起動・更新する | [日常の運用](doc/operations.md) |
-| 旧Docker環境から移る | [移行手順](doc/migration.md) |
-| 共有ファイル・所有者を確認する | [ファイル共有](doc/workspace.md) |
-| VMの状態を調べる | [VM管理](doc/vm.md) |
-| 独自イメージを作る | [buildコマンド](doc/commands/build.md) |
-| 外部通信を制限する | [通信ポリシー](doc/proxy-policy.md) |
-| 設定・オプションを調べる | [設定](doc/configuration.md)・[コマンド](doc/commands.md) |
-| 製品にワーカー管理を組み込む | [Go API](doc/go-api.md) |
-| 性能値・再計測手順を確認する | [性能とベンチマーク](doc/performance.md)・[計測結果](doc/testing.md#2026-10-21の性能計測) |
-| 問題を調べる | [トラブルシューティング](doc/troubleshooting.md) |
-| 仕組みと確認範囲を知る | [構成](doc/architecture.md)・[セキュリティ](doc/security.md)・[検証](doc/testing.md) |
+| はじめに：インストールから初回起動 | [Installation](doc/installation.md) → [クイックスタート](doc/getting-started.md) |
+| 利用ガイド：エージェント・作業環境・認証・通信 | [利用ガイド](doc/guides/index.md) |
+| リファレンス：CLI・設定・組み込みAPI | [リファレンス](doc/reference/index.md) |
+| 管理・運用：日常操作・更新・障害対応 | [日常操作](doc/operations.md)・[ホスト更新](doc/setup.md)・[トラブルシューティング](doc/troubleshooting.md) |
+| 開発：構成・上流追従・検証 | [アーキテクチャ](doc/architecture.md)・[上流互換性](doc/upstream-compatibility.md)・[テスト](doc/testing.md) |
+
+[全体の章立て](doc/index.md#章から探す) · [English chapters](doc/en/index.md#browse-chapters)
 
 ## 開発
 
@@ -177,6 +171,7 @@ make vet
 - 選択肢・設定・既定値・制限：表で比較する。
 - 補足事項：1項目1要点の短い箇条書きにする。
 - 詳細仕様・検証記録：専用ページへ分け、利用手順からリンクする。
+- 章の分類・追加先：[ドキュメントの構成と編集](doc/development/documentation.md)。
 
 ## 引き継ぐ設定と保護の範囲
 
