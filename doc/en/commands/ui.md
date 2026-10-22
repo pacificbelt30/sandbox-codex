@@ -51,6 +51,14 @@ oaiso proxy configure
 | Reload | Reload saved settings |
 | Back / Esc | Return to the list, or exit the standalone editor |
 
+**Successful Save output**
+
+```text
+Saved. Recreate the desired proxies/workers explicitly to apply the new settings.
+```
+
+- The file has been saved. Save worker results, then recreate affected proxies and workers.
+
 - Does not edit API keys, real tokens or admin-secret values.
 - Saving does not update live proxies; follow [network setup](../guides/networking.md) to recreate them.
 

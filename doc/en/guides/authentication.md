@@ -33,6 +33,16 @@
 | Codex OAuth | `oaiso auth profile import work --format codex --credentials-stdin < /private/login/auth.json` |
 | Claude OAuth | `oaiso auth profile import work --format claude --credentials-stdin < /private/login/.credentials.json` |
 
+**Successful registration output**
+
+| Operation | Output |
+|---|---|
+| Register API key | `Profile created (plaintext, 0600).` |
+| Import OAuth | `Profile imported (plaintext, 0600).` |
+
+- API-key entry shows `API key:`; typed characters are hidden.
+- This confirms storage, not key validity or subscription access.
+
 - Replace `/private/login/...` with the actual JSON path from a prior official CLI login.
 - OAuth import separates the copied credentials from the host CLI's storage; later logins are not automatically synchronized.
 - `auth profile set`: hidden TTY input; keep real keys out of command arguments.
@@ -49,6 +59,23 @@
 ```bash
 oaiso auth show
 ```
+
+**Output for a selected OpenAI API-key profile**
+
+```text
+Profile: work
+Storage: plaintext (0600)
+OpenAI: api-key
+Anthropic: disabled
+```
+
+| Registered credentials | Expected line |
+|---|---|
+| OpenAI API key | `OpenAI: api-key` |
+| Codex OAuth | `OpenAI: oauth` |
+| Anthropic API key | `Anthropic: api-key` |
+| Claude OAuth | `Anthropic: oauth` |
+| Provider without credentials | `disabled`; cannot launch that provider |
 
 - Expected in profile mode: `Profile: work`, and `api-key` or `oauth` for the selected provider.
 - Creating a profile does not select it. Before selection, `auth show` reports legacy OpenAI information.

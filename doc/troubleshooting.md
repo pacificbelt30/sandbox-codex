@@ -147,6 +147,24 @@ oaiso doctor
 oaiso runtime-check --json
 ```
 
+**正常時**
+
+- [クイックスタートの出力例](getting-started.md#1-実行ホストを確認する)と同様に、全項目 `[ok]`・終了コード `0`。
+- JSONの成功判定：`checks` の全項目が `"status": "ok"`。
+
+**KVMデバイスがない場合の該当箇所（他の診断項目は省略）**
+
+```text
+[error] kvm: stat /dev/kvm: no such file or directory
+  Fix: Enable CPU virtualization/nested virtualization, then sudo modprobe kvm_intel (Intel) or kvm_amd (AMD).
+```
+
+| 表示・挙動 | 次の操作 |
+|---|---|
+| `[error]` と `Fix:` | 該当項目を修正して診断を再実行 |
+| 最後の `readiness checks failed: ...` | 失敗した項目名の一覧。各項目の詳細へ戻る |
+| JSONで `"status": "error"` | `detail` と `fix` を確認。JSONを取得できても終了コードは非ゼロ |
+
 - KVM、cgroup、管理サービスの固定資産検証、BuildKit、IPv4 forwardingを個別に表示します。
 - 失敗した項目には確認・修正の手順を付け、他の項目の確認も続けます。
 - JSON出力でも失敗時の終了コードは非ゼロです。

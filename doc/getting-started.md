@@ -17,6 +17,23 @@
 oaiso runtime-check
 ```
 
+**正常時の出力例（既定のKata構成）**
+
+```text
+[ok] egress-policy: Host rules are valid; private addresses stay blocked
+[ok] runtime: io.containerd.kata.v2
+[ok] host: linux/amd64
+[ok] kvm: KVM device exists; the root node owns VM access
+[ok] cgroups: cgroup v2 has cpu, memory and pids
+[ok] node: pinned runtime, assets, resource profile and management socket verified
+[ok] builder: BuildKit is reachable
+[ok] forwarding: IPv4 forwarding enabled
+```
+
+- 全項目 `[ok]`・終了コード `0`：この手順を続行。
+- `[error]`：直後の `Fix:` を確認。[診断例](troubleshooting.md#複数の前提条件をまとめて調べる)を参照し、解決後に再実行。
+- 確認範囲：ホストの実行基盤。認証成功やAIからの応答は、後の手順で確認。
+
 | 用途 | 必要なもの |
 |---|---|
 | VM実行 | Linux x86_64・KVM・cgroup v2・専用containerd・Kata runtime-rs・Dragonball |
@@ -71,6 +88,16 @@ oaiso runtime-check
 
 - 資格情報がない側の `init` まで続けて実行しない。
 - 終了時の `Ready.` はホスト・イメージ・Proxyの準備完了。実際の推論成功は次の手順で確認。
+
+**Codex準備成功時の末尾**
+
+```text
+Ready. From your project run: oaiso codex
+For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
+```
+
+- Claudeの場合：1行目は `Ready. From your project run: oaiso run --agent claude`。
+- 途中にはホスト診断・イメージ検査・必要に応じたビルドログも表示。
 
 | `init` が行うこと | 条件・制限 |
 |---|---|
@@ -162,6 +189,16 @@ oaiso ps -a
 oaiso logs add-tests --follow
 ```
 
+**バックグラウンド起動時の出力例（末尾）**
+
+```text
+Container started: a1b2c3d4e5f6
+```
+
+- IDは実行ごとに変化。`ps -a` で `add-tests` の状態を確認：[一覧の出力例](commands/worker.md#oaiso-ps--ワーカー一覧)。
+- `running`：ワーカー実行中。タスク成功はログ・成果・終了コードで確認。
+- 短いタスクは一覧を見る前に終了する場合あり。`exited` の場合もログを確認。
+
 - ログ追跡のCtrl+C：追跡だけを終了。ワーカーは継続。
 - ブランチも分ける場合：[worktreeの条件と保存先](workspace.md#git-worktree)を確認して `--worktree` などを追加。
 - `--approval-mode full-auto`：エージェントの承認確認を省略。
@@ -176,6 +213,23 @@ oaiso stop add-tests
 # 成果を保存してから削除
 oaiso rm add-tests
 ```
+
+**停止・再起動・削除時の出力例**
+
+```text
+$ oaiso stop add-tests
+Stopping add-tests...
+$ oaiso start add-tests
+add-tests
+$ oaiso stop add-tests
+Stopping add-tests...
+$ oaiso rm add-tests
+Removing add-tests...
+```
+
+- `Stopping...` / `Removing...` は処理開始の表示。終了コード `0` と、続けて実行した `ps -a` で完了を確認。
+- 停止後：`⏹ exited`。再起動後：`✅ running`。削除後：一覧から消える。
+- すべて削除済みの `ps -a`：列見出しだけを表示。
 
 | 操作・条件 | 結果 |
 |---|---|

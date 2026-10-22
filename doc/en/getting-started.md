@@ -18,6 +18,23 @@
 oaiso runtime-check
 ```
 
+**Successful output (default Kata configuration)**
+
+```text
+[ok] egress-policy: Host rules are valid; private addresses stay blocked
+[ok] runtime: io.containerd.kata.v2
+[ok] host: linux/amd64
+[ok] kvm: KVM device exists; the root node owns VM access
+[ok] cgroups: cgroup v2 has cpu, memory and pids
+[ok] node: pinned runtime, assets, resource profile and management socket verified
+[ok] builder: BuildKit is reachable
+[ok] forwarding: IPv4 forwarding enabled
+```
+
+- All checks `[ok]` and exit code `0`: continue.
+- An `[error]`: follow its `Fix:` line, then rerun. See [diagnostic examples](../troubleshooting.md#複数の前提条件をまとめて調べる) (Japanese).
+- Scope: host readiness. Provider authentication and live AI responses are checked later.
+
 | Task | Requirements |
 |---|---|
 | Run workers | Linux x86_64, KVM, cgroup v2, dedicated containerd, Kata runtime-rs, Dragonball |
@@ -68,6 +85,16 @@ oaiso runtime-check
 
 - Do not run the other provider's preparation without its credentials.
 - `Ready.` means host, image and proxy preparation succeeded; verify live inference in the next step.
+
+**Final lines after successful Codex preparation**
+
+```text
+Ready. From your project run: oaiso codex
+For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
+```
+
+- For Claude, the first line is `Ready. From your project run: oaiso run --agent claude`.
+- Host diagnostics, image checks and any required build logs appear before these lines.
 
 | `init` action | Behavior or limit |
 |---|---|
@@ -152,6 +179,16 @@ oaiso ps -a
 oaiso logs add-tests --follow
 ```
 
+**Background startup output (final line)**
+
+```text
+Container started: a1b2c3d4e5f6
+```
+
+- IDs vary. Find `add-tests` in `ps -a`; see the [worker list example](commands/worker.md#oaiso-ps).
+- `running` means the worker is executing; check logs, artifacts and exit status for task success.
+- Short tasks may already be `exited` when listed. Check their logs too.
+
 - `full-auto` disables agent approval prompts.
 - Mount permissions still determine which shared files are writable.
 - Ctrl+C in `logs --follow` ends log following; the worker continues.
@@ -166,6 +203,23 @@ oaiso stop add-tests
 # Save results before removing the worker.
 oaiso rm add-tests
 ```
+
+**Example stop, restart and removal output**
+
+```text
+$ oaiso stop add-tests
+Stopping add-tests...
+$ oaiso start add-tests
+add-tests
+$ oaiso stop add-tests
+Stopping add-tests...
+$ oaiso rm add-tests
+Removing add-tests...
+```
+
+- `Stopping...` and `Removing...` announce an attempt. Check exit code `0` and then `ps -a` to confirm completion.
+- After stopping: `⏹ exited`. After restarting: `✅ running`. After removal: no row.
+- With no workers, `ps -a` displays only column headers.
 
 | Operation or condition | Result |
 |---|---|

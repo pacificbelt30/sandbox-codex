@@ -14,14 +14,16 @@ oaiso ui
 
 ## 画面レイアウト
 
-```
+**配置を示す概略図。枠・幅・名前・時間は表示例。**
+
+```text
 ┌──────────────────────────────────────────────────────────────┐
-│ Oaiso       [実行中: 2 / 合計: 4]                            │
+│ 御AgentIsolation (Oaiso)  [2 workers running / 3 total]        │
 ├──────────────────────────────────────────────────────────────┤
 │  NAME              BRANCH      STATUS      UPTIME  TASK       │
-│  codex-brave-atl   feature-1   running     5m23s   テスト作成 │
-│▶ codex-calm-bea    main        running     2m10s   (interactive)│
-│  codex-old-comet   feature-2   exited      -       完了       │
+│  codex-brave-atl   feature-1   ✅ running  5m      テスト作成 │
+│▶ codex-calm-bea    main        ✅ running  2m      (interactive)│
+│  codex-old-comet   feature-2   ⏹ exited   8m      完了       │
 ├──────────────────────────────────────────────────────────────┤
 │ [↑↓] 選択  [Enter] ログ  [S] 停止  [D] 削除  [R] 再起動        │
 │ [A] 全停止  [E] 拒否履歴  [P] Proxy設定  [Q] 終了              │
@@ -68,6 +70,14 @@ oaiso proxy configure
 | Save | 設定を保存。同時編集があれば拒否 |
 | Reload | 保存済み設定を読み直す |
 | Back / Esc | 一覧へ戻る。単独起動時は終了 |
+
+**Save成功時の表示**
+
+```text
+Saved. Recreate the desired proxies/workers explicitly to apply the new settings.
+```
+
+- 設定ファイルへの保存完了。次は成果を保存し、対象のProxy・ワーカーを再作成。
 
 - APIキー・実トークン・管理シークレットの値は編集しない。
 - 保存だけでは稼働中Proxyへ反映されない。[通信ガイド](../guides/networking.md)の順序で再作成。

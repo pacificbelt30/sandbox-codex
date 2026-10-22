@@ -14,11 +14,19 @@ oaiso ps [--all]
 
 Lists running (and optionally stopped) containers.
 
+Example `oaiso ps -a` output; names, elapsed times, tasks and images are illustrative:
+
+```text
+NAME               STATUS      UPTIME  BRANCH  TASK            IMAGE
+add-tests          ✅ running  5m      -       Add unit tests  codex-dock:latest
+codex-calm-beacon  ⏹ exited   2m      main    (interactive)   codex-dock:latest
 ```
-NAME                   STATUS    UPTIME    BRANCH         TASK
-codex-brave-atlas      running   5m23s     feature-auth   Write unit tests
-codex-calm-beacon      running   2m10s     main           (interactive)
-```
+
+- `✅ running`: executing; does not establish task success.
+- `⏹ exited`: finished; use `ps -a`, then check logs and exit status.
+- `BRANCH` of `-`: no managed worktree branch metadata.
+- `UPTIME`: currently elapsed time since creation; it keeps increasing after exit and does not reset on restart.
+- No workers: only column headers are displayed.
 
 ---
 
@@ -32,6 +40,36 @@ oaiso start NAME_OR_ID
 - Kata checks run again and the saved placeholder is restored before user code is released.
 - If a pinned proxy IP changed, create a new worker instead.
 - `oaiso vm start` remains available for Kata VM inventory recovery.
+
+## `oaiso exec`
+
+```bash
+oaiso exec --json worker-name -- sh -c 'echo ok; echo warning >&2'
+```
+
+```json
+{"exit_code":0,"stdout":"ok\n","stderr":"warning\n"}
+```
+
+- Output streams are separate. This example writes to stderr but succeeds with `exit_code: 0`.
+- Replace `worker-name` with a running worker's name.
+- The CLI returns the guest exit code; timeout is 124, cancellation is 130.
+
+## `oaiso wait`
+
+```bash
+oaiso wait --json worker-name
+```
+
+For a worker whose main program exited successfully:
+
+```json
+{"exit_code":0}
+```
+
+- `exit_code: 0` reports successful worker termination.
+- `wait` itself exits with `0` when waiting succeeds; read its output value for the worker's result.
+- Timeout is 124, cancellation is 130.
 
 ## `oaiso stop`
 

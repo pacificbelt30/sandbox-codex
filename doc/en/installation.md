@@ -55,6 +55,17 @@ cd sandbox-codex
 ./scripts/install.sh --apply
 ```
 
+**Example plan output (excerpt)**
+
+```text
+Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3
+Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator: user; cache: /var/cache/codex-dock-setup; offline: no
+```
+
+- `<version>`, paths and account names vary by installation.
+- Plan only: the final line includes `No host changes. Add --apply as root.`
+- Successful application: the final line starts with `Node ready.` Log in again, then verify below.
+
 | Command or option | Behavior |
 |---|---|
 | No options | Build matching CLI/helpers, verify the bundle and display the installation plan |
@@ -84,6 +95,21 @@ oaiso --version
 id -nG
 oaiso runtime-check
 ```
+
+**Example CLI and group output**
+
+```text
+$ command -v oaiso
+/usr/local/bin/oaiso
+$ oaiso --version
+oaiso version <version>
+$ id -nG
+user sudo codex-dock
+```
+
+- `$` marks an input line; copy executable commands from the `bash` block above.
+- Versions, account names and other groups vary. Check for membership in `codex-dock`.
+- `runtime-check`: see [all successful checks and their meaning](getting-started.md#1-check-the-host).
 
 | Check | Expected result |
 |---|---|

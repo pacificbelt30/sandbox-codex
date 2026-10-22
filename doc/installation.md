@@ -55,6 +55,17 @@ cd sandbox-codex
 ./scripts/install.sh --apply
 ```
 
+**計画の出力例（抜粋）**
+
+```text
+Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3
+Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator: user; cache: /var/cache/codex-dock-setup; offline: no
+```
+
+- `<version>`・パス・利用者名は環境により変わる値。
+- 計画だけの実行：末尾に `No host changes. Add --apply as root.` を含む行が表示される。
+- 適用成功：末尾に `Node ready.` で始まる行が表示される。再ログイン後、次の手順で確認。
+
 | コマンド・指定 | 動作 |
 |---|---|
 | 指定なし | 同じ版のCLI・helperをビルドし、検証・配置計画を表示 |
@@ -84,6 +95,21 @@ oaiso --version
 id -nG
 oaiso runtime-check
 ```
+
+**CLI・グループの出力例**
+
+```text
+$ command -v oaiso
+/usr/local/bin/oaiso
+$ oaiso --version
+oaiso version <version>
+$ id -nG
+user sudo codex-dock
+```
+
+- `$` は入力を表す記号。コピーして実行する場合は上の `bash` ブロックを使用。
+- 版・利用者名・他のグループは環境依存。`codex-dock` への所属を確認。
+- `runtime-check`：[正常時の全項目と読み方](getting-started.md#1-実行ホストを確認する)。
 
 | 確認対象 | 成功条件 |
 |---|---|

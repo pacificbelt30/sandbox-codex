@@ -26,6 +26,22 @@
 - Keep chapter classifications aligned across languages; label Japanese-only pages.
 - Preserve existing page paths and heading links.
 
+## Write command and output examples
+
+| Item | Convention |
+|---|---|
+| Copyable commands | `bash` blocks; keep prompts such as `$` and output separate |
+| Human-readable output | A following `text` block, with success indicators and the next check |
+| JSON output | `json` blocks; label formatting or excerpts |
+| Environment-specific values | Identify example versions, IDs, PIDs, times and paths |
+| Silent success | State that success produces no output and add a verification command |
+| Errors | Show the failing check, recovery clue and recheck |
+| Authentication and startup | Distinguish storage success, preparation, execution and task success |
+
+- Check local output with the real CLI, an isolated HOME and fake credentials.
+- Check host-dependent output against implementation and existing evidence; adding an example does not establish live host validation.
+- For long build logs, show only useful sections and label omitted content.
+
 ## Official documentation used as references
 
 Reviewed: 2026-10-22. These references inform information organization, not Oaiso's feature or platform support.

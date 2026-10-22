@@ -39,6 +39,43 @@ oaiso policy check --json
 oaiso policy explain registry.npmjs.org:443 --json
 ```
 
+**2つ目のコマンドの出力例（上の許可設定を使用）**
+
+```json
+{
+  "destination": {"Host": "registry.npmjs.org", "Port": 443},
+  "allowed": true,
+  "code": "address_not_checked",
+  "stage": "destination",
+  "addresses_checked": 0,
+  "complete": false
+}
+```
+
+- JSONは読みやすく整形。CLIは1行で出力。
+- `allowed: true`・`complete: false`：名前とポートの検査を通過。DNSのIP検査は未実施で、実通信の成功を意味しない。
+- `policy check`：設定が妥当なら終了コード `0` と設定JSONを返す。`source` は `configuration for NEW workers; not a live update`。
+
+**許可していない宛先も確認**
+
+```bash
+oaiso policy explain example.com:443 --json
+```
+
+```json
+{
+  "destination": {"Host": "example.com", "Port": 443},
+  "allowed": false,
+  "code": "domain_not_allowed",
+  "stage": "destination",
+  "addresses_checked": 0,
+  "complete": true
+}
+```
+
+- この例の拒否は正常。`explain` 自体は正常終了するため、許可・拒否は終了コードではなく `allowed` / `code` で判断。
+- 宛先許可が未設定：`code: general_egress_disabled`。固定AI経路の利用可否とは別。
+
 - 対象：新規ワーカー向けのホスト設定。稼働中の通信変更ではない。
 - `explain`：接続しない。上の例は名前・ポートだけを確認。
 - `--resolve` を追加：DNS応答のIPも確認。実サービスへの疎通試験ではない。

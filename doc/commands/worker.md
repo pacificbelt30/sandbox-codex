@@ -18,13 +18,19 @@ oaiso ps [OPTIONS]
 |---|---|---|---|
 | `--all` | `-a` | `false` | 停止済みのコンテナも含めて表示 |
 
-**出力例：**
+**`oaiso ps -a` の出力例（名前・経過時間・タスク・イメージは説明用）：**
 
+```text
+NAME               STATUS      UPTIME  BRANCH  TASK            IMAGE
+add-tests          ✅ running  5m      -       Add unit tests  codex-dock:latest
+codex-calm-beacon  ⏹ exited   2m      main    (interactive)   codex-dock:latest
 ```
-NAME                   STATUS    UPTIME    BRANCH         TASK
-codex-brave-atlas      running   5m23s     feature-auth   ユニットテスト作成
-codex-calm-beacon      running   2m10s     main           (interactive)
-```
+
+- `✅ running`：実行中。タスク成功の意味ではない。
+- `⏹ exited`：終了済み。`ps -a` で表示し、ログと終了コードを確認。
+- `BRANCH` の `-`：worktree用のブランチ情報なし。
+- `UPTIME`：現在の実装は作成からの経過時間。終了済みでも増え、再起動でリセットしない。
+- ワーカーがない場合：列見出しだけを表示。
 
 ---
 
@@ -47,6 +53,14 @@ oaiso exec --json worker-name -- sh -c 'echo ok; echo warning >&2'
 oaiso exec -i worker-name -- cat < input.txt
 ```
 
+**2つ目のJSON実行例の出力**
+
+```json
+{"exit_code":0,"stdout":"ok\n","stderr":"warning\n"}
+```
+
+- `stderr` に文字列があっても、この例の終了コードは `0`。成功・失敗は `exit_code` で判断。
+
 - 標準出力と標準エラーは別々に転送され、`oaiso exec` はゲストの終了コードをシェルへ返します。
 - タイムアウトは124、Ctrl+Cによる取消は130です。
 - `--json` は `exit_code`、`stdout`、`stderr`、失敗時の `error` を返します。
@@ -59,8 +73,15 @@ exit_code=$(oaiso wait --timeout 5m worker-name)
 oaiso wait --json worker-name
 ```
 
+**JSON形式で、正常終了したワーカーを待った場合**
+
+```json
+{"exit_code":0}
+```
+
 - ワーカーの終了コードを表示します。
-- `--json` では `{"exit_code": 0}` の形式です。
+- `exit_code: 0`：ワーカーのメインプログラムが正常終了。
+- `wait` 自体は、正常に待機できれば終了コード `0`。ワーカーの成功・失敗は表示された値で判断。
 - 待機タイムアウトは124、Ctrl+Cは130です。
 
 ## `oaiso stop` — コンテナの停止

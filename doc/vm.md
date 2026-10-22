@@ -24,6 +24,25 @@ oaiso vm rm worker-name
 - `--watch`は指定間隔で照合を繰り返し、結果を順に出力する。
 - 常駐の自動削除処理は追加しない。
 
+## 一覧の出力例
+
+**`oaiso vm ps -a` の表示形式。ID・PID・使用量・名前は説明用。**
+
+```text
+ID            NAME       STATE    TASK     PIDS                      MEMORY     PROBLEMS
+a1b2c3d4e5f6  add-tests  running  running  runtime:1234,logger:1235  128.0 MiB
+b2c3d4e5f6a1  retained   exited   exited                             -
+```
+
+| 表示 | 読み方 |
+|---|---|
+| `STATE` / `TASK` が `running`・`PROBLEMS` が空 | VMとcontainerdの実行状態が一致。アプリ応答はログなどで別途確認 |
+| `exited`・`PIDS` が空 | 終了済みで、実行中のVMプロセスはない |
+| `PIDS` の `runtime` / `logger` | ホスト側のDragonball shim / IO logger。guest内のPIDではない |
+| `MEMORY` | ホストcgroupで観測した使用量。上限値ではない。取得できない場合は `-` |
+| `PROBLEMS` に文字列あり | 内容を確認し、必要なら `vm inspect NAME` で詳細を取得 |
+| 列見出しだけ | 表示対象なし。停止済みも確認する場合は `-a` |
+
 - `inspect`と`--json`には、containerd状態、予約ID、cgroupパス、観測したDragonball shim / IO loggerのPID、実際のCPU・メモリ・PID制限、メモリ使用量、照合上の問題を含む。
 - APIキー、環境変数、タスク本文は含めない。
 
@@ -67,6 +86,7 @@ oaiso vm rm ALLOCATION_ID
 oaiso vm stop --force ALLOCATION_ID
 ```
 
+- `vm prune`：回収した予約IDを表示。対象がなければ出力なし・終了コード `0`。
 - containerdへ問い合わせできない場合は孤立と判定せず、停止・回収を拒否する。
 - 予約台帳がない古いgroupや、別プロセスの混入、変更された資産・制限は自動で採用しない。
 - コンテナIDが分かる場合は、操作直前にもその正確なIDがcontainerdに存在しないことを確認する。

@@ -33,6 +33,16 @@
 | Codex OAuth | `oaiso auth profile import work --format codex --credentials-stdin < /private/login/auth.json` |
 | Claude OAuth | `oaiso auth profile import work --format claude --credentials-stdin < /private/login/.credentials.json` |
 
+**登録成功時の出力**
+
+| 操作 | 表示 |
+|---|---|
+| APIキー登録 | `Profile created (plaintext, 0600).` |
+| OAuth import | `Profile imported (plaintext, 0600).` |
+
+- APIキー入力時：`API key:` と表示。入力内容は画面に出ない。
+- この表示は保存成功。キーの有効性やサブスク利用可否の検証結果ではない。
+
 - `/private/login/...`：事前に公式CLIで認証したJSONの実際のパスへ置換。
 - OAuth import：コピー時点でホストCLIの保存先と分離。その後のログイン変更は自動同期しない。
 - `auth profile set`：TTYから非表示入力。引数へ実キーを書かない。
@@ -49,6 +59,23 @@
 ```bash
 oaiso auth show
 ```
+
+**OpenAI APIキーを選択した場合の出力**
+
+```text
+Profile: work
+Storage: plaintext (0600)
+OpenAI: api-key
+Anthropic: disabled
+```
+
+| 登録した認証 | 確認する行 |
+|---|---|
+| OpenAI APIキー | `OpenAI: api-key` |
+| Codex OAuth | `OpenAI: oauth` |
+| Anthropic APIキー | `Anthropic: api-key` |
+| Claude OAuth | `Anthropic: oauth` |
+| 未登録のprovider | `disabled`。そのproviderでの起動はできない |
 
 - 独立プロファイルの期待値：`Profile: work` と、選択したproviderの `api-key` または `oauth`。
 - プロファイルを作成しただけでは選択されない。設定前の `auth show` は従来モードのOpenAI情報を表示。

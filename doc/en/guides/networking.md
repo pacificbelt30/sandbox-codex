@@ -39,6 +39,43 @@ oaiso policy check --json
 oaiso policy explain registry.npmjs.org:443 --json
 ```
 
+**Output of the second command with the grants above**
+
+```json
+{
+  "destination": {"Host": "registry.npmjs.org", "Port": 443},
+  "allowed": true,
+  "code": "address_not_checked",
+  "stage": "destination",
+  "addresses_checked": 0,
+  "complete": false
+}
+```
+
+- Formatted for readability; the CLI emits one line.
+- `allowed: true`, `complete: false`: hostname and port passed; DNS IP checks have not run. This does not prove live connectivity.
+- A valid `policy check` returns exit code `0` and policy JSON with `source: configuration for NEW workers; not a live update`.
+
+**Also check a destination without a grant**
+
+```bash
+oaiso policy explain example.com:443 --json
+```
+
+```json
+{
+  "destination": {"Host": "example.com", "Port": 443},
+  "allowed": false,
+  "code": "domain_not_allowed",
+  "stage": "destination",
+  "addresses_checked": 0,
+  "complete": true
+}
+```
+
+- Denial is expected here. `explain` itself succeeds; inspect `allowed` and `code` rather than the command's exit status for the policy decision.
+- Without destination grants: `code: general_egress_disabled`. Fixed AI routes are separate.
+
 - These inspect host settings for new workers; they do not change live traffic.
 - `explain` opens no connection; this example checks hostname and port only.
 - Add `--resolve` to check DNS result IPs; this still does not test live service connectivity.

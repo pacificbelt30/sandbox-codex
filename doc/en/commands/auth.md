@@ -39,6 +39,7 @@ oaiso auth profile list
 - Interactive: hidden TTY input.
 - Noninteractive: `--key-stdin` with a protected input source.
 - Live API-key validation: not implemented.
+- Success: `Profile created (plaintext, 0600).` See the [profile inspection example](../guides/authentication.md#3-configure-admin-authority-and-profile-selection).
 
 ### Import OAuth
 
@@ -56,6 +57,7 @@ oaiso auth profile import claude-oauth --format claude --credentials-stdin < /pr
 - `--credentials-stdin`: required.
 - Source files: never automatically discovered or deleted.
 - Automated login-only Kata: not implemented.
+- Success: `Profile imported (plaintext, 0600).` Check for `oauth` on the registered provider's line.
 
 ### Create admin authority and start the proxy
 
@@ -73,6 +75,18 @@ with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') 
     f.write(secrets.token_hex(32) + '\n')
 PY
 ```
+
+- Successful generation produces no output. Check only permissions and location:
+
+```bash
+stat -c '%a %n' "$HOME/.config/codex-dock/proxy-admin-secret"
+```
+
+```text
+600 /home/user/.config/codex-dock/proxy-admin-secret
+```
+
+- `/home/user` is replaced by your HOME. You do not need to display the secret contents.
 
 ### Fix the selection for daily operations
 

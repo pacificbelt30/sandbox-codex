@@ -39,6 +39,7 @@ oaiso auth profile list
 - 対話入力：TTYで非表示入力。
 - 非対話入力：`--key-stdin` を付け、安全な入力元からstdinへ渡す。
 - 実APIでのキー照合：未実装。
+- 成功時：`Profile created (plaintext, 0600).`。[プロファイル確認の出力例](../guides/authentication.md#3-管理シークレットとプロファイルを設定する)。
 
 ### OAuthを取り込む
 
@@ -56,6 +57,7 @@ oaiso auth profile import claude-oauth --format claude --credentials-stdin < /pr
 - `--credentials-stdin`：必須。
 - 元ファイル：自動探索・自動削除しない。
 - 認証専用Kataの自動起動：未実装。
+- 成功時：`Profile imported (plaintext, 0600).`。確認表示はproviderの `oauth` を参照。
 
 ### 管理シークレットを作成し、起動する
 
@@ -73,6 +75,18 @@ with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') 
     f.write(secrets.token_hex(32) + '\n')
 PY
 ```
+
+- 生成成功時：出力なし。次のコマンドで権限と保存先だけを確認。
+
+```bash
+stat -c '%a %n' "$HOME/.config/codex-dock/proxy-admin-secret"
+```
+
+```text
+600 /home/user/.config/codex-dock/proxy-admin-secret
+```
+
+- `/home/user` は自分のHOMEに変わる。secretの本文は表示不要。
 
 ### 日常操作で使うプロファイルを固定する
 
