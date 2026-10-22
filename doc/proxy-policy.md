@@ -32,8 +32,8 @@ cxd proxy run \
 
 - 拒否ルールを優先する。許可リストへの追加で拒否を打ち消すことはできない。
 - ドメインは大文字小文字を区別しない。`example.com` はその名前と全サブドメイン、`=api.example.com` はその名前だけに一致する。許可・拒否の両方で使える。`*.example.com`やURLは指定しない。国際化ドメインはASCIIのPunycode表記を使う。
-- `forward_default_deny = true`（CLI `--forward-default-deny`）では、ドメインとCIDRの許可リストが両方とも空なら一般通信を拒否する。ポートだけの指定では宛先を許可しない。固定AI経路の認証は独立している。
-- `forward_default_deny` がfalseまたは省略の場合、空の許可リストはその種類の追加制限を加えない。全許可リストが空でも公開宛て通信を許可する従来動作であり、「空＝通信禁止」ではない。複数種類を指定した場合は、ドメイン・接続IP・ポートのすべてを満たす必要がある。
+- `forward_default_deny` の既定値は `true`（CLI `--forward-default-deny`）。ドメインとCIDRの許可リストが両方とも空なら一般通信を拒否する。ポートだけの指定では宛先を許可しない。固定AI経路の認証は独立している。
+- `forward_default_deny = false`（CLI `--forward-default-deny=false`）を明示した場合、空の許可リストはその種類の追加制限を加えない。全許可リストが空でも公開宛て通信を許可する従来動作であり、「空＝通信禁止」ではない。複数種類を指定した場合は、ドメイン・接続IP・ポートのすべてを満たす必要がある。
 - 管理するプロキシはprivate/loopback/link-local/metadata/CGNATへの接続を常に拒否する。CIDR許可リストでこれを解除できない。
 - ドメインとポートはDNS問い合わせ前に検証する。DNS応答に拒否IPが一つでも含まれれば接続しない。確認済みIPへ直接接続し、接続時に名前を再解決しない。
 - HTTPリダイレクト先も同じ判定を行う。CONNECTは要求された接続先ホスト・ポート・接続IPを検査する。TLS内のURLやSNIを復号・検査する機能ではない。
@@ -42,11 +42,15 @@ cxd proxy run \
 
 ## 更新と既存環境からの移行
 
+未設定時の既定値を既定拒否へ変更しました。更新後はホスト側の許可ドメイン・CIDRを設定して新しいワーカーを作成してください。従来の公開宛て許可が必要なら `forward_default_deny = false` を明示します。既存proxy・ワーカー・CONNECTは自動変更しません。設定ファイルの読み込み失敗・構文エラー・不正な既定拒否の値はCLIの起動エラーになります。
+
+プロキシでのポリシー拒否はHTTP/CONNECTとも403で返します。ドメイン・ポートをDNS問い合わせ前に、解決されたIPをTCP接続前に検査します。直接通信の隔離は名前解決の失敗に依存せず、経路・転送制御とnftablesで維持します。
+
 ルールは起動時に検証して固定する。未知のロール、誤ったドメイン/CIDR/ポートは起動エラー。ホットリロードは提供しない。通常のワーカーは共有egress proxyを使用する。`cxd run --egress-allow-domain api.example.com` を指定したワーカーは、ポリシーの識別子を持つ専用egress proxyに接続する。異なる許可リストのワーカーはproxyを共有しない。同じ許可リストのワーカーは共有できる。プロジェクトの `codex-dock.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。ホストのグローバル許可ドメインがある場合、ワーカーの指定はその範囲内に限る。`--no-internet` は一般通信を止める。
 
 許可ルールの変更は新しいproxyと新しいワーカーに適用される。設定編集だけでは既存のCONNECTや通信中のストリームを打ち切らない。緊急時は `cxd policy quarantine --worker <ID>` で対象ワーカーを停止・隔離する。一般通信だけでなくAI通信と全ジョブも終了し、再起動は禁止される。workspace・worktree・ログは保持する。新しいルールで再開するには新しいワーカー・要求IDを使う。隔離の詳細と失敗時の扱いは[追加制御](sandbox-features.md#通信の停止と隔離)を参照。不要になったポリシーproxyは、利用ワーカーを停止した後に `cxd proxy rm --name <proxy名> --force` で回収できる。
 
-既定拒否はTUIの `Default deny` でも選べる。CLIでの新規ワーカー作成時に既定拒否で宛先が未許可なら、一般egressへ接続しない。Go APIでは `Options.EgressPolicy.DefaultDeny` を使う。ホスト側に許可が一つもない場合、ワーカー側から許可ドメインを追加して緩めることはできない。
+TUIの `Default deny` も未設定時は有効になる。CLIでの新規ワーカー作成時に既定拒否で宛先が未許可なら、一般egressへ接続しない。Go APIもゼロ値で既定拒否となる。宛先の許可なしに公開先への通信を許可するには `Options.EgressPolicy.AllowPublicDestinations: true` を明示する。ホスト側に許可が一つもない場合、ワーカー側から許可ドメインを追加して緩めることはできない。
 Go APIのホストポリシーは `LaunchRequest.EgressAllowDomains` を省略しても管理proxyで強制する。`=api.example.com` のホスト規則をワーカーが `api.example.com` に広げることも拒否する。設定内容は不変の要求条件に含まれ、同じRequestIDへ異なるポリシーを送ると競合する。
 
 `proxy run`は既存egressコンテナのポリシー識別子と要求した設定を照合し、古い版や設定の不一致をエラーにする。既存コンテナへ設定を反映したことにはせず、稼働中プロキシも自動で削除しない。設定ファイルの編集だけでは稼働中プロキシは変化しない。

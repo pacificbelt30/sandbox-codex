@@ -5,6 +5,18 @@
 
 API仕様・SDK型・CLIフラグの更新候補を調べるルールベースの検査は、[上流仕様の静的な変更検知](upstream-compatibility.md)を参照してください。`make contracts-check` はネットワークを使わず、検知ルールと基準データの整合性を確認します。
 
+## 一般通信の既定拒否への変更（2026-10-22）
+
+CLI・TUIの未設定値とGo APIのゼロ値を既定拒否へ変更しました。全Goテストのrace/coverage、build、vet、lint、MkDocs strictビルドが成功しています。`scripts/smoke-proxy.sh` は12項目成功し、明示的な宛先許可でのHTTP/CONNECT転送、private IP拒否、未設定時の存在しないホスト名・IP直指定に対するHTTP/CONNECTの403を確認しました。
+
+既存nodeとの版不一致を解消するため、専用のnode・containerd・BuildKit・cgroup・guestを用意し、CLI・node・proxyを `VERSION=dev` で揃えました。`make kata-e2e VERSION=dev` の標準4スイートは432.964秒で成功しました。VM受入174.58秒、共有9ケース158.43秒、追加制御39.38秒、標準Go API60.56秒です。追加したCLI試験は、設定省略時の一般egress無効化、default routeの不在、外部IPへの直接接続失敗、authへの到達を確認します。authの接続先は、entrypointが消去する一時環境変数ではなく、保存されたワーカー設定から取得します。
+
+追加の実Kata Go API受入は4ケースすべて成功しました（167.740秒）。`egress-zero-value` はゼロ値のホスト設定、`egress-default-deny` は明示設定で一般通信が無効になること、`egress-exact` は子ドメインへのHTTP/CONNECTが403になることを確認します。各ケースで固定AI経路の認可と許可済み要求の成功も検査します。`quarantine` は通信中の対象VMのHTTP/CONNECT・AIジョブの終了、共有proxyを使う別VMの継続、再起動拒否、別ポリシーでの再作成とworkspace保持を確認しました。追加のnode再起動・namespace喪失の故障注入は今回は指定していません。
+
+取消試験は、添付stdinを起動前に閉じるとKataのpassfd初期化と競合する条件を避け、入力pipeを保持したままcontextを取り消す形に修正しました。検討したI/O転送方式の変更案では256 KiB入力の欠落を検出したため採用していません。今回の実装は実行エンジンのI/O方式を変更しません。
+
+試験終了後、専用環境のコンテナ・ネットワーク・taskが0件であることを確認してから、node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存3サービスは開始時と同じPIDで稼働し、元nodeのhealth応答は200です。
+
 ## コードを確認する
 
 Go 1.24.7以上を使います。race検査にはCコンパイラーも必要です。

@@ -69,14 +69,14 @@ func revision(data []byte) string { sum := sha256.Sum256(data); return hex.Encod
 func Load(path string) (Settings, string, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return Settings{}, revision(nil), nil
+		return Settings{DefaultDeny: true}, revision(nil), nil
 	}
 	if err != nil {
 		return Settings{}, "", err
 	}
-	var document struct {
+	document := struct {
 		Proxy Settings `toml:"proxy"`
-	}
+	}{Proxy: Settings{DefaultDeny: true}}
 	if err := toml.Unmarshal(data, &document); err != nil {
 		return Settings{}, "", fmt.Errorf("parsing proxy configuration: %w", err)
 	}

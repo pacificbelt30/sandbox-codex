@@ -35,7 +35,7 @@ func runKataFixtureProxy() int {
 	f.StringVar(&socket, "credential-store-socket", "", "")
 	f.StringVar(&role, "role", "auth", "")
 	f.BoolVar(&block, "block-private", false, "")
-	f.BoolVar(&cfg.ForwardPolicy.DefaultDeny, "forward-default-deny", false, "")
+	f.BoolVar(&cfg.ForwardPolicy.DefaultDeny, "forward-default-deny", true, "")
 	f.Func("forward-allow-cidr", "", func(v string) error {
 		cfg.ForwardPolicy.AllowCIDRs = append(cfg.ForwardPolicy.AllowCIDRs, v)
 		return nil

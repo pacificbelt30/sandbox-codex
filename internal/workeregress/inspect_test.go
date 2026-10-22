@@ -27,6 +27,17 @@ func TestInspectParsesStrictPolicyWithoutChangingIdentity(t *testing.T) {
 	}
 }
 
+func TestInspectLegacyAndExplicitPublicPolicyAgree(t *testing.T) {
+	legacy, err := ParseProxyRules([]string{"proxy", "serve", "--role", "egress", "--block-private"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit, err := ParseProxyRules([]string{"proxy", "serve", "--role", "egress", "--block-private", "--forward-default-deny=false"})
+	if err != nil || legacy.DefaultDeny || explicit.DefaultDeny || ID(legacy) != ID(explicit) {
+		t.Fatalf("legacy running proxy was reinterpreted: legacy=%+v explicit=%+v err=%v", legacy, explicit, err)
+	}
+}
+
 func TestInspectResolvesOnlyAdvertisedPinnedProxyIdentity(t *testing.T) {
 	worker := container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{HostConfig: &container.HostConfig{ExtraHosts: []string{"auth:10.253.1.2", "egress:10.253.1.3", "unadvertised:10.253.1.9"}}}, Config: &container.Config{Labels: map[string]string{"codex-dock.proxy-hosts": `["auth","egress"]`}}}
 	name, err := proxyReference(worker, "10.253.1.3")

@@ -11,9 +11,12 @@ type EgressPolicy struct {
 	DenyCIDRs    []string
 	AllowPorts   []int
 	DenyPorts    []int
-	// DefaultDeny denies all general egress unless this host policy grants
-	// domains or CIDRs. Worker allowlists cannot widen an empty host grant.
+	// DefaultDeny enforces destination grants even if AllowPublicDestinations
+	// is true. Zero-value policies already deny egress without domain/CIDR grants.
 	DefaultDeny bool
+	// AllowPublicDestinations opts into public-destination access without domain
+	// or CIDR grants. Private addresses and all explicit restrictions still apply.
+	AllowPublicDestinations bool
 }
 
 func (p EgressPolicy) rules() networkpolicy.Rules {
@@ -22,6 +25,6 @@ func (p EgressPolicy) rules() networkpolicy.Rules {
 		AllowCIDRs: p.AllowCIDRs, DenyCIDRs: p.DenyCIDRs,
 		AllowPorts: p.AllowPorts, DenyPorts: p.DenyPorts,
 		BlockPrivate: true,
-		DefaultDeny:  p.DefaultDeny,
+		DefaultDeny:  p.DefaultDeny || !p.AllowPublicDestinations,
 	}
 }

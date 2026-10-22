@@ -14,24 +14,25 @@
 #   4. auth REFUSES to forward general traffic (405) — credential holder is not a proxy
 #   5. egress forwards HTTP and CONNECT to an origin
 #   6. egress with --block-private refuses a private/LAN destination (403 / blocked)
+#   7. default egress rejects HTTP/CONNECT before resolving or connecting
 #
 # (The forward-proxy domain allowlist is covered by the Go unit tests.)
 #
-# Requires: go, python3, curl. Container-level isolation (worker<->worker,
-# Internal-network egress) still needs a Docker daemon (see doc/network.md).
+# Requires: go, python3, curl. Container-level isolation is covered by the real
+# Kata acceptance suite (see doc/network.md).
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 TMP="$(mktemp -d)"
 BIN="$TMP/cxd"
-AUTH=18080; ADMIN=18081; EGRESS=18082; EGRESS_BLOCK=18083; ORIGIN=18090
+AUTH=18080; ADMIN=18081; EGRESS=18082; EGRESS_BLOCK=18083; EGRESS_DENY=18084; ORIGIN=18090
 PASS=0; FAIL=0; REPORT=""
 ok(){ REPORT+="PASS: $1"$'\n'; PASS=$((PASS+1)); }
 no(){ REPORT+="FAIL: $1"$'\n'; FAIL=$((FAIL+1)); }
 
 # Neutralise any outer-agent NO_PROXY/HTTP(S)_PROXY so curl actually traverses our proxy.
-CURL="env -u NO_PROXY -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy curl -s --noproxy "
+CURL="env -u NO_PROXY -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy curl -s --max-time 5 --noproxy "
 
 echo "=== build ==="
 go build -o "$BIN" . || { rm -rf "$TMP"; echo "build failed"; exit 1; }
@@ -40,11 +41,12 @@ go build -o "$BIN" . || { rm -rf "$TMP"; echo "build failed"; exit 1; }
 # it with SIGTTIN/SIGTTOU.
 python3 -m http.server "$ORIGIN" --bind 127.0.0.1 >/dev/null 2>&1 </dev/null & P_ORIGIN=$!
 "$BIN" proxy serve --role auth   --listen 127.0.0.1:$AUTH --admin-listen 127.0.0.1:$ADMIN >/dev/null 2>&1 </dev/null & P_AUTH=$!
-"$BIN" proxy serve --role egress --listen 127.0.0.1:$EGRESS >/dev/null 2>&1 </dev/null & P_EGRESS=$!
-"$BIN" proxy serve --role egress --listen 127.0.0.1:$EGRESS_BLOCK --block-private >/dev/null 2>&1 </dev/null & P_BLOCK=$!
+"$BIN" proxy serve --role egress --listen 127.0.0.1:$EGRESS --forward-allow-cidr 127.0.0.0/8 >/dev/null 2>&1 </dev/null & P_EGRESS=$!
+"$BIN" proxy serve --role egress --listen 127.0.0.1:$EGRESS_BLOCK --forward-allow-cidr 127.0.0.0/8 --block-private >/dev/null 2>&1 </dev/null & P_BLOCK=$!
+"$BIN" proxy serve --role egress --listen 127.0.0.1:$EGRESS_DENY >/dev/null 2>&1 </dev/null & P_DENY=$!
 
 # Wait for readiness (curl retries on connection-refused; no foreground sleep).
-for p in $ORIGIN $AUTH $EGRESS $EGRESS_BLOCK; do
+for p in $ORIGIN $AUTH $EGRESS $EGRESS_BLOCK $EGRESS_DENY; do
   $CURL '' --retry-connrefused --retry 40 --retry-delay 0 "http://127.0.0.1:$p/health" >/dev/null 2>&1 || true
 done
 
@@ -70,9 +72,16 @@ c=$($CURL '' -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$EGRESS_BLOCK" 
 c=$($CURL '' -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$EGRESS_BLOCK" --proxytunnel "http://127.0.0.1:$ORIGIN/go.mod")
 [ "$c" != 200 ] && ok "egress --block-private blocks CONNECT to LAN ($c)" || no "egress --block-private allowed CONNECT (200)"
 
+for destination in "http://must-not-resolve.invalid/" "http://127.0.0.1:$ORIGIN/go.mod"; do
+  c=$($CURL '' -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$EGRESS_DENY" "$destination")
+  [ "$c" = 403 ] && ok "default egress denies HTTP to $destination (403)" || no "default egress HTTP returned $c"
+  c=$($CURL '' -o /dev/null -w '%{http_connect}' -x "http://127.0.0.1:$EGRESS_DENY" --proxytunnel "$destination")
+  [ "$c" = 403 ] && ok "default egress denies CONNECT to $destination (403)" || no "default egress CONNECT returned $c"
+done
+
 # Reap all servers BEFORE printing so a lingering process group can't drop our
 # output or signal us, then report and exit deterministically.
-kill -9 "$P_ORIGIN" "$P_AUTH" "$P_EGRESS" "$P_BLOCK" 2>/dev/null
+kill -9 "$P_ORIGIN" "$P_AUTH" "$P_EGRESS" "$P_BLOCK" "$P_DENY" 2>/dev/null
 wait 2>/dev/null
 rm -rf "$TMP"
 

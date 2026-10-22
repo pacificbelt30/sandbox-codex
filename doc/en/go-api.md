@@ -14,7 +14,7 @@ The default proxy endpoints are `http://127.0.0.1:18081` for the host admin API,
 
 ## Example
 
-For default-deny general egress, set `Options.EgressPolicy.DefaultDeny: true`. Empty host domain and CIDR grants disable general egress, and a worker cannot widen that empty grant. With grants present, the host maximum is enforced by a managed proxy even if the worker omits its own list. Bare `example.com` includes subdomains; `=example.com` is exact. Zero-value options retain legacy public-destination access. Fixed AI routes use independent authentication and model authorization.
+General egress defaults to deny even with zero-value `Options.EgressPolicy`. Empty host domain and CIDR grants disable general egress, and a worker cannot widen that empty grant. With grants present, the host maximum is enforced by a managed proxy even if the worker omits its own list. Bare `example.com` includes subdomains; `=example.com` is exact. Explicitly set `Options.EgressPolicy.AllowPublicDestinations: true` to permit public destinations without grants. `DefaultDeny: true` takes precedence over that opt-in. Fixed AI routes use independent authentication and model authorization.
 
 ```go
 package main

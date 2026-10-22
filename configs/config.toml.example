@@ -172,13 +172,13 @@ container_url = "http://codex-auth-proxy:18080"
 admin_url = "http://127.0.0.1:18081"
 # admin_secret = "your-admin-secret"
 
-# Optionally restrict the forward proxy to a domain allowlist (and subdomains).
-# An empty/omitted list adds no domain restriction; private IPs remain blocked.       flag: --forward-allow-domain
+# General egress requires an explicit domain or CIDR grant by default.
+# Fixed AI routes remain available without general egress.                         flag: --forward-allow-domain
 #
 # Example: only allow common package registries and source hosts.
 # Default deny requires an explicit domain or CIDR grant. Ports alone do not grant destinations.
-# false/omitted preserves legacy behavior: empty allowlists permit public destinations.
-# forward_default_deny = true
+# Set false explicitly to permit public destinations without grants.
+forward_default_deny = true
 # Bare domains include subdomains; prefix = for exact match, e.g. "=api.github.com".
 # forward_allow_domains = ["github.com", "=registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
 

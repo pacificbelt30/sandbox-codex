@@ -145,7 +145,7 @@ Under `[proxy]`:
 | `container_url` | `http://codex-auth-proxy:18080` | `run --proxy-container-url` |
 | `admin_url` | `http://127.0.0.1:18081` | `run --proxy-admin-url`, worker management |
 | `admin_secret` | Unset | Admin client; also supply the server secret with `proxy run --admin-secret` |
-| `forward_default_deny` | `false` | `--forward-default-deny`; deny general egress when both domain and CIDR grants are empty |
+| `forward_default_deny` | `true` | `--forward-default-deny`; deny general egress when both domain and CIDR grants are empty |
 | `forward_allow_domains`, `forward_deny_domains` | Empty | `--forward-allow-domain`, `--forward-deny-domain` |
 | `forward_allow_cidrs`, `forward_deny_cidrs` | Empty | `--forward-allow-cidr`, `--forward-deny-cidr` |
 | `forward_allow_ports`, `forward_deny_ports` | Empty | `--forward-allow-port`, `--forward-deny-port` |
@@ -154,9 +154,12 @@ The data URL is used by workers; the admin URL is used by the host CLI.
 General egress uses `run --http-proxy-url`.
 The legacy `firewall.proxy_container_url` key is still read, but use `[proxy]` for new config.
 
+On upgrade, configure host domain/CIDR grants before creating new workers, or explicitly opt into the previous behavior with `forward_default_deny = false`. Existing proxies, workers and CONNECT tunnels are not changed automatically. Missing explicitly selected configuration files, parse errors and invalid default-deny values fail CLI startup.
+
 Rules apply only to general egress. Denials win and all nonempty allowlists must match.
-Set `forward_default_deny = true` to deny empty destination allowlists; omission retains the legacy behavior permitting public destinations. A port alone is not a destination grant. Bare `example.com` includes subdomains; `=example.com` matches that name exactly, for both allow and deny rules.
+`forward_default_deny` defaults to `true`, denying empty destination allowlists. Explicitly set `false` (CLI `--forward-default-deny=false`) to retain public-destination access without grants. A port alone is not a destination grant. Bare `example.com` includes subdomains; `=example.com` matches that name exactly, for both allow and deny rules.
 Private address blocking cannot be overridden by an allowlist.
+Policy denials return HTTP 403 for HTTP requests and CONNECT. Domain/port checks run before DNS; resolved addresses are checked before TCP connection. Direct worker traffic remains isolated at the network layer. See the [verification record](../testing.md#一般通信の既定拒否への変更2026-10-22) for automated checks and successful real Kata acceptance results.
 Recreate the proxy to apply changes. See [policy rules](../proxy-policy.md) (Japanese).
 
 ## Environment overrides

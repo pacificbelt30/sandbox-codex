@@ -88,10 +88,17 @@ func TestKataPolicyFeatures(t *testing.T) {
 		t.Fatalf("exec options %q %d %v", env.String(), code, err)
 	}
 	cancelCtx, cancelExec := context.WithCancel(ctx)
+	defer cancelExec()
+	// Keep attached stdin open until cancellation. Closing it before Kata's
+	// passfd peer opens races process startup and tests EOF instead of cancel.
+	cancelInput, cancelWriter := io.Pipe()
+	defer cancelInput.Close()
+	defer cancelWriter.Close()
 	var canceledID string
-	_, err = m.ExecWithOptions(cancelCtx, id, ExecOptions{Argv: []string{"sleep", "60"}, Stdin: strings.NewReader(""), OnStart: func(eid string) { canceledID = eid; go func() { time.Sleep(300 * time.Millisecond); cancelExec() }() }})
+	var canceledOutput bytes.Buffer
+	code, err = m.ExecWithOptions(cancelCtx, id, ExecOptions{Argv: []string{"sleep", "60"}, Stdin: cancelInput, Stdout: &canceledOutput, Stderr: &canceledOutput, OnStart: func(eid string) { canceledID = eid; go func() { time.Sleep(300 * time.Millisecond); cancelExec() }() }})
 	if !errors.Is(err, context.Canceled) || canceledID == "" {
-		t.Fatalf("exec cancellation: %s %v", canceledID, err)
+		t.Fatalf("exec cancellation: id=%s exit=%d err=%v output=%s", canceledID, code, err, canceledOutput.String())
 	}
 	for i := 0; i < 50; i++ {
 		state, err := m.cli.ContainerExecInspect(ctx, canceledID)

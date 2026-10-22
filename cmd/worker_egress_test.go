@@ -12,6 +12,8 @@ func TestWorkerEgressProxyUsesPolicySpecificIdentity(t *testing.T) {
 	defer func() { proxyForwardRules, proxyForwardAllow = oldRules, oldAllow }()
 	proxyForwardRules.AllowDomains = nil
 	proxyForwardAllow = []string{"example.com"}
+	viper.Set("proxy.forward_allow_domains", []string{"example.com"})
+	defer viper.Set("proxy.forward_allow_domains", nil)
 	viper.Set("proxy_image", "proxy:test")
 	defer viper.Set("proxy_image", nil)
 	one, err := workerEgressSpec(runCmd, []string{"api.example.com"})
