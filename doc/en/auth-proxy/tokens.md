@@ -35,7 +35,7 @@ The admin restore API accepts saved placeholders, not real API keys or another w
 
 `CODEX_TOKEN` and `CODEX_AUTH_PROXY_URL` bootstrap authentication and are unset by the entrypoint.
 Client files still retain placeholders. API-key variables contain placeholders.
-OAuth auth.json has a placeholder access token and an empty refresh token; an ID token may be included for account metadata.
+OAuth auth.json has a placeholder access token, an empty refresh token and a fresh dummy ID JWT containing only account ID, plan and the FedRAMP flag. Real ID tokens remain on the host.
 Codex configuration points requests to the proxy. `CODEX_REFRESH_TOKEN_URL_OVERRIDE` includes the worker token.
 Paths depend on the selected user's HOME, not a fixed `/home/codex`.
 

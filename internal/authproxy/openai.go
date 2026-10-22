@@ -13,7 +13,7 @@ import (
 // Codex CLI calls this endpoint via CODEX_REFRESH_TOKEN_URL_OVERRIDE.
 // The container authenticates via ?cdx=<short-lived-token> query param.
 // The proxy substitutes the host's real refresh_token, calls OpenAI, and returns
-// the new access_token WITHOUT the refresh_token (which stays on the host only).
+// worker-only access/ID placeholders. Real credentials stay on the host.
 //
 // Codex CLI sends JSON:
 //
@@ -24,7 +24,7 @@ import (
 //
 // Monitored fields:
 //   - request  body["refresh_token"]: replaced with host's real refresh_token
-//   - response body["refresh_token"]: stripped before returning to container
+//   - response: fresh projection; no real tokens or arbitrary issuer fields
 func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -86,6 +86,10 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	} else {
 		reqBody = map[string]interface{}{}
 	}
+	if reqBody == nil {
+		http.Error(w, "request body must be a JSON object", http.StatusBadRequest)
+		return
+	}
 	// Replace only the refresh_token; leave grant_type, client_id, etc. unchanged.
 	reqBody["refresh_token"] = refreshToken
 
@@ -106,7 +110,7 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		http.Error(w, "calling OAuth endpoint: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "calling OAuth endpoint failed", http.StatusBadGateway)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -118,14 +122,20 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(resp.StatusCode)
-		_, _ = w.Write(respBody)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": workerRefreshErrorCode(respBody)})
 		return
 	}
 
 	var tokenResp map[string]interface{}
 	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
 		http.Error(w, "parsing OAuth response", http.StatusInternalServerError)
+		return
+	}
+	if access, ok := tokenResp["access_token"].(string); !ok || access == "" {
+		http.Error(w, "OAuth response missing access token", http.StatusBadGateway)
 		return
 	}
 
@@ -151,18 +161,14 @@ func (p *Proxy) handleOAuthTokenRefresh(w http.ResponseWriter, r *http.Request) 
 	*p.oauthCreds = next
 	p.mu.Unlock()
 
-	// Strip refresh_token before returning to the container.
-	delete(tokenResp, "refresh_token")
-
-	// Replace real access_token with the container's placeholder token so the
-	// real credential never reaches the container.  The proxy injects the real
-	// access_token on every outbound API request via injectCredentials.
-	if _, ok := tokenResp["access_token"].(string); ok {
-		tokenResp["access_token"] = found.Token
-	}
-
+	// Construct a fresh response: deleting known secret fields would still leak
+	// future token fields or nested diagnostics returned by the issuer.
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(tokenResp)
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"access_token": found.Token,
+		"id_token":     workerIDToken(next),
+	})
 
 	if p.cfg.Verbose {
 		fmt.Printf("OAuth token refreshed for container %s\n", found.ContainerName)

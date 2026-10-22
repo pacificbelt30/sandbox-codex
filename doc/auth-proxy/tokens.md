@@ -41,7 +41,7 @@ TTLの既定は3600秒です。
 | `CODEX_AUTH_PROXY_URL` | 認証プロキシのURL。起動スクリプトが使用後にunset |
 | APIキー用の環境変数 | 実キーではなくplaceholder |
 | OAuth用auth.json | access tokenはplaceholder、refresh tokenは空文字 |
-| OAuth ID token | Codexのアカウント情報読み取り用に返す場合がある |
+| OAuth ID欄 | account ID・plan・FedRAMPフラグだけを持つ新規ダミーJWT。実ID tokenは返さない |
 | Codex設定 | `openai_base_url`、OAuth時の `chatgpt_base_url` をプロキシへ向ける |
 | `CODEX_REFRESH_TOKEN_URL_OVERRIDE` | OAuth時の更新要求をプロキシへ向ける。短命トークンを含む |
 

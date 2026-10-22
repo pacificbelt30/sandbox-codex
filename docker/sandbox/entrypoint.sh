@@ -72,12 +72,13 @@ if [[ -n "${CODEX_AUTH_PROXY_URL:-}" && -n "${CODEX_TOKEN:-}" ]]; then
     OAUTH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('oauth_access_token',''))" 2>/dev/null || true)
 
     if [[ -n "$OAUTH_TOKEN" ]]; then
-        # OAuth mode: write auth.json with access_token and id_token ONLY.
-        # refresh_token is intentionally omitted — the Auth Proxy holds it on the host.
+        # OAuth mode: write auth.json with a placeholder access_token and a
+        # dummy ID JWT containing only selected account/plan metadata.
+        # Real access/ID/refresh tokens stay on the Auth Proxy host.
         # When Codex CLI needs to refresh, it calls CODEX_REFRESH_TOKEN_URL_OVERRIDE
         # which points to the proxy's /oauth/token endpoint. The proxy performs the
-        # actual refresh using the host's refresh_token and returns the new access_token
-        # without ever exposing the refresh_token to the container.
+        # actual refresh using the host's refresh_token and returns only fresh
+        # worker metadata and the access placeholder.
         CODEX_HOME="$(resolve_codex_home)"
         export HOME="${CODEX_HOME}"
         mkdir -p "${CODEX_HOME}/.codex"

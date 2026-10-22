@@ -50,7 +50,7 @@ OAuthモードでは次の情報を返します。
 ```json
 {
   "oauth_access_token": "cdx-<64桁の16進数>",
-  "oauth_id_token": "<ID token>",
+  "oauth_id_token": "<dummy JWT containing selected account metadata>",
   "oauth_account_id": "<account ID>",
   "oauth_last_refresh": "<timestamp>",
   "container_name": "worker-name"
@@ -58,8 +58,9 @@ OAuthモードでは次の情報を返します。
 ```
 
 `api_key` と `oauth_access_token` は提示した短命トークンと同じplaceholderです。
-実access tokenとrefresh tokenは返しません。
-ID tokenはクライアントがアカウント情報を読むために返します。
+実access token・refresh token・ID tokenは返しません。
+ID欄はaccount ID・plan・FedRAMPフラグだけを持つ新規ダミーJWTです。元の署名・任意claimは含みません。
+正常応答には`Cache-Control: no-store`を設定します。
 無効・欠落・期限切れのトークンは401、GET以外は405です。
 
 ## `POST /oauth/token`
@@ -76,8 +77,9 @@ ID tokenはクライアントがアカウント情報を読むために返しま
 ```
 
 リクエストのrefresh tokenをホストの本物に差し替え、OpenAIのOAuth endpointへ送ります。
-レスポンスのaccess tokenはplaceholderへ差し替え、refresh tokenは除去します。
-更新後の本物の認証情報はプロキシ側で扱います。
+成功応答は`access_token`（placeholder）と`id_token`（新規ダミーJWT）の2項目だけです。
+実refresh tokenや、上流が追加した任意フィールドは返しません。更新後の本物の認証情報はプロキシ側で保存します。
+上流のエラーstatusは保持し、本文は`{"error":"<code>"}`へ置き換えます。`refresh_token_expired`・`refresh_token_reused`・`refresh_token_invalidated`・`invalid_grant`だけを正規化して保持し、それ以外は`oauth_refresh_failed`です。エラー本文に反射された資格情報や任意の説明文は返しません。成功・上流エラー応答は`Cache-Control: no-store`とします。
 
 | ステータス | 条件 |
 |---|---|

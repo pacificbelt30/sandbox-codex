@@ -18,8 +18,8 @@ type AuthInfo struct {
 }
 
 // OAuthCredentials holds OAuth credentials loaded from ~/.codex/auth.json.
-// Access and refresh tokens remain in the proxy. Workers receive a placeholder
-// access token and account/ID metadata needed by the Codex login flow.
+// Real access, refresh and ID tokens remain in the proxy. Workers receive an
+// access placeholder and a fresh dummy JWT with selected account/plan metadata.
 type OAuthCredentials struct {
 	IDToken      string `json:"id_token"`
 	AccessToken  string `json:"access_token"`

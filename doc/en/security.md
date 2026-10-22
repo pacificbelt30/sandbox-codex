@@ -23,9 +23,11 @@ Agent approval settings are separate. Bind-mounted files remain accessible with 
 
 ## Credentials
 
-The auth proxy retains real API keys and OAuth access/refresh tokens.
-Workers use short-lived placeholders. OAuth ID tokens and account metadata may be returned for client compatibility.
+The auth proxy retains real API keys and OAuth access/refresh/ID tokens.
+Workers use short-lived access placeholders. The Codex ID field contains a fresh dummy JWT with only account ID, plan and the FedRAMP flag. Original headers, signatures, email, user IDs and arbitrary claims are not forwarded. This dummy JWT is not used to authenticate upstream requests.
 The egress proxy receives no real credentials.
+
+Initial acquisition and refresh return only selected worker fields. Refresh errors retain HTTP status and known codes needed for CLI recovery, without forwarding issuer bodies or transport error details. See the [pinned CLI test](../testing.md#codexのidトークン分離) (Japanese). Existing worker files and historical logs are not automatically erased: update the proxy, then stop and recreate existing workers.
 
 The auth proxy runs as the caller's UID/GID, with a private HOME and read-only credential binds.
 It can read owner-only `0600` files without changing their permissions or adding capabilities.

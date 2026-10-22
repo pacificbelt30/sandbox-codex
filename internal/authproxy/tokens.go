@@ -117,19 +117,20 @@ func (p *Proxy) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	if p.oauthCreds != nil {
 		// OAuth mode: return a placeholder access_token (the container's CODEX_TOKEN).
 		// The real access_token never leaves the proxy; it is injected by
 		// reverseProxy/handleWebSocketProxy on every outbound API request.
-		// id_token is passed through so Codex CLI can extract account/plan claims
-		// for UI display and ChatGPT-Account-Id header construction.
+		// id_token is a fresh dummy JWT containing selected account/plan metadata.
+		// The real ID token, including its signature, stays on the host too.
 		// refresh_token is intentionally withheld.
 		p.mu.RLock()
 		creds := *p.oauthCreds
 		p.mu.RUnlock()
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"oauth_access_token": found.Token, // placeholder; real token injected by proxy
-			"oauth_id_token":     creds.IDToken,
+			"oauth_id_token":     workerIDToken(creds),
 			"oauth_account_id":   creds.AccountID,
 			"oauth_last_refresh": creds.LastRefresh,
 			"container_name":     found.ContainerName,

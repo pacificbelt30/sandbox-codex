@@ -44,15 +44,15 @@ OAuth mode returns:
 ```json
 {
   "oauth_access_token": "cdx-<64 hexadecimal digits>",
-  "oauth_id_token": "<ID token>",
+  "oauth_id_token": "<dummy JWT containing selected account metadata>",
   "oauth_account_id": "<account ID>",
   "oauth_last_refresh": "<timestamp>",
   "container_name": "worker-name"
 }
 ```
 
-The API/access token is the submitted placeholder. Real access/refresh tokens are not returned.
-An ID token may be returned for account metadata.
+The API/access token is the submitted placeholder. Real access/refresh/ID tokens are not returned.
+The ID field is a fresh dummy JWT containing only account ID, plan and the FedRAMP flag, without the original signature or arbitrary claims. Successful responses set `Cache-Control: no-store`.
 Invalid, missing or expired tokens return 401; wrong methods return 405.
 
 ## `POST /oauth/token`
@@ -65,8 +65,8 @@ Authenticate with `?cdx=<worker token>` because the client does not attach custo
 ```
 
 The proxy substitutes the real host refresh token before forwarding to OpenAI.
-In the response it replaces the access token with the placeholder and removes the refresh token.
-Real updated credentials remain on the proxy side.
+Success responses contain only `access_token` (the worker placeholder) and `id_token` (fresh dummy JWT). Refresh tokens and arbitrary issuer fields are not returned. Real updated credentials are persisted on the proxy side.
+Upstream error status is preserved; the body becomes `{"error":"<code>"}`. Only `refresh_token_expired`, `refresh_token_reused`, `refresh_token_invalidated` and `invalid_grant` are retained in canonical lowercase; other codes become `oauth_refresh_failed`. Issuer messages and reflected credentials are never forwarded. Success and upstream-error responses set `Cache-Control: no-store`.
 
 Errors: 400 for wrong mode or malformed request, 401 for invalid worker token, 405 for wrong method, 502 for upstream connection failure.
 

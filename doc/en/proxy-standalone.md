@@ -70,7 +70,7 @@ if 'oauth_access_token' in data:
         'tokens': {
             'access_token': data['oauth_access_token'],
             'refresh_token': '',
-            'id_token': data.get('oauth_id_token', ''),
+            'id_token': data.get('oauth_id_token', ''),  # Fresh dummy JWT, not the real ID token.
             'account_id': data.get('oauth_account_id', ''),
         },
         'last_refresh': data.get('oauth_last_refresh', ''),

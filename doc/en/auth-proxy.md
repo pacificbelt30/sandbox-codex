@@ -59,8 +59,8 @@ Unreadable files and directories are rejected before startup.
 4. The proxy validates the token before connecting upstream.
 5. It replaces worker authentication with the real provider credentials.
 
-Real API keys and OAuth access/refresh tokens never reach workers.
-ChatGPT mode may return an ID token for account metadata. The worker's auth.json contains a placeholder access token and an empty refresh token.
+Real API keys and OAuth access/refresh/ID tokens never reach workers.
+ChatGPT mode creates a fresh dummy JWT containing only account ID, plan and the FedRAMP flag. The worker's auth.json contains this dummy ID JWT, a placeholder access token and an empty refresh token.
 
 ## Authentication and expiry
 

@@ -48,6 +48,7 @@ export TOKEN
 
 元のログインファイルを上書きしないよう、Codex用に別の設定ディレクトリを作ります。
 以下のPythonは `/token` のJSONを直接解析し、placeholderだけをクライアント認証として保存します。
+OAuthのID欄も、実ID tokenではなくProxyが作成した最小限のaccount metadata用ダミーJWTです。
 
 ```bash
 export CODEX_HOME=$(mktemp -d)

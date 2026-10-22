@@ -66,9 +66,9 @@ cxd proxy run
 4. プロキシが有効な発行済みトークンかを検証する。
 5. 認証ヘッダーを本物に差し替え、固定の上流へ転送する。
 
-実APIキーとOAuthのaccess token・refresh tokenはワーカーに渡しません。
-ChatGPT認証では、Codexのアカウント情報読み取りに必要なID tokenを返すことがあります。
-ワーカー用auth.jsonのaccess tokenはプレースホルダー、refresh tokenは空文字です。
+実APIキーとOAuthのaccess token・refresh token・ID tokenはワーカーに渡しません。
+ChatGPT認証では、account ID・plan・FedRAMPフラグだけを持つダミーJWTを新しく作成します。
+ワーカー用auth.jsonのaccess tokenはプレースホルダー、ID欄はこのダミーJWT、refresh tokenは空文字です。
 
 ## 認証と接続の有効期限
 

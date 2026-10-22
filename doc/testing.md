@@ -31,6 +31,23 @@ gofmt -l cmd internal pkg
 | 製品組み込み用 Go API | 公開エラー分類と要求IDの入力検査、node台帳での競合・再送・応答消失時の照合と回収、通信許可の入力検査 |
 | ケース別認証 | 資格情報ソケットの権限とケース分離、OAuth更新の版競合、ケース変更時の失効、プロバイダー経路と実行IDの失効 |
 
+## CodexのIDトークン分離
+
+2026-10-22の修正では、初回`/token`とOAuth更新から実ID tokenが返る経路を、架空資格情報による回帰試験で再現してから閉じました。通常のGo試験で、実access/refresh/ID tokenの非返却、任意のclaim・追加フィールド・エラー本文・通信エラーからの漏出防止、ホストでの実トークン更新、既知の更新エラー分類を確認します。
+
+固定Codex 0.163.0を指定する追加試験も用意しています。`--version`で固定版を照合し、実際のworker entrypointとProxy listenerを使って、初回ログイン読み込みと、古い`last_refresh`によるCLI自身の更新からHTTP/SSE最終応答までを確認します。
+
+```bash
+CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
+  go test ./internal/authproxy -run '^TestCodexCLIWorkerCredentialPrivacy$' -count=1 -v
+```
+
+この固定CLI試験は、ホストの認証ファイルや資格情報の環境変数を継承せず、ローカルOAuth／Responses fixtureだけを使います。CLI出力、Proxyのverboseログ、生成されたHOME配下のファイル（`auth.json`を含む）に架空の実トークンが残らないことと、更新後もaccess欄がplaceholder・refresh欄が空文字であることを検査します。email・user IDなどの未選択claimも渡しません。
+
+両ケースは実行してPASSしています。これはホスト上でのCLI／起動スクリプト結合試験であり、この修正後の実Kata・実OAuthサービスによる更新は再検証していません。通常のCIではCLIバイナリを指定しない追加試験だけがskipされ、資格情報境界の回帰試験は実行されます。
+
+## Go APIの追加受入
+
 [Go API](go-api.md)の実機受入 `TestKataGoAPI` は `make kata-e2e` に含まれます。ケース別の架空資格情報でOpen → Launch → Exec → Stop → RemoveRequest、small/standardの別boot ID・ゲスト制限・ホスト予約・削除後の割当回収、取消済みLaunch context、Execの入力EOF（stdin未接続も含む）・実行中取消とプロセス回収、要求IDの再送・競合・削除後の再送、再接続後の照合、VMへの資格情報漏れ、ケース間のトークン拒否、実行IDの失効を確認します。
 
 追加の障害系受入 `TestKataAPIIntegration` には別ターゲット `make kata-api-e2e` を用意しています。実行中のLaunch取消、OAuth更新・保存失敗・版競合・proxy再起動、通信中ストリームの失効などの対象は[公開Go APIの障害系受入](#公開go-apiの障害系受入)を参照してください。応答を通信路で破棄する故障注入とGo API経由のワーカー別通信許可は、両ターゲットともまだ含みません。単体テストと実Kata受入結果を区別し、成功記録がある版・範囲を確認してください。
@@ -96,7 +113,7 @@ SSEの確認では、実際のHTTP経路とイベントを照合します。
 | 共有修正の回帰 | 全Goテスト、sandbox / kataguard / cmdのrace、vet、macOS arm64クロスビルド、設定生成テスト成功 |
 | 認証修正の回帰 | 全Goテスト、race、vet、macOS arm64クロスビルド成功 |
 | 既存auth.jsonによる実推論 | Codex 0.163.0でWebSocketと明示的HTTP SSEの最終応答を確認 |
-| 認証情報の分離 | ワーカーにはplaceholderと空のrefresh tokenのみ。元auth.jsonは変更なし |
+| 認証情報の分離 | access欄はplaceholder、refresh欄は空文字、元auth.jsonは変更なし。当時残っていた実ID token返却は[後続修正](#codexのidトークン分離)で除去 |
 | 後片付け | 試験VM・ネットワーク・一時ルール・専用状態を回収 |
 
 実機受入の一部は、外側にDockerを使った使い捨て環境で実施しました。

@@ -4,7 +4,9 @@
 
 ## 資格情報
 
-OpenAI / AnthropicのAPIキー、API用access token、OAuth refresh tokenはauth proxyが保持する。workerには短命のplaceholderだけを渡し、固定API経路を中継する際に実資格情報へ差し替える。Codex loginの互換性のため、ID tokenなどのaccount metadataは返す場合がある。egress proxyには実資格情報をmount・注入しない。
+OpenAI / Anthropicの実APIキー・access token・OAuth refresh token・ID tokenはauth proxyが保持する。workerには短命のaccess placeholderを渡し、固定API経路を中継する際に実資格情報へ差し替える。Codex login用のID欄は、account ID・plan・FedRAMPフラグだけを含む新規のダミーJWTとする。元のJWTのheader・signature・email・user ID・その他のclaimは返さない。このダミーJWTは上流認証には使わない。egress proxyには実資格情報をmount・注入しない。
+
+初回取得とOAuth更新の両方で返却項目を限定する。更新エラーは、CLIの再ログイン判断に必要な既知コードとHTTP statusだけを保持し、上流本文・任意フィールド・通信エラー詳細を返さない。[固定CLIによる試験](testing.md#codexのidトークン分離)を参照。更新前のworker内ファイルや過去ログを自動消去する変更ではないため、Proxyを更新したあと、既存workerは停止・再作成する。
 
 認証プロキシは呼出元のUID/GIDと専用HOMEで、所有者の0600認証ファイルを読み取り専用で開く。capability全削除を維持し、元ファイルの権限は変更しない。
 
