@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Oaiso and legacy entry points without a node or external services."""
+"""Verify the sole Oaiso entry point without a node or external services."""
 import argparse
 import os
 from pathlib import Path
@@ -26,7 +26,7 @@ def main():
             assert secret not in result.stdout + result.stderr, 'credential leaked to CLI output'
             return result.stdout
 
-        names = ['oaiso', 'cxd', 'codex-dock']
+        names = ['oaiso']
         for name in names:
             (directory / name).symlink_to(binary)
         run(directory / 'oaiso', 'auth', 'profile', 'set', 'work', '--key-stdin', input=secret)
@@ -50,7 +50,7 @@ def main():
             assert 'Profile: work' in run(cli, 'auth', 'show'), 'legacy profile configuration was not reused'
         profile = home / '.config/codex-dock/profiles/work/work.json'
         assert profile.is_file() and profile.stat().st_mode & 0o777 == 0o600
-    print('PASS: oaiso/cxd/codex-dock help, version, completion, commands and existing auth-profile storage')
+    print('PASS: oaiso help, version, completion, commands and existing auth-profile storage')
 
 
 if __name__ == '__main__':

@@ -14,15 +14,16 @@ oaiso update
 
 ## 動作
 
-内部で以下のコマンドを実行し、同じ Go bin ディレクトリに `oaiso` コマンドを作成・維持します。
+内部で以下のコマンドを実行し、Go binディレクトリへ `oaiso` を配置します。
 
 ```bash
-go install github.com/pacificbelt30/codex-dock@latest
+go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest
 ```
 
 - `go` コマンドが `PATH` に存在しない場合はエラーになります。
-- ビルドされた `codex-dock` バイナリと `oaiso` / `cxd` の互換aliasは `$(go env GOBIN)`、未設定なら `$(go env GOPATH)/bin` に配置されます。
-- その場所に別の `oaiso` ファイルがある場合は上書きせずエラーにします。
+- `cmd/oaiso` を含むリリースの公開が必要です。旧リリース `v0.0.1` は未対応。公開前は取得済みソースで `go install ./cmd/oaiso`、または後述のホスト更新手順を使用。
+- `oaiso` は `$(go env GOBIN)`、未設定なら `$(go env GOPATH)/bin` に配置されます。
+- 旧コマンド・互換aliasは生成しません。既にある旧ファイルの回収は[移行手順](../migration.md#oaisoへの名称変更)を参照。
 
 ## 導入方法に合わせて更新する
 

@@ -84,7 +84,8 @@ CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
 ## 独立プロファイルの受入
 
 - 名称変更後の実CLI受入は `python3 scripts/verify-cli-names.py --binary ./oaiso` で確認できます。
-- `make build` 後、`oaiso` / `cxd` / `codex-dock` のヘルプ・版表示、Bash/Zsh/Fish/PowerShell補完、主要コマンド、既存の `~/.config/codex-dock/` に置いた架空の認証profileの読み込みを別HOMEで試験します。
+- `make build` 後、`oaiso` のヘルプ・版表示、Bash/Zsh/Fish/PowerShell補完、主要コマンド、既存の `~/.config/codex-dock/` に置いた架空の認証profileの読み込みを別HOMEで試験します。
+- 旧コマンドの生成は廃止。セットアップの試験では、旧版の導入記録と内容が一致するファイルだけの回収、無関係な同名ファイルの保持、失敗時の復元も確認します。
 - node・外部APIは使いません。
 - インストーラーのPython試験では、新しいコマンド・補完の管理外ファイルを上書きしないこととrollback対象への登録も確認します。
 

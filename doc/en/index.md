@@ -61,6 +61,6 @@
 |---|---|
 | Formal name | 御AgentIsolation; 御 adds politeness and respect |
 | English name / pronunciation | Oaiso / “oh-eye-so” |
-| Legacy commands | `cxd` / `codex-dock` |
+| CLI | `oaiso` only; legacy commands are no longer provided |
 | Retained identifiers | Configuration, credentials, service names and Go API |
 | Details | [Migration compatibility](../migration.md#oaisoへの名称変更) (Japanese) |

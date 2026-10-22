@@ -16,7 +16,7 @@ class InstallScriptTests(unittest.TestCase):
             bundle.mkdir()
             (bundle / 'bundle.json').write_text('{}')
             log = root / 'calls'
-            cli = bundle / 'codex-dock'
+            cli = bundle / 'oaiso'
             cli.write_text('#!/bin/sh\nprintf "cli:%s\\n" "$*" >> "$INSTALL_TEST_LOG"\n')
             cli.chmod(0o755)
             fake_bin = root / 'bin'
@@ -48,7 +48,7 @@ class InstallScriptTests(unittest.TestCase):
             bundle = root / 'bundle'
             bundle.mkdir()
             (bundle / 'bundle.json').write_text('{}')
-            cli = bundle / 'codex-dock'
+            cli = bundle / 'oaiso'
             cli.write_text('#!/bin/sh\nexit 7\n')
             cli.chmod(0o755)
             fake_bin = root / 'bin'

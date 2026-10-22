@@ -36,13 +36,16 @@ LEGACY_COMPLETIONS = {
            for shell, path in COMPLETIONS.items()}
     for name in ['cxd', 'codex-dock']
 }
-OAISO_FILES = [Path('/usr/local/bin/oaiso'), *COMPLETIONS.values(),
-               *LEGACY_COMPLETIONS['codex-dock'].values()]
-MANAGED = [Path('/etc/systemd/system') / (s + '.service') for s in SERVICES] + [
-    Path('/usr/local/bin/codex-dock'), Path('/usr/local/bin/cxd'), Path('/usr/local/bin/buildctl'),
+OAISO_FILES = [Path('/usr/local/bin/oaiso'), *COMPLETIONS.values()]
+ACTIVE_MANAGED = [Path('/etc/systemd/system') / (s + '.service') for s in SERVICES] + [
+    Path('/usr/local/bin/buildctl'),
     Path('/etc/sysctl.d/80-codex-dock.conf'), Path('/etc/modules-load.d/codex-dock.conf'),
-    *LEGACY_COMPLETIONS['cxd'].values(), *OAISO_FILES]
-BUNDLE_FILES = ['codex-dock', 'codex-dock-worker-guard', 'codex-dock-io-logger']
+    *OAISO_FILES]
+# Old paths remain rollback destinations, but are never installed again.
+LEGACY_FILES = [Path('/usr/local/bin/codex-dock'), Path('/usr/local/bin/cxd'),
+                *(path for paths in LEGACY_COMPLETIONS.values() for path in paths.values())]
+MANAGED = [*ACTIVE_MANAGED, *LEGACY_FILES]
+BUNDLE_FILES = ['oaiso', 'codex-dock-worker-guard', 'codex-dock-io-logger']
 PACKAGES = {'ip': 'iproute2', 'nft': 'nftables', 'sysctl': 'procps',
             'gcc': 'gcc', 'debugfs': 'e2fsprogs', 'zstd': 'zstd',
             'curl': 'curl', 'getent': 'libc-bin', 'usermod': 'passwd',
@@ -55,7 +58,7 @@ def run(args, **kwargs):
 
 
 def completion_script(cli, shell, command='oaiso'):
-    # Set argv[0] explicitly: Cobra generates completion for the invoked name.
+    # An explicit old argv[0] is used only to identify prior installer output.
     return run([command, 'completion', shell], executable=str(cli), capture_output=True).stdout.encode()
 
 
@@ -283,7 +286,7 @@ snapshotter = "overlayfs"
     shutil.copyfile(HERE / 'prepare-node.sh', release / 'prepare-node.sh')
     (release / 'prepare-node.sh').chmod(0o755)
     env = dict(os.environ, PATH=str(binary) + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin')
-    run([binary / 'codex-dock', 'runtime-lock', '--kata-config', release / 'kata.toml', '--daemon-config', release / 'containerd.toml', '--containerd', binary / 'containerd', '--runtime-shim', release / 'containerd-shim-kata-v2', '--launcher', binary / 'codex-dock-worker-guard', '--output', release / 'kata-assets.json'], env=env)
+    run([binary / 'oaiso', 'runtime-lock', '--kata-config', release / 'kata.toml', '--daemon-config', release / 'containerd.toml', '--containerd', binary / 'containerd', '--runtime-shim', release / 'containerd-shim-kata-v2', '--launcher', binary / 'codex-dock-worker-guard', '--output', release / 'kata-assets.json'], env=env)
     return {'schema': 1, 'release': str(release), 'stamp': stamp, 'bundle': record, 'assets': LOCK}
 
 
@@ -313,7 +316,7 @@ Requires=codex-dock-containerd.service
 After=codex-dock-containerd.service
 [Service]
 {common}ExecStartPre={base}/prepare-node.sh
-ExecStart={binary}/codex-dock node serve --manifest {base}/kata-assets.json
+ExecStart={binary}/oaiso node serve --manifest {base}/kata-assets.json
 UMask=0077
 Restart=on-failure
 [Install]
@@ -367,12 +370,16 @@ def start_and_check(release):
     run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'start', *reversed(SERVICES)])
     binary = Path(release) / 'bin'
+    # A rollback may restore a release created before the command rename.
+    cli = binary / 'oaiso'
+    if not cli.is_file():
+        cli = binary / 'codex-dock'
     env = dict(os.environ, PATH=str(binary) + ':' + os.environ.get('PATH', ''))
     # Service creation is asynchronous. The readiness check includes node attestation.
     deadline = time.monotonic() + 75
     while time.monotonic() < deadline:
         try:
-            result = subprocess.run([str(binary / 'codex-dock'), 'runtime-check', '--json'], env=env, capture_output=True, text=True, timeout=20)
+            result = subprocess.run([str(cli), 'runtime-check', '--json'], env=env, capture_output=True, text=True, timeout=20)
             checks = json.loads(result.stdout).get('checks', [])
             names = {c['name'] for c in checks if c['status'] == 'ok'}
             if result.returncode == 0 and {'node', 'builder', 'host', 'kvm', 'cgroups', 'forwarding', 'runtime'}.issubset(names) and all(active(s) for s in SERVICES):
@@ -410,9 +417,28 @@ def main():
         apply(args, record)
 
 
-def check_new_cli_collision(current, path=Path('/usr/local/bin/cxd')):
-    if current and not current.get('cxd_cli') and (path.exists() or path.is_symlink()):
-        raise ValueError(f'unmanaged cxd command exists: {path}; preserve it before updating the node')
+def legacy_files_to_remove(current, bindir=Path('/usr/local/bin')):
+    """Identify unchanged files from the previous installer; preserve others."""
+    if not current or current.get('legacy_cli_removed'):
+        return []
+    checksum = current.get('bundle', {}).get('files', {}).get('codex-dock')
+    if not checksum:
+        return []
+    cli = Path(current['release']) / 'bin/codex-dock'
+    names = ['codex-dock', *(['cxd'] if current.get('cxd_cli') else [])]
+    owned = []
+    for name in names:
+        path = bindir / name
+        if path.is_file() and not path.is_symlink() and sha(path) == checksum:
+            owned.append(path)
+    if cli.is_file() and not cli.is_symlink() and sha(cli) == checksum:
+        for name in names:
+            if name == 'codex-dock' and not current.get('oaiso_cli'):
+                continue
+            for shell, path in LEGACY_COMPLETIONS[name].items():
+                if path.is_file() and not path.is_symlink() and path.read_bytes() == completion_script(cli, shell, name):
+                    owned.append(path)
+    return owned
 
 
 def check_oaiso_collision(current, paths=None):
@@ -428,10 +454,11 @@ def apply(args, record):
     current_path = STATE / 'installed.json'
     trusted(current_path)
     current = json.loads(current_path.read_text()) if current_path.exists() else None
+    legacy_files = [] if args.rollback else legacy_files_to_remove(current)
+    targets = [*ACTIVE_MANAGED, *legacy_files]
     if not args.rollback:
-        check_new_cli_collision(current)
         check_oaiso_collision(current)
-    for path in MANAGED:
+    for path in targets:
         trusted(path)
         if not current and path.exists():
             raise ValueError(f'unmanaged installation exists: {path}; preserve it and use the manual migration guide')
@@ -451,7 +478,10 @@ def apply(args, record):
             trusted(rollback_path, True)
             previous_transaction = json.loads(rollback_path.read_text())
             backup = STATE / ('rollback-attempt-' + str(time.time_ns()))
-            transaction = {'files': backup_files(backup, MANAGED), 'previous': current}
+            rollback_paths = [Path(item['path']) for item in previous_transaction['files']]
+            if not set(rollback_paths).issubset(MANAGED):
+                raise ValueError('unexpected rollback destination')
+            transaction = {'files': backup_files(backup, list(dict.fromkeys([*targets, *rollback_paths]))), 'previous': current}
             run(['systemctl', 'stop', *SERVICES])
             run(['systemctl', 'disable', *SERVICES], check=False)
             restore_files(previous_transaction['files'])
@@ -486,7 +516,7 @@ def apply(args, record):
         archives = {name: fetch(name, cache, args.offline) for name in LOCK}
         release = stage(args.bundle.resolve(), record, archives)
         backup = STATE / ('transaction-' + str(time.time_ns()))
-        files = backup_files(backup, MANAGED)
+        files = backup_files(backup, targets)
         transaction = {'files': files, 'previous': current, 'active': previously_active, 'enabled': enabled_before, 'forward': forward_before}
         journal = backup / 'transaction.json'
         atomic(journal, json.dumps(transaction, indent=2).encode(), 0o600)
@@ -494,21 +524,20 @@ def apply(args, record):
         for path, text in units(release['release']).items():
             atomic(path, text.encode())
         binary = Path(release['release']) / 'bin'
-        for name in ['codex-dock', 'buildctl']:
+        for name in ['oaiso', 'buildctl']:
             atomic(Path('/usr/local/bin') / name, (binary / name).read_bytes(), 0o755)
-        atomic(Path('/usr/local/bin/cxd'), (binary / 'codex-dock').read_bytes(), 0o755)
-        atomic(Path('/usr/local/bin/oaiso'), (binary / 'codex-dock').read_bytes(), 0o755)
-        for command, paths in {'oaiso': COMPLETIONS, **LEGACY_COMPLETIONS}.items():
-            for shell, path in paths.items():
-                atomic(path, completion_script(binary / 'codex-dock', shell, command))
+        for shell, path in COMPLETIONS.items():
+            atomic(path, completion_script(binary / 'oaiso', shell))
+        for path in legacy_files:
+            path.unlink()
         atomic(Path('/etc/sysctl.d/80-codex-dock.conf'), b'net.ipv4.ip_forward = 1\n')
         atomic(Path('/etc/modules-load.d/codex-dock.conf'), b'vhost_vsock\nvhost_net\n')
         run(['sysctl', '-q', '-w', 'net.ipv4.ip_forward=1'])
         start_and_check(release['release'])
         run(['systemctl', 'enable', *SERVICES])
         release['rollback'] = str(journal)
-        release['cxd_cli'] = True
         release['oaiso_cli'] = True
+        release['legacy_cli_removed'] = True
         atomic(current_path, json.dumps(release, indent=2).encode())
         print('Node ready. Log in again for codex-dock group membership, then run oaiso init as the operator. Existing firewall policy is unchanged; forwarding must allow proxy egress.', flush=True)
     except Exception:

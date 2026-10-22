@@ -14,15 +14,16 @@ oaiso update
 
 ## Behavior
 
-This runs the following command and creates or maintains `oaiso` in the same Go bin directory:
+This installs the canonical `oaiso` entry point in Go's bin directory:
 
 ```bash
-go install github.com/pacificbelt30/codex-dock@latest
+go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest
 ```
 
 - Fails with an error if `go` is not found on `PATH`.
-- The `codex-dock` binary and `oaiso` / `cxd` aliases are placed in `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when GOBIN is unset.
-- An unrelated file named `oaiso` in that directory is left untouched and causes an error.
+- Requires a published release containing `cmd/oaiso`; the old `v0.0.1` release does not include it. Until then, run `go install ./cmd/oaiso` from the checked-out source, or use the host update procedure below.
+- `oaiso` is placed in `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when GOBIN is unset.
+- No legacy commands or aliases are generated. For existing old files, see [migration](../../migration.md#oaisoへの名称変更) (Japanese).
 
 ## Update according to installation method
 

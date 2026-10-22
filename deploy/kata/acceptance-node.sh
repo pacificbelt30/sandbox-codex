@@ -2,7 +2,7 @@
 set -eu
 # Run only inside an explicitly disposable, network=none Linux/KVM test node.
 # Inputs: /kata-input (runtime-rs assets), /guest-input (prepared guest),
-# /work/{kata.toml,codex-dock,codex-dock-io-logger,worker-guard,sandbox.test}.
+# /work/{kata.toml,oaiso,codex-dock-io-logger,worker-guard,sandbox.test}.
 # Preload images via /images.tar or /work/images.tar. An optional /work tool
 # bundle supports the minimal Alpine fixture; a full Linux node can use its
 # installed containerd/ctr/iproute2/nftables/runc/buildctl/buildkitd instead.
@@ -59,7 +59,7 @@ if ! ctr images inspect docker.io/library/codex-dock:kata-guard >/dev/null 2>&1;
 fi
 mkdir -p /opt/codex-dock /sys/fs/cgroup/codex-dock /run/codex-dock-buildkit
 printf '+cpu +memory +pids\n' > /sys/fs/cgroup/codex-dock/cgroup.subtree_control
-cp /work/codex-dock /usr/local/bin/codex-dock
+cp /work/oaiso /usr/local/bin/oaiso
 cp /work/codex-dock-io-logger /usr/local/bin/codex-dock-io-logger
 cp /work/worker-guard /opt/codex-dock/worker-guard
 if [ -d /work/buildkit/bin ]; then cp /work/buildkit/bin/* /usr/local/bin/; fi
@@ -72,7 +72,7 @@ if ! id -u kata-test >/dev/null 2>&1; then
 fi
 # Test evidence is an input-only host mount for root's service binaries.
 rm -f /etc/codex-dock/kata-assets.json
-/usr/local/bin/codex-dock runtime-lock --kata-config /etc/codex-dock/kata.toml --daemon-config /etc/codex-dock/containerd.toml --containerd /usr/local/bin/containerd --runtime-shim /opt/kata/runtime-rs/bin/containerd-shim-kata-v2 --launcher /opt/codex-dock/worker-guard
+/usr/local/bin/oaiso runtime-lock --kata-config /etc/codex-dock/kata.toml --daemon-config /etc/codex-dock/containerd.toml --containerd /usr/local/bin/containerd --runtime-shim /opt/kata/runtime-rs/bin/containerd-shim-kata-v2 --launcher /opt/codex-dock/worker-guard
 cat > /etc/codex-dock/buildkit.toml <<'TOML'
 root = "/data/buildkit"
 [grpc]
@@ -89,7 +89,7 @@ root = "/data/buildkit"
 TOML
 buildkitd --config /etc/codex-dock/buildkit.toml > /work/buildkit.log 2>&1 &
 buildkit_pid=$!
-/usr/local/bin/codex-dock node serve --group kata-test > /work/node.log 2>&1 &
+/usr/local/bin/oaiso node serve --group kata-test > /work/node.log 2>&1 &
 node_pid=$!
 trap 'kill "$node_pid" "$buildkit_pid" "$pid" 2>/dev/null || true; wait "$node_pid" "$buildkit_pid" "$pid" 2>/dev/null || true' EXIT INT TERM
 for attempt in $(seq 1 60); do
@@ -97,7 +97,7 @@ for attempt in $(seq 1 60); do
  sleep 1
 done
 export CODEX_DOCK_KATA_E2E=1
-export CODEX_DOCK_KATA_TEST_BINARY=/work/codex-dock
+export CODEX_DOCK_KATA_TEST_BINARY=/work/oaiso
 export CODEX_DOCK_KATA_TEST_IMAGE="${CODEX_DOCK_KATA_TEST_IMAGE:-codex-dock:kata-guard}"
 export CODEX_DOCK_KATA_PROXY_IMAGE="${CODEX_DOCK_KATA_PROXY_IMAGE:-codex-dock-proxy:policy-verification}"
 mkdir -p /tmp/codex-dock-node-restart
@@ -122,7 +122,7 @@ while kill -0 "$test_pid" 2>/dev/null; do
   fi
   kill "$node_pid"
   wait "$node_pid"
-  /usr/local/bin/codex-dock node serve --group kata-test >> /work/node.log 2>&1 &
+  /usr/local/bin/oaiso node serve --group kata-test >> /work/node.log 2>&1 &
   node_pid=$!
   for attempt in $(seq 1 60); do
    if [ -S /run/codex-dock-node.sock ]; then break; fi

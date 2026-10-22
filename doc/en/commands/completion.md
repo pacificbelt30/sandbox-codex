@@ -7,8 +7,7 @@
 - Open a new shell to use them.
 - Bash requires the `bash-completion` package.
 
-- The installers also provide completion for compatibility commands `cxd` / `codex-dock`.
-- For manual generation, invoke the matching name, such as `cxd completion bash`; the script targets the name used to invoke the CLI.
+- Completion is generated and installed only for `oaiso`.
 
 For the current Bash session:
 

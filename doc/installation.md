@@ -64,7 +64,7 @@ cd sandbox-codex
 
 | 配置対象 | 主な場所・名前 |
 |---|---|
-| CLI・互換コマンド | `/usr/local/bin/oaiso`・`cxd`・`codex-dock` |
+| CLI | `/usr/local/bin/oaiso` |
 | Kata・containerd・BuildKit・runc | `/opt/codex-dock/releases/` の管理資産 |
 | 管理サービス | `codex-dock-node`・`codex-dock-containerd`・`codex-dock-buildkit` |
 | operator group | `codex-dock` |

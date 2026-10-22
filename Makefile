@@ -25,8 +25,9 @@ all: build image proxy-image
 ## build: compile the binary for the current platform
 build: worker-guard io-logger
 	go build $(LDFLAGS) -o $(BINARY) .
-	ln -sfn $(BINARY) cxd
-	ln -sfn $(BINARY) codex-dock
+	@for name in cxd codex-dock; do \
+		if [ -L "$$name" ] && [ "$$(readlink "$$name")" = "$(BINARY)" ]; then rm -f "$$name"; fi; \
+	done
 
 ## worker-guard: build the static Linux x86_64 Kata bootstrap
 worker-guard:
@@ -39,9 +40,8 @@ io-logger:
 ## node-bundle: build a matching Linux amd64 CLI and helpers for setup/update
 node-bundle:
 	mkdir -p dist/node-bundle
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/node-bundle/codex-dock .
-	ln -sfn codex-dock dist/node-bundle/cxd
-	ln -sfn codex-dock dist/node-bundle/oaiso
+	rm -f dist/node-bundle/oaiso dist/node-bundle/cxd dist/node-bundle/codex-dock
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/node-bundle/oaiso ./cmd/oaiso
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-worker-guard ./cmd/worker-guard
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-io-logger ./cmd/io-logger
 	python3 deploy/kata/bundle.py dist/node-bundle "$(VERSION)"
@@ -49,12 +49,20 @@ node-bundle:
 ## install: install the binary to $(BINDIR) (default: /usr/local/bin)
 install: build
 	install -d $(BINDIR)
+	@set -e; for name in cxd codex-dock; do \
+		if [ -f "$(BINDIR)/$(BINARY)" ] && [ -f "$(BINDIR)/$$name" ] && cmp -s "$(BINDIR)/$(BINARY)" "$(BINDIR)/$$name"; then \
+			previous_completion=$$(mktemp); \
+			for shell in bash zsh fish; do \
+				case $$shell in bash) target="$(PREFIX)/share/bash-completion/completions/$$name" ;; zsh) target="$(PREFIX)/share/zsh/site-functions/_$$name" ;; fish) target="$(PREFIX)/share/fish/vendor_completions.d/$$name.fish" ;; esac; \
+				if "$(BINDIR)/$$name" completion $$shell > "$$previous_completion" && cmp -s "$$previous_completion" "$$target"; then rm -f "$$target"; fi; \
+			done; \
+			rm -f "$$previous_completion" "$(BINDIR)/$$name"; \
+		fi; \
+	done
 	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
-	install -m 0755 $(BINARY) $(BINDIR)/cxd
-	install -m 0755 $(BINARY) $(BINDIR)/codex-dock
 	install -m 0755 $(IO_LOGGER) $(BINDIR)/$(IO_LOGGER)
 	install -d $(PREFIX)/share/bash-completion/completions $(PREFIX)/share/zsh/site-functions $(PREFIX)/share/fish/vendor_completions.d
-	@set -e; for name in $(BINARY) cxd codex-dock; do \
+	@set -e; for name in $(BINARY); do \
 		./$$name completion bash > $(PREFIX)/share/bash-completion/completions/$$name; \
 		./$$name completion zsh > $(PREFIX)/share/zsh/site-functions/_$$name; \
 		./$$name completion fish > $(PREFIX)/share/fish/vendor_completions.d/$$name.fish; \
@@ -109,8 +117,8 @@ proxy-docker: proxy-image
 
 ## uninstall: remove the installed binary
 uninstall:
-	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/cxd $(BINDIR)/codex-dock
-	@for name in $(BINARY) cxd codex-dock; do \
+	rm -f $(BINDIR)/$(BINARY)
+	@for name in $(BINARY); do \
 		rm -f $(PREFIX)/share/bash-completion/completions/$$name $(PREFIX)/share/zsh/site-functions/_$$name $(PREFIX)/share/fish/vendor_completions.d/$$name.fish; \
 	done
 	@echo "Removed $(BINDIR)/$(BINARY)"

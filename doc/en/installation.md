@@ -64,7 +64,7 @@ cd sandbox-codex
 
 | Installed component | Main location or name |
 |---|---|
-| CLI and compatibility commands | `/usr/local/bin/oaiso`, `cxd`, `codex-dock` |
+| CLI | `/usr/local/bin/oaiso` |
 | Kata, containerd, BuildKit and runc | Managed assets under `/opt/codex-dock/releases/` |
 | Services | `codex-dock-node`, `codex-dock-containerd`, `codex-dock-buildkit` |
 | Operator group | `codex-dock` |

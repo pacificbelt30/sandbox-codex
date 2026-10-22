@@ -45,16 +45,12 @@ jobs:
       - name: Build binary
         run: |
           go build -v -o oaiso .
-          ln -s oaiso cxd
-          ln -s oaiso codex-dock
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o codex-dock-worker-guard ./cmd/worker-guard
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o codex-dock-io-logger ./cmd/io-logger
 
       - name: Verify binary runs
         run: |
           ./oaiso --help
-          ./cxd --help
-          ./codex-dock --help
           python3 scripts/verify-cli-names.py --binary ./oaiso
 
       - name: Cross-compile (macOS arm64)

@@ -3,12 +3,10 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 
+	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,12 +32,6 @@ Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,
 }
 
 func Execute() {
-	// Generate completion for the name actually invoked, including legacy
-	// aliases. Unknown executable names retain the canonical oaiso command.
-	switch name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"); name {
-	case "cxd", "codex-dock":
-		rootCmd.Use = name
-	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		var exitErr interface{ ExitCode() int }

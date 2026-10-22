@@ -8,11 +8,19 @@
 - 正式名称は **御AgentIsolation**、英字表記は **Oaiso**、CLIは **`oaiso`** です。
 - 「御」は丁寧さ・敬意を添える接頭辞で、略称は「おあいそ」と読みます。
 
-- `make build` / `make install` とノードセットアップは `oaiso` を提供し、旧 `cxd` / `codex-dock` も互換コマンドとして配置します。
-- Bash・Zsh・Fishの補完はそれぞれのコマンド名で生成します。
-- `go install` の出力名はGo moduleに従って `codex-dock` のままです。
-- 更新済みバイナリの `codex-dock update` は、同じGo binディレクトリへ `oaiso` と `cxd` のaliasを作成します。
-- 他のインストーラーが配置したコマンドや無関係なファイルは置き換えません。
+- 提供するコマンドは `oaiso` のみ。旧 `cxd` / `codex-dock` の互換コマンド・補完は生成しません。
+- シェルスクリプト・CI・ショートカット内の旧コマンド名を `oaiso` に置換してください。
+- GoでCLIのみ配置する場合は `go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest`。rootパッケージではなく、明示したentry pointを使用します。
+- `cmd/oaiso` を含むリリース公開前は、取得済みソースのルートで `go install ./cmd/oaiso`。旧 `v0.0.1` では新しいentry pointを利用できません。
+
+| 旧版の導入方法 | 更新時の旧コマンドの扱い |
+|---|---|
+| 自動セットアップ | 導入記録と旧版の内容が一致するコマンド・補完だけを回収。失敗時は復元 |
+| `make install` | 既存 `oaiso` と内容が同じ旧コマンドと、その未変更の補完を回収 |
+| Go・手動コピー・独自配置 | 配置元を自動判定しない。`command -v cxd` / `command -v codex-dock` で場所を確認し、自分で導入した旧実行ファイル・補完を削除 |
+
+- 無関係な同名ファイル・内容を変更した旧ファイルは自動削除しません。
+- 旧releaseの内部バイナリはロールバック用に保持。通常のCLIとして再配置しません。
 
 - 以下は引き継ぎ用の識別子として維持します。
 - 名称変更に伴うコピーや再ログインは不要です。

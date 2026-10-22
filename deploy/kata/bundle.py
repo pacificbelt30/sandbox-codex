@@ -8,7 +8,7 @@ import sys
 def main():
     directory = Path(sys.argv[1])
     files = {}
-    for name in ['codex-dock', 'codex-dock-worker-guard', 'codex-dock-io-logger']:
+    for name in ['oaiso', 'codex-dock-worker-guard', 'codex-dock-io-logger']:
         path = directory / name
         with path.open('rb') as stream:
             header = stream.read(20)

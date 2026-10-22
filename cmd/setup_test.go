@@ -9,13 +9,13 @@ import (
 
 func TestSetupBundleBesideExecutable(t *testing.T) {
 	dir := t.TempDir()
-	cli := filepath.Join(dir, "codex-dock")
+	cli := filepath.Join(dir, "oaiso")
 	for _, path := range []string{cli, filepath.Join(dir, "bundle.json")} {
 		if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	link := filepath.Join(t.TempDir(), "codex-dock")
+	link := filepath.Join(t.TempDir(), "oaiso")
 	if err := os.Symlink(cli, link); err != nil {
 		t.Fatal(err)
 	}

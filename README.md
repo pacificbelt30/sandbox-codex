@@ -6,7 +6,7 @@
 |---|---|
 | 正式名称 | 御AgentIsolation。「御」は丁寧さ・敬意を添える接頭辞 |
 | 英字表記・読み | Oaiso／おあいそ |
-| コマンド | `oaiso`。旧 `cxd` / `codex-dock` も利用可 |
+| コマンド | `oaiso` |
 | 実行ホスト | Linux x86_64・KVM・containerd・Kata runtime-rs・Dragonball |
 | イメージ作成 | BuildKit |
 | 実行時に不要 | Docker Engine・Docker CLI・QEMU |

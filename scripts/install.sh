@@ -61,7 +61,7 @@ fi
 
 [[ -d "$bundle" ]] || fail "bundle directory not found: $bundle"
 bundle="$(cd "$bundle" && pwd)"
-cli="$bundle/codex-dock"
+cli="$bundle/oaiso"
 [[ -x "$cli" && -f "$bundle/bundle.json" ]] || fail "missing CLI or bundle.json in $bundle"
 
 setup_args=(setup --bundle "$bundle" --operator "$operator")
