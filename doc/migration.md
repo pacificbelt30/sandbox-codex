@@ -4,7 +4,7 @@
 
 ## Oaisoへの名称変更
 
-- 正式名称は **御AgentIsolation**、英字表記は **Oaiso**、CLIは **`oaiso`** です。
+- 正式名称は **御AgentISOlation**、英字表記は **Oaiso**、CLIは **`oaiso`** です。
 
 - 提供するコマンドは `oaiso` のみ。旧 `cxd` / `codex-dock` の互換コマンド・補完は生成しません。
 - シェルスクリプト・CI・ショートカット内の旧コマンド名を `oaiso` に置換してください。

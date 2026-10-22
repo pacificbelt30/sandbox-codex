@@ -20,13 +20,13 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "oaiso",
 	Version:       buildinfo.Version,
-	Short:         "御AgentIsolation (Oaiso) — isolated execution for coding agents",
+	Short:         "御AgentISOlation (Oaiso) — isolated execution for coding agents",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 		return initConfig()
 	},
-	Long: `御AgentIsolation (Oaiso) runs Codex CLI and Claude Code in Kata VM-isolated workers
+	Long: `御AgentISOlation (Oaiso) runs Codex CLI and Claude Code in Kata VM-isolated workers
 managed through containerd and Dragonball, with auth proxy, network separation and parallel workers.
 Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,
 }

@@ -1,4 +1,4 @@
-# 御AgentIsolation (Oaiso) Makefile
+# 御AgentISOlation (Oaiso) Makefile
 
 BINARY      := oaiso
 WORKER_GUARD := codex-dock-worker-guard

@@ -35,7 +35,7 @@ def main():
         for name in names:
             cli = directory / name
             help_text = run(cli, '--help')
-            assert '御AgentIsolation (Oaiso)' in help_text and f'  {name} [command]' in help_text
+            assert '御AgentISOlation (Oaiso)' in help_text and f'  {name} [command]' in help_text
             assert run(cli, '--version').startswith(name + ' version ')
             for subcommand in [('run',), ('auth', 'profile'), ('update',)]:
                 text = run(cli, *subcommand, '--help')

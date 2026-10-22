@@ -1,4 +1,4 @@
-# 御AgentIsolation (Oaiso) documentation
+# 御AgentISOlation (Oaiso) documentation
 
 [日本語](../index.md) | **English**
 
@@ -59,7 +59,7 @@
 
 | Item | Meaning or compatibility |
 |---|---|
-| Formal name | 御AgentIsolation |
+| Formal name | 御Agent**ISO**lation |
 | English name / pronunciation | Oaiso / “oh-eye-so” |
 | CLI | `oaiso` only; legacy commands are no longer provided |
 | Project settings | `oaiso.toml`; rename the old `codex-dock.toml` |

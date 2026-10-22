@@ -18,7 +18,7 @@ oaiso ui
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ 御AgentIsolation (Oaiso)  [2 workers running / 3 total]        │
+│ 御AgentISOlation (Oaiso)  [2 workers running / 3 total]        │
 ├──────────────────────────────────────────────────────────────┤
 │  NAME              BRANCH      STATUS      UPTIME  TASK       │
 │  codex-brave-atl   feature-1   ✅ running  5m      テスト作成 │

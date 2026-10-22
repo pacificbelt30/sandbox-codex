@@ -1,4 +1,4 @@
-# 御AgentIsolation（Oaiso）ドキュメント
+# 御AgentISOlation（Oaiso）ドキュメント
 
 **日本語** | [English](en/index.md)
 
@@ -65,7 +65,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 正式名称 | 御AgentIsolation |
+| 正式名称 | 御Agent**ISO**lation |
 | 英字表記・読み | Oaiso／おあいそ |
 | CLI | `oaiso` のみ。旧コマンドは提供しない |
 | プロジェクト設定 | `oaiso.toml`。旧 `codex-dock.toml` は名前の変更が必要 |

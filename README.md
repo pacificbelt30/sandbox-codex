@@ -1,10 +1,10 @@
-# 御AgentIsolation（Oaiso）
+# 御AgentISOlation（Oaiso）
 
 **Codex CLI・Claude Codeを、ワーカーごとのKata VMで隔離して実行。**
 
 | 項目 | 内容 |
 |---|---|
-| 正式名称 | 御AgentIsolation |
+| 正式名称 | 御Agent**ISO**lation |
 | 英字表記・読み | Oaiso／おあいそ |
 | コマンド | `oaiso` |
 | 実行ホスト | Linux x86_64・KVM・containerd・Kata runtime-rs・Dragonball |
@@ -94,7 +94,7 @@ oaiso codex "このリポジトリを調べて"
 ```bash
 oaiso init --agent claude
 cd /path/to/your-project
-oaiso run --agent claude
+oaiso claude
 ```
 
 **起動時の要点**
