@@ -21,6 +21,14 @@ The development-only checker detects changes to Codex, Claude Code, public APIs,
 
 Floating GitHub refs are resolved to commit SHAs once per repository/ref per capture. Snapshots record immutable source URLs, original artifact hashes, capture time and actual CLI versions. Tracked branch observations and CLI releases are separate. The initial CLI baseline matches the worker image: Codex 0.163.0 and Claude Code 2.1.306. Recording a baseline does not certify upstream source correctness or live compatibility.
 
+### Baseline storage
+
+The versioned baseline is a compact schema 2 source lock. Eleven public API/SDK/auth sources retain immutable commit URLs, raw artifact SHA256 hashes and normalized contract SHA256 hashes. Three CLI-generated sources (Codex/Claude help and Codex app-server schemas) retain their comparison data because an immutable public URL cannot reliably reproduce those outputs. The initial baseline shrank from 1.29 MB / 43,255 lines to approximately 92 KB / 2,425 lines.
+
+`capture` still writes a complete schema 1 candidate. `compare` restores reference contracts from an unchanged candidate, a verified cache, or the pinned URL, in that order, then performs the same structural comparison. Both hashes are checked for cached or downloaded data. It never substitutes latest sources: an unavailable or mismatching reference produces `error` (exit `2`). Changed sources require network access when their reference is not cached.
+
+The default cache is the Git-ignored `.kata-verification/upstream-contract-cache`; override it with `compare --cache-dir PATH`. CI caches restored references to reduce repeated downloads. The cache and 30-day artifacts are optional helpers; the versioned lock defines the baseline. Restoration without a cache depends on the upstream pinned URL remaining available. Complete schema 1 baselines remain supported. The compact format currently supports GitHub commit URLs.
+
 ## Rules
 
 | Level | Examples | Result |
@@ -65,11 +73,22 @@ python3 scripts/upstream-contracts.py compare \
 
 ## CI and baseline maintenance
 
-Normal CI runs offline rule tests and validates the baseline against the manifest and worker Dockerfile CLI pins. Changing a worker CLI pin without updating its baseline fails validation.
+Normal CI runs offline rule tests and validates lock URLs, hash formats, embedded CLI contracts, the manifest and worker Dockerfile CLI pins. This offline check does not download or verify public artifact contents. Changing a worker CLI pin without updating its baseline fails validation.
 
 The read-only `Upstream static contracts` workflow runs daily or manually against latest upstream declarations and candidate CLIs. Manual runs accept CLI version selectors. Reports appear in the Actions summary and artifacts retained for 30 days. Review/breaking findings and inspection failures fail the job. It does not automatically update baselines, images or operating configuration, or create PRs.
 
-Review the precise changes and immutable sources, make required fixes, then run appropriate [compatibility tests](../testing.md). Save the reviewed candidate as `compat/upstream/baseline.json` and commit it; update worker pins when adopting a CLI. A manifest change requires explicit coverage review and recapture. Snapshots from a different manifest are rejected.
+Update the baseline only when adopting reviewed CLI or contract changes. Daily inspection does not create Git changes. Upstream change frequency has not been measured; broad SDK type definitions may generate findings more frequently than CLI adoption.
+
+Review the precise changes and immutable sources, make required fixes, then run appropriate [compatibility tests](../testing.md). Convert the reviewed full candidate to a compact lock and commit it:
+
+```bash
+python3 scripts/upstream-contracts.py compact \
+  --snapshot .kata-verification/contracts/candidate.json \
+  --out compat/upstream/baseline.json
+make contracts-check
+```
+
+Update worker pins when adopting a CLI. A manifest change requires explicit coverage review and recapture. Snapshots from a different manifest are rejected.
 
 ## Limits
 

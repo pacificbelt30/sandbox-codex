@@ -63,6 +63,13 @@ jobs:
             --claude "$RUNNER_TEMP/agent-cli/node_modules/.bin/claude" \
             --out "$RUNNER_TEMP/contracts/candidate.json"
 
+      - name: Cache verified baseline references
+        id: references
+        uses: actions/cache/restore@v4
+        with:
+          path: .kata-verification/upstream-contract-cache
+          key: ${{ runner.os }}-contract-reference-${{ hashFiles('compat/upstream/baseline.json', 'compat/upstream/manifest.json', 'scripts/upstream-contracts.py') }}
+
       - name: Compare with reviewed baseline
         id: compare
         if: always() && steps.capture.outcome != 'skipped'
@@ -80,6 +87,13 @@ jobs:
           else
             echo 'Static inspection did not complete; compatibility is unknown.' >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Save verified references even when changes need review
+        if: always() && steps.references.outcome == 'success' && steps.references.outputs.cache-hit != 'true' && hashFiles('.kata-verification/upstream-contract-cache/*.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .kata-verification/upstream-contract-cache
+          key: ${{ steps.references.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -247,5 +247,107 @@ class CaptureAndPolicyTests(unittest.TestCase):
         self.assertIn("a b", CHECK.markdown(report))
 
 
+class CompactBaselineTests(unittest.TestCase):
+    def setUp(self):
+        self.spec = {"id": "remote", "kind": "schema", "roots": ["#"],
+                     "url": "https://raw.githubusercontent.com/example/sdk/main/schema.json"}
+        self.cli = {"id": "cli", "kind": "cli", "binary": "codex", "commands": [
+            {"name": "root", "argv": [], "required_flags": ["--config"]}]}
+        self.manifest = {"schema": 1, "sources": [self.spec, self.cli]}
+        self.raw = b'{"type":"object","properties":{"model":{"type":"string"}}}'
+        self.pinned = self.spec["url"].replace("/main/", "/" + "a" * 40 + "/")
+        self.full = {"schema": 1, "manifest_sha256": CHECK.digest(self.manifest), "errors": [], "sources": {
+            "remote": {"kind": "schema", "source": self.pinned, "tracking_source": self.spec["url"],
+                       "artifact_sha256": CHECK.hashlib.sha256(self.raw).hexdigest(),
+                       "data": bundle(CHECK.json.loads(self.raw))},
+            "cli": {"kind": "cli", "version": "fixture 1", "data": {"root": {"--config": "--config <FILE>"}}}}}
+        self.lock = CHECK.compact_snapshot(self.manifest, self.full)
+        self.changed = copy.deepcopy(self.full)
+        self.changed["sources"]["remote"]["data"]["roots"]["#"]["required"] = ["model"]
+        self.changed["sources"]["remote"]["artifact_sha256"] = "b" * 64
+
+    def restore(self, candidate, cache, lock=None):
+        return CHECK.materialize_baseline(self.manifest, lock or self.lock, candidate, cache)
+
+    def test_unchanged_candidate_needs_no_network_or_cache(self):
+        with tempfile.TemporaryDirectory() as cache, patch.object(CHECK, "fetch", side_effect=AssertionError("network")):
+            restored = self.restore(self.full, cache)
+            self.assertEqual(CHECK.compare(self.manifest, restored, self.full)["status"], "pass")
+            self.assertEqual(list(Path(cache).iterdir()), [])
+        self.assertNotIn("data", self.lock["sources"]["remote"])
+        self.assertEqual(self.lock["sources"]["cli"]["data"], self.full["sources"]["cli"]["data"])
+
+    def test_breaking_change_report_matches_full_baseline_and_cache_reuses_reference(self):
+        expected = CHECK.compare(self.manifest, self.full, self.changed)
+        self.assertEqual(expected["status"], "hold")
+        with tempfile.TemporaryDirectory() as cache:
+            with patch.object(CHECK, "fetch", return_value=self.raw) as fetch:
+                actual = CHECK.compare(self.manifest, self.restore(self.changed, cache), self.changed)
+            fetch.assert_called_once_with(self.pinned)
+            self.assertEqual(actual, expected)
+            with patch.object(CHECK, "fetch", side_effect=AssertionError("network")):
+                self.assertEqual(CHECK.compare(self.manifest, self.restore(self.changed, cache), self.changed), expected)
+
+    def test_unavailable_or_altered_pinned_source_is_an_error(self):
+        for result in (OSError("unavailable"), b'{"type":"integer"}'):
+            with self.subTest(result=result), tempfile.TemporaryDirectory() as cache:
+                with patch.object(CHECK, "fetch", side_effect=result if isinstance(result, Exception) else None,
+                                  return_value=result):
+                    restored = self.restore(self.changed, cache)
+                self.assertEqual(CHECK.compare(self.manifest, restored, self.changed)["status"], "error")
+                self.assertEqual(list(Path(cache).iterdir()), [])
+
+    def test_tampered_candidate_cannot_supply_reference_with_only_matching_raw_hash(self):
+        tampered = copy.deepcopy(self.changed)
+        tampered["sources"]["remote"]["artifact_sha256"] = self.full["sources"]["remote"]["artifact_sha256"]
+        with tempfile.TemporaryDirectory() as cache, patch.object(CHECK, "fetch", return_value=self.raw) as fetch:
+            restored = self.restore(tampered, cache)
+        fetch.assert_called_once_with(self.pinned)
+        self.assertEqual(CHECK.compare(self.manifest, restored, tampered)["status"], "hold")
+
+    def test_corrupt_cache_is_replaced_from_pinned_source(self):
+        for corrupt in ([], {"artifact_sha256": "b" * 64, "data": self.changed["sources"]["remote"]["data"]}):
+            with self.subTest(corrupt=corrupt), tempfile.TemporaryDirectory() as cache:
+                with patch.object(CHECK, "fetch", return_value=self.raw):
+                    self.restore(self.changed, cache)
+                path = next(Path(cache).iterdir())
+                CHECK.write_json(path, corrupt)
+                with patch.object(CHECK, "fetch", return_value=self.raw) as fetch:
+                    restored = self.restore(self.changed, cache)
+                fetch.assert_called_once_with(self.pinned)
+                self.assertFalse(restored["errors"])
+                self.assertEqual(CHECK.read_json(path)["data"], self.full["sources"]["remote"]["data"])
+
+    def test_invalid_lock_is_rejected_offline_before_fetch(self):
+        for field, value in (("source", self.spec["url"]), ("source", "https://example.com/schema.json"),
+                             ("source", self.pinned.replace("schema.json", "other.json")),
+                             ("tracking_source", "wrong"), ("contract_sha256", "bad")):
+            invalid = copy.deepcopy(self.lock)
+            invalid["sources"]["remote"][field] = value
+            with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as cache:
+                with patch.object(CHECK, "fetch", side_effect=AssertionError("network")) as fetch:
+                    restored = self.restore(self.full, cache, invalid)
+                fetch.assert_not_called()
+                self.assertEqual(CHECK.compare(self.manifest, restored, self.full)["status"], "error")
+
+    def test_embedded_cli_tampering_and_manifest_change_are_rejected(self):
+        invalid = copy.deepcopy(self.lock)
+        invalid["sources"]["cli"]["data"]["root"]["--config"] = "changed"
+        with self.assertRaisesRegex(ValueError, "digest mismatch"):
+            CHECK.validate_lock(self.manifest, invalid)
+        invalid = copy.deepcopy(self.lock)
+        invalid["manifest_sha256"] = "c" * 64
+        with self.assertRaises(ValueError):
+            CHECK.validate_lock(self.manifest, invalid)
+
+    def test_incomplete_snapshots_cannot_be_compacted_and_old_snapshots_still_work(self):
+        invalid = copy.deepcopy(self.full)
+        invalid["errors"].append({"source": "remote", "message": "capture failed"})
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            CHECK.compact_snapshot(self.manifest, invalid)
+        with patch.object(CHECK, "fetch", side_effect=AssertionError("network")):
+            self.assertEqual(self.restore(self.changed, Path("unused"), self.full), self.full)
+
+
 if __name__ == "__main__":
     unittest.main()

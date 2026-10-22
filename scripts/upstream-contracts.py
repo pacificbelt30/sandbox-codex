@@ -7,6 +7,7 @@ environment allowlist. A successful report means no *monitored static* drift.
 """
 import argparse
 import ast
+import copy
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -22,6 +23,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = ROOT / "compat/upstream/manifest.json"
+DEFAULT_CACHE = ROOT / ".kata-verification/upstream-contract-cache"
 LIMIT = 16 * 1024 * 1024
 MISSING = object()
 LEVELS = {"info": 0, "review": 1, "breaking": 2, "error": 3}
@@ -361,6 +363,117 @@ def capture(manifest, binaries):
     return snapshot
 
 
+def validate_lock(manifest, lock):
+    """Validate a compact source lock without network or upstream executables."""
+    validate_manifest(manifest)
+    if lock.get("schema") != 2 or lock.get("manifest_sha256") != digest(manifest) or lock.get("errors"):
+        raise ValueError("source lock schema, policy or capture status is invalid")
+    if set(lock.get("sources", {})) != {source["id"] for source in manifest["sources"]}:
+        raise ValueError("source lock coverage does not match manifest")
+    for spec in manifest["sources"]:
+        entry = lock["sources"][spec["id"]]
+        if entry.get("kind") != spec["kind"]:
+            raise ValueError("source lock kind mismatch: " + spec["id"])
+        if not re.fullmatch(r"[0-9a-f]{64}", entry.get("contract_sha256", "")):
+            raise ValueError("missing contract digest: " + spec["id"])
+        if spec["kind"] in ("cli", "codex-schema"):
+            validate_source(spec, entry)
+            if digest(entry["data"]) != entry["contract_sha256"]:
+                raise ValueError("embedded CLI contract digest mismatch: " + spec["id"])
+            # Required flags are a product contract even for a self-comparison.
+            if spec["kind"] == "cli":
+                for command in spec["commands"]:
+                    if set(command["required_flags"]) - entry["data"][command["name"]].keys():
+                        raise ValueError("missing required CLI flag: " + spec["id"])
+            continue
+        tracked, pinned = urlsplit(spec["url"]), urlsplit(entry.get("source", ""))
+        if (tracked.scheme != "https" or tracked.hostname != "raw.githubusercontent.com" or
+                pinned.scheme != "https" or pinned.netloc != tracked.netloc or
+                pinned.query or pinned.fragment or pinned.username or pinned.password):
+            raise ValueError("unsupported pinned source URL: " + spec["id"])
+        parts = tracked.path.lstrip("/").split("/", 3)
+        fixed = pinned.path.lstrip("/").split("/", 3)
+        if (len(parts) != 4 or len(fixed) != 4 or parts[:2] != fixed[:2] or
+                parts[3] != fixed[3] or not re.fullmatch(r"[0-9a-f]{40}", fixed[2])):
+            raise ValueError("source must pin the monitored file to a commit: " + spec["id"])
+        if entry.get("tracking_source") != spec["url"]:
+            raise ValueError("tracking URL does not match manifest: " + spec["id"])
+        if not re.fullmatch(r"[0-9a-f]{64}", entry.get("artifact_sha256", "")):
+            raise ValueError("missing artifact digest: " + spec["id"])
+        if "data" in entry:
+            raise ValueError("remote source payload belongs in cache, not the lock: " + spec["id"])
+
+
+def compact_snapshot(manifest, snapshot):
+    """Keep generated CLI contracts; lock reproducible public sources by hash."""
+    if compare(manifest, snapshot, snapshot)["status"] != "pass":
+        raise ValueError("cannot lock an incomplete or invalid baseline")
+    lock = copy.deepcopy(snapshot)
+    lock["schema"] = 2
+    for entry in lock["sources"].values():
+        entry["contract_sha256"] = digest(entry["data"])
+        if entry["kind"] not in ("cli", "codex-schema"):
+            del entry["data"]
+    validate_lock(manifest, lock)
+    return lock
+
+
+def materialize_baseline(manifest, baseline, candidate, cache):
+    """Restore exact old contracts; never substitute latest on a fetch failure."""
+    if baseline.get("schema") == 1:
+        return baseline  # Existing full snapshots remain supported.
+    restored = copy.deepcopy(baseline)
+    restored["schema"], restored["errors"] = 1, []
+    try:
+        validate_lock(manifest, baseline)
+    except (KeyError, TypeError, ValueError) as error:
+        restored["sources"] = {}
+        restored["errors"].append({"source": "baseline", "message": str(error)})
+        return restored
+    for spec in manifest["sources"]:
+        entry = baseline["sources"][spec["id"]]
+        if "data" in entry:
+            continue
+        try:
+            def verified(value):
+                if not isinstance(value, dict):
+                    raise ValueError("cached baseline must be an object")
+                if value.get("artifact_sha256") != entry["artifact_sha256"] or digest(value.get("data")) != entry["contract_sha256"]:
+                    raise ValueError("baseline artifact or contract digest mismatch: " + spec["id"])
+                validate_source(spec, value)
+                return value["data"]
+
+            # An unchanged candidate already contains the exact reference data.
+            value = candidate.get("sources", {}).get(spec["id"], {})
+            if value.get("kind") == spec["kind"] and value.get("artifact_sha256") == entry["artifact_sha256"] and digest(value.get("data")) == entry["contract_sha256"]:
+                restored["sources"][spec["id"]]["data"] = verified(value)
+                continue
+            path = Path(cache) / (entry["artifact_sha256"] + "-" + entry["contract_sha256"] + ".json")
+            try:
+                if path.stat().st_size > LIMIT:
+                    raise ValueError("cached baseline is too large")
+                value = read_json(path)
+                data = verified(value)
+            except (OSError, KeyError, TypeError, ValueError):
+                # Cache is optional and untrusted; only the pinned URL is used.
+                fixed_spec = {**spec, "url": entry["source"]}
+                value = collect_source(fixed_spec, {}, Path(cache), {})
+                data = verified(value)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as temporary:
+                    temporary_path = Path(temporary.name)
+                    try:
+                        json.dump(value, temporary, ensure_ascii=False, sort_keys=True)
+                        temporary.close()
+                        os.replace(temporary_path, path)
+                    finally:
+                        temporary_path.unlink(missing_ok=True)
+            restored["sources"][spec["id"]]["data"] = data
+        except Exception as error:
+            restored["errors"].append({"source": spec["id"], "message": type(error).__name__ + ": " + str(error)})
+    return restored
+
+
 def finding(findings, source, level, rule, path, message):
     findings.append({"source": source, "level": level, "rule": rule,
                      "path": path, "message": message})
@@ -575,13 +688,29 @@ def main():
     diff.add_argument("--candidate", type=Path, required=True)
     diff.add_argument("--json", type=Path, required=True)
     diff.add_argument("--markdown", type=Path, required=True)
+    diff.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
+    compact = sub.add_parser("compact", help="Convert a reviewed full snapshot to a compact source lock")
+    compact.add_argument("--snapshot", type=Path, required=True)
+    compact.add_argument("--out", type=Path, required=True)
     validate = sub.add_parser("validate-baseline", help="Offline baseline consistency and worker CLI pin check")
     validate.add_argument("--baseline", type=Path, default=ROOT / "compat/upstream/baseline.json")
     args = parser.parse_args()
     manifest = read_json(args.manifest)
+    if args.command == "compact":
+        write_json(args.out, compact_snapshot(manifest, read_json(args.snapshot)))
+        print("Wrote compact baseline:", args.out)
+        return 0
     if args.command == "validate-baseline":
         baseline = read_json(args.baseline)
-        report = compare(manifest, baseline, baseline)
+        if baseline.get("schema") == 2:
+            report = {"schema": 1, "status": "pass", "findings": []}
+            try:
+                validate_lock(manifest, baseline)
+            except (KeyError, TypeError, ValueError) as error:
+                finding(report["findings"], "baseline", "error", "source-lock-invalid", "", str(error))
+                report["status"] = "error"
+        else:
+            report = compare(manifest, baseline, baseline)
         dockerfile = (ROOT / "docker/sandbox/Dockerfile").read_text()
         for source, arg in (("codex-cli", "CODEX_CLI_VERSION"), ("claude-cli", "CLAUDE_CLI_VERSION")):
             match = re.search(r"^ARG " + arg + r"=([\d.]+)$", dockerfile, re.MULTILINE)
@@ -598,7 +727,9 @@ def main():
         for error in snapshot["errors"]:
             print(error["source"] + ": " + error["message"], file=sys.stderr)
         return 2 if snapshot["errors"] else 0
-    report = compare(manifest, read_json(args.baseline), read_json(args.candidate))
+    candidate = read_json(args.candidate)
+    baseline = materialize_baseline(manifest, read_json(args.baseline), candidate, args.cache_dir)
+    report = compare(manifest, baseline, candidate)
     write_json(args.json, report)
     args.markdown.parent.mkdir(parents=True, exist_ok=True)
     args.markdown.write_text(markdown(report))

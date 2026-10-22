@@ -23,6 +23,14 @@ Codex・Claude Codeの更新候補と、公開API・SDK・認証関連ソース�
 
 GitHubの追跡ブランチは取得時にcommit SHAへ解決し、同じリポジトリ・refでは同一commitを使います。スナップショットには取得時刻・固定URL・元成果物のSHA256・CLI版を記録します。CLI版と上流ブランチの観測時点は別です。初期基準のCLIはworker imageに合わせたCodex 0.163.0／Claude Code 2.1.306です。基準の登録は、上流ソース全体の正しさや実サービスとの互換性を保証しません。
 
+### 基準ファイルの保存形式
+
+Git管理する基準はschema 2の小さなsource lockです。公開API・SDK等の11ソースは、固定commitのURL・元成果物のSHA256・正規化した契約データのSHA256だけを保持します。公式CLIから生成する3ソース（Codex／ClaudeのヘルプとCodex app-serverスキーマ）は、公開の固定URLから同じ出力を復元できる保証がないため、比較用データも保持します。初期基準は約1.29 MB・43,255行から約92 KB・2,425行に縮小しました。
+
+`capture`が出力するschema 1の候補JSONは、引き続き比較用データ全体を含みます。`compare`は、変更のない候補データ、検証済みキャッシュ、固定URLの順で基準を復元してから、従来と同じ構造比較を行います。キャッシュや取得データは両方のハッシュで確認します。最新版への置き換えは行わず、固定成果物を復元できなければ`error`（終了コード`2`）です。候補が変化したソースでキャッシュがない場合はネットワークが必要です。
+
+キャッシュの既定先はGit管理外の`.kata-verification/upstream-contract-cache`です。`compare --cache-dir PATH`で変更できます。CIでも復元した基準をキャッシュし、同じ固定成果物の再取得を抑えます。キャッシュと30日保持のartifactは補助データであり、基準そのものはGit管理するlockです。ただし、キャッシュがない場合の復元は上流の固定URLの可用性に依存します。旧schema 1の完全な基準JSONも比較できます。現在のlock形式はGitHubの固定commit URLを対象とします。
+
 ## 判定ルール
 
 | レベル | 例 | 更新候補の扱い |
@@ -67,11 +75,22 @@ Claudeの`install.cjs`はnative版の実行ファイル選択に使います。�
 
 ## CIと基準の更新
 
-通常のCIではネットワークを使わず、ルールの単体試験と、基準のmanifest・worker DockerfileのCLI固定版との整合性を確認します。固定CLI版だけを変更して基準を更新し忘れた場合は失敗します。
+通常のCIではネットワークを使わず、ルールの単体試験と、lockのURL・ハッシュ形式・内包するCLI契約・manifest・worker DockerfileのCLI固定版との整合性を確認します。このオフライン確認は公開成果物の再取得・内容検証までは行いません。固定CLI版だけを変更して基準を更新し忘れた場合は失敗します。
 
 `Upstream static contracts`ワークフローは毎日および手動実行で、最新CLIと追跡元を取得します。手動実行ではCLI候補版も指定できます。差分はActionsのサマリーと30日保持のartifactに保存します。`review`・`breaking`・`error`ではジョブを失敗させます。ワークフローの権限は読み取りのみで、基準・image・運用設定の自動更新やPR作成は行いません。
 
-差分の該当箇所・固定URL・型・フラグを確認し、必要な修正と[互換性試験](testing.md)を終えてから、確認した候補JSONを`compat/upstream/baseline.json`へ保存してコミットします。CLIを採用する場合はDockerfileの固定版も合わせます。manifestを変更した場合は、監視範囲変更をレビューしてから新しいmanifestで再取得します。別manifestの基準を互換なものとして扱いません。
+基準の更新は、CLI版や契約変更を確認して採用するときだけです。毎日の検査ごとにGit差分を作る設計ではありません。上流の変更頻度は未計測で、SDK全体に及ぶ型定義を含むため、確認対象の差分はCLIの採用より頻繁に発生し得ます。
+
+差分の該当箇所・固定URL・型・フラグを確認し、必要な修正と[互換性試験](testing.md)を終えてから、確認した候補JSONをlockへ変換してコミットします。候補JSON全体を基準ファイルへコピーする必要はありません。
+
+```bash
+python3 scripts/upstream-contracts.py compact \
+  --snapshot .kata-verification/contracts/candidate.json \
+  --out compat/upstream/baseline.json
+make contracts-check
+```
+
+CLIを採用する場合はDockerfileの固定版も合わせます。manifestを変更した場合は、監視範囲変更をレビューしてから新しいmanifestで再取得します。別manifestの基準を互換なものとして扱いません。
 
 ## 静的検知で分からないこと
 
