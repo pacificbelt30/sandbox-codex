@@ -2,14 +2,15 @@
 
 **日本語** | [English](en/proxy-standalone.md)
 
-`oaiso run` を使わず、ホスト上のクライアントから認証プロキシを使う開発者向けの手順です。
-この構成はKata VMやワーカー用のネットワーク隔離を用意しません。
-通常利用は[クイックスタート](getting-started.md)を参照してください。
+- `oaiso run` を使わず、ホスト上のクライアントから認証プロキシを使う開発者向けの手順です。
+- この構成はKata VMやワーカー用のネットワーク隔離を用意しません。
+- 通常利用は[クイックスタート](getting-started.md)を参照してください。
 
 ## 1. ローカルで起動する
 
-ホストの[認証ソース](auth-proxy.md#認証ソース)を用意します。
-管理secretを入力し、dataとadminをそれぞれloopbackへbindします。以下は同じbashセッションで続けて実行する例です。
+- ホストの[認証ソース](auth-proxy.md#認証ソース)を用意します。
+- 管理secretを入力し、dataとadminをそれぞれloopbackへbindします。
+- 以下は同じbashセッションで続けて実行する例です。
 
 ```bash
 read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
@@ -25,8 +26,8 @@ export PROXY_DATA_URL=http://127.0.0.1:18080
 export PROXY_ADMIN_URL=http://127.0.0.1:18081
 ```
 
-`proxy run` のdataポートはホストへ公開されないため、このローカル例では `proxy serve` を使います。
-別マシンへ平文の管理APIやBearerトークンを公開しないでください。
+- `proxy run` のdataポートはホストへ公開されないため、このローカル例では `proxy serve` を使います。
+- 別マシンへ平文の管理APIやBearerトークンを公開しないでください。
 
 ## 2. 短命トークンを発行する
 
@@ -41,14 +42,14 @@ TOKEN=$(curl --retry 5 --retry-connrefused --retry-delay 1 -fsS \
 export TOKEN
 ```
 
-トークンをログに出す必要はありません。
-`/health` はプロセスの応答であり、このトークンの有効性やAI疎通を保証するものではありません。
+- トークンをログに出す必要はありません。
+- `/health` はプロセスの応答であり、このトークンの有効性やAI疎通を保証するものではありません。
 
 ## 3. クライアント設定を分ける
 
-元のログインファイルを上書きしないよう、Codex用に別の設定ディレクトリを作ります。
-以下のPythonは `/token` のJSONを直接解析し、placeholderだけをクライアント認証として保存します。
-OAuthのID欄も、実ID tokenではなくProxyが作成した最小限のaccount metadata用ダミーJWTです。
+- 元のログインファイルを上書きしないよう、Codex用に別の設定ディレクトリを作ります。
+- 以下のPythonは `/token` のJSONを直接解析し、placeholderだけをクライアント認証として保存します。
+- OAuthのID欄も、実ID tokenではなくProxyが作成した最小限のaccount metadata用ダミーJWTです。
 
 ```bash
 export CODEX_HOME=$(mktemp -d)
@@ -95,10 +96,10 @@ fi
 codex
 ```
 
-OAuthでは新しいauth.jsonを使い、APIキーモードでは環境変数のplaceholderを使います。
-APIの向き先は `config.toml` に明示します。
-クライアントの版による互換性は[検証範囲](testing.md)を参照してください。
-このホストプロセス自体を、元のホームや他の秘密から隔離する手順ではありません。
+- OAuthでは新しいauth.jsonを使い、APIキーモードでは環境変数のplaceholderを使います。
+- APIの向き先は `config.toml` に明示します。
+- クライアントの版による互換性は[検証範囲](testing.md)を参照してください。
+- このホストプロセス自体を、元のホームや他の秘密から隔離する手順ではありません。
 
 ## 4. 終了時に失効させる
 
@@ -109,7 +110,7 @@ curl -fsS -X POST \
 kill "$PROXY_PID"
 ```
 
-期限切れ・失効で、既存のHTTP streamとWebSocketも終了します。
-`CODEX_HOME` に作った一時ディレクトリは、場所を確認してから削除してください。
+- 期限切れ・失効で、既存のHTTP streamとWebSocketも終了します。
+- `CODEX_HOME` に作った一時ディレクトリは、場所を確認してから削除してください。
 
 管理APIの要求・応答は[認証API](auth-proxy/endpoints.md)を参照してください。

@@ -38,5 +38,5 @@ go install github.com/pacificbelt30/codex-dock@latest
 
 ## Host services and images
 
-This command does not update the node, guard, IO logger, pinned assets or proxy images.
-See [host setup](../../kata.md) and [operations](../../operations.md) (Japanese).
+- This command does not update the node, guard, IO logger, pinned assets or proxy images.
+- See [host setup](../../kata.md) and [operations](../../operations.md) (Japanese).

@@ -28,10 +28,10 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 oaiso start NAME_OR_ID
 ```
 
-Restart a retained worker with the same ID and workspace.
-Kata checks run again and the saved placeholder is restored before user code is released.
-If a pinned proxy IP changed, create a new worker instead.
-`oaiso vm start` remains available for Kata VM inventory recovery.
+- Restart a retained worker with the same ID and workspace.
+- Kata checks run again and the saved placeholder is restored before user code is released.
+- If a pinned proxy IP changed, create a new worker instead.
+- `oaiso vm start` remains available for Kata VM inventory recovery.
 
 ## `oaiso stop`
 

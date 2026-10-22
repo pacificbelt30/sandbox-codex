@@ -34,10 +34,10 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 oaiso start NAME_OR_ID
 ```
 
-停止済みワーカーを同じID・workspaceで再起動します。
-Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
-プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
-Kata VM の台帳を指定して復旧する場合は、従来の `oaiso vm start` も使えます。
+- 停止済みワーカーを同じID・workspaceで再起動します。
+- Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
+- プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
+- Kata VM の台帳を指定して復旧する場合は、従来の `oaiso vm start` も使えます。
 
 ## `oaiso exec` — 既存ワーカーでの実行
 
@@ -47,7 +47,10 @@ oaiso exec --json worker-name -- sh -c 'echo ok; echo warning >&2'
 oaiso exec -i worker-name -- cat < input.txt
 ```
 
-標準出力と標準エラーは別々に転送され、`oaiso exec` はゲストの終了コードをシェルへ返します。タイムアウトは124、Ctrl+Cによる取消は130です。`--json` は `exit_code`、`stdout`、`stderr`、失敗時の `error` を返します。メモリ使用を抑えるため、JSON出力は各ストリーム8 MiBまでです。
+- 標準出力と標準エラーは別々に転送され、`oaiso exec` はゲストの終了コードをシェルへ返します。
+- タイムアウトは124、Ctrl+Cによる取消は130です。
+- `--json` は `exit_code`、`stdout`、`stderr`、失敗時の `error` を返します。
+- メモリ使用を抑えるため、JSON出力は各ストリーム8 MiBまでです。
 
 ## `oaiso wait` — 終了待ち
 
@@ -56,7 +59,9 @@ exit_code=$(oaiso wait --timeout 5m worker-name)
 oaiso wait --json worker-name
 ```
 
-ワーカーの終了コードを表示します。`--json` では `{"exit_code": 0}` の形式です。待機タイムアウトは124、Ctrl+Cは130です。
+- ワーカーの終了コードを表示します。
+- `--json` では `{"exit_code": 0}` の形式です。
+- 待機タイムアウトは124、Ctrl+Cは130です。
 
 ## `oaiso stop` — コンテナの停止
 

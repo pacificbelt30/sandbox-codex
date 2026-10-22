@@ -1,44 +1,69 @@
 # 導入と更新の自動化
 
-自動配置の対象は **Ubuntu 26.04 / Linux x86_64 / systemd / KVM / cgroup v2** です。
-その他のLinuxは[手動配置](kata.md)を使ってください。Windows・macOSへの実行ノード配置は対象外です。
+| 対象 | 方法 |
+|---|---|
+| Ubuntu 26.04・Linux x86_64・systemd・KVM・cgroup v2 | このページの自動配置 |
+| その他のLinux | [手動配置](kata.md) |
+| Windows・macOS | 実行ノードの配置対象外 |
+| ホスト自体がVM | nested virtualizationも必要 |
 
 ## 初めて配置する
 
-ソースのルートで、Go 1.24.7以上・Make・Python 3.11以上を使って次のスクリプトを実行します。
-同じ版のCLIとhelperをまとめてバンドルを検証し、導入計画を表示します。このビルドにはDockerを使いません。
+### 1. 必要なツールを用意する
+
+- 実行場所：ソースのルート。
+- 必要なツール：Go 1.24.7以上・Make・Python 3.11以上。
+- ビルド対象：同じ版のCLIとhelperをまとめたバンドル。
+- Docker：このビルドには使わない。
+
+### 2. 計画を確認して適用する
 
 ```bash
 ./scripts/install.sh
 ./scripts/install.sh --apply
 ```
 
-`--apply` は計画が成功した後、同じバンドルのCLIを `sudo` で実行します。付与先はスクリプトを実行した通常利用者です。
-別の利用者へ付与する場合は `--operator USER`、既存バンドルを使う場合は `--bundle PATH` を指定します。
-`--cache PATH` と `--offline` も計画と適用の両方へ渡します。スクリプトをrootとして実行する場合は `--operator USER` が必須です。
+| 指定 | 動作・条件 |
+|---|---|
+| 指定なし | バンドルを作成・検証して計画を表示 |
+| `--apply` | 計画の成功後、同じバンドルのCLIを `sudo` で実行 |
+| `--operator USER` | 権限を与える既存の通常利用者を指定 |
+| operator省略 | スクリプトを実行した通常利用者を選択 |
+| rootでスクリプトを実行 | `--operator USER` が必須 |
+| `--bundle PATH` | 新規ビルドせず、既存の信頼済みバンドルを使用 |
+| `--cache PATH` / `--offline` | 計画と適用の両方へ渡す |
 
-個別に実行する場合は次の順序です。
+### 個別に計画・適用する場合
 
 ```bash
 make node-bundle
 ./dist/node-bundle/oaiso setup
 ```
 
-最初は計画だけを表示します。対象アカウントは既存の通常利用者を指定します。
-バンドル内のCLIから実行すると、隣接する `bundle.json` を自動で探します。通常利用者で計画を表示する場合は、その利用者をoperatorに選びます。
-計画にはバンドルのパスと版、operator、キャッシュ、オフライン指定が表示されます。
-別のCLIや利用者を使う場合は `--bundle PATH --operator USER` を明示してください。
-計画を確認したら、同じバンドルのCLIで適用します。
+**計画に表示する項目**
+
+- バンドルのパスと版。
+- operator。
+- キャッシュのパス。
+- オフライン指定。
+
+**バンドルと利用者の選択**
+
+- バンドル内CLI：隣接する `bundle.json` を自動探索。
+- 通常利用者による計画：その利用者をoperatorに選択。
+- 別のCLI／利用者：`--bundle PATH --operator USER` を明示。
+- 適用：同じバンドルのCLIを使用し、付与先の `--operator` を明示。
 
 ```bash
 sudo ./dist/node-bundle/oaiso setup \
   --operator "$USER" --apply
 ```
 
-`--apply` では付与先の `--operator` を必ず明示します。適用前に対象アカウントを確認してください。
+### 3. 通常利用者として認証とイメージを準備する
 
-通常の認証や `run` にはsudoを使いません。
-再ログインしてグループを反映した後、ホストのAI認証を用意して実行します。
+1. 再ログインしてグループ所属を反映。
+2. 利用する認証を準備。
+3. 通常利用者で `init` を実行。
 
 ```bash
 oaiso init
@@ -46,65 +71,90 @@ oaiso init
 oaiso init --agent claude
 ```
 
-`init` のプロキシイメージを新規ビルドする場合は、このリポジトリのルートで実行します。
-詳細は[クイックスタート](getting-started.md)を参照してください。
+- 通常の認証・`run`：`sudo` 不要。
+- Proxyイメージの新規ビルド：リポジトリのルートで `init` を実行。
+- 詳細：[クイックスタート](getting-started.md)。
 
 ## 自動で準備するもの
 
-- 不足しているOSパッケージ。既存Dockerや既定containerdのパッケージは置き換えません。
-- Kata 4.2.0、containerd 2.4.2、BuildKit 0.34.0、runc 1.4.3の固定配布物。
-- guestのPID hook、共有cache無効のDragonball設定、固定資産manifest。
-- 製品専用containerd・node・BuildKitサービスと、`codex-dock` グループ。
-- IPv4 forwardingと、次回起動用のvsock/netモジュール設定。
+| 対象 | 内容 |
+|---|---|
+| OSパッケージ | 不足分を追加。既存Docker／既定containerdのパッケージは置き換えない |
+| 固定配布物 | Kata 4.2.0・containerd 2.4.2・BuildKit 0.34.0・runc 1.4.3 |
+| guest・固定資産 | PID hook・共有cache無効のDragonball設定・manifest |
+| サービス・権限 | 専用containerd・node・BuildKit・`codex-dock` グループ |
+| ホスト設定 | IPv4 forwarding・次回起動用vsock/netモジュール |
 
-外部配布物は[固定URLとSHA256](https://github.com/pacificbelt30/sandbox-codex/blob/main/deploy/kata/assets.lock.json)で確認します。
-自作バンドルの `bundle.json` はCLI/helperの組合せと破損を検出するもので、配布元の署名ではありません。
-信頼したソースからビルドしたバンドルを使ってください。
-管理グループへの所属は、ホストmountと任意イメージを選べるroot相当の権限です。
+### 配布物と権限の確認
 
-既存のfirewallルールは変更・flushしません。ホストのforward方針がegressを許可するかは管理者が確認します。
-KVMと `cpu memory pids` のcgroup v2 controllerが必要です。ホスト自体がVMの場合はnested virtualizationも必要です。
+| 項目 | 確認事項 |
+|---|---|
+| 外部配布物 | [固定URLとSHA256](https://github.com/pacificbelt30/sandbox-codex/blob/main/deploy/kata/assets.lock.json)で検証 |
+| 自作バンドルの `bundle.json` | CLI/helperの組合せ・破損を検出。配布元の署名ではない |
+| バンドルの入手元 | 信頼したソースからビルドしたものを使用 |
+| 管理グループ | ホストmount・任意イメージを選択できるroot相当の権限 |
+| 既存firewall | 変更・flushしない。egressを許可するforward方針は管理者が確認 |
+| KVM・cgroup | KVMと、cgroup v2の `cpu memory pids` controllerが必要 |
 
 ## 更新する
 
-この自動配置で管理している環境では、同じ `setup --apply` を新しいバンドルで実行します。
+**対象：この自動配置で管理している環境。**
 
-1. 作業中の成果を保存する。
-2. 旧版CLIでワーカーを停止・削除し、プロキシも停止・削除する。
-3. 新しいソースで `./scripts/install.sh` を実行し、計画を確認する。
-4. `./scripts/install.sh --apply` で新しいバンドルを適用する。
-5. 再ログインし、通常利用者で `oaiso init` と実Kata受入試験を実行する。
+1. 作業中の成果を保存。
+2. 旧版CLIでワーカーとProxyを停止・削除。
+3. 新しいソースで `./scripts/install.sh` を実行し、計画を確認。
+4. `./scripts/install.sh --apply` で新しいバンドルを適用。
+5. 再ログイン後、通常利用者で `oaiso init` と実Kata受入試験を実行。
 
-更新時は、受付サービスとBuildKitを止めた後、停止済みを含む全コンテナ・task・VM予約・VM cgroupが空であることを確認します。
-接続不能なcontainerdを「空」として扱いません。作業中のVMやworktreeを自動削除することはありません。
-残存資源があれば旧サービスを再開し、回収方法を表示して終了します。
-
-CLI/nodeの配布版が違う場合は検証で拒否します。開発用 `dev` ビルドもAPI・資産・共有設定の確認は行います。
-手動配置が既にある場合は上書きを拒否します。[手動更新](kata.md#固定資産の更新)で移行してください。
+| 更新時の条件 | 動作 |
+|---|---|
+| 受付サービス・BuildKit | 先に停止 |
+| 空であることの確認対象 | 停止済みを含む全コンテナ・task・VM予約・VM cgroup |
+| containerdへ接続不能 | 「空」として扱わない |
+| 残存資源あり | 旧サービスを再開し、回収方法を表示して終了 |
+| 作業中のVM・worktree | 自動削除しない |
+| CLI/nodeの配布版不一致 | 検証で拒否 |
+| 開発用 `dev` ビルド | API・資産・共有設定の確認は実施 |
+| 既存の手動配置 | 上書きを拒否。[手動更新](kata.md#固定資産の更新)で移行 |
 
 ## 更新に失敗した場合
 
-資産は `/opt/codex-dock/releases/` の新しいディレクトリへ配置します。
-既存の固定資産は書き換えません。専用サービスを切り替えて診断に成功してから、導入済み状態を確定します。
-切り替え後に失敗した場合は、以前のCLI・設定・サービス定義・forwarding設定・サービスの有効状態を復元します。
-OSパッケージの追加、グループの作成・所属追加、ダウンロードキャッシュは残ります。
+| 対象 | 扱い |
+|---|---|
+| 新しい資産 | `/opt/codex-dock/releases/` の新規ディレクトリへ配置 |
+| 既存の固定資産 | 書き換えない |
+| 導入完了の確定 | サービス切り替えと診断の成功後 |
+| 切り替え後の失敗 | 以前のCLI・設定・サービス定義・forwarding設定・サービス有効状態を復元 |
+| 残る変更 | OSパッケージ追加・グループ作成／所属追加・ダウンロードキャッシュ |
 
-前の成功した配置へ戻す操作もできます。先にワーカーとプロキシを削除してください。
+### 前の成功した配置へ戻す
+
+1. ワーカーとProxyを削除。
+2. rollback計画を確認。
+3. `--apply` で適用。
 
 ```bash
 oaiso setup --rollback
 sudo oaiso setup --rollback --apply
 ```
 
-導入状態と復旧記録は `/var/lib/codex-dock-setup` に保存します。
-イメージ、BuildKitキャッシュ、プロジェクトは削除しません。
-古いreleaseや失敗したreleaseは調査・復旧用に残します。参照中の資産を手作業で削除しないでください。
+| 保存対象 | 場所・扱い |
+|---|---|
+| 導入状態・復旧記録 | `/var/lib/codex-dock-setup` |
+| イメージ・BuildKitキャッシュ・プロジェクト | 削除しない |
+| 古い／失敗したrelease | 調査・復旧用に保持 |
+| 参照中の資産 | 手作業で削除しない |
 
 ## オフライン配置
 
-固定配布物を `assets.lock.json` の `file` 名でキャッシュディレクトリに配置し、`--cache PATH --offline` を指定します。
-OSパッケージも事前に用意してください。ネットワークがなくてもchecksum検証は省略しません。
-既定キャッシュは `/var/cache/codex-dock-setup` です。ホスト管理者だけが変更できる場所を使います。
+1. 固定配布物を `assets.lock.json` の `file` 名でキャッシュへ配置。
+2. 必要なOSパッケージを事前に準備。
+3. `--cache PATH --offline` を指定。
 
-proxy/CAが必要な環境では、ダウンロード用curlとaptにホストの設定を用意してください。
-TLS検証を無効にするオプションは設けていません。
+| 項目 | 条件 |
+|---|---|
+| 既定キャッシュ | `/var/cache/codex-dock-setup` |
+| 所有・更新権限 | ホスト管理者だけが変更できる場所を使用 |
+| checksum検証 | オフラインでも省略しない |
+| proxy・CA | ダウンロード用curlとaptにホストの設定を用意 |
+| TLS検証 | 無効化オプションは提供しない |

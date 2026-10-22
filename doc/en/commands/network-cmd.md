@@ -4,7 +4,8 @@
 >
 > [← Command Reference](../commands.md)
 
-Manages the egress network (`dock-net-proxy`, used for the proxy's internet reachability). Per-worker `Internal` networks are created and removed automatically with each worker, so no manual management is needed.
+- Manages the egress network (`dock-net-proxy`, used for the proxy's internet reachability).
+- Per-worker `Internal` networks are created and removed automatically with each worker, so no manual management is needed.
 
 > The old `oaiso firewall` (iptables) command has been removed; isolation is enforced by the root node service with Linux bridges, namespaces and nftables.
 

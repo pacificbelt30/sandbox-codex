@@ -2,9 +2,9 @@
 
 **日本語** | [English](en/architecture.md)
 
-実行経路は **containerd → Kata runtime-rs → Dragonball** です。
-CLI・TUIと[製品組み込み用 Go API](go-api.md)はroot管理サービスへ接続し、サービスが専用containerdを操作します。
-イメージの作成には独立したBuildKitを使います。
+- 実行経路は **containerd → Kata runtime-rs → Dragonball** です。
+- CLI・TUIと[製品組み込み用 Go API](go-api.md)はroot管理サービスへ接続し、サービスが専用containerdを操作します。
+- イメージの作成には独立したBuildKitを使います。
 
 ```mermaid
 flowchart LR
@@ -38,10 +38,11 @@ flowchart LR
 | `docker/` | Dockerfile形式のイメージ資産。ビルドはBuildKit |
 | `deploy/kata/` | ホスト配置、サービス設定、guest準備 |
 
-CLIの既定接続先は `/run/codex-dock-node.sock` です。
-Go APIもこのソケットを使い、別の公開サーバーは起動しません。`Launch` の要求IDはnodeの永続台帳で照合し、応答消失や再送時の二重起動を抑止します。
-Docker SDKの型とHTTPクライアントを内部互換層で利用しますが、Docker daemonには接続しません。
-接続先は `CODEX_DOCK_KATA_NODE_SOCKET` で変更します。
+- CLIの既定接続先は `/run/codex-dock-node.sock` です。
+- Go APIもこのソケットを使い、別の公開サーバーは起動しません。
+- `Launch` の要求IDはnodeの永続台帳で照合し、応答消失や再送時の二重起動を抑止します。
+- Docker SDKの型とHTTPクライアントを内部互換層で利用しますが、Docker daemonには接続しません。
+- 接続先は `CODEX_DOCK_KATA_NODE_SOCKET` で変更します。
 
 ## ワーカーを起動する流れ
 
@@ -52,16 +53,16 @@ Docker SDKの型とHTTPクライアントを内部互換層で利用しますが
 5. ホストのshim/loggerとcgroup、guestの別kernel・実行ユーザー・権限・資源制限を照合する。
 6. 短命トークンを有効にし、nonceで元のentrypointを解放する。
 
-認証プロキシだけが実認証情報を注入します。
-一般通信プロキシは実認証情報を持ちません。
-`--no-internet` は一般通信プロキシを接続せず、固定AI経路だけを維持します。
+- 認証プロキシだけが実認証情報を注入します。
+- 一般通信プロキシは実認証情報を持ちません。
+- `--no-internet` は一般通信プロキシを接続せず、固定AI経路だけを維持します。
 
 ## 検証と認証の処理
 
-固定資産は、1回の検証につき最大 `min(4, GOMAXPROCS)` 並列で全ファイルを再読込・照合します。
-資産の検証結果を更新時刻などから再利用せず、ホスト・guestの検証ゲートを維持します。
-認証プロキシはトークン値の索引で発行記録を検索し、発行・復元・失効と同じロック内で更新します。
-計測対象と比較手順は[性能とベンチマーク](performance.md)、実測値は[検証記録](testing.md#2026-10-21の性能計測)を参照してください。
+- 固定資産は、1回の検証につき最大 `min(4, GOMAXPROCS)` 並列で全ファイルを再読込・照合します。
+- 資産の検証結果を更新時刻などから再利用せず、ホスト・guestの検証ゲートを維持します。
+- 認証プロキシはトークン値の索引で発行記録を検索し、発行・復元・失効と同じロック内で更新します。
+- 計測対象と比較手順は[性能とベンチマーク](performance.md)、実測値は[検証記録](testing.md#2026-10-21の性能計測)を参照してください。
 
 ## 状態を保存する場所
 
@@ -72,13 +73,13 @@ Docker SDKの型とHTTPクライアントを内部互換層で利用しますが
 | `/var/lib/codex-dock-containerd` | containerdの永続状態 |
 | `/run/codex-dock-containerd` | containerdの実行時状態 |
 
-停止したコンテナとsnapshotは保持し、再起動には同じIDを使います。
-ログ収集とstdinの維持はshim側のloggerが担当するため、管理サービスを再起動してもVMとI/Oを維持します。
+- 停止したコンテナとsnapshotは保持し、再起動には同じIDを使います。
+- ログ収集とstdinの維持はshim側のloggerが担当するため、管理サービスを再起動してもVMとI/Oを維持します。
 
-停止時はcontainerdの終了通知から終了コードと時刻を保存します。
-実行中taskの終了通知の失敗や結果なしのchannel終了はエラーとし、task削除前の停止・不在確認とKataのretirement検証を行います。
+- 停止時はcontainerdの終了通知から終了コードと時刻を保存します。
+- 実行中taskの終了通知の失敗や結果なしのchannel終了はエラーとし、task削除前の停止・不在確認とKataのretirement検証を行います。
 
-削除予定を先に永続化し、network・token・cgroup・worktreeの回収に失敗した場合は再試行できるようにします。
-所有関係を確認できる資源だけを扱い、管理層に接続できない状態を孤児として削除しません。
+- 削除予定を先に永続化し、network・token・cgroup・worktreeの回収に失敗した場合は再試行できるようにします。
+- 所有関係を確認できる資源だけを扱い、管理層に接続できない状態を孤児として削除しません。
 
 配置は[Kataの準備](kata.md)、境界は[セキュリティ](security.md)、照合は[VM管理](vm.md)を参照してください。

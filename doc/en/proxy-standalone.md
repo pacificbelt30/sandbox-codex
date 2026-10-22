@@ -2,13 +2,15 @@
 
 [日本語](../proxy-standalone.md) | **English**
 
-This developer guide runs a local client without `oaiso run`.
-It does not create Kata isolation or worker networks. For normal use, follow the [quick start](getting-started.md).
+- This developer guide runs a local client without `oaiso run`.
+- It does not create Kata isolation or worker networks.
+- For normal use, follow the [quick start](getting-started.md).
 
 ## 1. Start a local proxy
 
-Prepare host [credentials](auth-proxy.md#credential-sources).
-Run these examples in one bash session. Both listeners bind to loopback.
+- Prepare host [credentials](auth-proxy.md#credential-sources).
+- Run these examples in one bash session.
+- Both listeners bind to loopback.
 
 ```bash
 read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
@@ -24,8 +26,8 @@ export PROXY_DATA_URL=http://127.0.0.1:18080
 export PROXY_ADMIN_URL=http://127.0.0.1:18081
 ```
 
-Use `serve` for this local example: `proxy run` does not publish the data port to the host.
-Do not expose plain HTTP admin APIs or bearer tokens to other machines.
+- Use `serve` for this local example: `proxy run` does not publish the data port to the host.
+- Do not expose plain HTTP admin APIs or bearer tokens to other machines.
 
 ## 2. Issue a token
 
@@ -44,8 +46,8 @@ Do not print tokens to logs. `/health` checks the proxy process, not this token 
 
 ## 3. Use a separate client directory
 
-Create a separate Codex home so the original login file is not overwritten.
-Parse the token response as JSON rather than inserting it into executable code.
+- Create a separate Codex home so the original login file is not overwritten.
+- Parse the token response as JSON rather than inserting it into executable code.
 
 ```bash
 export CODEX_HOME=$(mktemp -d)
@@ -92,9 +94,10 @@ fi
 codex
 ```
 
-OAuth uses the new auth.json; API-key mode uses the placeholder environment value.
-The API destination is explicit in config.toml. See [verified client versions](../testing.md) (Japanese).
-This host process is not isolated from the original home or other host secrets.
+- OAuth uses the new auth.json; API-key mode uses the placeholder environment value.
+- The API destination is explicit in config.toml.
+- See [verified client versions](../testing.md) (Japanese).
+- This host process is not isolated from the original home or other host secrets.
 
 ## 4. Revoke and stop
 
@@ -105,6 +108,6 @@ curl -fsS -X POST \
 kill "$PROXY_PID"
 ```
 
-Revocation and expiry also end active HTTP/WS streams.
-Remove the temporary `CODEX_HOME` after checking its path.
-See the [API reference](auth-proxy/endpoints.md).
+- Revocation and expiry also end active HTTP/WS streams.
+- Remove the temporary `CODEX_HOME` after checking its path.
+- See the [API reference](auth-proxy/endpoints.md).

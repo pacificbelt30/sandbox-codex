@@ -2,23 +2,29 @@
 
 **日本語** | [English](en/getting-started.md)
 
-準備済みの実行ホストで、最初のワーカーを起動する手順です。
-ホストをまだ用意していない場合は、管理者が先に[Kata / Dragonballを配置](kata.md)してください。
+| 今の状態 | 次の操作 |
+|---|---|
+| 実行ホストをまだ用意していない | 管理者が先に[Kata / Dragonballを配置](kata.md) |
+| 実行ホストは準備済み | 以下の1〜4で最初のワーカーを起動 |
+| 既存環境を更新したい | [日常の運用](operations.md) |
 
 ## 1. 実行ホストを確認する
 
-operator groupに属する利用者で実行します。通常の `run` や `proxy run` に `sudo` は使いません。
+- 実行ユーザー：operator groupに属する通常利用者。
+- `run` / `proxy run`：`sudo` 不要。
 
 ```bash
 oaiso runtime-check
 ```
 
-Linux x86_64、KVM、cgroup v2、専用containerd、Kata runtime-rs、Dragonballが必要です。
-イメージの作成にはBuildKitと `buildctl` も必要です。
-エラーが出た場合は[トラブルシューティング](troubleshooting.md)を参照してください。
+| 用途 | 必要なもの |
+|---|---|
+| VM実行 | Linux x86_64・KVM・cgroup v2・専用containerd・Kata runtime-rs・Dragonball |
+| イメージ作成 | BuildKit・`buildctl` |
+| ソースからのCLI作成 | Go 1.24.7以上・Make |
+| 診断エラーの解決 | [トラブルシューティング](troubleshooting.md) |
 
-ソースからCLIを用意する場合は、リポジトリで次を実行します。
-Go 1.24.7以上とMakeが必要です。管理サービスや固定資産の配置は別途必要です。
+**ソースから用意する場合**
 
 ```bash
 make build
@@ -26,30 +32,37 @@ make install-config
 make install-templates
 ```
 
-設定とテンプレートが既にある場合は上書きしません。
+- 作成対象：CLIとhelper。
+- 既存の設定・テンプレート：上書きしない。
+- 管理サービス・固定資産：管理者が別途配置。
 
-## 2. ホストの認証を用意する
+## 2. 認証方式を選ぶ
 
-ホストCLIと認証を分ける場合は、[独立プロファイル](commands/auth.md#独立プロファイル)を作成し、グローバルの `auth_profile` と `[proxy].admin_secret_file` を設定してから次へ進んでください。選択中はホスト認証へfallbackしません。以下は未選択時の従来のホスト連携です。
+**Proxy起動前に、どちらか一方を選択します。**
 
-使用するエージェントの認証を、プロキシ起動前に用意します。
+| 認証方式 | 準備 | 読み込み元 |
+|---|---|---|
+| 独立プロファイル | [作成手順](commands/auth.md#独立プロファイル)で `auth_profile` と `[proxy].admin_secret_file` を設定 | 選択した製品専用Storeのみ。ホスト認証へfallbackしない |
+| 従来のホスト連携 | 下表の環境変数またはログインファイルを準備 | ホスト認証を[優先順位](auth-proxy.md#認証ソース)で選択 |
 
-| エージェント | 利用できるホスト側の認証 |
+**従来のホスト連携を選んだ場合**
+
+| エージェント | 利用できる認証 |
 |---|---|
-| Codex | `OPENAI_API_KEY`、保存済みAPIキー、`~/.codex/auth.json` |
-| Claude Code | `ANTHROPIC_API_KEY`、`CLAUDE_CODE_OAUTH_TOKEN`、`~/.claude/.credentials.json`、保存済みAPIキー |
+| Codex | `OPENAI_API_KEY`・保存済みAPIキー・`~/.codex/auth.json` |
+| Claude Code | `ANTHROPIC_API_KEY`・`CLAUDE_CODE_OAUTH_TOKEN`・`~/.claude/.credentials.json`・保存済みAPIキー |
 
-既存のログインファイルは、`oaiso` を実行する利用者のホームに置きます。
-APIキーを使う場合は環境変数を設定します。OpenAIのキーは `oaiso auth set` で保存することもできます。
-[認証の優先順位](auth-proxy.md#認証ソース)も確認してください。
-
-認証プロキシは同じ利用者のUID/GIDでファイルを読み取ります。
-所有者だけが読める `0600` のまま利用でき、元ファイルの権限を広げる必要はありません。
-実APIキーやOAuthのaccess token・refresh tokenはワーカーに渡しません。
+- ログインファイル：`oaiso` を実行する利用者のHOMEに配置。
+- OpenAI APIキーの保存：`oaiso auth set`。
+- 読み取り権限：Proxyは同じ利用者のUID/GIDで読む。
+- `0600` のまま利用可。
+- ワーカーへ渡すもの：短命トークン。
+- 実APIキー・OAuth access/refresh tokenは渡さない。
+- Claude固有の設定：[APIキー・サブスクの手順](claude-code.md)。
 
 ## 3. プロキシとイメージを用意する
 
-ホストの準備と認証設定を終えたら、通常利用者で次を実行できます。
+**通常利用者で、リポジトリのルートから実行します。**
 
 ```bash
 oaiso init
@@ -57,19 +70,21 @@ oaiso init
 oaiso init --agent claude
 ```
 
-診断、認証ソースの存在確認、必要なワーカーイメージのビルド、イメージ互換性検査、プロキシ起動を順に行います。
-認証の本文は表示せず、既存設定は書き換えません。認証確認は上流APIへの疎通・推論試験ではありません。
-既存プロキシの認証方式が違い、ワーカーが稼働中の場合は強制変更せず停止します。
-プロキシイメージがない場合はGoソースから作成するため、リポジトリのルートで実行してください。
-別のプロジェクトから `init` を実行してソースが見つからない場合は、リポジトリのルートで一度 `oaiso proxy build` を実行してから戻ってください。
-準備が終わったら、プロジェクトへ移動して `oaiso run --agent codex` を実行します。
-`oaiso default codex`（または `oaiso default codex --local`）を設定すれば、次回から `oaiso run` だけで Codex が起動します。`oaiso init` も `--agent` 省略時は設定したエージェントを準備します。既定がシェルの場合は Codex を準備します。
+| `init` が行うこと | 条件・制限 |
+|---|---|
+| ホスト診断・認証ソースの存在確認 | 認証本文を表示しない。既存設定を書き換えない |
+| ワーカーイメージの作成・互換性検査 | 不足時にビルド |
+| Proxy起動 | Proxyイメージがない場合はGoソースが必要 |
+| 使用エージェントの選択 | `--agent` → 設定した既定値。シェル既定ならCodexを準備 |
+| 認証方式が異なる既存Proxy | ワーカー稼働中は強制変更せずエラー |
+| 検証対象外 | 実サービスへの認証成功・疎通・推論 |
 
-手動で分けて準備する場合は、次の手順を使います。
+- ソースが見つからない場合：リポジトリのルートで `oaiso proxy build` を1回実行。
+- 準備後：作業するプロジェクトへ移動。
+- Codexを既定にする：`oaiso default codex`。
+- プロジェクト限定は `--local`。
 
-
-プロキシのビルドは、このリポジトリのルートで実行してください。
-プロキシイメージはGoソースから作成します。
+### 手動で分けて準備する場合
 
 ```bash
 oaiso proxy build
@@ -77,24 +92,21 @@ oaiso proxy run
 oaiso build
 ```
 
-`proxy run` はネットワークを自動作成し、次の2つを起動します。
-
-| プロキシ | 役割 |
+| Proxy | 役割・接続先 |
 |---|---|
 | `codex-auth-proxy` | AI APIへの認証付き通信 |
-| `codex-http-proxy` | Git、npm、pipなどの一般通信。実認証情報は持たない |
+| `codex-http-proxy` | Git・npm・pipなどの一般通信。実資格情報なし |
+| 管理API | ホストの `127.0.0.1:18081` に公開 |
+| ワーカー向けAPI | ホストへ公開しない |
 
-管理APIはホストの `127.0.0.1:18081` に公開します。
-ワーカー側のAPIポートはホストへ公開しません。
-詳しくは[認証プロキシ](auth-proxy.md)を参照してください。
+- `proxy run` がネットワークを自動作成。
+- 詳細：[認証プロキシ](auth-proxy.md)。
 
 ## 4. ワーカーを起動する
 
-作業するプロジェクトのディレクトリで実行します。
-カレントディレクトリをVM内の `/workspace` に共有します。
-[ファイル共有と所有者](workspace.md)で、双方向の反映とUID/GIDの扱いを説明しています。
-
-チームで同じワーカー環境を使う場合は、プロジェクトのルートで `oaiso project init` を実行し、生成された `codex-dock.toml` をコミットします。独自のツールが必要なら、プロジェクトのDockerfileを `[build]` から指定します。クローン先ではホストの準備と認証を済ませてから `oaiso project check`、`oaiso init` を実行してください。[設定例](configuration.md#プロジェクト設定)を参照してください。
+- 実行場所：作業するプロジェクトのディレクトリ。
+- 共有先：VM内の `/workspace`。
+- 共有権限・双方向反映：[ファイル共有と所有者](workspace.md)。
 
 ```bash
 oaiso codex
@@ -102,16 +114,30 @@ oaiso codex
 oaiso run --agent claude
 ```
 
-`--agent` を省略すると、利用可能な認証を設定したシェルが開きます。
-コマンドを1回だけ実行することもできます。
+**シェル・単発コマンド**
 
 ```bash
 oaiso run
 oaiso run -- ls -la
 ```
 
-Kataでは、独立したカーネルと権限・資源の制限を確認してから処理を始めます。
-確認に失敗した場合は起動を中止します。
+| 起動方法 | 動作 |
+|---|---|
+| `oaiso codex` | Codexを起動 |
+| `oaiso run --agent claude` | Claude Codeを起動 |
+| `oaiso run` | 設定した既定値。組み込み既定値は認証済みシェル |
+| `oaiso run -- COMMAND` | コマンドを1回実行 |
+| Kata検証に失敗 | 起動中止。隔離・権限・資源の確認を省略しない |
+
+### チームで同じ環境を使う場合
+
+1. リポジトリのルートで `oaiso project init`。
+2. `codex-dock.toml` をコミット。
+3. 独自ツールはプロジェクトのDockerfileを `[build]` で指定。
+4. クローン先でホストと認証を準備。
+5. `oaiso project check` → `oaiso init`。
+
+[プロジェクト設定例](configuration.md#プロジェクト設定)
 
 ## 5. バックグラウンドで実行する
 
@@ -124,8 +150,8 @@ oaiso ps -a
 oaiso logs add-tests --follow
 ```
 
-`--approval-mode full-auto` はエージェントの承認確認を省略します。
-共有ファイルへの書き込み範囲は、[マウントと承認設定](commands/run.md)で確認してください。
+- `--approval-mode full-auto`：エージェントの承認確認を省略。
+- ファイルへの書き込み範囲：[マウントと承認設定](commands/run.md)で確認。
 
 ## 6. 停止・再起動・削除する
 
@@ -135,18 +161,20 @@ oaiso start add-tests
 oaiso rm add-tests --force
 ```
 
-停止すると短命トークンが失効します。再起動では同じワーカーIDとworkspaceを使い、認証を復元します。
-削除すると、管理対象のネットワークやworktreeも回収します。必要な成果は先に保存してください。
-
-前面で実行したワーカーは、既定では終了時に削除します。
-残す場合は `--keep` を指定します。
-プロキシは共有サービスなので、ワーカー終了後も動き続けます。
+| 操作・条件 | 結果 |
+|---|---|
+| 停止 | 短命トークンを失効。再起動用のワーカーを保持 |
+| 再起動 | 同じワーカーID・workspaceで認証を復元 |
+| 削除 | 管理対象のネットワーク・worktreeも回収。成果は先に保存 |
+| 前面実行の終了 | 既定で削除。保持する場合は `--keep` |
+| ワーカー終了後のProxy | 共有サービスとして動作を継続 |
 
 ## 次に読む
 
-- [日常の運用](operations.md)：VM一覧、並列実行、更新、後片付け
-- [カスタムイメージ](commands/build.md)：Dockerfileとテンプレート
-- [通信ポリシー](proxy-policy.md)：許可リスト、拒否リスト、`--no-internet`
-- [トラブルシューティング](troubleshooting.md)：起動・認証・通信の確認
-
-[Claude CodeのAPIキー・サブスク設定手順](claude-code.md)。
+| 目的 | 参照先 |
+|---|---|
+| VM一覧・並列実行・更新・後片付け | [日常の運用](operations.md) |
+| Dockerfile・テンプレート | [カスタムイメージ](commands/build.md) |
+| 通信の許可・拒否・`--no-internet` | [通信ポリシー](proxy-policy.md) |
+| 起動・認証・通信のエラー | [トラブルシューティング](troubleshooting.md) |
+| Claudeの認証 | [APIキー・サブスク](claude-code.md) |

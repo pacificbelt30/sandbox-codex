@@ -1,25 +1,40 @@
 # テストと動作確認
 
-テストを「コードの確認」「実Kataでの確認」「実AIとの通信」に分けて説明します。
-自動テストの成功だけで、外部APIや任意のカスタムイメージの動作を保証するものではありません。
+- テストを「コードの確認」「実Kataでの確認」「実AIとの通信」に分けて説明します。
+- 自動テストの成功だけで、外部APIや任意のカスタムイメージの動作を保証するものではありません。
 
-API仕様・SDK型・CLIフラグの更新候補を調べるルールベースの検査は、[上流仕様の静的な変更検知](upstream-compatibility.md)を参照してください。`make contracts-check` はネットワークを使わず、検知ルールと基準データの整合性を確認します。
+- API仕様・SDK型・CLIフラグの更新候補を調べるルールベースの検査は、[上流仕様の静的な変更検知](upstream-compatibility.md)を参照してください。
+- `make contracts-check` はネットワークを使わず、検知ルールと基準データの整合性を確認します。
 
 ## 一般通信の既定拒否への変更（2026-10-22）
 
-CLI・TUIの未設定値とGo APIのゼロ値を既定拒否へ変更しました。全Goテストのrace/coverage、build、vet、lint、MkDocs strictビルドが成功しています。`scripts/smoke-proxy.sh` は12項目成功し、明示的な宛先許可でのHTTP/CONNECT転送、private IP拒否、未設定時の存在しないホスト名・IP直指定に対するHTTP/CONNECTの403を確認しました。
+- CLI・TUIの未設定値とGo APIのゼロ値を既定拒否へ変更しました。
+- 全Goテストのrace/coverage、build、vet、lint、MkDocs strictビルドが成功しています。
+- `scripts/smoke-proxy.sh` は12項目成功し、明示的な宛先許可でのHTTP/CONNECT転送、private IP拒否、未設定時の存在しないホスト名・IP直指定に対するHTTP/CONNECTの403を確認しました。
 
-既存nodeとの版不一致を解消するため、専用のnode・containerd・BuildKit・cgroup・guestを用意し、CLI・node・proxyを `VERSION=dev` で揃えました。`make kata-e2e VERSION=dev` の標準4スイートは432.964秒で成功しました。VM受入174.58秒、共有9ケース158.43秒、追加制御39.38秒、標準Go API60.56秒です。追加したCLI試験は、設定省略時の一般egress無効化、default routeの不在、外部IPへの直接接続失敗、authへの到達を確認します。authの接続先は、entrypointが消去する一時環境変数ではなく、保存されたワーカー設定から取得します。
+- 既存nodeとの版不一致を解消するため、専用のnode・containerd・BuildKit・cgroup・guestを用意し、CLI・node・proxyを `VERSION=dev` で揃えました。
+- `make kata-e2e VERSION=dev` の標準4スイートは432.964秒で成功しました。
+- VM受入174.58秒、共有9ケース158.43秒、追加制御39.38秒、標準Go API60.56秒です。
+- 追加したCLI試験は、設定省略時の一般egress無効化、default routeの不在、外部IPへの直接接続失敗、authへの到達を確認します。
+- authの接続先は、entrypointが消去する一時環境変数ではなく、保存されたワーカー設定から取得します。
 
-追加の実Kata Go API受入は4ケースすべて成功しました（167.740秒）。`egress-zero-value` はゼロ値のホスト設定、`egress-default-deny` は明示設定で一般通信が無効になること、`egress-exact` は子ドメインへのHTTP/CONNECTが403になることを確認します。各ケースで固定AI経路の認可と許可済み要求の成功も検査します。`quarantine` は通信中の対象VMのHTTP/CONNECT・AIジョブの終了、共有proxyを使う別VMの継続、再起動拒否、別ポリシーでの再作成とworkspace保持を確認しました。追加のnode再起動・namespace喪失の故障注入は今回は指定していません。
+- 追加の実Kata Go API受入は4ケースすべて成功しました（167.740秒）。
+- `egress-zero-value` はゼロ値のホスト設定、`egress-default-deny` は明示設定で一般通信が無効になること、`egress-exact` は子ドメインへのHTTP/CONNECTが403になることを確認します。
+- 各ケースで固定AI経路の認可と許可済み要求の成功も検査します。
+- `quarantine` は通信中の対象VMのHTTP/CONNECT・AIジョブの終了、共有proxyを使う別VMの継続、再起動拒否、別ポリシーでの再作成とworkspace保持を確認しました。
+- 追加のnode再起動・namespace喪失の故障注入は今回は指定していません。
 
-取消試験は、添付stdinを起動前に閉じるとKataのpassfd初期化と競合する条件を避け、入力pipeを保持したままcontextを取り消す形に修正しました。検討したI/O転送方式の変更案では256 KiB入力の欠落を検出したため採用していません。今回の実装は実行エンジンのI/O方式を変更しません。
+- 取消試験は、添付stdinを起動前に閉じるとKataのpassfd初期化と競合する条件を避け、入力pipeを保持したままcontextを取り消す形に修正しました。
+- 検討したI/O転送方式の変更案では256 KiB入力の欠落を検出したため採用していません。
+- 今回の実装は実行エンジンのI/O方式を変更しません。
 
-試験終了後、専用環境のコンテナ・ネットワーク・taskが0件であることを確認してから、node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存3サービスは開始時と同じPIDで稼働し、元nodeのhealth応答は200です。
+- 試験終了後、専用環境のコンテナ・ネットワーク・taskが0件であることを確認してから、node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。
+- 既存3サービスは開始時と同じPIDで稼働し、元nodeのhealth応答は200です。
 
 ## コードを確認する
 
-Go 1.24.7以上を使います。race検査にはCコンパイラーも必要です。
+- Go 1.24.7以上を使います。
+- race検査にはCコンパイラーも必要です。
 
 ```bash
 go test ./...
@@ -28,8 +43,8 @@ make vet
 gofmt -l cmd internal pkg
 ```
 
-`make test` はrace検査とcoverageを有効にします。
-通常のプロキシテストはローカルのHTTP fixtureを使うため、実APIキーは不要です。
+- `make test` はrace検査とcoverageを有効にします。
+- 通常のプロキシテストはローカルのHTTP fixtureを使うため、実APIキーは不要です。
 
 | 対象 | 主な確認 |
 |---|---|
@@ -45,28 +60,39 @@ gofmt -l cmd internal pkg
 
 ## CodexのIDトークン分離
 
-2026-10-22の修正では、初回`/token`とOAuth更新から実ID tokenが返る経路を、架空資格情報による回帰試験で再現してから閉じました。通常のGo試験で、実access/refresh/ID tokenの非返却、任意のclaim・追加フィールド・エラー本文・通信エラーからの漏出防止、ホストでの実トークン更新、既知の更新エラー分類を確認します。
+- 2026-10-22の修正では、初回`/token`とOAuth更新から実ID tokenが返る経路を、架空資格情報による回帰試験で再現してから閉じました。
+- 通常のGo試験で、実access/refresh/ID tokenの非返却、任意のclaim・追加フィールド・エラー本文・通信エラーからの漏出防止、ホストでの実トークン更新、既知の更新エラー分類を確認します。
 
-固定Codex 0.163.0を指定する追加試験も用意しています。`--version`で固定版を照合し、実際のworker entrypointとProxy listenerを使って、初回ログイン読み込みと、古い`last_refresh`によるCLI自身の更新からHTTP/SSE最終応答までを確認します。
+- 固定Codex 0.163.0を指定する追加試験も用意しています。
+- `--version`で固定版を照合し、実際のworker entrypointとProxy listenerを使って、初回ログイン読み込みと、古い`last_refresh`によるCLI自身の更新からHTTP/SSE最終応答までを確認します。
 
 ```bash
 CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
   go test ./internal/authproxy -run '^TestCodexCLIWorkerCredentialPrivacy$' -count=1 -v
 ```
 
-この固定CLI試験は、ホストの認証ファイルや資格情報の環境変数を継承せず、ローカルOAuth／Responses fixtureだけを使います。CLI出力、Proxyのverboseログ、生成されたHOME配下のファイル（`auth.json`を含む）に架空の実トークンが残らないことと、更新後もaccess欄がplaceholder・refresh欄が空文字であることを検査します。email・user IDなどの未選択claimも渡しません。
+- この固定CLI試験は、ホストの認証ファイルや資格情報の環境変数を継承せず、ローカルOAuth／Responses fixtureだけを使います。
+- CLI出力、Proxyのverboseログ、生成されたHOME配下のファイル（`auth.json`を含む）に架空の実トークンが残らないことと、更新後もaccess欄がplaceholder・refresh欄が空文字であることを検査します。
+- email・user IDなどの未選択claimも渡しません。
 
 独立FileStoreを使用し、OAuth更新後の実access/refresh/ID値が0600ファイルへ保存されること、別のProxyインスタンスがその保存結果を読み直せることも確認します。
 
-両ケースは実行してPASSしています。これはホスト上でのCLI／起動スクリプト結合試験であり、この修正後の実Kata・実OAuthサービスによる更新は再検証していません。通常のCIではCLIバイナリを指定しない追加試験だけがskipされ、資格情報境界の回帰試験は実行されます。
+- 両ケースは実行してPASSしています。
+- これはホスト上でのCLI／起動スクリプト結合試験であり、この修正後の実Kata・実OAuthサービスによる更新は再検証していません。
+- 通常のCIではCLIバイナリを指定しない追加試験だけがskipされ、資格情報境界の回帰試験は実行されます。
 
 ## 独立プロファイルの受入
 
-名称変更後の実CLI受入は `python3 scripts/verify-cli-names.py --binary ./oaiso` で確認できます。`make build` 後、`oaiso` / `cxd` / `codex-dock` のヘルプ・版表示、Bash/Zsh/Fish/PowerShell補完、主要コマンド、既存の `~/.config/codex-dock/` に置いた架空の認証profileの読み込みを別HOMEで試験します。node・外部APIは使いません。インストーラーのPython試験では、新しいコマンド・補完の管理外ファイルを上書きしないこととrollback対象への登録も確認します。
+- 名称変更後の実CLI受入は `python3 scripts/verify-cli-names.py --binary ./oaiso` で確認できます。
+- `make build` 後、`oaiso` / `cxd` / `codex-dock` のヘルプ・版表示、Bash/Zsh/Fish/PowerShell補完、主要コマンド、既存の `~/.config/codex-dock/` に置いた架空の認証profileの読み込みを別HOMEで試験します。
+- node・外部APIは使いません。
+- インストーラーのPython試験では、新しいコマンド・補完の管理外ファイルを上書きしないこととrollback対象への登録も確認します。
 
-2026-10-22の架空資格情報試験では、FileStoreの適合性・別プロセス間の同時更新CAS、0700/0600、symlink/hardlink拒否、保存失敗、CLI作成/import/メタデータ、profile専用mount、workspaceとの重複拒否、旧workerの別profile・別接続世代への再認可拒否を確認します。Proxy試験はOpenAI API/OAuth・Anthropic API/OAuthの4モードで、ホスト認証を無視すること、選択した資格情報の上流注入、workerへの非返却、失効を確認します。
+- 2026-10-22の架空資格情報試験では、FileStoreの適合性・別プロセス間の同時更新CAS、0700/0600、symlink/hardlink拒否、保存失敗、CLI作成/import/メタデータ、profile専用mount、workspaceとの重複拒否、旧workerの別profile・別接続世代への再認可拒否を確認します。
+- Proxy試験はOpenAI API/OAuth・Anthropic API/OAuthの4モードで、ホスト認証を無視すること、選択した資格情報の上流注入、workerへの非返却、失効を確認します。
 
-実CLIプロセスとローカルProxy listenerのスモーク試験も用意しています。管理secretは0600ファイルを使い、外部API・login・推論要求は送りません。
+- 実CLIプロセスとローカルProxy listenerのスモーク試験も用意しています。
+- 管理secretは0600ファイルを使い、外部API・login・推論要求は送りません。
 
 ```bash
 go build -o /private/path/oaiso .
@@ -77,32 +103,38 @@ python3 scripts/verify-auth-profiles.py --binary /private/path/oaiso
 
 ## Go APIの追加受入
 
-[Go API](go-api.md)の実機受入 `TestKataGoAPI` は `make kata-e2e` に含まれます。ケース別の架空資格情報でOpen → Launch → Exec → Stop → RemoveRequest、small/standardの別boot ID・ゲスト制限・ホスト予約・削除後の割当回収、取消済みLaunch context、Execの入力EOF（stdin未接続も含む）・実行中取消とプロセス回収、要求IDの再送・競合・削除後の再送、再接続後の照合、VMへの資格情報漏れ、ケース間のトークン拒否、実行IDの失効を確認します。
+- [Go API](go-api.md)の実機受入 `TestKataGoAPI` は `make kata-e2e` に含まれます。
+- ケース別の架空資格情報でOpen → Launch → Exec → Stop → RemoveRequest、small/standardの別boot ID・ゲスト制限・ホスト予約・削除後の割当回収、取消済みLaunch context、Execの入力EOF（stdin未接続も含む）・実行中取消とプロセス回収、要求IDの再送・競合・削除後の再送、再接続後の照合、VMへの資格情報漏れ、ケース間のトークン拒否、実行IDの失効を確認します。
 
-追加の障害系受入 `TestKataAPIIntegration` には別ターゲット `make kata-api-e2e` を用意しています。実行中のLaunch取消、OAuth更新・保存失敗・版競合・proxy再起動、通信中ストリームの失効などの対象は[公開Go APIの障害系受入](#公開go-apiの障害系受入)を参照してください。応答を通信路で破棄する故障注入とGo API経由のワーカー別通信許可は、両ターゲットともまだ含みません。単体テストと実Kata受入結果を区別し、成功記録がある版・範囲を確認してください。
+- 追加の障害系受入 `TestKataAPIIntegration` には別ターゲット `make kata-api-e2e` を用意しています。
+- 実行中のLaunch取消、OAuth更新・保存失敗・版競合・proxy再起動、通信中ストリームの失効などの対象は[公開Go APIの障害系受入](#公開go-apiの障害系受入)を参照してください。
+- 応答を通信路で破棄する故障注入とGo API経由のワーカー別通信許可は、両ターゲットともまだ含みません。
+- 単体テストと実Kata受入結果を区別し、成功記録がある版・範囲を確認してください。
 
 ## 実Kataで確認する
 
-[Kataの配置](kata.md)を終えた専用Linuxノードで実行します。
-試験はVM・イメージ・ネットワークを作成します。既存作業と分けて実行してください。
+- [Kataの配置](kata.md)を終えた専用Linuxノードで実行します。
+- 試験はVM・イメージ・ネットワークを作成します。
+- 既存作業と分けて実行してください。
 
 ```bash
 make kata-e2e
 ```
 
-このターゲットはCLIとhelperをビルドし、`CODEX_DOCK_KATA_E2E=1`・`CODEX_DOCK_KATA_POLICY_E2E=1` と対象CLIのパスを指定して、`TestKataAcceptance`・`TestKataWorkspaceSharing`・`TestKataPolicyFeatures`・`TestKataGoAPI` を実行します。
-通常利用者として実行してください。共有試験は別HOMEと架空のAPIキーを使い、実認証ファイルをマウントしません。
-前提条件を満たさない場合は、skipではなく失敗として扱います。
-通常の `go test ./...` はこの実機試験を有効にしません。
+- このターゲットはCLIとhelperをビルドし、`CODEX_DOCK_KATA_E2E=1`・`CODEX_DOCK_KATA_POLICY_E2E=1` と対象CLIのパスを指定して、`TestKataAcceptance`・`TestKataWorkspaceSharing`・`TestKataPolicyFeatures`・`TestKataGoAPI` を実行します。
+- 通常利用者として実行してください。
+- 共有試験は別HOMEと架空のAPIキーを使い、実認証ファイルをマウントしません。
+- 前提条件を満たさない場合は、skipではなく失敗として扱います。
+- 通常の `go test ./...` はこの実機試験を有効にしません。
 
-主に、別kernel、guest権限・資源制限、ホストVM資源制限、Git、readonly/追加mount、PTY、通信遮断、停止・同一IDでの再起動・削除・孤児回収を確認します。
-カスタムDockerfileのビルドとOCI import、管理サービス再起動中のVM維持・連続ログ、ローカルResponses fixtureを使うCodexのツール実行も対象です。
+- 主に、別kernel、guest権限・資源制限、ホストVM資源制限、Git、readonly/追加mount、PTY、通信遮断、停止・同一IDでの再起動・削除・孤児回収を確認します。
+- カスタムDockerfileのビルドとOCI import、管理サービス再起動中のVM維持・連続ログ、ローカルResponses fixtureを使うCodexのツール実行も対象です。
 
-[共有試験](workspace.md#検証する)では、CLIのカレントディレクトリ、双方向のファイル操作、開いたままのファイル、UID/GID、権限、読み取り専用、追加マウント、worktree、再起動も確認します。
-ホスト由来のinotify通知とNodeのポーリング監視も区別して確認します。
+- [共有試験](workspace.md#検証する)では、CLIのカレントディレクトリ、双方向のファイル操作、開いたままのファイル、UID/GID、権限、読み取り専用、追加マウント、worktree、再起動も確認します。
+- ホスト由来のinotify通知とNodeのポーリング監視も区別して確認します。
 
-別所有者のディレクトリとsetgidも確認する場合は、専用fixtureを追加します。
-親は通常利用者だけが開ける一時ディレクトリとし、試験対象だけに別UID/GIDを設定します。
+- 別所有者のディレクトリとsetgidも確認する場合は、専用fixtureを追加します。
+- 親は通常利用者だけが開ける一時ディレクトリとし、試験対象だけに別UID/GIDを設定します。
 
 ```bash
 owner_fixture=$(mktemp -d)
@@ -112,14 +144,15 @@ sudo install -d -o 12001 -g 12002 -m 2777 "$owner_fixture/project/setgid"
 CODEX_DOCK_KATA_OWNER_FIXTURE="$owner_fixture/project" make kata-e2e
 ```
 
-終わったら、その一時ディレクトリだけを削除してください。
-fixtureを指定しない場合も、明示UIDの試験は実行します。`--user dir` の対象は呼出元所有の一時ディレクトリになります。
+- 終わったら、その一時ディレクトリだけを削除してください。
+- fixtureを指定しない場合も、明示UIDの試験は実行します。
+- `--user dir` の対象は呼出元所有の一時ディレクトリになります。
 
 ## 実AIとの通信を確認する
 
-実APIとの通信は、認証情報と外部APIの利用権限が必要な別試験です。
-認証情報をDockerfileやイメージに含めず、ホストから認証プロキシにだけ渡します。
-結果を確認するときは、単なるHTTP 200と、完了したAI応答を区別してください。
+- 実APIとの通信は、認証情報と外部APIの利用権限が必要な別試験です。
+- 認証情報をDockerfileやイメージに含めず、ホストから認証プロキシにだけ渡します。
+- 結果を確認するときは、単なるHTTP 200と、完了したAI応答を区別してください。
 
 | 通信方式 | 成功条件 |
 |---|---|
@@ -127,12 +160,13 @@ fixtureを指定しない場合も、明示UIDの試験は実行します。`--u
 | HTTP SSE | 明示的なHTTP POST、応答イベント、完了イベント、期待した最終応答 |
 | 不正認証 | プロキシ側の401と、上流へ接続しないこと |
 
-Codexの設定でWebSocketを無効にしたつもりでも、使用版によってはWebSocket経路が使われます。
-SSEの確認では、実際のHTTP経路とイベントを照合します。
+- Codexの設定でWebSocketを無効にしたつもりでも、使用版によってはWebSocket経路が使われます。
+- SSEの確認では、実際のHTTP経路とイベントを照合します。
 
 ## 確認済みの範囲
 
-2026-10-17時点の記録です。試験環境はcontainerd 2.4.2、Kata 4.2.0 runtime-rs、Dragonball、BuildKit 0.34.0です。
+- 2026-10-17時点の記録です。
+- 試験環境はcontainerd 2.4.2、Kata 4.2.0 runtime-rs、Dragonball、BuildKit 0.34.0です。
 
 | 試験 | 結果 |
 |---|---|
@@ -145,19 +179,23 @@ SSEの確認では、実際のHTTP経路とイベントを照合します。
 | 認証情報の分離 | access欄はplaceholder、refresh欄は空文字、元auth.jsonは変更なし。当時残っていた実ID token返却は[後続修正](#codexのidトークン分離)で除去 |
 | 後片付け | 試験VM・ネットワーク・一時ルール・専用状態を回収 |
 
-実機受入の一部は、外側にDockerを使った使い捨て環境で実施しました。
-その内部の実行ノードではDocker daemonやDocker CLIを起動していません。
-実auth.jsonの試験と今回の共有修正後の両受入試験は、専用のネイティブcontainerdで実施しました。
-既存Docker/containerdサービスは変更していません。共有試験には架空の認証情報だけを使いました。
+- 実機受入の一部は、外側にDockerを使った使い捨て環境で実施しました。
+- その内部の実行ノードではDocker daemonやDocker CLIを起動していません。
+- 実auth.jsonの試験と今回の共有修正後の両受入試験は、専用のネイティブcontainerdで実施しました。
+- 既存Docker/containerdサービスは変更していません。
+- 共有試験には架空の認証情報だけを使いました。
 
-今回の実通信試験には、長期間の実OAuth更新、実Anthropic認証による推論、対話キーボード操作を含めていません。
-Anthropicの認証・HTTP/WS転送とOAuth更新はfixtureで確認しています。
+- 今回の実通信試験には、長期間の実OAuth更新、実Anthropic認証による推論、対話キーボード操作を含めていません。
+- Anthropicの認証・HTTP/WS転送とOAuth更新はfixtureで確認しています。
 
-旧 `scripts/e2e-docker.sh` は移行前のDocker経路用です。現行構成の受入には `make kata-e2e` を使います。
+- 旧 `scripts/e2e-docker.sh` は移行前のDocker経路用です。
+- 現行構成の受入には `make kata-e2e` を使います。
 
 ## 2026-10-19の実KVM追試
 
-専用の使い捨てUbuntu 26.04ノードで、Kata 4.2.0 / Dragonball、containerd 2.4.2、BuildKit 0.34.0、runc 1.4.3を実KVM上で実行しました。外側のDockerはノードの隔離用で、内部は製品専用containerdです。実API資格情報は使わず、ケース別の架空資格情報を使いました。
+- 専用の使い捨てUbuntu 26.04ノードで、Kata 4.2.0 / Dragonball、containerd 2.4.2、BuildKit 0.34.0、runc 1.4.3を実KVM上で実行しました。
+- 外側のDockerはノードの隔離用で、内部は製品専用containerdです。
+- 実API資格情報は使わず、ケース別の架空資格情報を使いました。
 
 | 試験 | 結果 |
 |---|---|
@@ -168,11 +206,15 @@ Anthropicの認証・HTTP/WS転送とOAuth更新はfixtureで確認していま�
 | 配置・更新・復旧 | PASS。新規配置、稼働中更新拒否、正常更新時のイメージ/ファイル保持、新サービス起動失敗からの自動復旧、明示rollback、残存資源なし |
 | コード検査 | 全Goテスト、vet、影響範囲のrace、配置Pythonテスト14件成功 |
 
-実機で検出した要求ID照合のcontainerd namespace不足、入力EOFによるExec取消、削除済みworkerのNotFound分類欠落を修正しました。proxy Dockerfileのprotocol/buildラベルも現行APIと一致させました。
+- 実機で検出した要求ID照合のcontainerd namespace不足、入力EOFによるExec取消、削除済みworkerのNotFound分類欠落を修正しました。
+- proxy Dockerfileのprotocol/buildラベルも現行APIと一致させました。
 
-初回にはCodex fixtureの45秒タイムアウトとSSE単体試験の一度の失敗があり、再試験は成功しました。SSEは単独5回でも成功しています。最終結果と初回の失敗を区別してください。
+- 初回にはCodex fixtureの45秒タイムアウトとSSE単体試験の一度の失敗があり、再試験は成功しました。
+- SSEは単独5回でも成功しています。
+- 最終結果と初回の失敗を区別してください。
 
-この追試は冒頭のGo API受入範囲です。実行中Launch取消・通信路での応答破棄、実Kata経由のOAuth更新/保存失敗/版競合/認証proxy再起動、通信中ストリームの失効、Go APIのワーカー別ドメイン許可を含む全要件の合格判定はまだ完了していません。
+- この追試は冒頭のGo API受入範囲です。
+- 実行中Launch取消・通信路での応答破棄、実Kata経由のOAuth更新/保存失敗/版競合/認証proxy再起動、通信中ストリームの失効、Go APIのワーカー別ドメイン許可を含む全要件の合格判定はまだ完了していません。
 
 ## ドキュメントを確認する
 
@@ -183,22 +225,22 @@ python3 -m pip install -r requirements-docs.txt
 mkdocs build --strict
 ```
 
-ページ・見出しへのリンク切れ、ナビゲーションへの掲載漏れをエラーとして確認します。
-プレビューは `mkdocs serve` で起動できます。
+- ページ・見出しへのリンク切れ、ナビゲーションへの掲載漏れをエラーとして確認します。
+- プレビューは `mkdocs serve` で起動できます。
 
 ## 新規導入・更新・復旧を検証する
 
-専用のLinux/KVMホストから `scripts/verify-setup.py` を実行します。
-外側の使い捨てUbuntuを作るためだけにDockerを使い、内部の製品はネイティブcontainerd/Kata/Dragonballで実行します。
-既存の通常CIはroot権限を使わない設定生成・配置・復旧の単体テストだけを実行します。
+- 専用のLinux/KVMホストから `scripts/verify-setup.py` を実行します。
+- 外側の使い捨てUbuntuを作るためだけにDockerを使い、内部の製品はネイティブcontainerd/Kata/Dragonballで実行します。
+- 既存の通常CIはroot権限を使わない設定生成・配置・復旧の単体テストだけを実行します。
 
-`deploy/kata/Dockerfile.verify` はsystemdとOS依存パッケージを準備します。
-`setup` 本体が固定配布物を展開して、専用サービスを新規導入します。
-内部ノードへホストPID、ホストDockerソケット、外部ネットワーク、実認証情報は渡しません。
-containerdのデータは、イメージ展開に必要なwhiteoutを扱える専用ボリュームへ配置します。
+- `deploy/kata/Dockerfile.verify` はsystemdとOS依存パッケージを準備します。
+- `setup` 本体が固定配布物を展開して、専用サービスを新規導入します。
+- 内部ノードへホストPID、ホストDockerソケット、外部ネットワーク、実認証情報は渡しません。
+- containerdのデータは、イメージ展開に必要なwhiteoutを扱える専用ボリュームへ配置します。
 
-ソースのルートで、Go・Make・Python・Dockerを使って試験資産を作成します。
-イメージのビルドにproxy/CAが必要な環境では、[Kataの通信設定](kata.md#3-ネットワークとサービスを有効にする)と同様に環境を整えてください。
+- ソースのルートで、Go・Make・Python・Dockerを使って試験資産を作成します。
+- イメージのビルドにproxy/CAが必要な環境では、[Kataの通信設定](kata.md#3-ネットワークとサービスを有効にする)と同様に環境を整えてください。
 
 ```bash
 make node-bundle VERSION=setup-test-a
@@ -217,56 +259,97 @@ CODEX_DOCK_DISPOSABLE_SETUP=1 python3 scripts/verify-setup.py \
   --acceptance .kata-verification/setup-e2e/acceptance.test
 ```
 
-Go APIだけを再試験する場合は `--acceptance-run '^TestKataGoAPI$'` を指定できます。既定では3つの受入試験を実行します。
+- Go APIだけを再試験する場合は `--acceptance-run '^TestKataGoAPI$'` を指定できます。
+- 既定では3つの受入試験を実行します。
 
-必要な場合だけ `--sudo-docker` を付けます。配布物を準備済みなら `--cache PATH --offline` で検証できます。
-スクリプトはホストの既存サービスを変更せず、自分が作ったラベル付きノードと専用ボリュームを最後に回収します。
-証跡は `.kata-verification/setup-e2e/<識別子>/` に残します。
+- 必要な場合だけ `--sudo-docker` を付けます。
+- 配布物を準備済みなら `--cache PATH --offline` で検証できます。
+- スクリプトはホストの既存サービスを変更せず、自分が作ったラベル付きノードと専用ボリュームを最後に回収します。
+- 証跡は `.kata-verification/setup-e2e/<識別子>/` に残します。
 
-確認範囲は、計画時にサービスを作らないこと、新規配置、通常利用者の `init`、実Kata受入、稼働資源がある場合の更新拒否、正常更新時のイメージ保持、新サービスの起動失敗からの自動復旧、明示的なロールバックです。
-OSパッケージのネットワーク取得、ホスト再起動、外部AI推論はこの試験に含みません。
-
+- 確認範囲は、計画時にサービスを作らないこと、新規配置、通常利用者の `init`、実Kata受入、稼働資源がある場合の更新拒否、正常更新時のイメージ保持、新サービスの起動失敗からの自動復旧、明示的なロールバックです。
+- OSパッケージのネットワーク取得、ホスト再起動、外部AI推論はこの試験に含みません。
 
 ## 追加制御の検証（2026-10-19）
 
-P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kataノード・cgroup・状態領域で検証しました。架空の認証情報だけを使用しています。
+- P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kataノード・cgroup・状態領域で検証しました。
+- 架空の認証情報だけを使用しています。
 
 - `make build`、全パッケージの `make test`（race/coverage）、`make vet`、`make lint`、`mkdocs build --strict` が成功。
 - macOS arm64のクロスビルドと、配置・導入スクリプトのPythonテストが成功。
-- `make kata-e2e` が成功。既存のVM隔離・ツール実行・ノード再起動・認証・通信・停止・削除と、共有/所有者の既存7ケースを確認。
+- `make kata-e2e` が成功。
+- 既存のVM隔離・ツール実行・ノード再起動・認証・通信・停止・削除と、共有/所有者の既存7ケースを確認。
 - 追加の実機試験で、Kataの固定IPから選択済みプロキシと実効policy IDを特定できることを確認。
 - `TestKataPolicyFeatures` で、mask・個別readonly・rootfsのread-only mount flag、hook/readiness、symlinkを拒否するファイル送受信、exec環境変数/作業ディレクトリ/取消、PTYリサイズ、背景ジョブ、ノード再起動後のジョブとログの回収を確認。
 - Go APIの新しい設定を使わない場合、既存要求IDのfingerprint入力が旧版と一致することをgolden testで確認。
 
-[追加制御の一覧と運用条件](sandbox-features.md)も参照してください。寿命・保持期限の適用には `reap --watch` または定期的な `Reap` 呼出しが必要です。実APIキーを使う外部AI推論と、実SSH/JDKサービスへの接続は今回の受入試験には含めていません。認証brokerの経路制限・失効・redirect、独自CA・多段proxyはローカルfixtureで検証しています。
-
+- [追加制御の一覧と運用条件](sandbox-features.md)も参照してください。
+- 寿命・保持期限の適用には `reap --watch` または定期的な `Reap` 呼出しが必要です。
+- 実APIキーを使う外部AI推論と、実SSH/JDKサービスへの接続は今回の受入試験には含めていません。
+- 認証brokerの経路制限・失効・redirect、独自CA・多段proxyはローカルfixtureで検証しています。
 
 ## 公開Go APIの障害系受入
 
-対応するCLI/node、ワーカーイメージ、ベースproxyイメージ、standalone BuildKitを配置した専用Linux/KVMホストで `make kata-api-e2e` を実行します。`CODEX_DOCK_KATA_NODE_SOCKET` と `BUILDKIT_HOST` で対象を明示できます。`CODEX_DOCK_KATA_TEST_IMAGE` と `CODEX_DOCK_KATA_PROXY_IMAGE` は利用するベースイメージを選びます。ビルド版はnodeと一致させてください（例：`make kata-api-e2e VERSION=dev`）。
+- 対応するCLI/node、ワーカーイメージ、ベースproxyイメージ、standalone BuildKitを配置した専用Linux/KVMホストで `make kata-api-e2e` を実行します。
+- `CODEX_DOCK_KATA_NODE_SOCKET` と `BUILDKIT_HOST` で対象を明示できます。
+- `CODEX_DOCK_KATA_TEST_IMAGE` と `CODEX_DOCK_KATA_PROXY_IMAGE` は利用するベースイメージを選びます。
+- ビルド版はnodeと一致させてください（例：`make kata-api-e2e VERSION=dev`）。
 
-スクリプトは `internal/authproxy` のテスト実行ファイルを入れた一意のfixtureイメージを作ります。本物のproxy handler・Unix credential adapterを通し、上流だけをプロキシ内の架空HTTPサーバーへ差し替えます。実APIキーや外部AI推論は使いません。OAuth更新の実Kata fixtureはOpenAI型に加え、[Claude Codeの受入](#claude-codeの受入)でAnthropic型も確認します。外部の実Anthropic接続は含みません。fixtureイメージを運用に使わないでください。ワーカーとケースproxyを最後に削除し、スクリプト所有のfixtureイメージもテストが回収します。BuildKit cacheとホスト共通egress networkは通常のビルド・ノード管理に従います。
+- スクリプトは `internal/authproxy` のテスト実行ファイルを入れた一意のfixtureイメージを作ります。
+- 本物のproxy handler・Unix credential adapterを通し、上流だけをプロキシ内の架空HTTPサーバーへ差し替えます。
+- 実APIキーや外部AI推論は使いません。
+- OAuth更新の実Kata fixtureはOpenAI型に加え、[Claude Codeの受入](#claude-codeの受入)でAnthropic型も確認します。
+- 外部の実Anthropic接続は含みません。
+- fixtureイメージを運用に使わないでください。
+- ワーカーとケースproxyを最後に削除し、スクリプト所有のfixtureイメージもテストが回収します。
+- BuildKit cacheとホスト共通egress networkは通常のビルド・ノード管理に従います。
 
-`TestKataAPIIntegration` の対象は、Createの再送とLaunchとの衝突、起動前にhookが動かないこと、Start後のreadiness、small/compactのホストcurrent/peak/OOMとcompact 2台の同時稼働、実要求のモデル拒否、実行中ジョブ/streamのidle回収除外、RevokeRunによる通信中streamの終了と再利用拒否、hook中の同一Launch再送がpendingを保持すること、Launch取消と要求台帳・資源回収、OAuth保存失敗・版競合での失効、正常更新とproxy再起動での保存世代再取得、古いtoken拒否と停止/再起動での再有効化です。
+**`TestKataAPIIntegration` の試験対象**
+
+| 分類 | 確認する動作 |
+|---|---|
+| 作成・再送 | Create再送とLaunchとの衝突。起動前にhookが動かないこと |
+| 起動完了 | Start後のreadiness。hook中の同一Launch再送がpendingを保持 |
+| 資源 | small/compactのホストcurrent・peak・OOM。compact 2台の同時稼働 |
+| モデル認可 | 実要求でのモデル拒否 |
+| idle回収 | 実行中ジョブ・streamを回収対象から除外 |
+| 実行失効 | RevokeRunが通信中streamを終了し、再利用を拒否 |
+| 取消 | Launch取消後の要求台帳・資源回収 |
+| OAuth障害 | 保存失敗・版競合での失効 |
+| OAuth正常更新 | Proxy再起動後に保存済み世代を再取得 |
+| トークンの再開 | 古いtoken拒否。停止・再起動での再有効化 |
 
 追加で、固定Codex 0.163.0を生成設定なしの明示HTTP/SSEで呼ぶ `codex-http`、容量超過時のENOSPC・所有者・exec/noexec・node再起動時の保持・VM停止時の消去を調べる `temporary-storage`、[公開APIの組み込み例](go-api.md#実行できる組み込み例)を実際にビルドして実行する `embedding-example` を含みます。
 
-絞り込みは `python3 scripts/verify-go-api.py --binary ./oaiso --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。対象が0件、skipだけ、または途中失敗の場合は検証成功にしません。登録プロファイルも試す場合は `CODEX_DOCK_KATA_CUSTOM_PROFILE=<登録名>` を設定してください。`custom-profile` が実際のguest CPU・メモリ・PID上限とnode/VM再起動後の値を確認します。標準ケースの追加機能を使うため、対応するnodeと固定bootstrapを配置してください。
+- 絞り込みは `python3 scripts/verify-go-api.py --binary ./oaiso --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。
+- 対象が0件、skipだけ、または途中失敗の場合は検証成功にしません。
+- 登録プロファイルも試す場合は `CODEX_DOCK_KATA_CUSTOM_PROFILE=<登録名>` を設定してください。
+- `custom-profile` が実際のguest CPU・メモリ・PID上限とnode/VM再起動後の値を確認します。
+- 標準ケースの追加機能を使うため、対応するnodeと固定bootstrapを配置してください。
 
-`CODEX_DOCK_NODE_RESTART_REQUEST_DIR` を設定すると、ホスト側supervisorとの追加連携を有効にします。試験はこのディレクトリの古い `complete` を削除し、`request` に `restart` または `namespace <完全なcontainer ID>` を書きます。supervisorは対象nodeだけを再起動し、後者では停止済みの所有権確認済みnamespaceを失わせてから復旧させ、nodeが再接続可能になった後だけ `complete` を作成してください。
+- `CODEX_DOCK_NODE_RESTART_REQUEST_DIR` を設定すると、ホスト側supervisorとの追加連携を有効にします。
+- 試験はこのディレクトリの古い `complete` を削除し、`request` に `restart` または `namespace <完全なcontainer ID>` を書きます。
+- supervisorは対象nodeだけを再起動し、後者では停止済みの所有権確認済みnamespaceを失わせてから復旧させ、nodeが再接続可能になった後だけ `complete` を作成してください。
 
-通常ユーザーからroot専用の `/run/netns` を開けるようには変更しません。`namespace` の完了には、root supervisorが観測した次のJSONを返します。実際のIDとdevice/inode値を使用し、`removed` はnamespaceのパス消失を確認してからtrueにします。試験は対象ID、消失、変更前後のinodeの相違を照合し、単なる `ready` や再起動だけの報告を拒否します。書きかけの応答を読ませないよう、完了内容は一時ファイルに書いてから `complete` へatomic renameしてください。通常の `restart` の完了内容は `ready` のままで構いません。
+- 通常ユーザーからroot専用の `/run/netns` を開けるようには変更しません。
+- `namespace` の完了には、root supervisorが観測した次のJSONを返します。
+- 実際のIDとdevice/inode値を使用し、`removed` はnamespaceのパス消失を確認してからtrueにします。
+- 試験は対象ID、消失、変更前後のinodeの相違を照合し、単なる `ready` や再起動だけの報告を拒否します。
+- 書きかけの応答を読ませないよう、完了内容は一時ファイルに書いてから `complete` へatomic renameしてください。
+- 通常の `restart` の完了内容は `ready` のままで構いません。
 
 ```json
 {"operation":"namespace","container_id":"<完全なID>","removed":true,"before":{"device":5,"inode":101},"after":{"device":5,"inode":102}}
 ```
 
-この環境変数を省略した場合、node再起動・namespace喪失の追加検証を実施したとは扱いません。通常のAPI・VM停止/再起動試験は引き続き実行します。
-
+- この環境変数を省略した場合、node再起動・namespace喪失の追加検証を実施したとは扱いません。
+- 通常のAPI・VM停止/再起動試験は引き続き実行します。
 
 ## 製品組み込み改善の検証（2026-10-20）
 
-既存サービスから分離したcontainerd・BuildKit・Kataノード・cgroupで、`make kata-e2e VERSION=dev`（当時の対象はAcceptance・WorkspaceSharing・PolicyFeatures、400.698秒）と `make kata-api-e2e VERSION=dev`（受入本体228.339秒）が成功しました。後者はcompact・lifecycle・保存失敗・版競合・proxy再起動の5ケースすべてが成功し、参照中イメージの削除拒否と、最後の試験用イメージ削除・参照消失まで確認しています。取消後のinventoryで、余分なVM・ホスト割当・実プロセスが残らないことも確認しました。
+- 既存サービスから分離したcontainerd・BuildKit・Kataノード・cgroupで、`make kata-e2e VERSION=dev`（当時の対象はAcceptance・WorkspaceSharing・PolicyFeatures、400.698秒）と `make kata-api-e2e VERSION=dev`（受入本体228.339秒）が成功しました。
+- 後者はcompact・lifecycle・保存失敗・版競合・proxy再起動の5ケースすべてが成功し、参照中イメージの削除拒否と、最後の試験用イメージ削除・参照消失まで確認しています。
+- 取消後のinventoryで、余分なVM・ホスト割当・実プロセスが残らないことも確認しました。
 
 | compactの観測 | ホストcurrent | ホストpeak | 条件 |
 |---|---:|---:|---|
@@ -274,31 +357,53 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 | 256 MiB確保ジョブ実行中 | 424894464 B（約405 MiB） | 425246720 B（約406 MiB） | 別のcompact VMも同時稼働 |
 | 同時稼働の2台目 | 156971008 B（約150 MiB） | 157384704 B | 待機中 |
 
-両VMでguestの `memory.max=536870912` とguest/hostのOOMカウンター0を確認し、負荷ジョブが意図的な停止まで動き続けることも確認しました。同一ホスト・架空HTTP上流での限定した負荷試験です。一般的な依存導入・大規模ビルド・実AI CLI負荷の必要量を保証しません。standard/smallの既存上限と既定値は維持しています。
+- 両VMでguestの `memory.max=536870912` とguest/hostのOOMカウンター0を確認し、負荷ジョブが意図的な停止まで動き続けることも確認しました。
+- 同一ホスト・架空HTTP上流での限定した負荷試験です。
+- 一般的な依存導入・大規模ビルド・実AI CLI負荷の必要量を保証しません。
+- standard/smallの既存上限と既定値は維持しています。
 
-`make build`、全パッケージrace/coverageテスト、vet、lint、macOS arm64クロスビルド、ドキュメントstrictビルドも成功しました。公開APIの要求台帳照合に必要なcontainerd namespaceを補い、OAuth保存先の一般エラーと空の保存版でもケースと通信中leaseを失効させることを試験しています。運用条件とモデル制限時の対応経路は[追加制御](sandbox-features.md)を参照してください。実認証情報・外部AI推論・systemd user unitの常駐稼働はこの受入には含めず、既存サービスへの更新適用もしていません。
+- `make build`、全パッケージrace/coverageテスト、vet、lint、macOS arm64クロスビルド、ドキュメントstrictビルドも成功しました。
+- 公開APIの要求台帳照合に必要なcontainerd namespaceを補い、OAuth保存先の一般エラーと空の保存版でもケースと通信中leaseを失効させることを試験しています。
+- 運用条件とモデル制限時の対応経路は[追加制御](sandbox-features.md)を参照してください。
+- 実認証情報・外部AI推論・systemd user unitの常駐稼働はこの受入には含めず、既存サービスへの更新適用もしていません。
 
-検証終了後、専用ワーカー・proxy・ネットワークが0件であることを確認し、検証用containerd・BuildKit・ノード・cgroup・socket・状態領域を回収しました。既存containerdとノードの稼働は継続しています。
-
+- 検証終了後、専用ワーカー・proxy・ネットワークが0件であることを確認し、検証用containerd・BuildKit・ノード・cgroup・socket・状態領域を回収しました。
+- 既存containerdとノードの稼働は継続しています。
 
 ### リモート統合後の追試
 
-上記の改善とGo API実機受入の追加を統合した版で、`make kata-e2e VERSION=dev` のAcceptance（184.97秒）・WorkspaceSharing（8ケース、141.79秒）・PolicyFeatures（46.36秒）が成功しました。GoAPIは初回に試験用StateDirの権限チェックで失敗したため、保存先を既存の0700 fixtureディレクトリ配下へ変更し、`TestKataGoAPI` だけを再実行して成功しました（70.319秒）。製品の権限チェックは維持しています。
+- 上記の改善とGo API実機受入の追加を統合した版で、`make kata-e2e VERSION=dev` のAcceptance（184.97秒）・WorkspaceSharing（8ケース、141.79秒）・PolicyFeatures（46.36秒）が成功しました。
+- GoAPIは初回に試験用StateDirの権限チェックで失敗したため、保存先を既存の0700 fixtureディレクトリ配下へ変更し、`TestKataGoAPI` だけを再実行して成功しました（70.319秒）。
+- 製品の権限チェックは維持しています。
 
-統合版の `make kata-api-e2e VERSION=dev` も5ケースすべて成功しました（223.575秒）。全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト14件、補助スクリプトテスト2件、macOS arm64クロスビルドも成功しています。試験用コンテナ・タスク・ネットワークが0件であることを確認してから、専用containerd・BuildKit・ノードと状態領域を回収しました。
+- 統合版の `make kata-api-e2e VERSION=dev` も5ケースすべて成功しました（223.575秒）。
+- 全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト14件、補助スクリプトテスト2件、macOS arm64クロスビルドも成功しています。
+- 試験用コンテナ・タスク・ネットワークが0件であることを確認してから、専用containerd・BuildKit・ノードと状態領域を回収しました。
 
 ### 競合関連のロジックレビューと修正
 
-`8cd98f2` の両親との差分を照合し、`FindRequest` のcontainerd namespace固定・排他制御と、NotFoundの分類・伝播が維持されていることを確認しました。呼出元と関連処理を調べ、従来の受入では確認していなかった次の2件を修正しました。
+- `8cd98f2` の両親との差分を照合し、`FindRequest` のcontainerd namespace固定・排他制御と、NotFoundの分類・伝播が維持されていることを確認しました。
+- 呼出元と関連処理を調べ、従来の受入では確認していなかった次の2件を修正しました。
 
-- stdin未接続のExecに送信EOFだけを通知すると、出力前に取消されました。修正前の実Kata試験は終了125・`context canceled` で失敗し、修正後は同じ試験で出力と終了0を確認しました。完全切断の検知と明示的な取消は維持しています。
-- 起動中に同じ要求を再送すると、作成済みワーカーの照合が有効なleaseより先に走り、台帳を早期に完了扱いにしていました。修正前に単体回帰試験の失敗を確認し、有効なleaseを先に検査するよう変更しました。元の起動による確定、lease失効後の照合、完了済み結果の再送を単体試験で確認し、実Kataではhook中の再送が `ErrInProgress`・`pending` を保持し、その後の取消と資源回収まで成功しました。起動元消失時の最大5分の待機は[Go API](go-api.md#再送と復旧)に明記しています。
+- stdin未接続のExecに送信EOFだけを通知すると、出力前に取消されました。
+- 修正前の実Kata試験は終了125・`context canceled` で失敗し、修正後は同じ試験で出力と終了0を確認しました。
+- 完全切断の検知と明示的な取消は維持しています。
+- 起動中に同じ要求を再送すると、作成済みワーカーの照合が有効なleaseより先に走り、台帳を早期に完了扱いにしていました。
+- 修正前に単体回帰試験の失敗を確認し、有効なleaseを先に検査するよう変更しました。
+- 元の起動による確定、lease失効後の照合、完了済み結果の再送を単体試験で確認し、実Kataではhook中の再送が `ErrInProgress`・`pending` を保持し、その後の取消と資源回収まで成功しました。
+- 起動元消失時の最大5分の待機は[Go API](go-api.md#再送と復旧)に明記しています。
 
-Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功しました（463.303秒）。lease修正後は影響する `TestKataGoAPI`（75.195秒）と、拡張した `make kata-api-e2e VERSION=dev` の5ケース（219.455秒）を再実行して成功しています。最終コードで全Goパッケージのrace/coverage・vet・lintも成功しました。試験用コンテナ・タスク・ネットワークが0件であることを確認し、専用ノード・containerd・BuildKit・cgroup・状態領域を回収しました。既存サービスへの更新適用と外部AIへの実推論は今回の確認に含みません。
+- Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功しました（463.303秒）。
+- lease修正後は影響する `TestKataGoAPI`（75.195秒）と、拡張した `make kata-api-e2e VERSION=dev` の5ケース（219.455秒）を再実行して成功しています。
+- 最終コードで全Goパッケージのrace/coverage・vet・lintも成功しました。
+- 試験用コンテナ・タスク・ネットワークが0件であることを確認し、専用ノード・containerd・BuildKit・cgroup・状態領域を回収しました。
+- 既存サービスへの更新適用と外部AIへの実推論は今回の確認に含みません。
 
 ## 汎用組み込み機能の検証（2026-10-21）
 
-既存サービスから分離したネイティブcontainerd・BuildKit・Kata 4.2.0 / Dragonballで、公開Go APIの9ケースを確認しました。上流は架空HTTPサーバーで、実際のCodex CLIとVM・Proxy・Unix Credential Store Adapterを使っています。外部AIへの推論と実資格情報は使いません。
+- 既存サービスから分離したネイティブcontainerd・BuildKit・Kata 4.2.0 / Dragonballで、公開Go APIの9ケースを確認しました。
+- 上流は架空HTTPサーバーで、実際のCodex CLIとVM・Proxy・Unix Credential Store Adapterを使っています。
+- 外部AIへの推論と実資格情報は使いません。
 
 | 対象 | 確認結果 |
 |---|---|
@@ -309,21 +414,41 @@ Exec修正後の `make kata-e2e VERSION=dev` は4スイートすべて成功し�
 | 認証と回収 | OAuth保存失敗・版競合での失効、正常更新とProxy再起動後の再取得、実行中streamの失効、起動途中の取消と割当回収を確認 |
 | 組み込み例 | 同じ実行ファイルでCreate → Start → 最初の出力でExec取消 → 別Exec → Codex HTTP/SSE → Stop → RemoveRequestを確認 |
 
-`codex-http`、`compact`、`save-failure`、`conflict`、`restart`、`temporary-storage`、`custom-profile` の7ケースが成功し、`embedding-example` は59.824秒で成功しました。`lifecycle` は初回、失効したstreamの `http.client.IncompleteRead` を試験用クライアントが処理せず失敗しました。期待する途中切断として処理し、失効前にはstreamが継続していることも検査して再実行した結果、66.108秒で成功しました。
+- `codex-http`、`compact`、`save-failure`、`conflict`、`restart`、`temporary-storage`、`custom-profile` の7ケースが成功し、`embedding-example` は59.824秒で成功しました。
+- `lifecycle` は初回、失効したstreamの `http.client.IncompleteRead` を試験用クライアントが処理せず失敗しました。
+- 期待する途中切断として処理し、失効前にはstreamが継続していることも検査して再実行した結果、66.108秒で成功しました。
 
-回帰確認でHTTP/1の自動request-body drainと上流の送信writerの競合によるSSE欠落を再現し、stream転送時のfull-duplexを明示して修正しました。修正後のSSE反復3,000回と、upload完了前に応答が始まる回帰試験が成功しています。上流の異常切断も正常EOFへ変換せず、OpenAI・Anthropic・credential broker・egressの4経路で通信エラーとして検出する試験が成功しました。HTTP/SSEの呼び出し側は、切断や読取りエラーと、AIの完了イベントを区別してください。
+- 回帰確認でHTTP/1の自動request-body drainと上流の送信writerの競合によるSSE欠落を再現し、stream転送時のfull-duplexを明示して修正しました。
+- 修正後のSSE反復3,000回と、upload完了前に応答が始まる回帰試験が成功しています。
+- 上流の異常切断も正常EOFへ変換せず、OpenAI・Anthropic・credential broker・egressの4経路で通信エラーとして検出する試験が成功しました。
+- HTTP/SSEの呼び出し側は、切断や読取りエラーと、AIの完了イベントを区別してください。
 
-全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト18件と補助スクリプトテスト5件、macOS arm64/amd64・Linux arm64のクロスビルドが成功しました。クロスビルドはそのOSでのKata実行を保証しません。`go mod tidy -diff` に差分はありません。Credential Storeの適合テストは、永続fixtureと意図的に壊したAdapterへの検出試験で確認しています。各利用先DBのAdapterは、そのDBのテスト環境で適合試験を実行してください。
+- 全Goパッケージのrace/coverage・vet・lint、配置Pythonテスト18件と補助スクリプトテスト5件、macOS arm64/amd64・Linux arm64のクロスビルドが成功しました。
+- クロスビルドはそのOSでのKata実行を保証しません。
+- `go mod tidy -diff` に差分はありません。
+- Credential Storeの適合テストは、永続fixtureと意図的に壊したAdapterへの検出試験で確認しています。
+- 各利用先DBのAdapterは、そのDBのテスト環境で適合試験を実行してください。
 
-最終のKata回帰ではWorkspaceSharing（8ケース、145.60秒）、PolicyFeatures（46.83秒）、GoAPI（85.14秒）が成功しました。Acceptanceの初回は、追加したnamespace観測が通常ユーザーからroot専用パスをstatして失敗しました。権限を緩和せず、ホスト側の故障注入supervisorによる実測証跡を照合する方式へ直して、Acceptanceを再実行し成功しました（176.486秒）。所有権・task不在・空のcgroup・保存済みinodeを確認した停止済みnamespaceを実際に削除し、再起動後の新しいinode、VM再起動と孤児回収まで確認しています。単なる再起動をnamespace復旧として合格させない回帰試験も追加しました。これにより全4スイートの合格を確認しています。
+- 最終のKata回帰ではWorkspaceSharing（8ケース、145.60秒）、PolicyFeatures（46.83秒）、GoAPI（85.14秒）が成功しました。
+- Acceptanceの初回は、追加したnamespace観測が通常ユーザーからroot専用パスをstatして失敗しました。
+- 権限を緩和せず、ホスト側の故障注入supervisorによる実測証跡を照合する方式へ直して、Acceptanceを再実行し成功しました（176.486秒）。
+- 所有権・task不在・空のcgroup・保存済みinodeを確認した停止済みnamespaceを実際に削除し、再起動後の新しいinode、VM再起動と孤児回収まで確認しています。
+- 単なる再起動をnamespace復旧として合格させない回帰試験も追加しました。
+- これにより全4スイートの合格を確認しています。
 
-最後に試験用コンテナ・task・VM割当・ネットワークが0件であることを確認し、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存の3サービスは同じPIDで稼働し、既存nodeのhealth応答も正常でした。各機能は汎用API・設定・適合テストとして実装しており、別オーケストレータ自身のAdapterやDBへの組み込み試験は対象に含みません。
+- 最後に試験用コンテナ・task・VM割当・ネットワークが0件であることを確認し、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。
+- 既存の3サービスは同じPIDで稼働し、既存nodeのhealth応答も正常でした。
+- 各機能は汎用API・設定・適合テストとして実装しており、別オーケストレータ自身のAdapterやDBへの組み込み試験は対象に含みません。
 
 ## 2026-10-21の性能計測
 
-対象の実装は、[認証トークンの索引化（61c9665）](https://github.com/pacificbelt30/sandbox-codex/commit/61c9665c4077b312162ea4b5bd84e21dcede2b8d)、[停止時の終了通知の保存（b6746b6）](https://github.com/pacificbelt30/sandbox-codex/commit/b6746b6f24003ce91712e8ca8df672fa978be660)、[資産検証の並列化（cd4f68f）](https://github.com/pacificbelt30/sandbox-codex/commit/cd4f68f4bad31e6231095b7e8c5c7acfe16c4f5d)です。再計測手順は[性能とベンチマーク](performance.md)にまとめています。
+- 対象の実装は、[認証トークンの索引化（61c9665）](https://github.com/pacificbelt30/sandbox-codex/commit/61c9665c4077b312162ea4b5bd84e21dcede2b8d)、[停止時の終了通知の保存（b6746b6）](https://github.com/pacificbelt30/sandbox-codex/commit/b6746b6f24003ce91712e8ca8df672fa978be660)、[資産検証の並列化（cd4f68f）](https://github.com/pacificbelt30/sandbox-codex/commit/cd4f68f4bad31e6231095b7e8c5c7acfe16c4f5d)です。
+- 再計測手順は[性能とベンチマーク](performance.md)にまとめています。
 
-Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmarkを変更前後の別バイナリーで順次実行しました。各500msを5回、中央値で比較しています。測定中に他のテストやビルドを並行実行していません。`BenchmarkWorkerRequest` は認証ヘッダーの解析、期限・経路の確認、request contextの生成と解放を含み、ネットワーク・実AIへの通信は含みません。
+- Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmarkを変更前後の別バイナリーで順次実行しました。
+- 各500msを5回、中央値で比較しています。
+- 測定中に他のテストやビルドを並行実行していません。
+- `BenchmarkWorkerRequest` は認証ヘッダーの解析、期限・経路の確認、request contextの生成と解放を含み、ネットワーク・実AIへの通信は含みません。
 
 | 同一Proxyのトークン数 | 認証成功：変更前 → 変更後 | 時間短縮 |
 |---|---|---|
@@ -332,27 +457,50 @@ Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmark
 | 256 | 2,846 → 882.3 ns | 69.0% |
 | 4,096 | 47,522 → 1,012 ns | 97.9% |
 
-未発行トークンの拒否は4,096件で52,668 → 133.8 ns（99.7%短縮）でした。トークン値の索引を追加した効果であり、AI応答全体の改善率ではありません。小規模Proxyでは元の認証コストも小さく、同等の体感改善を意味しません。
+- 未発行トークンの拒否は4,096件で52,668 → 133.8 ns（99.7%短縮）でした。
+- トークン値の索引を追加した効果であり、AI応答全体の改善率ではありません。
+- 小規模Proxyでは元の認証コストも小さく、同等の体感改善を意味しません。
 
 再計測は[Proxy認証のbenchmark手順](performance.md#proxy認証)を参照してください。
 
-発行・再発行・異なる値／同じ値でのrestore・失効・期限切れ回収・実行／ケースの失効・Proxy停止で、古いstreamの取消、旧トークンの拒否、別ワーカーへのトークン重複割当拒否を確認しました。全Goテストのrace検査、vet、lintも成功しました。
+- 発行・再発行・異なる値／同じ値でのrestore・失効・期限切れ回収・実行／ケースの失効・Proxy停止で、古いstreamの取消、旧トークンの拒否、別ワーカーへのトークン重複割当拒否を確認しました。
+- 全Goテストのrace検査、vet、lintも成功しました。
 
 ### Kata資産の再検証
 
-CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。資産ファイル間の検証を最大4並列にし、全資産の再読込・所有権・パス・実行権限・checksum・設定との結び付けの検査を維持しています。タイムスタンプを根拠にしたキャッシュは追加していません。並列数はGOMAXPROCSも上限とするため、GOMAXPROCS=1では1ファイルずつ検証します。
+- CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。
+- 資産ファイル間の検証を最大4並列にし、全資産の再読込・所有権・パス・実行権限・checksum・設定との結び付けの検査を維持しています。
+- タイムスタンプを根拠にしたキャッシュは追加していません。
+- 並列数はGOMAXPROCSも上限とするため、GOMAXPROCS=1では1ファイルずつ検証します。
 
-実際に固定した256 MiBのguest imageとruntime・kernel・containerdなどを含むmanifestで、CPU profileを無効にして測定した `BenchmarkLoadPinnedManifest` は970.55 → 636.43 ms（34.4%短縮）でした。各3回の平均を5標本取り、その中央値を比較しています。既にpage cacheが温まった、複数CPUのある同一ホストでの結果です。総ハッシュ量を減らす変更ではなく、空いているCPUを使って待ち時間を短縮しています。ディスク読み出しやCPU数が制約になるホスト、SHA命令を持つCPUで同じ改善率を保証するものではありません。CPU飽和時のthroughputは未測定です。
+- 実際に固定した256 MiBのguest imageとruntime・kernel・containerdなどを含むmanifestで、CPU profileを無効にして測定した `BenchmarkLoadPinnedManifest` は970.55 → 636.43 ms（34.4%短縮）でした。
+- 各3回の平均を5標本取り、その中央値を比較しています。
+- 既にpage cacheが温まった、複数CPUのある同一ホストでの結果です。
+- 総ハッシュ量を減らす変更ではなく、空いているCPUを使って待ち時間を短縮しています。
+- ディスク読み出しやCPU数が制約になるホスト、SHA命令を持つCPUで同じ改善率を保証するものではありません。
+- CPU飽和時のthroughputは未測定です。
 
-再計測は[固定資産の検証](performance.md#固定資産の検証)と[実KataのExec](performance.md#実kataのexec)を参照してください。公開Go APIの `BenchmarkKataExec` は、Openとwarmupを計測から除き、Execごとの資産・ホスト・guestの検証、`/bin/true` の実行と終了確認を含みます。allocation値はクライアント側の値です。
+- 再計測は[固定資産の検証](performance.md#固定資産の検証)と[実KataのExec](performance.md#実kataのexec)を参照してください。
+- 公開Go APIの `BenchmarkKataExec` は、Openとwarmupを計測から除き、Execごとの資産・ホスト・guestの検証、`/bin/true` の実行と終了確認を含みます。
+- allocation値はクライアント側の値です。
 
-同じcompact VM・同じクライアントバイナリーを維持し、変更前後のnodeを切り替えて5組比較しました。各標本は3 Execの平均で、組ごとの実行順は「旧版→新版」と「新版→旧版」を交互にしています。中央値は2.4478 → 1.7615秒（28.0%短縮）でした。比較中にエラー・VM再作成はなく、測定後にワーカーとfixture Proxyを回収しました。これは上記ホストでの短いコマンドの結果で、長い計算ジョブやAI推論時間の28%短縮を意味しません。
+- 同じcompact VM・同じクライアントバイナリーを維持し、変更前後のnodeを切り替えて5組比較しました。
+- 各標本は3 Execの平均で、組ごとの実行順は「旧版→新版」と「新版→旧版」を交互にしています。
+- 中央値は2.4478 → 1.7615秒（28.0%短縮）でした。
+- 比較中にエラー・VM再作成はなく、測定後にワーカーとfixture Proxyを回収しました。
+- これは上記ホストでの短いコマンドの結果で、長い計算ジョブやAI推論時間の28%短縮を意味しません。
 
 ### 停止処理の回帰確認
 
-停止時はcontainerdの終了通知に含まれる終了コードと時刻を保存します。通知後の状態再取得に依存すると、runtimeが終了済みタスクを忘れた場合に成功した停止をNotFound扱いしてしまいます。単体テストでこの順序を再現し、保存済みの終了コード・時刻を確認しました。実行中taskの終了を待つとき、終了通知自体のエラーや、結果なしで閉じたchannelは引き続き失敗として扱います。task削除前の停止・不在確認とKataのretirement検証は維持しています。
+- 停止時はcontainerdの終了通知に含まれる終了コードと時刻を保存します。
+- 通知後の状態再取得に依存すると、runtimeが終了済みタスクを忘れた場合に成功した停止をNotFound扱いしてしまいます。
+- 単体テストでこの順序を再現し、保存済みの終了コード・時刻を確認しました。
+- 実行中taskの終了を待つとき、終了通知自体のエラーや、結果なしで閉じたchannelは引き続き失敗として扱います。
+- task削除前の停止・不在確認とKataのretirement検証は維持しています。
 
-初回の実Kata受入では停止APIのNotFoundが1件ありました。エラーに処理段階を付けた診断用nodeで同じ受入を再実行すると193.725秒で通過し、最初の失敗が上記の競合だったかは断定できていません。単体テストでは競合を再現して修正を検証し、実機での初回失敗と再実行の結果を区別しています。
+- 初回の実Kata受入では停止APIのNotFoundが1件ありました。
+- エラーに処理段階を付けた診断用nodeで同じ受入を再実行すると193.725秒で通過し、最初の失敗が上記の競合だったかは断定できていません。
+- 単体テストでは競合を再現して修正を検証し、実機での初回失敗と再実行の結果を区別しています。
 
 最終実装で `make kata-e2e VERSION=dev` を再実行し、4スイートが連続で成功しました（Go test全体432.713秒）。
 
@@ -365,17 +513,21 @@ CPU profileでは `Load` のCPU時間の95.5%がSHA-256本体でした。資産�
 
 全Goテストのrace検査、vet、lint、Linux arm64・macOS arm64クロスビルド、ドキュメントのstrict buildも成功しました。
 
-追加のGo API受入も、固定CLI 0.163.0と架空の資格情報で全9ケースが成功しました（406.251秒）。明示HTTP/SSE、compact、起動取消・通信中失効、OAuth保存失敗・版競合・Proxy再起動、容量付き一時領域、組み込みサンプル、登録プロファイルのnode/VM再起動後の制約を確認しています。検証用VM・コンテナ・ネットワーク・サービス・状態を回収し、既存サービスは変更していません。
-
+- 追加のGo API受入も、固定CLI 0.163.0と架空の資格情報で全9ケースが成功しました（406.251秒）。
+- 明示HTTP/SSE、compact、起動取消・通信中失効、OAuth保存失敗・版競合・Proxy再起動、容量付き一時領域、組み込みサンプル、登録プロファイルのnode/VM再起動後の制約を確認しています。
+- 検証用VM・コンテナ・ネットワーク・サービス・状態を回収し、既存サービスは変更していません。
 
 ## 新規Kata起動の工程別計測
 
-2026-10-21、`c2bd5ac` を基準に `LaunchWithTimings` と `BenchmarkKataLaunch` を追加して、独立したnode・containerd・BuildKitで新規起動を5回計測しました。
-Intel Core i5-8500、Linux amd64、Go 1.27.2、clientのGOMAXPROCS=4、`compact`（guest 512 MiB／host予約768 MiB／PID 512）です。
-各回は別のworker・要求ID・workspace・ケースProxyを使い、Proxy作成とclientのOpenは計測外です。起動中に他のビルド・テストを実行していません。
-workerは準備済みベースに最新entrypointと固定Claudeバイナリを重ねた検証用イメージで、page cacheは温まっています。一般egress・Git共有・エージェント実行を無効にし、架空のAPIキーだけを用いました。
+- 2026-10-21、`c2bd5ac` を基準に `LaunchWithTimings` と `BenchmarkKataLaunch` を追加して、独立したnode・containerd・BuildKitで新規起動を5回計測しました。
+- Intel Core i5-8500、Linux amd64、Go 1.27.2、clientのGOMAXPROCS=4、`compact`（guest 512 MiB／host予約768 MiB／PID 512）です。
+- 各回は別のworker・要求ID・workspace・ケースProxyを使い、Proxy作成とclientのOpenは計測外です。
+- 起動中に他のビルド・テストを実行していません。
+- workerは準備済みベースに最新entrypointと固定Claudeバイナリを重ねた検証用イメージで、page cacheは温まっています。
+- 一般egress・Git共有・エージェント実行を無効にし、架空のAPIキーだけを用いました。
 
-再現手順は[実Kataの新規起動](performance.md#実kataの新規起動)です。今回は `-benchtime=1x -count=5` で、計5標本を取りました。
+- 再現手順は[実Kataの新規起動](performance.md#実kataの新規起動)です。
+- 今回は `-benchtime=1x -count=5` で、計5標本を取りました。
 
 | 計測対象 | 中央値 |
 |---|---:|
@@ -388,23 +540,32 @@ workerは準備済みベースに最新entrypointと固定Claudeバイナリを�
 | bootstrap解放 | 0.220秒 |
 | 起動後の最初のExec（別計測） | 約2.066秒 |
 
-Launch全体の範囲は6.529〜6.906秒でした。工程ごとの中央値は別々に求めており、その合計がLaunch中央値になるとは限りません。
-各標本でのVM開始時間の割合の中央値は52.15%です。これはWarm poolを次に検討する根拠であり、Warm poolによる短縮を実測した値ではありません。
-`vm_start` はnodeの開始API全体です。純粋なVMM起動時間や、実エージェントが最初の応答を返すまでの時間は測っていません。
+- Launch全体の範囲は6.529〜6.906秒でした。
+- 工程ごとの中央値は別々に求めており、その合計がLaunch中央値になるとは限りません。
+- 各標本でのVM開始時間の割合の中央値は52.15%です。
+- これはWarm poolを次に検討する根拠であり、Warm poolによる短縮を実測した値ではありません。
+- `vm_start` はnodeの開始API全体です。
+- 純粋なVMM起動時間や、実エージェントが最初の応答を返すまでの時間は測っていません。
 
-計測APIは既存の起動・検証・認証・後片付けの順序を変えません。失敗時の部分計測、guest検証失敗時にトークン有効化・bootstrap解放へ進まず回収すること、計測有無で同じ要求IDを再送できることを受入対象にしています。
+- 計測APIは既存の起動・検証・認証・後片付けの順序を変えません。
+- 失敗時の部分計測、guest検証失敗時にトークン有効化・bootstrap解放へ進まず回収すること、計測有無で同じ要求IDを再送できることを受入対象にしています。
 
-初回の通し試験では、Codexのツール実行・最終応答後にCLIが45秒以内に終了せず、該当サブテストが失敗しました。他の3スイートは成功しました。
-オフラインfixtureを外向きメトリクス送信の既定動作に依存させないよう、fixtureだけに `analytics.enabled=false` と `otel.metrics_exporter="none"` を指定しました（[公式設定リファレンス](https://learn.chatgpt.com/docs/config-file/config-reference)）。
-45秒の上限、終了コード0、ツール結果の返送、生成ファイルの検査を維持した再実行で、固定CLIの正常終了を確認しました。製品の設定は変えておらず、初回の終了遅延の詳細原因を断定したものではありません。
+- 初回の通し試験では、Codexのツール実行・最終応答後にCLIが45秒以内に終了せず、該当サブテストが失敗しました。
+- 他の3スイートは成功しました。
+- オフラインfixtureを外向きメトリクス送信の既定動作に依存させないよう、fixtureだけに `analytics.enabled=false` と `otel.metrics_exporter="none"` を指定しました（[公式設定リファレンス](https://learn.chatgpt.com/docs/config-file/config-reference)）。
+- 45秒の上限、終了コード0、ツール結果の返送、生成ファイルの検査を維持した再実行で、固定CLIの正常終了を確認しました。
+- 製品の設定は変えておらず、初回の終了遅延の詳細原因を断定したものではありません。
 
-最終の `make kata-e2e VERSION=dev` は全4スイートが404.818秒で成功しました。VM受入171.51秒（実Codexツール試験30.01秒）、共有8ケース134.26秒、追加制御38.41秒、Go API60.64秒です。
-全Goテストのrace/coverage、vet、lint、Linux arm64・macOS arm64クロスビルド、MkDocs strictビルドも成功しています。
-専用VM・コンテナ・task・ネットワークの消滅を確認してから、検証用サービス・mount・cgroup・状態領域を回収しました。既存の3サービスのPID、node疎通、元ネットワークの所有権は維持されています。
+- 最終の `make kata-e2e VERSION=dev` は全4スイートが404.818秒で成功しました。
+- VM受入171.51秒（実Codexツール試験30.01秒）、共有8ケース134.26秒、追加制御38.41秒、Go API60.64秒です。
+- 全Goテストのrace/coverage、vet、lint、Linux arm64・macOS arm64クロスビルド、MkDocs strictビルドも成功しています。
+- 専用VM・コンテナ・task・ネットワークの消滅を確認してから、検証用サービス・mount・cgroup・状態領域を回収しました。
+- 既存の3サービスのPID、node疎通、元ネットワークの所有権は維持されています。
 
 ## Claude Codeの受入
 
-組み込みイメージの公式Claude Codeは2.1.306です。実APIキーやサブスクの実アカウントは使わず、proxy handlerの上流だけを架空のMessages/SSE・OAuthサーバーへ置き換えます。
+- 組み込みイメージの公式Claude Codeは2.1.306です。
+- 実APIキーやサブスクの実アカウントは使わず、proxy handlerの上流だけを架空のMessages/SSE・OAuthサーバーへ置き換えます。
 
 ホストで固定CLIを動かす任意試験:
 
@@ -419,42 +580,68 @@ make build
 python3 scripts/verify-go-api.py --binary "$PWD/oaiso" --version "$(./oaiso --version | awk '{print $NF}')" --run '^TestKataAPIIntegration/claude-'
 ```
 
-既存の `make kata-api-e2e` にもClaudeのAPIキー・OAuthケースを含めています。待機ワーカーの `ClaudeCommand` と、`Agent: "claude"` を指定したメインプロセス起動の両方を試験します。公式CLIのMessages/SSE、Bashツールの実行と結果の返送、明示モデル制限、ワーカー停止・再起動後の仮トークン復元、OAuthの一度だけの更新・外部Store保存・接続世代維持を確認します。単体試験ではsetup-token、認証方式の優先順位、余分なクエリの拒否、更新のHTTP失敗・不正応答・取消・保存失敗・版競合・再起動後の読込・stream失効も対象です。
+- 既存の `make kata-api-e2e` にもClaudeのAPIキー・OAuthケースを含めています。
+- 待機ワーカーの `ClaudeCommand` と、`Agent: "claude"` を指定したメインプロセス起動の両方を試験します。
+- 公式CLIのMessages/SSE、Bashツールの実行と結果の返送、明示モデル制限、ワーカー停止・再起動後の仮トークン復元、OAuthの一度だけの更新・外部Store保存・接続世代維持を確認します。
+- 単体試験ではsetup-token、認証方式の優先順位、余分なクエリの拒否、更新のHTTP失敗・不正応答・取消・保存失敗・版競合・再起動後の読込・stream失効も対象です。
 
-実Anthropic APIへの推論、実Pro/Max等の利用枠、長期OAuth更新、対話キーボード操作、別のClaude CLI版は未確認です。fixtureの成功は実契約での認証・課金・上限の保証ではありません。
+- 実Anthropic APIへの推論、実Pro/Max等の利用枠、長期OAuth更新、対話キーボード操作、別のClaude CLI版は未確認です。
+- fixtureの成功は実契約での認証・課金・上限の保証ではありません。
 
+- 2026-10-21の独立Kataノードでは、上記4つのClaudeケースが成功しました。
+- 待機ワーカーのAPIキー58.49秒／OAuth50.60秒、メインプロセスのAPIキー26.90秒／OAuth26.88秒です。
+- 既存ケースも含む公開Go API全13ケースが626.378秒で成功しました。
+- ワーカーは既存ベースへ最新entrypointとnpm公式配布の固定Claudeバイナリを重ねた検証用イメージで、proxyの上流だけをfixtureへ差し替えています。
+- ホストの固定公式CLIを用いるrace付き試験も両認証で成功しました。
 
-2026-10-21の独立Kataノードでは、上記4つのClaudeケースが成功しました。待機ワーカーのAPIキー58.49秒／OAuth50.60秒、メインプロセスのAPIキー26.90秒／OAuth26.88秒です。既存ケースも含む公開Go API全13ケースが626.378秒で成功しました。ワーカーは既存ベースへ最新entrypointとnpm公式配布の固定Claudeバイナリを重ねた検証用イメージで、proxyの上流だけをfixtureへ差し替えています。ホストの固定公式CLIを用いるrace付き試験も両認証で成功しました。
+- 標準の `make kata-e2e VERSION=dev` も4スイートすべて成功しました（450.143秒）。
+- VM受入207.26秒、共有8ケース141.98秒、追加制御38.91秒、標準Go API61.99秒です。
+- 全パッケージrace/coverage、vet、lint、Linux arm64・macOS arm64クロスビルド、MkDocs strictビルドも成功しました。
+- Anthropic APIキー要求を別プロバイダーのOAuth更新ロックから独立させる回帰テストと、固定公式CLIを含むauthproxy全体のrace試験も成功しています。
 
+- 最後の更新ロック回避を反映した後も、実KataのAPIキー・OAuthを再試験し、両ケースが103.921秒で成功しました。
+- 待機ワーカーでの公式CLI、ツール結果の往復、停止・再起動、OAuth更新のCAS保存を再確認しています。
 
-標準の `make kata-e2e VERSION=dev` も4スイートすべて成功しました（450.143秒）。VM受入207.26秒、共有8ケース141.98秒、追加制御38.91秒、標準Go API61.99秒です。全パッケージrace/coverage、vet、lint、Linux arm64・macOS arm64クロスビルド、MkDocs strictビルドも成功しました。Anthropic APIキー要求を別プロバイダーのOAuth更新ロックから独立させる回帰テストと、固定公式CLIを含むauthproxy全体のrace試験も成功しています。
-
-
-最後の更新ロック回避を反映した後も、実KataのAPIキー・OAuthを再試験し、両ケースが103.921秒で成功しました。待機ワーカーでの公式CLI、ツール結果の往復、停止・再起動、OAuth更新のCAS保存を再確認しています。
-
-
-検証終了後、専用VM・コンテナ・task・空のネットワークの消滅を確認してから、専用node・BuildKit・containerd・mount・cgroup・状態領域を回収しました。元の3サービスと元ネットワークの所有権・node疎通も確認しており、既存サービスには更新を適用していません。
-
+- 検証終了後、専用VM・コンテナ・task・空のネットワークの消滅を確認してから、専用node・BuildKit・containerd・mount・cgroup・状態領域を回収しました。
+- 元の3サービスと元ネットワークの所有権・node疎通も確認しており、既存サービスには更新を適用していません。
 
 ## 明示的な通信拒否・ドメイン完全一致の受入
 
-2026-10-21、既存の公開宛て通信を維持したまま、`forward_default_deny` と `=example.com` の完全一致を追加しました。PID上限のカスタムプロファイル定義CLIと稼働nodeの参照も対象です。
-全Goテストのrace/coverage、vet、lint、MkDocs strictビルドが成功しました。独立した実Kataで `make kata-e2e VERSION=dev` の全4スイートも成功しました（427.897秒）。
-追加のGo API受入 `egress-default-deny` / `egress-exact` は59.958秒で成功し、ワーカー個別許可リストを省略してもホスト設定が適用されること、厳格な空リストで一般Proxyへ接続されないこと、完全一致の子ドメインへのHTTP/CONNECTが403になること、固定AIルートは独立した認可で利用できることを確認しています。公開の外部サービスに対する通信成功を必要としない拒否試験です。
-追加試験の初回は拒否動作自体が成功した後、対象外のOAuth保存失敗用の分岐へ進んで失敗しました。通信試験はその検証後に終了するよう修正し、両ケースを再実行しています。
-
+- 2026-10-21、既存の公開宛て通信を維持したまま、`forward_default_deny` と `=example.com` の完全一致を追加しました。
+- PID上限のカスタムプロファイル定義CLIと稼働nodeの参照も対象です。
+- 全Goテストのrace/coverage、vet、lint、MkDocs strictビルドが成功しました。
+- 独立した実Kataで `make kata-e2e VERSION=dev` の全4スイートも成功しました（427.897秒）。
+- 追加のGo API受入 `egress-default-deny` / `egress-exact` は59.958秒で成功し、ワーカー個別許可リストを省略してもホスト設定が適用されること、厳格な空リストで一般Proxyへ接続されないこと、完全一致の子ドメインへのHTTP/CONNECTが403になること、固定AIルートは独立した認可で利用できることを確認しています。
+- 公開の外部サービスに対する通信成功を必要としない拒否試験です。
+- 追加試験の初回は拒否動作自体が成功した後、対象外のOAuth保存失敗用の分岐へ進んで失敗しました。
+- 通信試験はその検証後に終了するよう修正し、両ケースを再実行しています。
 
 ## 対象ワーカーの隔離・再起動禁止
 
-2026-10-21、`policy quarantine` / Go API `Quarantine` を追加しました。共有Proxyの規則を途中で書き換える方式ではなく、対象VMを停止し、再起動禁止をnodeのprivate recordに保存します。workspace・worktreeは隔離操作では削除せず、新規ワーカーと要求IDで新しい規則を適用します。既存の保持期限による回収は引き続き有効です。
+- 2026-10-21、`policy quarantine` / Go API `Quarantine` を追加しました。
+- 共有Proxyの規則を途中で書き換える方式ではなく、対象VMを停止し、再起動禁止をnodeのprivate recordに保存します。
+- workspace・worktreeは隔離操作では削除せず、新規ワーカーと要求IDで新しい規則を適用します。
+- 既存の保持期限による回収は引き続き有効です。
 
-独立Kata nodeで追加のGo API全4ケースが199.974秒で成功しました。空リストの明示拒否、ドメイン完全一致、隔離、PID 256の登録プロファイルが対象です。CPU 2・guest 512 MiB・host 768 MiB・PID 256の値はnodeとVMの再起動後にも一致しました。
+- 独立Kata nodeで追加のGo API全4ケースが199.974秒で成功しました。
+- 空リストの明示拒否、ドメイン完全一致、隔離、PID 256の登録プロファイルが対象です。
+- CPU 2・guest 512 MiB・host 768 MiB・PID 256の値はnodeとVMの再起動後にも一致しました。
 
-隔離試験は、一般HTTPのstreamとCONNECT echoを、実proxy handler・private IP制限・検証済みIPへのdialを通して開きます。インターネット上のサービスに依存しないよう、信頼した上流proxy chainだけをloopbackのfixtureに置き換えます。AI SSEも架空の上流を用います。通信が開始した後で対象VMを隔離し、背景ジョブの終了、VM停止、共有proxyを使う別VMの一般HTTP/CONNECTと固定AI経路の継続、API・直接node APIからの再開拒否、node再起動後の拒否、CLIの成功応答、別StateDirからの拒否、同一要求の再送、新しい規則での作り直しとworkspace保持を確認しました。共有proxyの全上流socketの終了待ちや、外部サービスの受理済み処理の取消を保証する試験ではありません。
+- 隔離試験は、一般HTTPのstreamとCONNECT echoを、実proxy handler・private IP制限・検証済みIPへのdialを通して開きます。
+- インターネット上のサービスに依存しないよう、信頼した上流proxy chainだけをloopbackのfixtureに置き換えます。
+- AI SSEも架空の上流を用います。
+- 通信が開始した後で対象VMを隔離し、背景ジョブの終了、VM停止、共有proxyを使う別VMの一般HTTP/CONNECTと固定AI経路の継続、API・直接node APIからの再開拒否、node再起動後の拒否、CLIの成功応答、別StateDirからの拒否、同一要求の再送、新しい規則での作り直しとworkspace保持を確認しました。
+- 共有proxyの全上流socketの終了待ちや、外部サービスの受理済み処理の取消を保証する試験ではありません。
 
-初回は、`Create` の要求を `Launch` として再送する不正な試験条件でfingerprint競合になりました。同じ段階の `Create` を再送するよう修正し、既存の段階的実行契約を維持しています。
+- 初回は、`Create` の要求を `Launch` として再送する不正な試験条件でfingerprint競合になりました。
+- 同じ段階の `Create` を再送するよう修正し、既存の段階的実行契約を維持しています。
 
-受理後の停止がクライアント切断で中断されないよう、node所有の90秒上限を追加しました。取消済みcontextからの停止続行・期限上限は単体試験で確認し、変更後の隔離受入も77.240秒で成功しました。失敗した停止・保存、未対応node、偽の成功応答、停止未確認、隔離待ちのstart、node再読込後の再起動禁止もrace付き単体試験の対象です。
+- 受理後の停止がクライアント切断で中断されないよう、node所有の90秒上限を追加しました。
+- 取消済みcontextからの停止続行・期限上限は単体試験で確認し、変更後の隔離受入も77.240秒で成功しました。
+- 失敗した停止・保存、未対応node、偽の成功応答、停止未確認、隔離待ちのstart、node再読込後の再起動禁止もrace付き単体試験の対象です。
 
-最終の `make kata-e2e VERSION=dev` も全4スイートが418.462秒で成功しました。VM受入186.32秒（実Codexツール実行39.67秒）、共有8ケース134.39秒、追加制御38.53秒、Go API59.22秒です。全Goテストのrace/coverage、vet、lint、Linux arm64・macOS arm64のクロスビルド、MkDocs strictビルドも成功しました。
-検証用のVM・コンテナ・task・ネットワークが0件であることを確認した後、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。既存の3サービスは元のPIDで稼働し、既存nodeのhealth応答200と元ネットワークの所有権も維持されています。
+- 最終の `make kata-e2e VERSION=dev` も全4スイートが418.462秒で成功しました。
+- VM受入186.32秒（実Codexツール実行39.67秒）、共有8ケース134.39秒、追加制御38.53秒、Go API59.22秒です。
+- 全Goテストのrace/coverage、vet、lint、Linux arm64・macOS arm64のクロスビルド、MkDocs strictビルドも成功しました。
+- 検証用のVM・コンテナ・task・ネットワークが0件であることを確認した後、専用node・containerd・BuildKit・mount・cgroup・socket・状態領域を回収しました。
+- 既存の3サービスは元のPIDで稼働し、既存nodeのhealth応答200と元ネットワークの所有権も維持されています。

@@ -2,8 +2,9 @@
 
 旧 `oaiso firewall` と `--allow-host` / `--block-host` / `--no-firewall` / `--sudo` は廃止しました。
 
-現在はroot管理サービスが専用bridge・namespace・nftablesで隔離します。
-ホストの準備には管理者権限が必要です。通常のCLI操作はoperator groupで行います。
+- 現在はroot管理サービスが専用bridge・namespace・nftablesで隔離します。
+- ホストの準備には管理者権限が必要です。
+- 通常のCLI操作はoperator groupで行います。
 
 | 目的 | 現行の方法 |
 |---|---|

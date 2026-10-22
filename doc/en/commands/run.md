@@ -4,15 +4,27 @@
 >
 > [← Command Reference](../commands.md)
 
-Runs Codex CLI, Claude Code or a shell in a Kata VM, managed by containerd with Dragonball.
-The default is `--runtime kata`. Dedicated Linux bridges, namespaces and nftables block direct access; selected proxies provide outbound routes.
-The execution host is Linux x86_64. See [quick start](../getting-started.md) and [network](../network.md).
+| Goal | Invocation |
+|---|---|
+| Start Codex directly | `oaiso codex` |
+| Start Claude Code directly | `oaiso claude` |
+| Select image, worktree or mounts | `oaiso run --agent codex` / `--agent claude` |
+| Authenticated shell | `oaiso run` (built-in default) |
+| Run a command once | `oaiso run -- COMMAND...` |
 
-Missing images are built automatically from the matching template or default Dockerfile.
-A plain `oaiso run` starts the configured default agent. The built-in default is the authenticated shell. Use `oaiso default codex` globally or `oaiso default codex --local` for this project; `oaiso default` shows the effective setting.
-On-disk template rebuilds are controlled by [auto_build](../configuration.md#auto_build).
-See [build](build.md) for custom tags and templates.
-At a repository root, `run` reads `[run]` and `[build]` from `codex-dock.toml`; `--project DIR` uses `DIR/codex-dock.toml`. See [project settings](../configuration.md#project-settings).
+| Item | Default or setting |
+|---|---|
+| Runtime | Linux x86_64, containerd, Dragonball; `--runtime kata` |
+| Network | Dedicated bridges, namespaces and nftables block direct access; selected proxies provide routes |
+| Default agent | `oaiso default codex`; add `--local` for this project; inspect with `oaiso default` |
+| Images | Missing images are built from the matching template or default Dockerfile |
+| Rebuilds | [auto_build](../configuration.md#auto_build) |
+| Project settings | `[run]` / `[build]` in the current repository's `codex-dock.toml`; `--project DIR` selects that directory |
+
+- Initial setup: [quick start](../getting-started.md).
+- Network: [network guide](../network.md).
+- Custom images: [build](build.md).
+- Configuration: [project settings](../configuration.md#project-settings).
 
 ## Launch Codex CLI directly
 
@@ -22,16 +34,20 @@ oaiso codex "Inspect this repository"
 oaiso codex exec --json "Summarize the changes"
 ```
 
-Arguments are forwarded verbatim to Codex. The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper. Configure worker defaults under `[run]`; use `oaiso run --agent codex` for image, worktree, mount and detach options. Starting a fresh VM takes longer than running Codex on the host.
+- Arguments are forwarded verbatim to Codex.
+- The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper.
+- Configure worker defaults under `[run]`; use `oaiso run --agent codex` for image, worktree, mount and detach options.
+- Starting a fresh VM takes longer than running Codex on the host.
 
 ```bash
 oaiso run [OPTIONS] [IMAGE [COMMAND...]]
 oaiso run [OPTIONS] -- COMMAND...  # Run in the default image
 ```
 
-IMAGE and COMMAND follow Docker's positional order. Put Oaiso flags before IMAGE.
-With `--image` or `--template`, positional arguments are treated as the command.
-The command is equivalent to `--exec` without quoting it as one string.
+- IMAGE and COMMAND follow Docker's positional order.
+- Put Oaiso flags before IMAGE.
+- With `--image` or `--template`, positional arguments are treated as the command.
+- The command is equivalent to `--exec` without quoting it as one string.
 
 ```bash
 oaiso run -d --name worker codex-dock:latest
@@ -43,7 +59,8 @@ oaiso run -- npm test -- --watch=false
 
 ## Options
 
-To separate authentication from the host, use `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...` or trusted global configuration. See [independent profile setup](auth.md#independent-profiles).
+- To separate authentication from the host, use `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...` or trusted global configuration.
+- See [independent profile setup](auth.md#independent-profiles).
 
 | Option | Short | Default | Description |
 |---|---|---|---|
@@ -80,26 +97,28 @@ To separate authentication from the host, use `oaiso --auth-profile NAME run --p
 | `--shell-type` | | auto-detected from `$SHELL`, else `bash` | Interactive shell to launch ([details](#--shell-type)) |
 | `--user` | | `current` | Container execution user ([details](#--user)) |
 
-When the host and Auth Proxy credential modes differ, `run` automatically
-recreates the Auth Proxy if no workers are running. If workers are running it
-stops with an error so their in-memory tokens are not invalidated. Pass
-`--force-recreate-proxy` to recreate it anyway, then create new workers if their pinned proxy IP changed.
+- When the host and Auth Proxy credential modes differ, `run` automatically recreates the Auth Proxy if no workers are running.
+- If workers are running it stops with an error so their in-memory tokens are not invalidated.
+- Pass `--force-recreate-proxy` to recreate it anyway, then create new workers if their pinned proxy IP changed.
 
 ---
 
 ## Docker CLI differences
 
-`run -d`, `run IMAGE COMMAND`, `ps -a`, `logs -f`, `start`, `stop`, `rm -f`, and `build -t` use Docker style.
-Replace the old `run -d PATH` project shorthand with `run --project PATH`. The old `-D` still means detach.
-In this CLI, `run -p` selects packages, `run -i` selects an image, `run -t` sets an agent task, and `-v` enables verbose output.
-Host port publishing is not supported. Use `--mount HOST:CONTAINER[:ro|rw]` for extra bind mounts.
-The current project is shared at `/workspace` by default, and a foreground worker is removed after exit unless you pass `--keep`.
+- `run -d`, `run IMAGE COMMAND`, `ps -a`, `logs -f`, `start`, `stop`, `rm -f`, and `build -t` use Docker style.
+- Replace the old `run -d PATH` project shorthand with `run --project PATH`.
+- The old `-D` still means detach.
+- In this CLI, `run -p` selects packages, `run -i` selects an image, `run -t` sets an agent task, and `-v` enables verbose output.
+- Host port publishing is not supported.
+- Use `--mount HOST:CONTAINER[:ro|rw]` for extra bind mounts.
+- The current project is shared at `/workspace` by default, and a foreground worker is removed after exit unless you pass `--keep`.
 
 ---
 
 ## `--approval-mode`
 
-Controls how Codex CLI requests approval for actions. The selected worker runtime provides the outer isolation boundary.
+- Controls how Codex CLI requests approval for actions.
+- The selected worker runtime provides the outer isolation boundary.
 
 | Value | Codex CLI Flag | Behavior |
 |---|---|---|
@@ -108,22 +127,24 @@ Controls how Codex CLI requests approval for actions. The selected worker runtim
 | `full-auto` | `--ask-for-approval never` | Never prompt for approval |
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | Bypass all approvals and sandbox restrictions |
 
-In a verified Kata worker, Codex's inner sandbox is set to `danger-full-access` to avoid nested namespace/seccomp conflicts.
-Approval settings are separate; noninteractive exec may choose its own approval behavior.
-Shared files remain writable according to mount permissions. See [security](../security.md).
+- In a verified Kata worker, Codex's inner sandbox is set to `danger-full-access` to avoid nested namespace/seccomp conflicts.
+- Approval settings are separate; noninteractive exec may choose its own approval behavior.
+- Shared files remain writable according to mount permissions.
+- See [security](../security.md).
 
 ---
 
 ## `--exec`
 
-The configured default agent does not apply to `oaiso run IMAGE COMMAND`, `oaiso run -- COMMAND`, or `--exec`; these run the command. An explicit `--agent codex` or `--agent claude` takes priority over the command. Use `--agent shell` to request the authenticated shell when a different default is configured.
+- The configured default agent does not apply to `oaiso run IMAGE COMMAND`, `oaiso run -- COMMAND`, or `--exec`; these run the command.
+- An explicit `--agent codex` or `--agent claude` takes priority over the command.
+- Use `--agent shell` to request the authenticated shell when a different default is configured.
 
-Runs a single command inside the sandbox instead of an interactive shell.
-Passed into the container as the `DOCK_EXEC_CMD` environment variable, which
-`entrypoint.sh` only consults in its no-agent branch (the auth-configured
-shell case).
+- Runs a single command inside the sandbox instead of an interactive shell.
+- Passed into the container as the `DOCK_EXEC_CMD` environment variable, which `entrypoint.sh` only consults in its no-agent branch (the auth-configured shell case).
 
-- If `--agent codex` or `--agent claude` is given, the agent takes priority and `--exec` is ignored. With `--agent shell`, the command runs.
+- If `--agent codex` or `--agent claude` is given, the agent takes priority and `--exec` is ignored.
+- With `--agent shell`, the command runs.
 - Combining it with `--shell` (the raw debug shell that bypasses `entrypoint.sh`
   entirely) is an error, since `entrypoint.sh` — and therefore `--exec` — never runs.
 - The command runs via the shell selected by `--shell-type` (default `bash`), through its `-c` flag.
@@ -148,34 +169,20 @@ oaiso run --agent codex --exec "ls -la"
 
 ## `--shell-type`
 
-Selects the shell binary used for the sandbox's interactive shell: both the
-auth-configured shell (when `--agent` is omitted) and the `--shell` debug
-mode. Passed into the container as the `DOCK_SHELL` environment variable,
-which `entrypoint.sh` reads.
+- Selects the shell binary used for the sandbox's interactive shell: both the auth-configured shell (when `--agent` is omitted) and the `--shell` debug mode.
+- Passed into the container as the `DOCK_SHELL` environment variable, which `entrypoint.sh` reads.
 
 | Value | Behavior |
 |---|---|
 | `bash` | Launches bash |
 | `zsh` | Launches zsh; requires zsh to be installed in the image |
 
-When neither the flag nor a config value (`default_shell_type` /
-`run.shell_type`) sets a value, it is auto-detected from the basename of the
-host's `$SHELL` environment variable — `zsh` maps to `zsh`, anything else
-(including an unset or unrecognized `$SHELL`) falls back to `bash`. **This
-auto-detection does not apply to `--shell` debug mode**, which always
-defaults to `bash` when the flag is omitted: `--shell` overrides the
-container's `Entrypoint` directly with the shell binary, bypassing
-`entrypoint.sh` entirely, so there's no way for it to fall back if that
-binary isn't present in the image — the engine fails to start the
-container. Pass `--shell --shell-type zsh` explicitly if you want zsh there.
+- When neither the flag nor a config value (`default_shell_type` / `run.shell_type`) sets a value, it is auto-detected from the basename of the host's `$SHELL` environment variable — `zsh` maps to `zsh`, anything else (including an unset or unrecognized `$SHELL`) falls back to `bash`. **This auto-detection does not apply to `--shell` debug mode**, which always defaults to `bash` when the flag is omitted: `--shell` overrides the container's `Entrypoint` directly with the shell binary, bypassing `entrypoint.sh` entirely, so there's no way for it to fall back if that binary isn't present in the image — the engine fails to start the container.
+- Pass `--shell --shell-type zsh` explicitly if you want zsh there.
 
-The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM
-codex-dock:latest`), so `--shell-type zsh` works out of the box with either.
-For a custom template, install zsh in its Dockerfile to use it. Outside
-`--shell` mode (i.e. the no-agent shell and `--exec`), `entrypoint.sh` checks
-whether the requested shell binary actually exists before using it and logs a
-warning and falls back to bash if not, so a missing zsh there never fails the
-container outright.
+- The built-in `plain` template includes zsh, and `pwn` inherits it (`FROM codex-dock:latest`), so `--shell-type zsh` works out of the box with either.
+- For a custom template, install zsh in its Dockerfile to use it.
+- Outside `--shell` mode (i.e. the no-agent shell and `--exec`), `entrypoint.sh` checks whether the requested shell binary actually exists before using it and logs a warning and falls back to bash if not, so a missing zsh there never fails the container outright.
 
 > The job-control wrapper that lets Ctrl+Z suspend an agent (`--agent
 > codex`/`claude`) back to a shell prompt (`launch_interactive`) always uses
@@ -212,8 +219,8 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 
 ## `--mount`
 
-`--mount` bind-mounts an arbitrary host directory into the container, in addition to
-`/workspace` (`--project`). Repeat the flag to mount multiple directories.
+- `--mount` bind-mounts an arbitrary host directory into the container, in addition to `/workspace` (`--project`).
+- Repeat the flag to mount multiple directories.
 
 ```
 --mount <host-path>:<container-path>[:ro|rw]
@@ -237,13 +244,18 @@ oaiso run --mount ./cache:/cache --mount /opt/models:/models:ro
 > Additional mounts can be independently read-only regardless of `/workspace`.
 > `--read-only` only affects the `/workspace` mount.
 
-`--read-only-rootfs` does not change `/workspace` or additional mount permissions. Install needed packages in the image first; startup package installation is rejected. HOME, `/tmp`, and `/var/tmp` are temporary tmpfs storage. With `--no-git-metadata`, a linked worktree's shared Git metadata is not mounted; provide private metadata and mounts if Git must run inside the VM.
+- `--read-only-rootfs` does not change `/workspace` or additional mount permissions.
+- Install needed packages in the image first; startup package installation is rejected.
+- HOME, `/tmp`, and `/var/tmp` are temporary tmpfs storage.
+- With `--no-git-metadata`, a linked worktree's shared Git metadata is not mounted; provide private metadata and mounts if Git must run inside the VM.
 
-`oaiso profile --json` reports the CPU, guest RAM, host limit, and PID limit of each profile. `small` provides 1 CPU, 1 GiB guest RAM, and a 2 GiB host limit; `standard` provides 1 CPU, 2 GiB guest RAM, and a 3 GiB host limit. `--profile-size small` requires Kata. Measure actual memory use and startup performance on the execution host.
+- `oaiso profile --json` reports the CPU, guest RAM, host limit, and PID limit of each profile.
+- `small` provides 1 CPU, 1 GiB guest RAM, and a 2 GiB host limit; `standard` provides 1 CPU, 2 GiB guest RAM, and a 3 GiB host limit.
+- `--profile-size small` requires Kata.
+- Measure actual memory use and startup performance on the execution host.
 
-This can also be set as a default via `mounts` in the `[run]` section of the config
-file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.
-See [`doc/en/configuration.md`](../configuration.md#runmounts) for details.
+- This can also be set as a default via `mounts` in the `[run]` section of the config file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.
+- See [`doc/en/configuration.md`](../configuration.md#runmounts) for details.
 
 ```toml
 [run]
@@ -269,7 +281,8 @@ libssl-dev              # no prefix → treated as apt (default)
 oaiso run --parallel 2 --worktree --branch myfeature
 ```
 
-The default node limit is 2 simultaneous workers. Creates branches: `myfeature-1`, `myfeature-2`.
+- The default node limit is 2 simultaneous workers.
+- Creates branches: `myfeature-1`, `myfeature-2`.
 
 ---
 
@@ -317,4 +330,7 @@ oaiso run --template mytool
 - [Network Specification](../network.md)
 - [Configuration Reference](../configuration.md)
 
-`compact` is an explicit lightweight profile: one CPU, guest 512 MiB, host limit 768 MiB, 512 PIDs. Select --profile-size compact; existing standard/small profiles remain unchanged. Large dependency installs/builds may not fit. Use an updated node and [measure workloads](../sandbox-features.md#supervised-collection-and-memory-observation).
+- `compact` is an explicit lightweight profile: one CPU, guest 512 MiB, host limit 768 MiB, 512 PIDs.
+- Select --profile-size compact; existing standard/small profiles remain unchanged.
+- Large dependency installs/builds may not fit.
+- Use an updated node and [measure workloads](../sandbox-features.md#supervised-collection-and-memory-observation).

@@ -2,11 +2,13 @@
 
 [日本語](../index.md) | **English**
 
-Oaiso runs Codex CLI and Claude Code in separate Kata VMs.
-Containerd manages workers, and Dragonball runs the VMs. Images are built with BuildKit.
-Docker Engine, Docker CLI and QEMU are not runtime requirements.
-
-The formal name is **御AgentIsolation**, styled **Oaiso** in English and pronounced “oh-eye-so”. The Japanese prefix 御 adds politeness and respect. The command is `oaiso`; `cxd` and `codex-dock` remain compatibility names. Existing configuration, credentials, service names and Go API identifiers are retained. See [migration compatibility](../migration.md#oaisoへの名称変更) (Japanese).
+| Item | At a glance |
+|---|---|
+| Purpose | Run Codex CLI and Claude Code in separate Kata VMs |
+| Command | `oaiso` |
+| Runtime | Containerd manages workers; Dragonball runs VMs |
+| Images | Built with BuildKit |
+| Host | Linux x86_64; Docker Engine, Docker CLI and QEMU are not runtime requirements |
 
 ## Start here
 
@@ -14,7 +16,8 @@ The formal name is **御AgentIsolation**, styled **Oaiso** in English and pronou
 2. A user follows the [quick start](getting-started.md) to configure credentials and start a worker.
 3. Use the [operations guide](../operations.md) (Japanese) for updates and cleanup.
 
-The execution host must be Linux x86_64. Cross-compiling the CLI does not make Kata available on macOS or Windows.
+- The execution host must be Linux x86_64.
+- Cross-compiling the CLI does not make Kata available on macOS or Windows.
 
 ## Find a topic
 
@@ -37,3 +40,13 @@ The execution host must be Linux x86_64. Cross-compiling the CLI does not make K
 | See planned coding agent integrations | [Future work](future-work.md) |
 
 [Additional sandbox controls](sandbox-features.md)
+
+## Name and compatibility
+
+| Item | Meaning or compatibility |
+|---|---|
+| Formal name | 御AgentIsolation; 御 adds politeness and respect |
+| English name / pronunciation | Oaiso / “oh-eye-so” |
+| Legacy commands | `cxd` / `codex-dock` |
+| Retained identifiers | Configuration, credentials, service names and Go API |
+| Details | [Migration compatibility](../migration.md#oaisoへの名称変更) (Japanese) |

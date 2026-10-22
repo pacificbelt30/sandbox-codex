@@ -2,13 +2,16 @@
 
 **日本語** | [English](en/configuration.md)
 
-利用者の設定は `~/.config/codex-dock/config.toml` に記述します。
-別ファイルを使う場合は `oaiso --config PATH COMMAND` と指定します。
-ソース配置では `make install-config` で例を配置できます。既存ファイルは上書きしません。
+- 利用者の設定は `~/.config/codex-dock/config.toml` に記述します。
+- 別ファイルを使う場合は `oaiso --config PATH COMMAND` と指定します。
+- ソース配置では `make install-config` で例を配置できます。
+- 既存ファイルは上書きしません。
 
 ## プロジェクト設定
 
-リポジトリ直下に `codex-dock.toml` を置くと、そのディレクトリからの `oaiso init`、`oaiso run`、`oaiso codex`、`oaiso build` が読み込みます。`run --project DIR` は `DIR/codex-dock.toml` を使います。親ディレクトリの設定は自動探索しないため、リポジトリのルートで実行してください。
+- リポジトリ直下に `codex-dock.toml` を置くと、そのディレクトリからの `oaiso init`、`oaiso run`、`oaiso codex`、`oaiso build` が読み込みます。
+- `run --project DIR` は `DIR/codex-dock.toml` を使います。
+- 親ディレクトリの設定は自動探索しないため、リポジトリのルートで実行してください。
 
 ```bash
 oaiso project init
@@ -16,7 +19,8 @@ oaiso project check
 git add codex-dock.toml
 ```
 
-`oaiso run` で起動するエージェントの既定値は CLI からも設定できます。`oaiso default` は現在有効な値と設定元を表示します。
+- `oaiso run` で起動するエージェントの既定値は CLI からも設定できます。
+- `oaiso default` は現在有効な値と設定元を表示します。
 
 ```bash
 oaiso default codex          # グローバル設定
@@ -24,9 +28,13 @@ oaiso default claude --local # このプロジェクトだけ
 oaiso default shell          # 認証済みシェルへ戻す
 ```
 
-`--local` はこのディレクトリの `codex-dock.toml` を作成または更新します。共有したい場合はコミットしてください。明示した `--agent`、`--exec`、`IMAGE COMMAND`、`-- COMMAND` は既定値より優先されます。`oaiso codex` は設定に関係なく Codex を起動します。
+- `--local` はこのディレクトリの `codex-dock.toml` を作成または更新します。
+- 共有したい場合はコミットしてください。
+- 明示した `--agent`、`--exec`、`IMAGE COMMAND`、`-- COMMAND` は既定値より優先されます。
+- `oaiso codex` は設定に関係なく Codex を起動します。
 
-生成する最小構成は次のとおりです。組み込み `plain` イメージを使うため、クローン先では `oaiso init` が不足するイメージをビルドできます。
+- 生成する最小構成は次のとおりです。
+- 組み込み `plain` イメージを使うため、クローン先では `oaiso init` が不足するイメージをビルドできます。
 
 ```toml
 [run]
@@ -37,7 +45,9 @@ approval_mode = "suggest"
 template = "plain"
 ```
 
-独自環境はプロジェクト内のDockerfileを指定します。ビルドコンテキストはリポジトリのルートです。`FROM codex-dock:latest` を使う場合、クローン先で不足するベースイメージも先に作ります。
+- 独自環境はプロジェクト内のDockerfileを指定します。
+- ビルドコンテキストはリポジトリのルートです。
+- `FROM codex-dock:latest` を使う場合、クローン先で不足するベースイメージも先に作ります。
 
 ```toml
 [run]
@@ -50,14 +60,35 @@ dockerfile = "Dockerfile.codex-dock"
 tag = "my-project:dev"
 ```
 
-`packages.dock` は従来どおり自動で読み込みます。依存パッケージやベースイメージを固定したい場合は、プロジェクトのDockerfileやパッケージ指定にもバージョンを記述してください。
-プロジェクトでテンプレートを指定する場合、組み込み版またはその未変更コピーだけを使えます。各利用者の編集済みテンプレートに依存する構成は、プロジェクトのDockerfileへ移してください。
+- `packages.dock` は従来どおり自動で読み込みます。
+- 依存パッケージやベースイメージを固定したい場合は、プロジェクトのDockerfileやパッケージ指定にもバージョンを記述してください。
+- プロジェクトでテンプレートを指定する場合、組み込み版またはその未変更コピーだけを使えます。
+- 各利用者の編集済みテンプレートに依存する構成は、プロジェクトのDockerfileへ移してください。
 
-プロジェクト設定で使えるキーは `[run]` の `image`、`template`、`agent`（`shell` / `codex` / `claude`）、`model`、`approval_mode`（`suggest` / `auto-edit`）、`watch_polling`、`read_only`、`no_internet`、`egress_allow_domains` と、`[build]` の `dockerfile`、`template`、`tag` です。`read_only` と `no_internet` は `true` のみ指定でき、グローバル設定の制限を緩めることはできません。`run.image` と `build.tag` は同じ値にします。ホストの認証、proxy、runtime、token TTL、追加マウントなどはここには書けません。`project check` は不明なキーや設定の不一致をエラーにします。
+### プロジェクトで指定できる項目
 
-不足するイメージは `init` / `run` 時にビルドします。既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `oaiso build` を実行してください。
+| 分類 | キー・指定可能な値 |
+|---|---|
+| イメージ・テンプレート | `run.image`、`run.template` |
+| エージェント・モデル | `run.agent`（`shell` / `codex` / `claude`）、`run.model` |
+| 承認 | `run.approval_mode`（`suggest` / `auto-edit`） |
+| ファイル・通信制限 | `run.read_only`、`run.no_internet`、`run.egress_allow_domains` |
+| 監視 | `run.watch_polling` |
+| ビルド | `build.dockerfile`、`build.template`、`build.tag` |
 
-製品から使う場合は[Go API](go-api.md)の `PrepareProject` で同じプロジェクトファイルを検証し、必要なイメージを作成できます。Go API はグローバル設定を自動で読み込まないため、ホスト設定と認可は製品側で適用してください。`egress_allow_domains` は `LaunchRequest.EgressAllowDomains` に反映されます。
+| 検証条件 | 扱い |
+|---|---|
+| `read_only` / `no_internet` | `true` のみ指定可。ホストの制限を緩めない |
+| `run.image` / `build.tag` | 同じ値を指定 |
+| 認証・Proxy・runtime・token TTL・追加mount | プロジェクトには書けない。グローバル設定／明示CLIフラグで管理 |
+| 不明なキー・不一致 | `project check` がエラー |
+
+- 不足するイメージは `init` / `run` 時にビルドします。
+- 既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `oaiso build` を実行してください。
+
+- 製品から使う場合は[Go API](go-api.md)の `PrepareProject` で同じプロジェクトファイルを検証し、必要なイメージを作成できます。
+- Go API はグローバル設定を自動で読み込まないため、ホスト設定と認可は製品側で適用してください。
+- `egress_allow_domains` は `LaunchRequest.EgressAllowDomains` に反映されます。
 
 ## 最小の設定例
 
@@ -82,15 +113,18 @@ forward_allow_ports = [80, 443]
 
 ## 優先順位
 
-通常の優先順位は **明示したCLIフラグ > プロジェクトの `codex-dock.toml` > グローバルの `config.toml` > 組み込み既定値** です。プロジェクトの `read_only` と `no_internet` は制限を追加する場合に限ります。
-`run`・`build` 専用の設定がある場合は、グローバル設定より優先します。
-環境変数は[下記の対応項目](#環境変数)を参照してください。
-すべての設定に `CODEX_DOCK_` を付ければ上書きできるわけではありません。
+- 通常の優先順位は **明示したCLIフラグ > プロジェクトの `codex-dock.toml` > グローバルの `config.toml` > 組み込み既定値** です。
+- プロジェクトの `read_only` と `no_internet` は制限を追加する場合に限ります。
+- `run`・`build` 専用の設定がある場合は、グローバル設定より優先します。
+- 環境変数は[下記の対応項目](#環境変数)を参照してください。
+- すべての設定に `CODEX_DOCK_` を付ければ上書きできるわけではありません。
 
 ## グローバル設定
 
 | キー | 既定値 | 用途 |
 |---|---|---|
+| `auth_profile` | 未選択 | 独立認証プロファイル。`--auth-profile` |
+| `auth_profile_dir` | `~/.config/codex-dock/profiles` | プロファイル保存root。`--auth-profile-dir` |
 | `default_image` | `codex-dock:latest` | ワーカーのOCIイメージ |
 | `proxy_image` | `codex-dock-proxy:latest` | 2種類のプロキシのOCIイメージ |
 | `default_template` | 未設定 | `run`・`build` のテンプレート |
@@ -101,16 +135,16 @@ forward_allow_ports = [80, 443]
 
 ### `auto_build`
 
-テンプレートのDockerfile更新日時と、イメージの作成日時を比較します。
-Dockerfileが新しい場合は `run` 時に再ビルドします。
-バイナリに埋め込まれたままのテンプレートには比較するファイルがないため、この判定を行いません。
-イメージが存在しない場合の自動ビルドは、この設定を無効にしても行います。
+- テンプレートのDockerfile更新日時と、イメージの作成日時を比較します。
+- Dockerfileが新しい場合は `run` 時に再ビルドします。
+- バイナリに埋め込まれたままのテンプレートには比較するファイルがないため、この判定を行いません。
+- イメージが存在しない場合の自動ビルドは、この設定を無効にしても行います。
 
 ### `default_shell_type`
 
-明示しない場合はホストの `$SHELL` を見て、`zsh` ならzsh、それ以外はbashを選びます。
-デバッグ用 `--shell` は、明示しない限りbashです。
-詳しくは[run](commands/run.md)を参照してください。
+- 明示しない場合はホストの `$SHELL` を見て、`zsh` ならzsh、それ以外はbashを選びます。
+- デバッグ用 `--shell` は、明示しない限りbashです。
+- 詳しくは[run](commands/run.md)を参照してください。
 
 ## `[run]`
 
@@ -135,8 +169,8 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 | `profile_size` | `standard` | `--profile-size` |
 | `no_internet` | `false` | `--no-internet` |
 
-明示した `--image` はテンプレートによるイメージ選択より優先します。
-`runtime = "runc"` は同じcontainerdノードの互換モードで、VM隔離はありません。
+- 明示した `--image` はテンプレートによるイメージ選択より優先します。
+- `runtime = "runc"` は同じcontainerdノードの互換モードで、VM隔離はありません。
 
 ### `run.mounts`
 
@@ -145,12 +179,12 @@ Dockerfileが新しい場合は `run` 時に再ビルドします。
 mounts = ["/home/user/datasets:/data:ro", "./cache:/cache:rw"]
 ```
 
-相対パスはコマンド実行時のディレクトリから解決します。
-`--mount` を指定した場合、設定ファイルの配列は追加せず置き換えます。
-`--read-only` はworkspaceの指定であり、追加mountの権限は個別に指定します。
+- 相対パスはコマンド実行時のディレクトリから解決します。
+- `--mount` を指定した場合、設定ファイルの配列は追加せず置き換えます。
+- `--read-only` はworkspaceの指定であり、追加mountの権限は個別に指定します。
 
-`network_name` は旧設定キーで、現行のnetworkコマンドは `dock-net-proxy` を使います。
-プロキシの接続先は `proxy run --network` で指定します。
+- `network_name` は旧設定キーで、現行のnetworkコマンドは `dock-net-proxy` を使います。
+- プロキシの接続先は `proxy run --network` で指定します。
 
 ## `[build]`
 
@@ -163,7 +197,11 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 
 ## `[proxy]`
 
-独立認証のグローバルキー `auth_profile` はプロファイル名、`auth_profile_dir` は保存root（既定 `~/.config/codex-dock/profiles`）です。対応フラグは `--auth-profile` / `--auth-profile-dir`。未選択時は従来のホスト連携、選択時はその保存先だけを使い、ホストへfallbackしません。プロジェクト設定では指定できません。[作成と起動](commands/auth.md#独立プロファイル)を参照してください。
+- 独立認証の選択：グローバルの `auth_profile` / `auth_profile_dir`。
+- 選択中：指定したStoreだけを使用し、ホスト認証へfallbackしない。
+- 未選択：従来のホスト連携。
+- プロジェクト設定での指定：不可。
+- [作成と起動](commands/auth.md#独立プロファイル)を参照。
 
 | キー | 既定値 | 対応箇所 |
 |---|---|---|
@@ -176,17 +214,23 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 | `forward_allow_cidrs` / `forward_deny_cidrs` | 空配列 | `--forward-allow-cidr` / `--forward-deny-cidr` |
 | `forward_allow_ports` / `forward_deny_ports` | 空配列 | `--forward-allow-port` / `--forward-deny-port` |
 
-`admin_secret_file` と値指定（設定・環境変数を含む）が両方有効なら拒否します。明示したrunのsecretフラグは設定値より優先します。管理ファイル・profile保存先はworkspaceや追加mountへ含めないでください。管理secretの変更はworkerを退避した後、Proxyを明示的に再作成して行います。
+- `admin_secret_file` と値指定（設定・環境変数を含む）が両方有効なら拒否します。
+- 明示したrunのsecretフラグは設定値より優先します。
+- 管理ファイル・profile保存先はworkspaceや追加mountへ含めないでください。
+- 管理secretの変更はworkerを退避した後、Proxyを明示的に再作成して行います。
 
-`container_url` はワーカーが使うURL、`admin_url` はホストCLIが使うURLです。
-一般通信用のURLは `run --http-proxy-url` で指定します。
-旧 `firewall.proxy_container_url` は互換用に読み込みますが、新規設定には `[proxy]` を使ってください。
+- `container_url` はワーカーが使うURL、`admin_url` はホストCLIが使うURLです。
+- 一般通信用のURLは `run --http-proxy-url` で指定します。
+- 旧 `firewall.proxy_container_url` は互換用に読み込みますが、新規設定には `[proxy]` を使ってください。
 
-通信ルールは一般egressプロキシにだけ適用します。
-拒否を優先し、空でない許可リストはすべて満たす必要があります。
-`forward_default_deny` は省略時も `true` で、空の宛先許可リストを拒否します。公開宛て通信を許可する従来動作は `false`（CLIでは `--forward-default-deny=false`）の明示指定で選びます。ドメインは `example.com` ならサブドメイン込み、`=example.com` なら完全一致です。
-private IP等の遮断は、許可ルールでは解除できません。
-変更はプロキシの再作成後に反映します。[通信ポリシー](proxy-policy.md)を参照してください。
+- 通信ルールは一般egressプロキシにだけ適用します。
+- 拒否を優先し、空でない許可リストはすべて満たす必要があります。
+- `forward_default_deny` は省略時も `true` で、空の宛先許可リストを拒否します。
+- 公開宛て通信を許可する従来動作は `false`（CLIでは `--forward-default-deny=false`）の明示指定で選びます。
+- ドメインは `example.com` ならサブドメイン込み、`=example.com` なら完全一致です。
+- private IP等の遮断は、許可ルールでは解除できません。
+- 変更はプロキシの再作成後に反映します。
+- [通信ポリシー](proxy-policy.md)を参照してください。
 
 ## 環境変数
 
@@ -205,10 +249,12 @@ private IP等の遮断は、許可ルールでは解除できません。
 | `CLAUDE_CODE_OAUTH_TOKEN` | ホスト認証プロキシ用のサブスクaccess token。`claude setup-token` で発行 |
 | `CODEX_DOCK_CODEX_VERSION` / `CODEX_DOCK_CLAUDE_VERSION` | ビルド時の固定CLI版の上書き |
 
-実行方式の環境変数は、明示したフラグより下、設定ファイルより上の優先順位です。
-`DOCKER_HOST` とDocker contextは利用しません。
+- 実行方式の環境変数は、明示したフラグより下、設定ファイルより上の優先順位です。
+- `DOCKER_HOST` とDocker contextは利用しません。
 
-Claude Codeのサブスク認証にはホストの `CLAUDE_CODE_OAUTH_TOKEN` も使えます。ビルド用の版指定は `CODEX_DOCK_CLAUDE_VERSION` です。[Claude Code](claude-code.md)に認証の優先順位と更新手順をまとめています。
+- Claude Codeのサブスク認証にはホストの `CLAUDE_CODE_OAUTH_TOKEN` も使えます。
+- ビルド用の版指定は `CODEX_DOCK_CLAUDE_VERSION` です。
+- [Claude Code](claude-code.md)に認証の優先順位と更新手順をまとめています。
 
 ## ホスト管理サービスの設定
 
@@ -222,9 +268,9 @@ Claude Codeのサブスク認証にはホストの `CLAUDE_CODE_OAUTH_TOKEN` も
 | 固定資産manifest | `/etc/codex-dock/kata-assets.json` |
 | BuildKit | `/etc/codex-dock/buildkit.toml` |
 
-`[kata].node_socket` はKata検証クライアントの設定です。
-標準と異なるsocketを使う場合は、実行管理用の `CODEX_DOCK_KATA_NODE_SOCKET` も同じパスにそろえてください。
-配置・更新は[Kata実行ホストの準備](kata.md)に従います。
+- `[kata].node_socket` はKata検証クライアントの設定です。
+- 標準と異なるsocketを使う場合は、実行管理用の `CODEX_DOCK_KATA_NODE_SOCKET` も同じパスにそろえてください。
+- 配置・更新は[Kata実行ホストの準備](kata.md)に従います。
 
 ## 認証ファイルの場所
 
@@ -235,13 +281,20 @@ Claude Codeのサブスク認証にはホストの `CLAUDE_CODE_OAUTH_TOKEN` も
 | `~/.config/codex-dock/anthropic-apikey` | Anthropic APIキー |
 | `~/.claude/.credentials.json` | Claude Codeの既存ログイン情報 |
 
-本文を公開ログやイメージに含めないでください。
-読込優先順位とマウントは[認証プロキシ](auth-proxy.md#認証ソース)を参照してください。
+- 本文を公開ログやイメージに含めないでください。
+- 読込優先順位とマウントは[認証プロキシ](auth-proxy.md#認証ソース)を参照してください。
 
-ホストの `[proxy].allowed_models` は正確な上流モデルIDの許可リストです。空は従来動作を維持し、設定時は未対応AI経路とWebSocketを拒否します。`proxy run --allow-model` の明示指定が優先します。プロキシ再作成と[対応経路の確認](sandbox-features.md#モデル認可と段階的な起動)が必要です。
+- ホストの `[proxy].allowed_models` は正確な上流モデルIDの許可リストです。
+- 空は従来動作を維持し、設定時は未対応AI経路とWebSocketを拒否します。
+- `proxy run --allow-model` の明示指定が優先します。
+- プロキシ再作成と[対応経路の確認](sandbox-features.md#モデル認可と段階的な起動)が必要です。
 
 ## ノード管理者の資源プロファイル
 
-`run.profile_size` は組み込みまたはnodeに登録された名前を選びます。追加の予算は、rootのnode管理者が `node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で登録します。利用者のTOMLで上限を新規登録する仕組みではありません。[許容範囲・guest資産・予約の固定](sandbox-features.md#管理者定義の資源プロファイル)を参照してください。
+- `run.profile_size` は組み込みまたはnodeに登録された名前を選びます。
+- 追加の予算は、rootのnode管理者が `node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で登録します。
+- 利用者のTOMLで上限を新規登録する仕組みではありません。
+- [許容範囲・guest資産・予約の固定](sandbox-features.md#管理者定義の資源プロファイル)を参照してください。
 
-`oaiso profile define compact-256 --pids-limit 256` で登録用JSONを生成でき、`oaiso profile --node --json` で実際に有効なPID上限を確認できます。PIDはhost・guestの両方で制限します。
+- `oaiso profile define compact-256 --pids-limit 256` で登録用JSONを生成でき、`oaiso profile --node --json` で実際に有効なPID上限を確認できます。
+- PIDはhost・guestの両方で制限します。

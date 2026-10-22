@@ -2,7 +2,8 @@
 
 > [日本語](../commands.md) | **English**
 
-Full command reference for codex-dock. See the individual pages below for details on each command.
+- Full command reference for codex-dock.
+- See the individual pages below for details on each command.
 
 ---
 

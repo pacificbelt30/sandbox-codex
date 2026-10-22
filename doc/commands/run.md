@@ -4,16 +4,27 @@
 >
 > [← コマンドリファレンス一覧](../commands.md)
 
-Codex CLI、Claude Code、シェルをKata VMで実行します。
-containerdが管理し、DragonballでVMを起動します。既定は `--runtime kata` です。
-専用bridge・namespace・nftablesで直接通信を遮断し、必要なプロキシだけを接続します。
-実行ホストはLinux x86_64です。[導入](../getting-started.md)と[ネットワーク](../network.md)を参照してください。
+| やりたいこと | 起動方法 |
+|---|---|
+| Codexを直接起動 | `oaiso codex` |
+| Claude Codeを直接起動 | `oaiso claude` |
+| イメージ・worktree・mountを指定 | `oaiso run --agent codex` / `--agent claude` |
+| 認証済みシェル | `oaiso run`（組み込み既定値） |
+| コマンドを1回実行 | `oaiso run -- COMMAND...` |
 
-イメージがなければ自動ビルドします。テンプレートに対応するタグはそのテンプレートを使います。
-`oaiso run` 単体では既定のエージェントを起動します。組み込み既定値は認証済みシェルです。`oaiso default codex` でグローバル、`oaiso default codex --local` でプロジェクト単位の既定値を変更できます。`oaiso default` は現在有効な設定を表示します。
-ディスク上のDockerfileが更新された場合の再ビルドは[auto_build](../configuration.md#auto_build)で設定します。
-独自タグやテンプレートは[build](build.md)を参照してください。
-リポジトリ直下に `codex-dock.toml` があれば、その `[run]` と `[build]` を読み込みます。`--project DIR` では `DIR/codex-dock.toml` を使います。[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
+| 項目 | 既定動作・設定先 |
+|---|---|
+| 実行基盤 | Linux x86_64・containerd・Dragonball。`--runtime kata` |
+| 通信 | 専用bridge・namespace・nftablesで直接通信を遮断。必要なProxyだけ接続 |
+| 既定エージェント | `oaiso default codex`。プロジェクト限定は `--local`、確認は `oaiso default` |
+| イメージ | 不足時は自動ビルド。テンプレートのタグ、または既定Dockerfileを使用 |
+| 再ビルド | [auto_build](../configuration.md#auto_build)で設定 |
+| プロジェクト設定 | カレントの `codex-dock.toml` の `[run]` / `[build]`。`--project DIR` は `DIR` の設定を使用 |
+
+- 初回準備：[導入](../getting-started.md)。
+- ネットワーク：[通信の仕組み](../network.md)。
+- 独自イメージ：[build](build.md)。
+- 設定の詳細：[プロジェクト設定](../configuration.md#プロジェクト設定)。
 
 ## Codex CLI を直接起動する
 
@@ -23,16 +34,21 @@ oaiso codex "このリポジトリを調べて"
 oaiso codex exec --json "変更点を要約して"
 ```
 
-引数は `codex` にそのまま渡します。カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。イメージ、worktree、追加マウント、detachなどのコンテナ指定には `oaiso run --agent codex` を使います。新規VMの起動時間は通常のホスト上の `codex` より長くなります。
+- 引数は `codex` にそのまま渡します。
+- カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。
+- 承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。
+- イメージ、worktree、追加マウント、detachなどのコンテナ指定には `oaiso run --agent codex` を使います。
+- 新規VMの起動時間は通常のホスト上の `codex` より長くなります。
 
 ```bash
 oaiso run [OPTIONS] [IMAGE [COMMAND...]]
 oaiso run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
 ```
 
-イメージとコマンドの位置は `docker run IMAGE COMMAND` と同じです。フラグはイメージの前に置きます。
-`--image` または `--template` を指定した場合は位置引数をコマンドとして扱います。
-コマンドは `--exec` と同等ですが、全体を1つの文字列にクォートする必要はありません。
+- イメージとコマンドの位置は `docker run IMAGE COMMAND` と同じです。
+- フラグはイメージの前に置きます。
+- `--image` または `--template` を指定した場合は位置引数をコマンドとして扱います。
+- コマンドは `--exec` と同等ですが、全体を1つの文字列にクォートする必要はありません。
 
 ```bash
 oaiso run -d --name worker codex-dock:latest
@@ -44,7 +60,8 @@ oaiso run -- npm test -- --watch=false
 
 ## オプション一覧
 
-認証をホストと分けるには `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...`、または信頼済みグローバル設定を使います。[独立プロファイルの作成と起動](auth.md#独立プロファイル)を参照してください。
+- 認証をホストと分けるには `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...`、または信頼済みグローバル設定を使います。
+- [独立プロファイルの作成と起動](auth.md#独立プロファイル)を参照してください。
 
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
@@ -85,18 +102,20 @@ oaiso run -- npm test -- --watch=false
 
 ## Docker CLI との対応
 
-`run -d`、`run IMAGE COMMAND`、`ps -a`、`logs -f`、`start`、`stop`、`rm -f`、`build -t` はDockerと同じ形で使えます。
-従来の `run -d PATH`（プロジェクト指定）は `run --project PATH` に置き換えてください。従来の `-D` はバックグラウンド実行として引き続き使えます。
-ただし `run -p` は追加パッケージ、`run -i` はイメージ、`run -t` はエージェントのタスク、`-v` は詳細ログです。
-ホストポートの公開には対応していません。追加マウントは `--mount HOST:CONTAINER[:ro|rw]` を使います。
-ワーカーは既定で現在のプロジェクトを `/workspace` に共有し、前面実行の終了時に削除されます（保持する場合は `--keep`）。
+- `run -d`、`run IMAGE COMMAND`、`ps -a`、`logs -f`、`start`、`stop`、`rm -f`、`build -t` はDockerと同じ形で使えます。
+- 従来の `run -d PATH`（プロジェクト指定）は `run --project PATH` に置き換えてください。
+- 従来の `-D` はバックグラウンド実行として引き続き使えます。
+- ただし `run -p` は追加パッケージ、`run -i` はイメージ、`run -t` はエージェントのタスク、`-v` は詳細ログです。
+- ホストポートの公開には対応していません。
+- 追加マウントは `--mount HOST:CONTAINER[:ro|rw]` を使います。
+- ワーカーは既定で現在のプロジェクトを `/workspace` に共有し、前面実行の終了時に削除されます（保持する場合は `--keep`）。
 
 ---
 
 ## `--agent` — エージェントの選択
 
-`--agent` フラグでサンドボックス内に起動する AI エージェントを選びます。
-コンテナ内では `DOCK_AGENT` 環境変数として渡され、`entrypoint.sh` が分岐します。
+- `--agent` フラグでサンドボックス内に起動する AI エージェントを選びます。
+- コンテナ内では `DOCK_AGENT` 環境変数として渡され、`entrypoint.sh` が分岐します。
 
 | 値 | 動作 | 注入される認証情報 |
 |---|---|---|
@@ -113,7 +132,8 @@ oaiso run -- npm test -- --watch=false
 - `--shell` は `entrypoint.sh` を完全にバイパスして**認証なし**の素のシェルを起動します（デバッグ用）。
   認証済みシェルが欲しい場合は `--agent shell` を指定してください。
 
-設定した既定エージェントは、`oaiso run IMAGE COMMAND`、`oaiso run -- COMMAND`、`--exec` のコマンド実行時には適用しません。明示した `--agent codex` / `--agent claude` はコマンドより優先します。
+- 設定した既定エージェントは、`oaiso run IMAGE COMMAND`、`oaiso run -- COMMAND`、`--exec` のコマンド実行時には適用しません。
+- 明示した `--agent codex` / `--agent claude` はコマンドより優先します。
 
 ```bash
 oaiso run --agent codex  --approval-mode full-auto
@@ -125,11 +145,11 @@ oaiso run --agent shell  # 認証済みシェル（codex / claude 両方利用�
 
 ## `--exec` — コマンドの実行
 
-`--exec` フラグで、対話シェルの代わりにコンテナ内で1回だけ実行するコマンドを指定できます。
-コンテナ内では `DOCK_EXEC_CMD` 環境変数として渡され、`entrypoint.sh` の「エージェント未指定」
-分岐（認証設定済みシェルを起動する分岐）でのみ参照されます。
+- `--exec` フラグで、対話シェルの代わりにコンテナ内で1回だけ実行するコマンドを指定できます。
+- コンテナ内では `DOCK_EXEC_CMD` 環境変数として渡され、`entrypoint.sh` の「エージェント未指定」 分岐（認証設定済みシェルを起動する分岐）でのみ参照されます。
 
-- `--agent codex` / `--agent claude` を指定した場合は**エージェントが優先され**、`--exec` は無視されます。`--agent shell` ではコマンドを実行します。
+- `--agent codex` / `--agent claude` を指定した場合は**エージェントが優先され**、`--exec` は無視されます。
+- `--agent shell` ではコマンドを実行します。
 - `--shell`（`entrypoint.sh` を完全にバイパスする素のデバッグシェル）と併用するとエラーになります
   （`--shell` では `entrypoint.sh` 自体が実行されないため `--exec` が効きません）。
 - コマンドは `--shell-type` で選んだシェル（既定は bash）の `-c` 経由で実行されます。
@@ -154,30 +174,31 @@ oaiso run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 
 ## `--shell-type` — シェルの種類の指定
 
-`--shell-type` で、サンドボックス内の対話シェルに使うバイナリを選べます。
-対象は「エージェント未指定時の認証済みシェル」と「`--shell` デバッグモード」の両方です
-（コンテナ内では `DOCK_SHELL` 環境変数として渡され、`entrypoint.sh` が参照します）。
+- `--shell-type` で、サンドボックス内の対話シェルに使うバイナリを選べます。
+- 対象は「エージェント未指定時の認証済みシェル」と「`--shell` デバッグモード」の両方です （コンテナ内では `DOCK_SHELL` 環境変数として渡され、`entrypoint.sh` が参照します）。
 
 | 値 | 動作 |
 |---|---|
 | `bash` | bash を起動 |
 | `zsh` | zsh を起動。対象イメージに zsh がインストールされている必要がある |
 
-フラグにも設定ファイル（`default_shell_type` / `run.shell_type`）にも値が無い場合は、
-ホスト側の `$SHELL` 環境変数のベース名から自動判定されます（`zsh` なら `zsh`、それ以外
-（`$SHELL` が未設定、または認識できないシェルの場合を含む）は `bash`）。**ただし `--shell`
-デバッグモードはこの自動判定の対象外**で、フラグ未指定なら常に `bash` になります。`--shell`
-はコンテナの `Entrypoint` を直接シェルバイナリに置き換えて `entrypoint.sh` 自体をバイパス
-するため、そのバイナリがイメージに無かった場合に `entrypoint.sh` 側でフォールバックする
-手段が無く、実行エンジンがコンテナの起動自体に失敗してしまうためです。`--shell --shell-type zsh`
-のように明示すれば、`--shell` でも zsh を使えます。
+| 条件 | 選ばれるシェル |
+|---|---|
+| フラグ・`default_shell_type`・`run.shell_type` がすべて未指定 | ホストの `$SHELL` のベース名で判定 |
+| `$SHELL` が `zsh` | `zsh` |
+| その他・未設定・認識できないシェル | `bash` |
+| `--shell` デバッグモードでフラグ未指定 | 自動判定せず常に `bash` |
+| `--shell --shell-type zsh` | 明示した `zsh` |
 
-組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため
-（`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh`（や `$SHELL=zsh` による自動判定）がそのまま使えます。
-自作テンプレートで zsh を使う場合は、そのテンプレートの Dockerfile 側で zsh をインストールしてください。
-インストールされていない場合でも、`--shell` 以外（エージェント未指定時のシェルや `--exec`）
-では `entrypoint.sh` が起動時にバイナリの有無を確認し、無ければ警告を出して `bash` に
-フォールバックするため、コンテナが起動に失敗することはありません。
+**デバッグモードの制限**
+
+- `--shell` はコンテナの `Entrypoint` をシェルバイナリへ置換。
+- `entrypoint.sh` をバイパスするため、同スクリプトによるfallbackは使えない。
+- 指定したシェルがイメージにない場合：実行エンジンがコンテナ起動を拒否。
+
+- 組み込みの `plain` テンプレートには zsh がインストール済みで、`pwn` は `plain` を継承するため （`FROM codex-dock:latest`）、どちらのテンプレートでも `--shell-type zsh`（や `$SHELL=zsh` による自動判定）がそのまま使えます。
+- 自作テンプレートで zsh を使う場合は、そのテンプレートの Dockerfile 側で zsh をインストールしてください。
+- インストールされていない場合でも、`--shell` 以外（エージェント未指定時のシェルや `--exec`） では `entrypoint.sh` が起動時にバイナリの有無を確認し、無ければ警告を出して `bash` に フォールバックするため、コンテナが起動に失敗することはありません。
 
 > エージェント（`--agent codex`/`claude`）を Ctrl+Z で一時停止してシェルに戻る機構
 > （`launch_interactive`）は、bash の `PROMPT_COMMAND` を使った実装のため、
@@ -192,17 +213,16 @@ oaiso run --shell-type zsh
 oaiso run --shell --shell-type zsh
 ```
 
-設定ファイル（`~/.config/codex-dock/config.toml`）の `default_shell_type`（グローバル）/
-`run.shell_type`（`run` のみ）でデフォルト値を変更できます。詳細は
-[設定リファレンス](../configuration.md#default_shell_type) を参照してください。
+- 設定ファイル（`~/.config/codex-dock/config.toml`）の `default_shell_type`（グローバル）/ `run.shell_type`（`run` のみ）でデフォルト値を変更できます。
+- 詳細は [設定リファレンス](../configuration.md#default_shell_type) を参照してください。
 
 ---
 
 ## `--approval-mode` — 承認モードの指定
 
-`--approval-mode` フラグでエージェントがアクションを実行する際の承認動作を制御します。
-外側の隔離は選択したワーカーランタイムが担当します。値は両エージェントに対応する
-フラグへマッピングされます。
+- `--approval-mode` フラグでエージェントがアクションを実行する際の承認動作を制御します。
+- 外側の隔離は選択したワーカーランタイムが担当します。
+- 値は両エージェントに対応する フラグへマッピングされます。
 
 | 値 | Codex CLI フラグ | Claude Code フラグ | 動作 |
 |---|---|---|---|
@@ -211,10 +231,12 @@ oaiso run --shell --shell-type zsh
 | `full-auto` | `--ask-for-approval never` | `--dangerously-skip-permissions` | 承認を一切求めない |
 | `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | すべての承認・サンドボックス制限をバイパスする |
 
-Kata検証済みワーカーでは、Codexの内側sandboxを `danger-full-access` に設定します。
-VM内の入れ子namespaceとseccompの不整合を避けるためです。承認モードは独立した設定です。
-非対話execではエージェント自身が承認動作を選ぶ場合もあります。
-共有workspaceや追加mountは、指定した権限で変更できます。[保護の範囲](../security.md)を参照してください。
+- Kata検証済みワーカーでは、Codexの内側sandboxを `danger-full-access` に設定します。
+- VM内の入れ子namespaceとseccompの不整合を避けるためです。
+- 承認モードは独立した設定です。
+- 非対話execではエージェント自身が承認動作を選ぶ場合もあります。
+- 共有workspaceや追加mountは、指定した権限で変更できます。
+- [保護の範囲](../security.md)を参照してください。
 
 ```bash
 # エージェント既定の承認設定
@@ -234,8 +256,8 @@ oaiso run --agent codex --approval-mode danger --task "ビルドスクリプト�
 
 ## `--user` — コンテナ実行ユーザの指定
 
-`--user` フラグを使うと、コンテナ内のプロセスを任意の uid:gid で起動できます。
-ホストのファイルシステムとの権限整合性を確保するために使用します。
+- `--user` フラグを使うと、コンテナ内のプロセスを任意の uid:gid で起動できます。
+- ホストのファイルシステムとの権限整合性を確保するために使用します。
 
 | 値 | 動作 |
 |---|---|
@@ -253,16 +275,16 @@ oaiso run --agent codex --approval-mode danger --task "ビルドスクリプト�
 
 ## `--mount` — 任意ディレクトリの追加マウント
 
-`--mount` フラグで、`/workspace`（`--project`）以外の任意のホストディレクトリを
-コンテナへバインドマウントできます。繰り返し指定することで複数のディレクトリを
-マウントできます。
+- `--mount` フラグで、`/workspace`（`--project`）以外の任意のホストディレクトリを コンテナへバインドマウントできます。
+- 繰り返し指定することで複数のディレクトリを マウントできます。
 
 ```
 --mount <host-path>:<container-path>[:ro|rw]
 ```
 
 - `<host-path>`: ホスト側のディレクトリ（相対パスは実行時のカレントディレクトリから解決）
-- `<container-path>`: コンテナ内の絶対パス。`/workspace` は `--project` 専用のため指定不可
+- `<container-path>`: コンテナ内の絶対パス。
+- `/workspace` は `--project` 専用のため指定不可
 - `:ro` / `:rw`: 読み取り専用 / 読み書き可能（省略時は `rw`）
 - 同じ `<container-path>` を複数回指定するとエラーになる
 
@@ -277,13 +299,19 @@ oaiso run --mount ./cache:/cache --mount /opt/models:/models:ro
 > 追加マウントされたディレクトリはプロジェクトディレクトリ本体（`/workspace`）とは
 > 独立して読み取り専用を指定できます。`--read-only` は `/workspace` のみに適用されます。
 
-`--read-only-rootfs` はイメージの rootfs に適用され、`/workspace` と追加 mount の読み書き設定は変えません。起動時のパッケージ追加は使えないため、必要なパッケージはイメージに入れてください。HOME と `/tmp`・`/var/tmp` は一時的な tmpfs になり、ワーカー削除後には残りません。`--no-git-metadata` を指定した linked worktree では共通 Git metadata をマウントしません。VM 内で Git を使う場合は私有の metadata と mount を別途用意してください。
+- `--read-only-rootfs` はイメージの rootfs に適用され、`/workspace` と追加 mount の読み書き設定は変えません。
+- 起動時のパッケージ追加は使えないため、必要なパッケージはイメージに入れてください。
+- HOME と `/tmp`・`/var/tmp` は一時的な tmpfs になり、ワーカー削除後には残りません。
+- `--no-git-metadata` を指定した linked worktree では共通 Git metadata をマウントしません。
+- VM 内で Git を使う場合は私有の metadata と mount を別途用意してください。
 
-`oaiso profile --json` はプロファイルごとの CPU、guest RAM、ホスト側上限、PID 上限を出力します。`small` は 1 CPU・guest 1 GiB・ホスト上限 2 GiB、`standard` は 1 CPU・guest 2 GiB・ホスト上限 3 GiB です。`--profile-size small` は Kata のみで使えます。小型の実際のメモリ使用量・起動性能はホストで測定してください。
+- `oaiso profile --json` はプロファイルごとの CPU、guest RAM、ホスト側上限、PID 上限を出力します。
+- `small` は 1 CPU・guest 1 GiB・ホスト上限 2 GiB、`standard` は 1 CPU・guest 2 GiB・ホスト上限 3 GiB です。
+- `--profile-size small` は Kata のみで使えます。
+- 小型の実際のメモリ使用量・起動性能はホストで測定してください。
 
-設定ファイル（`~/.config/codex-dock/config.toml`）の `[run]` セクションでも
-`mounts` として既定値を指定できます（`--mount` を指定した場合はそちらが優先）。
-詳細は [`doc/configuration.md`](../configuration.md#runmounts) を参照してください。
+- 設定ファイル（`~/.config/codex-dock/config.toml`）の `[run]` セクションでも `mounts` として既定値を指定できます（`--mount` を指定した場合はそちらが優先）。
+- 詳細は [`doc/configuration.md`](../configuration.md#runmounts) を参照してください。
 
 ```toml
 [run]
@@ -324,7 +352,8 @@ npm:typescript
 oaiso run --parallel 2 --worktree --branch myfeature
 ```
 
-ノードの既定上限は同時2台です。自動的に以下のブランチが作成されます：
+- ノードの既定上限は同時2台です。
+- 自動的に以下のブランチが作成されます：
 
 - `myfeature-1`（worker 1）
 - `myfeature-2`（worker 2）
@@ -404,4 +433,7 @@ oaiso run --user 1000:1000
 - [ネットワーク仕様](../network.md) — 専用ワーカーネットワークと2種類のプロキシの構成
 - [設定リファレンス](../configuration.md) — config.toml の設定項目
 
-`compact` は軽量用途向けの明示選択です（1 CPU・guest 512 MiB・ホスト上限 768 MiB・512 PID）。`--profile-size compact` で指定し、既定のstandard/smallは変えません。大きな依存導入やビルドには不足する場合があります。対応nodeと[実測値の確認](../sandbox-features.md#回収の常駐とメモリの観測)が必要です。
+- `compact` は軽量用途向けの明示選択です（1 CPU・guest 512 MiB・ホスト上限 768 MiB・512 PID）。
+- `--profile-size compact` で指定し、既定のstandard/smallは変えません。
+- 大きな依存導入やビルドには不足する場合があります。
+- 対応nodeと[実測値の確認](../sandbox-features.md#回収の常駐とメモリの観測)が必要です。

@@ -2,11 +2,14 @@
 
 **日本語** | [English](en/index.md)
 
-御AgentIsolation（Oaiso）は、Codex CLIとClaude CodeをKataのVMで隔離して実行します。
-containerdがワーカーを管理し、DragonballがVMを動かします。
-Docker EngineとDocker CLIは不要です。
+| 項目 | 要点 |
+|---|---|
+| 用途 | Codex CLI・Claude CodeをKata VMで隔離実行 |
+| コマンド | `oaiso` |
+| 実行基盤 | containerdが管理、DragonballがVMを実行 |
+| 実行ホスト | Linux x86_64。Docker Engine・Docker CLIは不要 |
 
-正式名称の「御」は丁寧さ・敬意を表し、略称のOaisoは「おあいそ」と読みます。コマンドは `oaiso`、旧 `cxd` / `codex-dock` は互換名です。設定・認証情報・サービス・Go APIの既存識別子は引き継ぎます。[名称変更と互換性](migration.md#oaisoへの名称変更)を参照してください。
+- CLIのクロスビルドだけでは、各OSでKataを実行できません。
 
 ## 初めて使う
 
@@ -43,6 +46,14 @@ Docker EngineとDocker CLIは不要です。
 - [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
 - [今後の対応](future-work.md)：追加するコーディングエージェントと対応条件
 
-通常の実行先はLinux x86_64です。CLIのクロスビルドは、各OSでKataを実行できることを意味しません。
-
 [追加のサンドボックス制御](sandbox-features.md)
+
+## 名称と互換性
+
+| 項目 | 内容 |
+|---|---|
+| 正式名称 | 御AgentIsolation。「御」は丁寧さ・敬意を表す |
+| 英字表記・読み | Oaiso／おあいそ |
+| 互換コマンド | `cxd` / `codex-dock` |
+| 引き継ぐもの | 設定・認証情報・サービス・Go APIの既存識別子 |
+| 詳細 | [名称変更と互換性](migration.md#oaisoへの名称変更) |

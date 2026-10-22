@@ -2,8 +2,8 @@
 
 [日本語](../../commands/proxy.md) | **English**
 
-`oaiso proxy` manages the auth and general egress proxies on containerd.
-See [auth proxy](../auth-proxy.md) and [update procedure](../../operations.md#cliプロキシを更新する) (Japanese).
+- `oaiso proxy` manages the auth and general egress proxies on containerd.
+- See [auth proxy](../auth-proxy.md) and [update procedure](../../operations.md#cliプロキシを更新する) (Japanese).
 
 ## Build
 
@@ -12,9 +12,10 @@ oaiso proxy build
 oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
-`--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
-Standalone BuildKit imports OCI output into containerd. Build from the repository root: the current directory is the context and Go source is required.
-The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`, then the config directory.
+- `--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
+- Standalone BuildKit imports OCI output into containerd.
+- Build from the repository root: the current directory is the context and Go source is required.
+- The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`, then the config directory.
 
 ## Start
 
@@ -33,12 +34,13 @@ oaiso proxy run
 | `--admin-secret` | Unset | Server secret; configure the same value in host clients |
 | `--admin-secret-file` | Unset | Read admin authority from an owner-only 0600 file; mutually exclusive with a value |
 
-Policy flags are `--forward-allow-domain`, `--forward-deny-domain`, `--forward-allow-cidr`, `--forward-deny-cidr`, `--forward-allow-port` and `--forward-deny-port`.
-Domain/CIDR flags repeat; port flags repeat or accept comma-separated values.
-See [policy rules](../../proxy-policy.md) (Japanese).
+- Policy flags are `--forward-allow-domain`, `--forward-deny-domain`, `--forward-allow-cidr`, `--forward-deny-cidr`, `--forward-allow-port` and `--forward-deny-port`.
+- Domain/CIDR flags repeat; port flags repeat or accept comma-separated values.
+- See [policy rules](../../proxy-policy.md) (Japanese).
 
-Legacy mode reads credentials as the caller's UID/GID through read-only binds under a private HOME. An [independent profile](auth.md#independent-profiles) selected by `--auth-profile NAME` mounts only its directory read-write for refresh and does not load host authentication.
-Old layouts, policy mismatches and missing worker-auth capability are rejected rather than silently updating existing containers.
+- Legacy mode reads credentials as the caller's UID/GID through read-only binds under a private HOME.
+- An [independent profile](auth.md#independent-profiles) selected by `--auth-profile NAME` mounts only its directory read-write for refresh and does not load host authentication.
+- Old layouts, policy mismatches and missing worker-auth capability are rejected rather than silently updating existing containers.
 
 ## Stop and remove
 
@@ -52,8 +54,9 @@ oaiso proxy stop --name codex-http-proxy
 oaiso proxy rm --name codex-http-proxy
 ```
 
-Use `--name` for custom names. `proxy rm --force` removes a running container.
-Finish worker tasks first; these proxies are shared services.
+- Use `--name` for custom names.
+- `proxy rm --force` removes a running container.
+- Finish worker tasks first; these proxies are shared services.
 
 ## Local process
 
@@ -65,8 +68,10 @@ oaiso proxy serve --role auth \
   --admin-secret "$PROXY_ADMIN_SECRET"
 ```
 
-Role `auth` serves AI/token/admin routes; `egress` forwards general traffic.
-The default data listen address is `0.0.0.0:18080`, so set loopback explicitly for local use.
-This command does not create Kata isolation or worker networks. See [standalone use](../proxy-standalone.md).
+- Role `auth` serves AI/token/admin routes; `egress` forwards general traffic.
+- The default data listen address is `0.0.0.0:18080`, so set loopback explicitly for local use.
+- This command does not create Kata isolation or worker networks.
+- See [standalone use](../proxy-standalone.md).
 
-Repeat `oaiso proxy run --allow-model model-id` to enforce exact model IDs in fixed AI request bodies. See [supported routes and limitations](../sandbox-features.md#model-authorization-and-staged-startup).
+- Repeat `oaiso proxy run --allow-model model-id` to enforce exact model IDs in fixed AI request bodies.
+- See [supported routes and limitations](../sandbox-features.md#model-authorization-and-staged-startup).

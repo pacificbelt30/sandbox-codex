@@ -1,38 +1,45 @@
 # 御AgentIsolation（Oaiso）
 
-Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです。
-ワーカーごとに独立したカーネルを使い、認証情報と外部通信はプロキシで管理します。
-正式名称は **御AgentIsolation**、英字表記は **Oaiso**、コマンド名は **`oaiso`** です。「御」は丁寧さ・敬意を添える接頭辞で、「おあいそ」と読みます。
-旧コマンドの `cxd` と `codex-dock` も互換名として利用できます。設定・認証情報の保存先、サービス名、イメージ名、Go module・`pkg/cxd` は既存環境との互換性のため維持します。
+**Codex CLI・Claude Codeを、ワーカーごとのKata VMで隔離して実行。**
 
-実行には **Linux x86_64・KVM・containerd・Kata runtime-rs・Dragonball** が必要です。
-イメージはBuildKitで作成します。Docker Engine、Docker CLI、QEMUは実行時に使いません。
+| 項目 | 内容 |
+|---|---|
+| 正式名称 | 御AgentIsolation。「御」は丁寧さ・敬意を添える接頭辞 |
+| 英字表記・読み | Oaiso／おあいそ |
+| コマンド | `oaiso`。旧 `cxd` / `codex-dock` も利用可 |
+| 実行ホスト | Linux x86_64・KVM・containerd・Kata runtime-rs・Dragonball |
+| イメージ作成 | BuildKit |
+| 実行時に不要 | Docker Engine・Docker CLI・QEMU |
 
 [日本語ドキュメント](doc/index.md) · [English documentation](doc/en/index.md)
 
 ## できること
 
-- **Claude Code**：[APIキーとサブスクの両方](doc/claude-code.md)に対応。`oaiso claude` で公式CLIを起動します。
-- **VM隔離**：ワーカーごとにCPU・メモリ・プロセス数を制限します。
-- **認証の分離**：実APIキーやOAuthのaccess token・refresh tokenは認証プロキシで扱います。ワーカーには短命トークンを渡します。
-	OAuth の更新結果はホストの `~/.local/state/codex-dock/oauth/` に権限 0700/0600 で保存され、プロキシ再起動後も復元されます。ログインをやり直して元の認証ファイルが変わると、以前の更新結果は使用しません。
-- **通信の制限**：ワーカー間・ホスト・外部への直接通信を遮断します。一般通信にはドメイン・IP・ポートの許可／拒否ルールを設定できます。
-- **並列開発**：Git worktreeで作業場所とブランチを分けられます。
-- **イメージの拡張**：Dockerfile、テンプレート、追加パッケージを使えます。
-- **管理**：CLIとTUIで一覧・ログ・停止・再起動・削除を操作できます。
-- **製品組み込み**：同じホストの製品から[Go API](doc/go-api.md)でワーカーを操作できます。
+| 目的 | 機能・参照先 |
+|---|---|
+| エージェントを動かす | Codex CLI・[Claude Code](doc/claude-code.md)。ClaudeはAPIキー／サブスクに対応 |
+| 作業を隔離する | ワーカーごとに独立したカーネル。CPU・メモリ・プロセス数を制限 |
+| 認証情報を分ける | 実資格情報は認証Proxyで保持。ワーカーには短命トークンを渡す |
+| 通信を制限する | 直接の外部・ホスト・ワーカー間通信を遮断。一般通信はドメイン・IP・ポートで制御 |
+| 並列で開発する | VMとGit worktreeを分けて実行 |
+| 実行環境を拡張する | Dockerfile・テンプレート・追加パッケージ |
+| 状態を管理する | CLI／TUIで一覧・ログ・停止・再起動・削除 |
+| 製品に組み込む | 同じホストの製品から[Go API](doc/go-api.md)で操作 |
 
 ## 最初に使う
 
-1. 管理者が[実行ホストを準備](doc/setup.md)します。
-2. 利用者が[クイックスタート](doc/getting-started.md)に沿って認証とイメージを用意します。
-3. ワーカーを起動します。
+| 順序 | 担当 | 実施内容 |
+|---|---|---|
+| 1 | 管理者 | [実行ホストを準備](doc/setup.md)。Ubuntu 26.04対応ホストでは `./scripts/install.sh` で計画、`--apply` で適用 |
+| 2 | 利用者 | [認証とイメージを準備](doc/getting-started.md)。ホストと分ける場合は[独立プロファイル](doc/commands/auth.md#独立プロファイル)を選択 |
+| 3 | 利用者 | プロジェクトでワーカーを起動 |
 
-Ubuntu 26.04 の対応ホストでは、ソースのルートから `./scripts/install.sh` で導入計画を確認し、`./scripts/install.sh --apply` でバンドル作成から適用まで実行できます。
+**従来のホスト認証を使う場合**
 
-準備済みのホストでは、認証を設定してから次の順序で実行します。
-ChatGPT認証を使う場合は、同じ利用者の `~/.codex/auth.json` を参照します。
-APIキーを使う場合は、先に `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` を設定してください。
+| 認証方式 | 準備するもの |
+|---|---|
+| ChatGPT認証 | 同じ利用者の `~/.codex/auth.json` |
+| APIキー | `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` |
 
 ```bash
 oaiso init
@@ -46,12 +53,20 @@ oaiso init --agent claude
 oaiso run --agent claude
 ```
 
-プロキシイメージを初めてビルドする際は、リポジトリのルートで `init` を実行します。
-`oaiso run` は組み込み既定値では認証済みシェルを開きます。`oaiso default codex` で既定を Codex に、`oaiso default codex --local` でこのプロジェクトだけ Codex に変更できます。`oaiso default` で有効な値を確認できます。
-導入スクリプトと `make install` は Bash・Zsh・Fish の Tab 補完も配置します。[手動で有効にする方法](doc/commands/completion.md)もあります。
-`oaiso codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
-通常の操作はoperator groupに属する利用者で行います。
-Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り替えません。
+**起動時の要点**
+
+- 初回のProxyイメージ作成：リポジトリのルートで `init` を実行。
+- 通常操作：operator groupの利用者で実行。
+- `oaiso run` の組み込み既定値：認証済みシェル。
+- Codexを既定にする：`oaiso default codex`。
+- プロジェクト限定は `--local`。
+- 現在の既定値を確認：`oaiso default`。
+- `oaiso codex`：現在のディレクトリを `/workspace` に共有し、Codexを直接起動。
+- コンテナの詳細指定：`oaiso run --agent codex`。
+- Kata検証失敗時：起動中止。
+- runcへ自動切り替えしない。
+- Tab補完：導入スクリプト／`make install` がBash・Zsh・Fish用を配置。
+- [手動設定](doc/commands/completion.md)も可。
 
 ## よく使う操作
 
@@ -69,15 +84,27 @@ oaiso rm WORKER
 oaiso ui
 ```
 
-`ps` はワーカーの状態、`vm ps` は台帳・containerd・ホストプロセスを照合したVMの状態を表示します。
-停止したワーカーは再起動用に残ります。前面で実行したワーカーは、既定では終了時に削除されます。
-残したい場合は `run --keep` を指定します。
+| 操作 | 対象・終了後の扱い |
+|---|---|
+| `ps` | ワーカーの状態 |
+| `vm ps` | 台帳・containerd・ホストプロセスを照合したVMの状態 |
+| `stop` | 再起動用にワーカーを保持 |
+| 前面実行 | 終了時に削除。保持する場合は `run --keep` |
 
 ## プロジェクトごとの設定
 
-リポジトリのルートで `oaiso project init` を実行すると、コミット可能な `codex-dock.toml` ができます。`oaiso project check` で内容を検証できます。クローン先ではホストのセットアップと認証を済ませ、リポジトリのルートで `oaiso init`、`oaiso codex` を実行します。
+1. リポジトリのルートで `oaiso project init`。
+2. 生成した `codex-dock.toml` をコミット。
+3. クローン先でホストと認証を準備。
+4. `oaiso project check` → `oaiso init` → `oaiso codex`。
 
-プロジェクト設定にはイメージ、ビルド元、モデルなどを記述します。`packages.dock` もコミットすれば追加パッケージを共有できます。認証情報、containerd/Kataの接続先、プロキシ、追加ホストマウントはグローバル設定または明示したCLI引数で管理します。[設定例と優先順位](doc/configuration.md#プロジェクト設定)を参照してください。
+| 設定先 | 書く内容 |
+|---|---|
+| `codex-dock.toml` | イメージ・ビルド元・モデルなど。独自環境はプロジェクトのDockerfileを `[build]` で指定 |
+| `packages.dock` | チームで共有する追加パッケージ |
+| グローバル設定／明示CLIフラグ | 認証情報・containerd/Kata接続先・Proxy・追加ホストマウント |
+
+[設定例と優先順位](doc/configuration.md#プロジェクト設定)
 
 ## 読みたいことから探す
 
@@ -99,9 +126,9 @@ oaiso ui
 
 ## 開発
 
-ソースのビルドにはGo 1.24.7以上とMakeが必要です。
-`make build` はCLI、ワーカー起動用guard、IO loggerを作成します。
-ホストへの配置は[Kataの手順](doc/kata.md)を参照してください。
+- 必要なツール：Go 1.24.7以上・Make。
+- `make build`：CLI・ワーカー起動用guard・IO loggerを作成。
+- ホストへの配置：[Kataの手順](doc/kata.md)。
 
 ```bash
 make build
@@ -109,9 +136,23 @@ make test
 make vet
 ```
 
-設定ファイルは `~/.config/codex-dock/config.toml` です。
-記述例は [configs/config.toml.example](configs/config.toml.example) にあります。
+### ドキュメントの編集方針
 
-VMに共有したworkspaceや追加マウントは、指定した権限で変更できます。
-管理ソケットとBuildKitを使えるホスト利用者はroot相当の権限を持ちます。
-保護の範囲と制限は[セキュリティ設計](doc/security.md)を参照してください。
+- ページの冒頭：目的・前提条件・最初の操作を示す。
+- 操作の順序：番号付き手順と実行コマンドで示す。
+- 選択肢・設定・既定値・制限：表で比較する。
+- 補足事項：1項目1要点の短い箇条書きにする。
+- 詳細仕様・検証記録：専用ページへ分け、利用手順からリンクする。
+
+## 引き継ぐ設定と保護の範囲
+
+| 項目 | 扱い |
+|---|---|
+| グローバル設定 | `~/.config/codex-dock/config.toml`。[記述例](configs/config.toml.example) |
+| 名称変更後の互換性 | 設定・認証情報の保存先、サービス・イメージ名、Go module・`pkg/cxd` を維持 |
+| 従来モードのOAuth更新 | `~/.local/state/codex-dock/oauth/` に0700/0600で保存。Proxy再起動後も復元 |
+| 再ログイン | 元の認証ファイルが変わると、以前のOAuth更新結果は使わない |
+| 共有ファイル | workspace・追加マウントは指定した権限で変更可能 |
+| ホスト管理権限 | 管理socketとBuildKitの利用者はroot相当 |
+
+[セキュリティ設計と制限](doc/security.md)

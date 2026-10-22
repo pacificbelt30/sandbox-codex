@@ -1,66 +1,174 @@
 # セキュリティ設計
 
-既定はKata runtime-rs / DragonballのVM境界。containerdとroot管理サービスが実行・資源・networkを管理する。[配置と実機検証](kata.md)、[ネットワーク](network.md)、[プロキシポリシー](proxy-policy.md)を参照。
+| 境界・管理対象 | 実装 |
+|---|---|
+| ワーカーの隔離 | Kata runtime-rs / DragonballのVM境界 |
+| 実行・資源・network | containerdとroot管理サービス |
+| 詳細 | [配置と実機検証](kata.md)・[ネットワーク](network.md)・[通信ポリシー](proxy-policy.md) |
 
 ## 資格情報
 
-OpenAI / Anthropicの実APIキー・access token・OAuth refresh token・ID tokenはauth proxyが保持する。workerには短命のaccess placeholderを渡し、固定API経路を中継する際に実資格情報へ差し替える。Codex login用のID欄は、account ID・plan・FedRAMPフラグだけを含む新規のダミーJWTとする。元のJWTのheader・signature・email・user ID・その他のclaimは返さない。このダミーJWTは上流認証には使わない。egress proxyには実資格情報をmount・注入しない。
+### 保持する場所と返却する値
 
-初回取得とOAuth更新の両方で返却項目を限定する。更新エラーは、CLIの再ログイン判断に必要な既知コードとHTTP statusだけを保持し、上流本文・任意フィールド・通信エラー詳細を返さない。[固定CLIによる試験](testing.md#codexのidトークン分離)を参照。更新前のworker内ファイルや過去ログを自動消去する変更ではないため、Proxyを更新したあと、既存workerは停止・再作成する。
+| 情報 | 保持先・ワーカーへの返却 |
+|---|---|
+| 実APIキー・OAuth access/refresh/ID token | Auth Proxyで保持。ワーカーへ返さない |
+| ワーカーの認証 | 短命placeholder。固定AI経路の中継時に実資格情報へ置換 |
+| Codex login用ID欄 | account ID・plan・FedRAMPフラグだけの新規ダミーJWT |
+| 元JWTのheader・署名・email・user ID・任意claim | ワーカーへ返さない |
+| ダミーJWTの用途 | CLI設定用。上流認証には使わない |
+| egress Proxy | 実資格情報をmount・注入しない |
 
-従来の認証プロキシは呼出元のUID/GIDと専用HOMEで、所有者の0600認証ファイルを読み取り専用で開く。独立プロファイルではホスト認証のmount・環境変数を省き、選択した0700ディレクトリだけを更新用に読み書き可能で渡す。資格情報・lockは0600、更新はCAS・fsync・atomic renameを使う。workerの再開時にもプロファイルと接続世代を照合する。capability全削除を維持し、元ファイルの権限は変更しない。管理シークレットは別の0600ファイルから読み込め、値をargvへ載せずAuth Proxyだけにreadonlyで渡す。CLIはprofile領域とworker共有の重複を拒否する。組み込み側も保存領域・管理シークレットをworkerへ共有しない。
+### 初回取得とOAuth更新
 
-現在の製品APIキーファイルとローカルOAuth更新状態は権限制限付きの平文であり、暗号化Vaultは未実装。将来の[認証管理要件](credential-store.md#独立した認証管理の設計要件wslvmヘッドレス)にはWSL 2・Linux VM・ヘッドレスを含める。「ホスト」は信頼する制御環境を意味し、その環境自体をWSL／VMに置くことと、作業VMへ実資格情報を渡すことは区別する。
+- 返却項目：初回取得・更新ともに許可した項目だけ。
+- 更新エラー：既知コードとHTTP statusだけを保持。
+- 非返却：上流本文・任意フィールド・通信エラー詳細。
+- 確認方法：[固定CLI試験](testing.md#codexのidトークン分離)。
+- 更新前のワーカーファイル・過去ログ：自動消去しない。
+- 旧ワーカーへの対応：Proxy更新後に停止・再作成。
 
-AI APIのHTTP・WebSocketは、発行済みで有効な短命トークンを上流接続前に検証する。未発行・失効・期限切れ・重複・矛盾する認証は401で拒否する。失効・期限切れ・置換時は既存のHTTP streamとWebSocketも終了する。
+### 保存・mount・権限
 
-admin listenerはauth proxyのprimary egress IPにbindし、hostでは127.0.0.1へ公開する。workerから見えるdata listenerにはadmin操作を公開しない。placeholderの失効・再起動時の復元はhostのManagerだけが行う。
+| 対象 | 扱い |
+|---|---|
+| 従来の認証ファイル | 呼出元UID/GID・専用HOMEでreadonly mount。元の0600を維持 |
+| 独立プロファイル | ホスト認証のmount・環境変数を省略。選択した0700ディレクトリだけRWで共有 |
+| プロファイルのJSON・lock | 0600。CAS・fsync・atomic renameで更新 |
+| ワーカー再開 | プロファイルと接続世代を照合 |
+| capabilities | 全削除。認証ファイル読取用にも追加しない |
+| 管理secret | 別の0600ファイルをAuth Proxyだけにreadonly mount可能。値をargvへ載せない |
+| ワーカーへの共有 | CLIはprofile領域との重複を拒否。組み込み側もStore・管理secretを共有外へ置く |
+| 保存暗号化 | 現在は権限制限付き平文。暗号化Vaultは未実装 |
+
+- 「ホスト」：信頼済みの制御環境。
+- WSL／VM内に置く構成も含む。
+- 作業VM：任意コードを動かすワーカー。
+- 実資格情報を渡さない。
+- 将来の要件：[WSL・VM・ヘッドレスの認証管理](credential-store.md#独立した認証管理の設計要件wslvmヘッドレス)。
+
+### 認証チェックと管理API
+
+| 条件・経路 | 動作 |
+|---|---|
+| AI HTTP・WebSocket | 上流接続前に発行済み・有効期限内の短命トークンを検証 |
+| 未発行・欠落・失効・期限切れ・重複・矛盾 | 401で拒否 |
+| 失効・期限切れ・置換 | 既存HTTP stream・WebSocketも終了 |
+| admin listener | Auth Proxyのprimary egress IPへbind。ホストでは127.0.0.1へ公開 |
+| worker向けdata listener | admin操作を公開しない |
+| placeholderの失効・再起動時の復元 | ホストのManagerだけが実施 |
 
 ## ワーカーの制限と起動ゲート
 
-| 項目 | 条件 |
+| 項目 | 既定条件 |
 |---|---|
-| kernel | workerごとに別のDragonball VM |
-| UID/GID | 解決済みの非root ID。既定はhostのcurrent user |
+| kernel | ワーカーごとに別のDragonball VM |
+| UID/GID | 解決済みの非root ID。既定はホストのcurrent user |
 | capabilities | bounding / effective / permitted / inheritable / ambientをすべて0 |
 | NNP・seccomp | `NoNewPrivs=1`、guest `Seccomp=2` |
 | guest資源 | CPU 1、memory 2 GiB、PID 512 |
 | host VM全体 | CPU 1、memory 3 GiB、swap 0、PID 512、OOM group |
-| network | 専用bridge・namespace、静的proxy hosts、直接外向き・host・peer通信を遮断 |
-| management | containerd/node/BuildKit socket・資産・台帳・host kernel操作用パスをguestへ渡さない |
+| network | 専用bridge・namespace・静的Proxy hosts。直接外向き・ホスト・peer通信を遮断 |
+| management | containerd/node/BuildKit socket・資産・台帳・host kernel操作用パスを渡さない |
 
-固定bootstrapをPID 1として起動し、元のimage entrypointは待機させる。hostのshim/logger実体・worker ID・cgroup所属・上限、guestの別boot IDと実権限・制限を検証したあとで、placeholderを有効にしてnonceで解放する。Kataや資源検証に失敗した場合はエラーになり、runc/QEMUへ自動fallbackしない。
+### ユーザーコードを解放する順序
 
-Kata外側の隔離を検証したworkerでは、Codexの内側sandboxを `danger-full-access` に設定する。VMの中でさらにnamespaceを作ることによるseccompとの不整合を防ぐためであり、CLIの承認設定は独立して維持する。Codexの非対話execはCLI自身がapprovalを選ぶ場合がある。
+1. 固定bootstrapをPID 1で起動。
+
+    - 元のimage entrypointは待機。
+
+2. ホストのshim/logger実体・worker ID・cgroup所属・上限を検証。
+3. guestの別boot ID・実権限・資源制限を検証。
+4. placeholderを有効にし、nonceでユーザーコードを解放。
+
+- Kata・資源の検証失敗：エラー。
+- runc/QEMUへ自動fallbackしない。
+- 検証済みKata内のCodex：内側sandboxを `danger-full-access` に設定。
+- 設定の理由：VM内での追加namespaceとseccompの不整合を回避。
+- CLIの承認設定：独立して維持。
+- 非対話execではCLI自身がapprovalを選ぶ場合あり。
 
 ## ホスト側の信頼境界
 
-nodeのoperator groupとBuildKit利用者はroot相当で、image・command・host bind mountを選べる信頼済み利用者である。guestにはoperator socketを公開しない。プロキシはrunc、workerは既定でKata。`--runtime runc` は同じcontainerd上で明示選択する互換モードで、独立kernelを提供しない。
+| 対象 | 信頼・権限の範囲 |
+|---|---|
+| nodeのoperator group・BuildKit利用者 | root相当。image・command・host bind mountを選択可能 |
+| guest | operator socketを公開しない |
+| Proxy | runcで実行 |
+| ワーカー | 既定はKata |
+| 明示した `--runtime runc` | 同じcontainerd上の互換モード。独立kernelは提供しない |
 
-manifestでroot所有・一般ユーザーから書き換え不可のruntime、kernel、guest image、bootstrap、IO logger、containerd設定と本体、network操作ツールを固定する。実プロセスはinode、cmdlineのworker ID、start ticks、実cgroup所属で照合する。manifestはchecksum記録であり、配布物の署名・出所の確認の代わりではない。
+### 固定資産・プロセスの検証
 
-資産検証は毎回全ファイルを再読込し、SHA-256を計算する。ファイル間の並列数は1回の検証につきGOMAXPROCS以下・最大4に制限し、更新時刻などを根拠とする検証結果のキャッシュは使わない。[性能計測の手順](performance.md)も参照。
+| 検証項目 | 方法・制限 |
+|---|---|
+| 固定対象 | runtime・kernel・guest image・bootstrap・IO logger・containerd設定／本体・network操作ツール |
+| 所有権 | root所有、一般ユーザーから書き換え不可 |
+| 実プロセス | inode・cmdlineのworker ID・start ticks・実cgroup所属を照合 |
+| manifest | checksum記録。配布元・署名の確認の代わりにはならない |
+| 資産hash | 毎回全ファイルを再読込しSHA-256を計算 |
+| 検証の並列数 | 1回につきGOMAXPROCS以下、最大4 reader |
+| 結果cache | 更新時刻を根拠に検証を省略しない |
 
-Dragonball終了時のcgroup回収は同じ上限内のsibling leafへ移す。起動失敗の回収と孤児の強制停止は、専用予約の全占有プロセスを確認した場合だけ `cgroup.kill` を使う。他サービスのgroup・任意PID・不明なnamespaceを採用しない。管理層に接続できない場合はunknownとし、孤児として削除しない。
+[性能計測の手順](performance.md)
+
+### cgroup・孤児回収
+
+- Dragonball終了時：同じ上限内のsibling leafへ回収処理を移す。
+- `cgroup.kill`：専用予約の全占有プロセスを確認した場合だけ使用。
+- 対象外：他サービスのgroup・任意PID・不明namespace。
+- 管理層へ接続不能：`unknown` とし、孤児として削除しない。
 
 ## workspace・Git・削除
 
-workspaceと追加mountのreadonly指定を保つ。worktreeでのcommit互換性を維持するため、共通Git metadataは同じ絶対パスで共有し、必要な場合は書き込み可能にする。VM隔離は、明示的に共有したファイルやGit設定を不変にする仕組みではない。元の `.git` pointerは書き換えない。
-
-削除journalは実オブジェクト削除前に永続化する。network、token失効、cgroup、worktreeの回収が不確実な場合はintentを残し、worktreeを先に消さない。rootのVM予約・network情報・OCI spec・ログはprivateな状態ディレクトリへ保存する。VM inventoryにはAPIキー・環境変数・タスク本文を出さない。
+| 対象 | 保護・制限 |
+|---|---|
+| workspace・追加mount | 指定したreadonlyを維持 |
+| 共通Git metadata | worktreeのcommit互換性のため同じ絶対パスで共有。必要な場合はRW |
+| 元の `.git` pointer | 書き換えない |
+| 明示共有したファイル・Git設定 | VM隔離だけで不変にはならない |
+| 削除journal | 実オブジェクト削除前に永続化 |
+| network・token失効・cgroup・worktreeの回収が不確実 | intentを残す。worktreeを先に消さない |
+| rootのVM予約・network・OCI spec・ログ | privateな状態ディレクトリへ保存 |
+| VM inventory | APIキー・環境変数・タスク本文を出さない |
 
 ## 制限と確認範囲
 
-ワーカーとプロキシ間は専用ネットワーク上の平文HTTPであり、TLSは提供しない。管理APIやデータポートを公開ネットワークへ直接公開しない。
-短命トークンはBearer認証で、送信元コンテナIDとの照合は行わない。盗まれた有効トークンは失効まで利用され得る。
-一般通信のルールは選択したegressプロキシ単位で固定する。ワーカー別の許可リストはポリシー別proxyで強制し、同じ規則のワーカーはproxyを共有できる。一般通信は既定拒否であり、宛先の許可が空なら一般egressを接続しない。公開宛て通信を許可する従来動作はホスト側で明示的に選ぶ。ホットリロードは提供しない。
+### 通信と認可
 
-対象ワーカーを即時停止し再起動を禁止する `policy quarantine` / Go API `Quarantine` を提供する。一般通信だけでなくAI通信・全ジョブも終了する。workspaceは保持し、新しい規則での再開は新規ワーカーとする。隔離状態はnodeで永続化するが、エラー時は停止完了と判断せず再試行する。[停止と隔離](sandbox-features.md#通信の停止と隔離)を参照。
+| 項目 | 制限・既定動作 |
+|---|---|
+| ワーカー―Proxy間 | 専用network上の平文HTTP。TLSなし |
+| 管理API・data port | 公開networkへ直接公開しない |
+| 短命トークン | Bearer認証。送信元コンテナIDとの照合なし。盗まれた有効トークンは失効まで利用され得る |
+| 一般通信 | 既定拒否。宛先許可が空なら一般egressを接続しない |
+| ワーカー別許可 | ポリシー別Proxyで強制。同じ規則のワーカーは共有可 |
+| 公開宛て通信を広く許可 | ホストが明示的に選択 |
+| 通信規則の変更 | Proxy単位で固定。ホットリロードなし |
+| モデル制限 | ホストがAuth Proxyへ明示設定した場合だけ有効。起動CLIのモデル指定だけでは認可しない |
 
-[実機試験と実AI試験](testing.md)では、隔離・権限・資源・機能と、既存auth.jsonによるWebSocket/HTTP SSE推論を確認した。
-長期間の実OAuth更新、対話キーボード操作、任意のカスタムイメージは別途確認が必要。
-隔離の強さはhost kernel・KVM・Kata・guest kernelの更新状態にも依存する。
+- モデル制限の対応経路・WebSocket拒否：[追加制御](sandbox-features.md#モデル認可と段階的な起動)。
 
-モデルIDの制限は、ホストが認証プロキシへ明示設定した場合だけ有効です。起動CLIのモデル指定だけでは認可を強制しません。対応経路・WebSocket拒否・別通信経路の扱いは[追加制御](sandbox-features.md#モデル認可と段階的な起動)を参照してください。
+### 対象ワーカーを即時隔離する
 
-Claude CodeはAPIキー・サブスクで仮トークン用の環境変数を分け、実access/refresh tokenをワーカーへ保存しません。実Anthropic推論とサブスク利用枠の検証はfixture試験に含みません。[Claude Code](claude-code.md)と[テスト記録](testing.md#claude-codeの受入)を参照してください。
+| 操作 | 効果・条件 |
+|---|---|
+| `policy quarantine` / Go API `Quarantine` | 対象ワーカーを即時停止し、再起動を禁止 |
+| 停止対象 | 一般通信・AI通信・全ジョブ |
+| workspace | 保持。新しい規則で再開する場合は新規ワーカーを作成 |
+| 隔離状態 | nodeで永続化 |
+| 操作失敗 | 停止完了と判断しない。再試行 |
+
+[停止と隔離](sandbox-features.md#通信の停止と隔離)
+
+### 検証済み・別途確認が必要なもの
+
+| 区分 | 範囲 |
+|---|---|
+| [実機・実AI試験](testing.md)の記録あり | 隔離・権限・資源・機能、既存auth.jsonによるWebSocket/HTTP SSE推論 |
+| 別途確認 | 長期間の実OAuth更新・対話キーボード操作・任意のカスタムイメージ |
+| Claudeのfixture試験 | APIキー／サブスクのplaceholder変数を分離。実access/refresh tokenをworkerへ保存しない |
+| Claudeで未検証 | 実Anthropic推論・サブスク利用枠 |
+| 継続的な更新が必要 | host kernel・KVM・Kata・guest kernel |
+
+[Claude Code](claude-code.md)・[受入試験の記録](testing.md#claude-codeの受入)

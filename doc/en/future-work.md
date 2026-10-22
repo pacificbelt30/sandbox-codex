@@ -1,6 +1,8 @@
 # Future work
 
-In addition to Codex CLI and Claude Code, the following coding agents are candidates for future integration. They are not currently supported. Adoption, implementation order and release dates are undecided.
+- In addition to Codex CLI and Claude Code, the following coding agents are candidates for future integration.
+- They are not currently supported.
+- Adoption, implementation order and release dates are undecided.
 
 ## Additional coding agents
 
@@ -15,22 +17,35 @@ In addition to Codex CLI and Claude Code, the following coding agents are candid
 | [Kilo Code CLI](https://kilo.ai/docs/code-with-ai/platforms/cli) | Launch adapter, provider/auth configuration and proxy routing |
 | [Goose](https://github.com/aaif-goose/goose) | Launch adapter, provider/auth configuration and tool/MCP integration |
 
-Investigate local CLI execution inside Kata separately from editor extensions and hosted offerings. API and subscription authentication must be assessed per agent/provider; support for both is not assumed.
+- Investigate local CLI execution inside Kata separately from editor extensions and hosted offerings.
+- API and subscription authentication must be assessed per agent/provider; support for both is not assumed.
 
 ## Shared acceptance conditions
 
-- Retain the authentication proxy. Never pass real API keys, access tokens, refresh tokens or ID tokens to work VMs. Workers receive only short-lived, per-run, proxy-scoped placeholders.
-- Use independent product authentication profiles, without automatically importing host CLI login files or inherited credentials. Hold integrations whose storage or proxy use cannot satisfy official authentication terms.
-- Login-only Kata sessions must not persist secrets; discard temporary state on completion, cancellation and failure. Do not replace the proxy with a persistent VM holding real credentials.
-- Prioritize independent credential management. Real ID-token passthrough has been removed; do not weaken credential isolation or model authorization to add an agent.
-- Pin CLI versions, distributions and images; provide explicit launch settings independent of user/project configuration. Extend [static upstream checks](upstream-compatibility.md) for each agent.
-- Verify startup, tools, streaming, cancellation, stop/restart, revocation and credential leakage into logs, files and snapshots in real Kata. Record verified behavior and unsupported constraints in the [testing guide](../testing.md).
+- Retain the authentication proxy.
+- Never pass real API keys, access tokens, refresh tokens or ID tokens to work VMs.
+- Workers receive only short-lived, per-run, proxy-scoped placeholders.
+- Use independent product authentication profiles, without automatically importing host CLI login files or inherited credentials.
+- Hold integrations whose storage or proxy use cannot satisfy official authentication terms.
+- Login-only Kata sessions must not persist secrets; discard temporary state on completion, cancellation and failure.
+- Do not replace the proxy with a persistent VM holding real credentials.
+- Prioritize independent credential management.
+- Real ID-token passthrough has been removed; do not weaken credential isolation or model authorization to add an agent.
+- Pin CLI versions, distributions and images; provide explicit launch settings independent of user/project configuration.
+- Extend [static upstream checks](upstream-compatibility.md) for each agent.
+- Verify startup, tools, streaming, cancellation, stop/restart, revocation and credential leakage into logs, files and snapshots in real Kata.
+- Record verified behavior and unsupported constraints in the [testing guide](../testing.md).
 - Review CLI/SDK licenses, retained baseline data, distribution terms and authentication/subscription conditions before integration.
 
 ## Independent authentication inside WSL and VMs
 
-The initial 0600 FileStore, independent profile creation/explicit import/selection and auth-proxy API/OAuth integration with durable refresh are implemented. See [usage](commands/auth.md#independent-profiles). Automated login-only Kata, live key validation, vault/migration and WSL/VM deployment acceptance remain future work.
+- The initial 0600 FileStore, independent profile creation/explicit import/selection and auth-proxy API/OAuth integration with durable refresh are implemented.
+- See [usage](commands/auth.md#independent-profiles).
+- Automated login-only Kata, live key validation, vault/migration and WSL/VM deployment acceptance remain future work.
 
-Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems. Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM. Acceptance must include explicit passphrase unlocking, filesystem guarantees, lock/revocation, a browser on another device, backup, cloning and rollback.
+- Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems.
+- Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM.
+- Acceptance must include explicit passphrase unlocking, filesystem guarantees, lock/revocation, a browser on another device, backup, cloning and rollback.
 
-See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems). The vault/key backends are not implemented; Kata execution support in WSL/VMs requires separate deployment testing.
+- See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems).
+- The vault/key backends are not implemented; Kata execution support in WSL/VMs requires separate deployment testing.
