@@ -44,6 +44,10 @@ oaiso rm WORKER
 | 実行中ワーカーの削除 | `rm --force WORKER` |
 | 削除失敗 | 同じコマンドで回収を再試行 |
 
+- 保持するsnapshot：containerdのファイルシステム。VMメモリのsnapshotではない。
+- `start`：元のメインプログラムを再実行。起動hookも再実行し、tmpfsは空になる。
+- 一度終了した前面ワーカー：`--keep` なしなら既に削除済みのため再起動不可。
+
 ## 並列で実行する
 
 ```bash
@@ -71,12 +75,13 @@ oaiso run --agent codex --parallel 2 --worktree \
 1. `ps -a` で対象を確認し、ログと成果を保存。
 2. 旧版CLIでワーカーを停止・削除。
 3. CLIと管理サービスを同じ版へ更新。
-4. リポジトリのルートで以下を実行。
+4. ワーカーイメージも同じソース版から更新し、リポジトリのルートで以下を実行。
 5. 更新後は新規ワーカーを作成。
 
 ```bash
 oaiso proxy stop
 oaiso proxy rm
+oaiso build --tag codex-dock:latest -f docker/sandbox/Dockerfile
 oaiso proxy build
 oaiso proxy run
 oaiso runtime-check
@@ -89,6 +94,9 @@ oaiso runtime-check
 | `proxy stop` / `proxy rm` の名前省略 | 既定の2つのProxyが対象 |
 | 独自Proxy名 | それぞれ `--name NAME` で指定 |
 | `proxy build` のみ実行 | 既存コンテナは更新されない |
+| 独自ワーカーイメージ・テンプレート | 既定イメージに加え、実際に使うDockerfile・entrypointも更新 |
+| 利用者ディレクトリのテンプレート | 同名の組み込み版より優先し、自動上書きしない。更新元とentrypointを別途確認 |
+| 認証方式・通信設定だけの変更 | CLI・node・イメージの再ビルドは不要。新設定でProxy・ワーカーを再作成 |
 | 旧Proxy | `worker_token_auth: true` 非対応なら新CLIは拒否 |
 | 新規ワーカーの起動 | 新しいイメージからProxyを再作成した後 |
 
@@ -130,6 +138,7 @@ oaiso runtime-check
 | 項目 | 現状・方針 |
 |---|---|
 | 新版検出・自動昇格 | 未実装 |
+| 上流契約の変更検知 | [CIで実装済み](upstream-compatibility.md)。差分を報告し、CLI版を自動昇格しない |
 | 将来の流れ | npm新版検出 → 候補タグ作成 → 実環境ゲート → 新規ワーカー向け既定タグ変更 |
 | Proxyの基本中継 | `/v1/*`・`/chatgpt/*` のパス・クエリ・本文を転送 |
 | 認証の処理 | 上流認証ヘッダーの置換・OAuth更新のrefresh token秘匿 |

@@ -9,7 +9,7 @@
 
 | 方式 | 資格情報の保持先 | 選ぶ場合 |
 |---|---|---|
-| 独立プロファイル | 製品専用の0700ディレクトリ・0600ファイル | ホストCLIのログインと製品の認証を分ける |
+| 独立プロファイル（ホストと分ける場合の推奨） | 製品専用の0700ディレクトリ・0600ファイル | ホストCLIのログインと製品の認証を分ける |
 | 従来のホスト連携 | ホストの認証ファイル・認証環境変数 | 既存のホスト認証を利用する |
 | 組み込み製品のStore | 組み込み側が提供する保存先 | ケースごとの認証を[Go API](../credential-store.md)で管理する |
 
@@ -24,6 +24,17 @@
 | Codex CLI | OpenAI APIキーを[登録](../commands/auth.md#apiキーを登録する) | Codex形式のOAuthを[import](../commands/auth.md#oauthを取り込む) |
 | Claude Code | Anthropic APIキーを[登録](../commands/auth.md#apiキーを登録する) | Claude形式のOAuthを[import](../commands/auth.md#oauthを取り込む)。setup-tokenは[Claudeの手順](../claude-code.md) |
 
+**独立プロファイルは、以下から1つだけ実行。例では名前を `work` に統一します。**
+
+| 認証 | 実行するコマンド |
+|---|---|
+| OpenAI APIキー | `oaiso auth profile set work --provider openai` |
+| Anthropic APIキー | `oaiso auth profile set work --provider anthropic` |
+| Codex OAuth | `oaiso auth profile import work --format codex --credentials-stdin < /private/login/auth.json` |
+| Claude OAuth | `oaiso auth profile import work --format claude --credentials-stdin < /private/login/.credentials.json` |
+
+- `/private/login/...`：事前に公式CLIで認証したJSONの実際のパスへ置換。
+- OAuth import：コピー時点でホストCLIの保存先と分離。その後のログイン変更は自動同期しない。
 - `auth profile set`：TTYから非表示入力。引数へ実キーを書かない。
 - `auth profile import`：明示したstdinから入力。元ファイルは自動探索・削除しない。
 - 従来のホスト連携：[認証ソースの準備](../getting-started.md#2-認証方式を選ぶ)。
@@ -32,8 +43,24 @@
 
 1. [管理シークレットを作成](../commands/auth.md#管理シークレットを作成し起動する)。資格情報とは別の0600ファイルに保存。
 2. [グローバル設定でプロファイルを選択](../commands/auth.md#日常操作で使うプロファイルを固定する)。
-3. ソースのルートで `oaiso init` または `oaiso init --agent claude`。
-4. [エージェントを起動](agents.md)。
+3. 設定の `auth_profile` は、上で作成した `work` に合わせる。`/home/user/...` は実際の絶対パスへ置換。
+4. 認証方式を確認。
+
+```bash
+oaiso auth show
+```
+
+- 独立プロファイルの期待値：`Profile: work` と、選択したproviderの `api-key` または `oauth`。
+- プロファイルを作成しただけでは選択されない。設定前の `auth show` は従来モードのOpenAI情報を表示。
+- サブスクの専用Kataログインと、その場での実APIキー照合は未実装。
+
+## 4. 初回起動へ進む
+
+1. 必要なら[一般通信の宛先を設定](networking.md)。
+2. [クイックスタートのイメージ・Proxy準備](../getting-started.md#3-プロキシとイメージを用意する)へ戻る。
+3. `work` にOpenAIを登録した場合はCodex、Anthropicを登録した場合はClaudeを準備・起動。
+
+- `init` は認証ソースの存在を確認する。実サービスでの認証成功は、エージェントの最初の要求で別途確認。
 
 ## 更新と切り替え
 

@@ -1,0 +1,55 @@
+# Oaisoの概要と用語
+
+**日本語** | [English](en/concepts.md)
+
+- 用途：Codex CLI・Claude Codeを、通常はワーカーごとのKata VMで実行。
+- 基本の流れ：ホストを準備 → 認証を選択 → イメージとProxyを準備 → 作業プロジェクトで起動。
+- 次の操作：[インストール](installation.md)。配置済みなら[クイックスタート](getting-started.md)。
+
+## 登場するもの
+
+| 用語 | 意味・担当 |
+|---|---|
+| 実行ホスト | Linux/KVM環境。管理サービス・BuildKit・Proxyを動かす。条件を満たすWSL／VMでも可 |
+| operator | ホスト上でCLIを使う信頼済み利用者。管理socketとBuildKitへのアクセスはroot相当 |
+| node | root管理サービス。containerd・VM・ネットワーク・資源を検証して操作 |
+| ワーカー | 1回の作業環境。通常は1ワーカーにつき1つのKata VM。CLI上の名前またはIDで操作 |
+| エージェント | ワーカー内のCodex CLI／Claude Code |
+| ワーカーイメージ | エージェント・依存ツール・起動用entrypointを含むOCIイメージ。BuildKitで作成 |
+| Auth Proxy | 実資格情報を保持し、ワーカーの短命トークンを検証してAI APIへ中継 |
+| egress Proxy | Git・npm・pipなどの一般通信を中継。実資格情報を保持しない |
+| ジョブ | 起動済みワーカー内で動かす背景コマンド。VMとは別の単位 |
+
+## 2種類の「プロファイル」
+
+| 種類 | 目的 | 選択する場所 |
+|---|---|---|
+| 認証プロファイル | ホストCLIとは別にAPIキー・OAuthを保管 | グローバル `auth_profile` / `--auth-profile` |
+| 資源プロファイル | CPU・メモリ・PID上限を選択 | `--profile-size standard` / `small` / `compact` など |
+
+- 認証プロファイルを選んでも、資源上限は変更しない。
+- 資源プロファイルを選んでも、認証先・利用アカウントは変更しない。
+
+## ディレクトリを区別する
+
+| 場所 | 内容・使う操作 |
+|---|---|
+| 製品ソースのcheckout | `scripts/install.sh`・`docker/proxy/Dockerfile`・Goソース。初回のProxyビルドで使用 |
+| 作業プロジェクト | エージェントに編集させるリポジトリ。ここで `oaiso codex` / `oaiso claude` を実行 |
+| VMの `/workspace` | 作業プロジェクトの共有先。既定は読み書き可能で、変更はホストへ反映 |
+| `~/.config/codex-dock/config.toml` | ホスト側の利用者設定。認証の選択・Proxy・起動既定値 |
+| 作業プロジェクトの `codex-dock.toml` | チームで共有する設定。認証情報・追加ホストmountは置けない |
+| 独立プロファイルの保存先 | 0700ディレクトリ・0600ファイル。workspace・追加mountの外に置く |
+
+## 作業の終了と再開
+
+| 操作 | 意味 |
+|---|---|
+| 前面のエージェントを終了 | 既定ではワーカーを削除。`--keep` なら保持 |
+| `stop` | VMを停止し、ワーカーを保持。トークンは失効 |
+| `start` | 同じワーカーのプログラムを再実行。中断したメモリ状態は再開しない |
+| `rm` | 管理対象のネットワーク・worktreeも回収。未保存の成果は先に保全 |
+
+- ホストの共有ファイル：ワーカー削除後も残る。ただし管理worktreeは削除対象。
+- 通常の `start` と、エージェント自身の会話履歴再開オプションは別。
+- 詳細：[ファイル共有](workspace.md)・[日常の運用](operations.md)。

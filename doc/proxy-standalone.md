@@ -9,21 +9,21 @@
 ## 1. ローカルで起動する
 
 - ホストの[認証ソース](auth-proxy.md#認証ソース)を用意します。
-- 管理secretを入力し、dataとadminをそれぞれloopbackへbindします。
+- [管理secretファイル](commands/auth.md#管理シークレットを作成し起動する)を用意し、dataとadminをそれぞれloopbackへbindします。
+- 前提：Bash・Python 3・curl・ホストのCodex CLI。独立プロファイルを使う場合もグローバル設定で選択済みにする。
 - 以下は同じbashセッションで続けて実行する例です。
 
 ```bash
-read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
-printf '\n'
-export PROXY_ADMIN_SECRET
+export PROXY_ADMIN_SECRET_FILE="$HOME/.config/codex-dock/proxy-admin-secret"
 
 oaiso proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
-  --admin-secret "$PROXY_ADMIN_SECRET" &
+  --admin-secret-file "$PROXY_ADMIN_SECRET_FILE" &
 PROXY_PID=$!
 
 export PROXY_DATA_URL=http://127.0.0.1:18080
 export PROXY_ADMIN_URL=http://127.0.0.1:18081
+curl --retry 5 --retry-connrefused --retry-delay 1 -fsS "$PROXY_DATA_URL/health" >/dev/null
 ```
 
 - `proxy run` のdataポートはホストへ公開されないため、このローカル例では `proxy serve` を使います。
@@ -33,16 +33,23 @@ export PROXY_ADMIN_URL=http://127.0.0.1:18081
 
 ```bash
 export SESSION_NAME=my-session
-TOKEN=$(curl --retry 5 --retry-connrefused --retry-delay 1 -fsS \
-  -X POST "$PROXY_ADMIN_URL/admin/issue" \
-  -H 'Content-Type: application/json' \
-  -H "X-Proxy-Admin-Secret: $PROXY_ADMIN_SECRET" \
-  -d "{\"container\":\"$SESSION_NAME\",\"ttl\":3600}" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+TOKEN=$(python3 - <<'PY'
+import json, os
+from pathlib import Path
+from urllib.request import Request, ProxyHandler, build_opener
+secret = Path(os.environ['PROXY_ADMIN_SECRET_FILE']).read_text().strip()
+request = Request(os.environ['PROXY_ADMIN_URL'] + '/admin/issue',
+    data=json.dumps({'container': os.environ['SESSION_NAME'], 'ttl': 3600}).encode(),
+    headers={'Content-Type': 'application/json', 'X-Proxy-Admin-Secret': secret})
+with build_opener(ProxyHandler({})).open(request, timeout=10) as response:
+    print(json.load(response)['token'])
+PY
+)
 export TOKEN
 ```
 
 - トークンをログに出す必要はありません。
+- 管理secretはファイルから読み、argvへ載せません。Pythonの出力トークンはシェル変数へ捕捉します。
 - `/health` はプロセスの応答であり、このトークンの有効性やAI疎通を保証するものではありません。
 
 ## 3. クライアント設定を分ける
@@ -104,9 +111,17 @@ codex
 ## 4. 終了時に失効させる
 
 ```bash
-curl -fsS -X POST \
-  "$PROXY_ADMIN_URL/admin/revoke?container=$SESSION_NAME" \
-  -H "X-Proxy-Admin-Secret: $PROXY_ADMIN_SECRET"
+python3 - <<'PY'
+import os
+from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, ProxyHandler, build_opener
+url = os.environ['PROXY_ADMIN_URL'] + '/admin/revoke?' + urlencode({'container': os.environ['SESSION_NAME']})
+secret = Path(os.environ['PROXY_ADMIN_SECRET_FILE']).read_text().strip()
+request = Request(url, data=b'', headers={'X-Proxy-Admin-Secret': secret})
+with build_opener(ProxyHandler({})).open(request, timeout=10) as response:
+    response.read()
+PY
 kill "$PROXY_PID"
 ```
 

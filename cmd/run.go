@@ -103,18 +103,17 @@ func init() {
 	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for the agent")
 	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", `Run this command instead of an interactive shell. An explicit --agent codex/claude takes priority; the configured default agent does not apply.
   Mutually exclusive with a "-- command..." trailing on the command line (see the "run" command's usage), which is usually easier for multi-word commands since it avoids having to quote the whole thing as one string.`)
-	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Approval mode for Codex CLI.
-  suggest   ask for approval on every action (default, safest)
-  auto-edit auto-apply file edits; ask before running shell commands
-  full-auto never ask for approval (--ask-for-approval never)
-  danger    bypass all approvals and sandbox restrictions
-            (--dangerously-bypass-approvals-and-sandbox)
-            The selected worker runtime provides the safety boundary.`)
+	f.StringVar(&approvalModeFlag, "approval-mode", "suggest", `Agent approval mode.
+  suggest   use the agent CLI's default approval behavior
+  auto-edit Codex: --ask-for-approval on-request; Claude: acceptEdits
+  full-auto Codex: --ask-for-approval never; Claude: skip permissions
+  danger    bypass agent approvals and Codex's inner sandbox
+            The worker runtime and host restrictions remain enforced.`)
 	f.BoolVar(&fullAutoFlag, "full-auto", false, "Deprecated: use --approval-mode full-auto")
 	if err := f.MarkDeprecated("full-auto", "use --approval-mode full-auto instead"); err != nil {
 		panic(err)
 	}
-	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to Codex")
+	f.StringVarP(&runOpts.Model, "model", "m", "", "Model name to pass to the selected agent (not a model authorization rule)")
 	f.BoolVar(&runOpts.WatchPolling, "watch-polling", false, "Enable 1s polling for Chokidar/Watchpack to observe host edits across the VM boundary")
 	f.BoolVar(&runOpts.Compatibility.SSHProxy, "ssh-proxy", false, "Configure Git SSH through the policy-checked HTTP CONNECT proxy")
 	f.BoolVar(&runOpts.Compatibility.JVMProxy, "jvm-proxy", false, "Configure JVM HTTP(S) proxy properties")

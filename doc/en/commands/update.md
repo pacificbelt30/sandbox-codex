@@ -24,17 +24,23 @@ go install github.com/pacificbelt30/codex-dock@latest
 - The `codex-dock` binary and `oaiso` / `cxd` aliases are placed in `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when GOBIN is unset.
 - An unrelated file named `oaiso` in that directory is left untouched and causes an error.
 
-> **Note**: This command only works for installs done via `go install`.
-> If you installed with `make install` (e.g. into `/usr/local/bin`) or a
-> prebuilt release binary, the binary you actually run lives at a different
-> path than the one `go install` writes to, so running this command will not
-> update it. In that case, run `git pull` and re-run `make install` instead.
+## Update according to installation method
+
+| Installation | Update procedure |
+|---|---|
+| Automatic installation or node bundle | [Setup update](../../setup.md#更新する) (Japanese); keep CLI, node and helpers on matching versions |
+| Manual host installation | [Runtime and binary update](../../kata.md#固定資産の更新) (Japanese) |
+| CLI only in Go's bin directory | `oaiso update`; node and images require separate updates |
+
+- Check the active path with `command -v oaiso`.
+- This does not update `/usr/local/bin/oaiso`; it installs a separate CLI in Go's bin directory.
+- `make install` alone does not update the node service; use the appropriate host procedure above.
 
 ---
 
 ## Related Documentation
 
-- [Quick Start](../getting-started.md) — Installation via `go install`
+- [Installation](../installation.md) — First installation and supported hosts
 
 ## Host services and images
 

@@ -58,6 +58,24 @@ oaiso run -- npm test -- --watch=false
 
 ---
 
+## 資源プロファイル
+
+| 組み込み名 | CPU | guestメモリ | ホスト予約・上限 | guest／host PID上限 |
+|---|---|---|---|---|
+| `standard`（既定） | 1 | 2 GiB | 3 GiB | 512 |
+| `small` | 1 | 1 GiB | 2 GiB | 512 |
+| `compact` | 1 | 512 MiB | 768 MiB | 512 |
+
+```bash
+oaiso profile --node --json
+oaiso run --profile-size small --agent codex
+```
+
+- `profile` だけではCLI組み込み値、`--node` では実際のnodeと管理者定義を照会。
+- 予約・上限は実測メモリ使用量ではない。`compact` は大きな依存導入・ビルドに不足する場合あり。
+- PID上限の変更：[管理者定義](../sandbox-features.md#管理者定義の資源プロファイル)。`profile define` はJSON生成だけで、nodeへの登録ではない。
+- [実測値](../sandbox-features.md#回収の常駐とメモリの観測)を確認して選択。
+
 ## オプション一覧
 
 - 認証をホストと分けるには `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...`、または信頼済みグローバル設定を使います。
@@ -97,6 +115,32 @@ oaiso run -- npm test -- --watch=false
 | `--shell` | `-s` | `false` | `entrypoint.sh` をバイパスした素の（未認証の）シェルを起動（デバッグ用） |
 | `--shell-type` | | `$SHELL` から自動判定、それ以外は `bash` | 対話シェルの種類（[詳細](#--shell-type--シェルの種類の指定)） |
 | `--user` | | `current` | コンテナ内の実行ユーザ（[詳細](#--user--コンテナ実行ユーザの指定)） |
+
+### 通信・隔離・実行準備のオプション
+
+| フラグ | 既定値 | 用途・条件 |
+|---|---|---|
+| `--policy-preset` | 未指定 | `offline` / `test` / `dependencies` / `api`。ホストの通信許可を拡張しない |
+| `--egress-allow-domain` | 未指定 | ワーカー別の許可を狭める。繰り返し可 |
+| `--deny-read` / `--deny-write` | 空 | 既存の `/workspace` 以下をmask／readonly。繰り返し可 |
+| `--watch-polling` | `false` | Chokidar／Watchpackの1秒ポーリング |
+| `--ssh-proxy` / `--jvm-proxy` | `false` | SSH CONNECT／JVMのProxy設定 |
+| `--ca-bundle` | 未指定 | ワーカーに渡す追加PEM CAのホストパス |
+| `--clone-dir` | 未指定 | 新しい絶対パスへ独立clone。並列起動と併用不可 |
+| `--environment-lock` | 未指定 | lockファイルとimage digestを照合 |
+| `--image-id` | 未指定 | `sha256:...` のimage digestを要求 |
+| `--start-hook` | 空 | 起動前のguest shellコマンド。繰り返し可 |
+| `--readiness` | 未指定 | 起動準備完了のguest shell probe |
+| `--readiness-timeout` | 0（実効60秒） | hook・probeの期限 |
+| `--max-lifetime` / `--idle-timeout` / `--retention` | `0` | 寿命・idle・終了後保持。`30m` / `2h` など。`reap` の実行が必要 |
+| `--proxy-admin-url` | `http://127.0.0.1:18081` | ホスト管理API |
+| `--proxy-container-url` | `http://codex-auth-proxy:18080` | ワーカー向け固定AI経路 |
+| `--http-proxy-url` | `http://codex-http-proxy:18082` | ワーカー向け一般egress |
+| `--proxy-admin-secret` | 未指定 | 管理secretの直接指定。日常利用ではファイル指定を優先 |
+| `--proxy-admin-secret-file` | 未指定 | 管理secretの所有者0600ファイル |
+
+- 詳細・制限：[追加のサンドボックス制御](../sandbox-features.md)。
+- idleはguest CPUや任意の長時間ジョブを監視する値ではない。`reap` は処理中のワーカーも停止し得る。
 
 ---
 
@@ -229,7 +273,7 @@ oaiso run --shell --shell-type zsh
 | `suggest`（デフォルト） | 承認フラグを追加しない | 承認フラグを追加しない | エージェント自身の既定設定に従う |
 | `auto-edit` | `--ask-for-approval on-request` | `--permission-mode acceptEdits` | Codexはモデル判断で承認要求、Claudeは編集を自動許可 |
 | `full-auto` | `--ask-for-approval never` | `--dangerously-skip-permissions` | 承認を一切求めない |
-| `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | すべての承認・サンドボックス制限をバイパスする |
+| `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | エージェントの承認とCodexの内側sandboxを省略。KataのVM隔離・ホスト制約は維持 |
 
 - Kata検証済みワーカーでは、Codexの内側sandboxを `danger-full-access` に設定します。
 - VM内の入れ子namespaceとseccompの不整合を避けるためです。
@@ -432,8 +476,3 @@ oaiso run --user 1000:1000
 - [Auth Proxy 技術仕様](../auth-proxy.md) — 認証の仕組み
 - [ネットワーク仕様](../network.md) — 専用ワーカーネットワークと2種類のプロキシの構成
 - [設定リファレンス](../configuration.md) — config.toml の設定項目
-
-- `compact` は軽量用途向けの明示選択です（1 CPU・guest 512 MiB・ホスト上限 768 MiB・512 PID）。
-- `--profile-size compact` で指定し、既定のstandard/smallは変えません。
-- 大きな依存導入やビルドには不足する場合があります。
-- 対応nodeと[実測値の確認](../sandbox-features.md#回収の常駐とメモリの観測)が必要です。

@@ -174,14 +174,19 @@ var proxyBuildCmd = &cobra.Command{
 var proxyRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the auth proxy on containerd",
-	Long: `Run the auth proxy as a detached containerd task.
+	Long: `Run separate auth and general-egress proxies as detached containerd tasks.
 
-Credentials are automatically bound from the host into the container:
-  - OPENAI_API_KEY env var  → injected as -e OPENAI_API_KEY=<value>
-  - ~/.config/codex-dock/apikey → bind-mounted read-only (API key file)
-  - ~/.codex/auth.json           → bind-mounted read-only (OAuth/ChatGPT)
+Select an independent credential profile with --auth-profile NAME or global
+auth_profile. Only that profile is mounted for OAuth refresh; host CLI logins
+and authentication environment variables are not used as fallback.
 
-At least one credential source must be configured before running.`,
+Without profile selection, legacy mode reads configured OpenAI and Anthropic
+API keys or OAuth credentials from the invoking user's environment and files.
+Only the auth proxy receives real credentials; the egress proxy does not.
+
+Configure credentials before starting. Prefer --admin-secret-file for admin
+authority. General egress requires domain or CIDR grants by default; changing
+settings does not update existing proxies or workers.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		applyForwardPolicyDefaults(cmd)
 		return startProxyContainer(cmd.Context())

@@ -68,22 +68,33 @@ oaiso runtime-check
 | 2 | 利用者 | [認証とイメージを準備](doc/getting-started.md)。ホストと分ける場合は[独立プロファイル](doc/commands/auth.md#独立プロファイル)を選択 |
 | 3 | 利用者 | プロジェクトでワーカーを起動 |
 
-**従来のホスト認証を使う場合**
+**先に認証を設定（いずれか1つ）**
 
 | 認証方式 | 準備するもの |
 |---|---|
-| ChatGPT認証 | 同じ利用者の `~/.codex/auth.json` |
-| APIキー | `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` |
+| 独立プロファイル | [登録・選択・管理シークレット設定](doc/guides/authentication.md)。ホストCLIの認証と分ける |
+| 従来のホスト連携 | [エージェント別の認証ソース](doc/getting-started.md#2-認証方式を選ぶ)を準備 |
+
+- 以下はどちらか1つ。`/path/to/your-project` は実際の作業プロジェクトへ置換。
+- Git・npm・pipなどを使う場合は、先に[一般通信の宛先](doc/guides/networking.md)も許可。
+
+**Codex：製品ソースのルートで準備 → 作業先で起動**
 
 ```bash
-oaiso init
+oaiso init --agent codex
+cd /path/to/your-project
 oaiso codex
 
 # Codex CLI の引数もそのまま渡せる
 oaiso codex "このリポジトリを調べて"
 
-# Claude Codeを使う場合
+```
+
+**Claude Code：製品ソースのルートで準備 → 作業先で起動**
+
+```bash
 oaiso init --agent claude
+cd /path/to/your-project
 oaiso run --agent claude
 ```
 
@@ -114,6 +125,7 @@ oaiso vm ps -a
 oaiso logs WORKER --follow
 oaiso stop WORKER
 oaiso start WORKER
+oaiso stop WORKER
 oaiso rm WORKER
 oaiso ui
 ```

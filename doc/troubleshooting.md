@@ -36,7 +36,9 @@ oaiso logs codex-auth-proxy
 
 - 管理APIの既定URLは `http://127.0.0.1:18081` です。
 - `connection refused` は、プロキシ未起動や接続先の不一致を確認します。
-- 管理secretを設定している場合は、CLI側の `proxy.admin_secret` と合わせます。
+- 管理secretを設定している場合は、CLIとProxyの両方を同じ `[proxy].admin_secret_file` へ合わせます。所有者0600・実際の絶対パスを確認。
+- 値指定とファイル指定が同時に有効ならエラー。古い `proxy.admin_secret` と `CODEX_DOCK_PROXY_ADMIN_SECRET` も確認し、片方の方式へ統一。
+- 独立プロファイルは[選択確認](guides/authentication.md)を行い、`init` に登録したproviderを指定。
 
 - `worker_token_auth` 非対応のエラーが出る場合は旧プロキシです。
 - [停止・削除・再ビルド・再作成](operations.md#cliプロキシを更新する)を行ってください。
@@ -70,6 +72,8 @@ oaiso logs codex-http-proxy
 ```
 
 - `--no-internet` の有無と[通信ポリシー](proxy-policy.md)を確認します。
+- 未設定時も一般通信は既定拒否。ドメイン・CIDRの許可が空なら、`--no-internet` なしでもegressを接続しません。
+- [宛先許可 → 検証 → Proxy・ワーカー再作成](guides/networking.md)の順で設定します。
 - このオプションでは一般egressを接続せず、AI API経路だけを維持します。
 - private IP、loopback、link-local、metadata宛ては既定で拒否します。
 

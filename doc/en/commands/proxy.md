@@ -33,6 +33,12 @@ oaiso proxy run
 | `--network` | `dock-net-proxy` | Shared egress network; created if missing |
 | `--admin-secret` | Unset | Server secret; configure the same value in host clients |
 | `--admin-secret-file` | Unset | Read admin authority from an owner-only 0600 file; mutually exclusive with a value |
+| `--forward-default-deny` | `true` | Deny general egress without destination grants |
+| `--allow-model` | Empty (unrestricted) | Repeat exact model IDs; constrained AI routes reject WebSocket |
+| `--upstream-proxy` | Unset | Explicit HTTP(S) upstream proxy, using verified destination IPs |
+| `--ca-bundle` | Unset | Additional proxy PEM roots |
+| `--credential-routes` | Unset | Owner-only 0600 broker JSON; mounted into auth only |
+| `--credential-store-socket` / `--case-id` | Unset | Case-specific Store connection; cannot combine with independent profiles |
 
 - Policy flags are `--forward-allow-domain`, `--forward-deny-domain`, `--forward-allow-cidr`, `--forward-deny-cidr`, `--forward-allow-port` and `--forward-deny-port`.
 - Domain/CIDR flags repeat; port flags repeat or accept comma-separated values.
@@ -41,6 +47,15 @@ oaiso proxy run
 - Legacy mode reads credentials as the caller's UID/GID through read-only binds under a private HOME.
 - An [independent profile](auth.md#independent-profiles) selected by `--auth-profile NAME` mounts only its directory read-write for refresh and does not load host authentication.
 - Old layouts, policy mismatches and missing worker-auth capability are rejected rather than silently updating existing containers.
+
+## Edit network settings
+
+```bash
+oaiso proxy configure
+```
+
+- Fields, saving and application: [proxy settings UI](ui.md#proxy-settings).
+- Required order: [configure, check, recreate](../guides/networking.md).
 
 ## Stop and remove
 
@@ -65,10 +80,11 @@ The internal `proxy serve` command is available for development and standalone u
 ```bash
 oaiso proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
-  --admin-secret "$PROXY_ADMIN_SECRET"
+  --admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
 ```
 
 - Role `auth` serves AI/token/admin routes; `egress` forwards general traffic.
+- [Create the admin-secret file first](auth.md#create-admin-authority-and-start-the-proxy); this keeps its value out of argv.
 - The default data listen address is `0.0.0.0:18080`, so set loopback explicitly for local use.
 - This command does not create Kata isolation or worker networks.
 - See [standalone use](../proxy-standalone.md).

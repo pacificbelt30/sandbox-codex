@@ -57,6 +57,24 @@ oaiso run -- npm test -- --watch=false
 
 ---
 
+## Resource profiles
+
+| Built-in name | CPU | Guest memory | Host reservation/limit | Guest/host PID ceiling |
+|---|---|---|---|---|
+| `standard` (default) | 1 | 2 GiB | 3 GiB | 512 |
+| `small` | 1 | 1 GiB | 2 GiB | 512 |
+| `compact` | 1 | 512 MiB | 768 MiB | 512 |
+
+```bash
+oaiso profile --node --json
+oaiso run --profile-size small --agent codex
+```
+
+- Bare `profile` shows CLI defaults; `--node` queries live values, including operator-defined profiles.
+- Reservations and limits are not observed memory usage; large installs/builds may exceed `compact`.
+- [Operator PID configuration](../sandbox-features.md#operator-resource-profiles): `profile define` only generates JSON; it does not register a node profile.
+- Review [memory measurements](../sandbox-features.md) before choosing.
+
 ## Options
 
 - To separate authentication from the host, use `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...` or trusted global configuration.
@@ -76,11 +94,11 @@ oaiso run -- npm test -- --watch=false
 | `--new-branch` | `-B` | `false` | Create a new branch (requires `--worktree` and `--branch`) |
 | `--name` | `-n` | auto-generated | Container name (defaults to `codex-<adj>-<noun>`) |
 | `--agent` | | `shell` (configurable) | AI agent to launch: `shell` (auth-configured shell), `codex`, or `claude` |
-| `--task` | `-t` | | Initial task prompt passed to Codex |
+| `--task` | `-t` | | Initial task prompt passed to the selected agent |
 | `--exec` | `-e` | | Command to run once instead of the authenticated shell ([details](#--exec)) |
-| `--approval-mode` | | `suggest` | Codex CLI approval mode ([details](#--approval-mode)) |
+| `--approval-mode` | | `suggest` | Agent approval mode ([details](#--approval-mode)) |
 | `--full-auto` | | `false` | **Deprecated**: use `--approval-mode full-auto` |
-| `--model` | `-m` | | Model name to pass to Codex |
+| `--model` | `-m` | | Model name passed to the selected agent |
 | `--read-only` | | `false` | Mount project directory read-only |
 | `--read-only-rootfs` | | `false` | Make the image rootfs read-only; use tmpfs for HOME and temporary files |
 | `--profile-size` | | `standard` | Kata VM resource profile (`standard`, `small`, or `compact`) |
@@ -96,6 +114,32 @@ oaiso run -- npm test -- --watch=false
 | `--shell` | `-s` | `false` | Start a raw (unauthenticated) shell, bypassing `entrypoint.sh` (debugging) |
 | `--shell-type` | | auto-detected from `$SHELL`, else `bash` | Interactive shell to launch ([details](#--shell-type)) |
 | `--user` | | `current` | Container execution user ([details](#--user)) |
+
+### Network, isolation and startup options
+
+| Flag | Default | Purpose or limit |
+|---|---|---|
+| `--policy-preset` | Unset | `offline`, `test`, `dependencies`, `api`; never widens host grants |
+| `--egress-allow-domain` | Unset | Narrow per-worker egress; repeatable |
+| `--deny-read` / `--deny-write` | Empty | Mask/read-only existing paths below `/workspace`; repeatable |
+| `--watch-polling` | `false` | Chokidar/Watchpack 1-second polling |
+| `--ssh-proxy` / `--jvm-proxy` | `false` | SSH CONNECT or JVM proxy settings |
+| `--ca-bundle` | Unset | Host path to additional worker PEM roots |
+| `--clone-dir` | Unset | Independent clone at a new absolute path; not with parallel launch |
+| `--environment-lock` | Unset | Validate lock and image digest |
+| `--image-id` | Unset | Require a `sha256:...` image digest |
+| `--start-hook` | Empty | Guest shell hook before startup; repeatable |
+| `--readiness` | Unset | Guest shell readiness probe |
+| `--readiness-timeout` | 0 (effective 60s) | Hook/probe deadline |
+| `--max-lifetime` / `--idle-timeout` / `--retention` | `0` | Lifetime, idle, exit retention; durations such as `30m` or `2h`; requires `reap` |
+| `--proxy-admin-url` | `http://127.0.0.1:18081` | Host admin API |
+| `--proxy-container-url` | `http://codex-auth-proxy:18080` | Worker fixed AI routes |
+| `--http-proxy-url` | `http://codex-http-proxy:18082` | Worker general egress |
+| `--proxy-admin-secret` | Unset | Direct admin-secret value; prefer file-based authority |
+| `--proxy-admin-secret-file` | Unset | Owner-only 0600 admin-secret file |
+
+- Detailed contracts: [additional sandbox controls](../sandbox-features.md).
+- Idle tracking does not measure guest CPU or arbitrary long jobs; `reap` can stop a busy worker.
 
 - When the host and Auth Proxy credential modes differ, `run` automatically recreates the Auth Proxy if no workers are running.
 - If workers are running it stops with an error so their in-memory tokens are not invalidated.
@@ -117,15 +161,15 @@ oaiso run -- npm test -- --watch=false
 
 ## `--approval-mode`
 
-- Controls how Codex CLI requests approval for actions.
+- Controls the selected agent's approval settings.
 - The selected worker runtime provides the outer isolation boundary.
 
-| Value | Codex CLI Flag | Behavior |
-|---|---|---|
-| `suggest` (default) | No approval flag | Use the agent's defaults |
-| `auto-edit` | `--ask-for-approval on-request` | The model decides when to ask for approval |
-| `full-auto` | `--ask-for-approval never` | Never prompt for approval |
-| `danger` | `--dangerously-bypass-approvals-and-sandbox` | Bypass all approvals and sandbox restrictions |
+| Value | Codex CLI flag | Claude Code flag | Behavior |
+|---|---|---|---|
+| `suggest` (default) | No approval flag | No approval flag | Use the agent's defaults |
+| `auto-edit` | `--ask-for-approval on-request` | `--permission-mode acceptEdits` | Codex decides when to ask; Claude accepts file edits |
+| `full-auto` | `--ask-for-approval never` | `--dangerously-skip-permissions` | Skip agent approval prompts |
+| `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | Skip agent approvals and Codex's inner sandbox; preserve Kata and host restrictions |
 
 - In a verified Kata worker, Codex's inner sandbox is set to `danger-full-access` to avoid nested namespace/seccomp conflicts.
 - Approval settings are separate; noninteractive exec may choose its own approval behavior.
@@ -329,8 +373,3 @@ oaiso run --template mytool
 - [Auth Proxy Specification](../auth-proxy.md)
 - [Network Specification](../network.md)
 - [Configuration Reference](../configuration.md)
-
-- `compact` is an explicit lightweight profile: one CPU, guest 512 MiB, host limit 768 MiB, 512 PIDs.
-- Select --profile-size compact; existing standard/small profiles remain unchanged.
-- Large dependency installs/builds may not fit.
-- Use an updated node and [measure workloads](../sandbox-features.md#supervised-collection-and-memory-observation).

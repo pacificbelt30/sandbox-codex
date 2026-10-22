@@ -51,3 +51,6 @@ python3 -m venv "$HOME/.cache/oaiso/docs-venv"
 
 - Check navigation coverage, page links and heading links.
 - Compare commands with the implementation; distinguish syntax checks from live host validation.
+- Compare command/flag tables with normal subcommand `--help`; native `codex`/`claude` help is forwarded to the agent.
+- Compare allowed keys, types, scope and precedence in both languages, including different global/project hook formats.
+- Walk authentication and update procedures from prerequisites through settings, preparation and verification; link checks alone do not establish runtime correctness.

@@ -61,22 +61,27 @@ oaiso auth profile import claude-oauth --format claude --credentials-stdin < /pr
 
 - 管理secret：資格情報とは別の `0600` ファイルに保存。
 - 起動引数：secretの値を載せず、ファイルのパスを渡す。
-- 下の生成例：既存ファイルを上書きしない。
+- 下の生成例：既存ファイルを上書きしない。既存の管理シークレットを使う場合は生成を省略。
+- 実行場所：ホストの任意のディレクトリ。ワーカー内では実行しない。
 
 ```bash
 python3 - <<'PY'
 import os, pathlib, secrets
 path = pathlib.Path.home() / '.config/codex-dock/proxy-admin-secret'
+path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
     f.write(secrets.token_hex(32) + '\n')
 PY
-oaiso --auth-profile work proxy run --admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
-oaiso --auth-profile work run --agent codex --proxy-admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
 ```
 
 ### 日常操作で使うプロファイルを固定する
 
 **設定先：`~/.config/codex-dock/config.toml`（信頼済みグローバル設定）。**
+
+- なければ作成。既存ファイルには以下のキーを統合し、他の設定を残す。
+- `auth_profile`：`[run]` / `[proxy]` など、最初のセクションより前に置く。
+- 既存の `[proxy]` がある場合は、その中へ `admin_secret_file` を追加。セクションを重複させない。
+- `work` と `/home/user/...`：実際のプロファイル名と絶対パスへ置換。TOML内の `$HOME` や `~` の展開を前提にしない。
 
 ```toml
 auth_profile = "work"
@@ -92,6 +97,16 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 | `auth show` | 選択したプロファイルのモードだけを表示 |
 
 - プロジェクトの `codex-dock.toml` に認証設定を置かない。
+
+**設定後、ソースのルートで1つだけ実行**
+
+| 保存した資格情報 | 初回準備 |
+|---|---|
+| OpenAI | `oaiso init --agent codex` |
+| Anthropic | `oaiso init --agent claude` |
+
+- その後、作業プロジェクトへ移動して `oaiso codex` / `oaiso claude`。
+- 一時的な明示指定には `oaiso --auth-profile work run --agent codex --proxy-admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"`。この指定だけでは後続の `stop` / `start` / TUIへ引き継がれないため、日常利用は上のグローバル設定を使う。
 
 ### 更新・切り替え・共有の制限
 
@@ -109,8 +124,10 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 
 1. 新しい名前でプロファイルを作成・import。
 2. 旧ワーカーを停止・削除。
-3. Auth Proxyを明示的に再作成。
-4. 新しいプロファイルを選択して新規ワーカーを起動。
+3. 旧設定のまま `oaiso proxy stop` → `oaiso proxy rm`。
+4. グローバル設定の `auth_profile` を新しい名前へ変更。
+5. ソースのルートで対象エージェントの `init` を実行し、Proxyを再作成。
+6. 作業プロジェクトで新規ワーカーを起動。
 
 - 以下の従来コマンド：プロファイル未選択時に利用。
 - 選択中の `auth set` / `auth rotate`：拒否。
@@ -123,26 +140,29 @@ oaiso auth show
 
 - 表示対象：現在の認証ソース。
 - 非表示：実APIキー・トークン。
+- プロファイル未選択時：従来モードのOpenAI情報だけを表示。Anthropic認証の確認にはならない。
+- 表示は設定メタデータ。稼働中Proxyの認証方式や、実APIでの認証成功を保証しない。
+- 従来モードでOpenAI OAuthとAPIキーが共存する場合、`auth show` の表示順と実Proxyの選択順は異なる。[実際の優先順位](../auth-proxy.md#認証ソース)を確認。
 
 ### 出力例：APIキー
 
 ```
 Auth source: OPENAI_API_KEY env
-Configured:  yes
+Key configured: true
 ```
 
 ### 出力例：OAuth
 
 ```
 Auth source: ~/.codex/auth.json (OAuth/ChatGPT subscription)
-Configured:  yes
+Key configured: true
 ```
 
 ### 出力例：未設定
 
 ```
 Auth source: none
-Configured:  no
+Key configured: false
 ```
 
 ## `auth set` — API キーの保存

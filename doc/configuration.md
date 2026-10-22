@@ -72,7 +72,11 @@ tag = "my-project:dev"
 | イメージ・テンプレート | `run.image`、`run.template` |
 | エージェント・モデル | `run.agent`（`shell` / `codex` / `claude`）、`run.model` |
 | 承認 | `run.approval_mode`（`suggest` / `auto-edit`） |
-| ファイル・通信制限 | `run.read_only`、`run.no_internet`、`run.egress_allow_domains` |
+| 資源 | `run.profile_size`（組み込み `standard` / `small` / `compact`） |
+| ファイル制限 | `run.read_only`、`run.read_only_rootfs`、`run.no_git_metadata`、`run.deny_read`、`run.deny_write` |
+| 通信制限 | `run.no_internet`、`run.egress_allow_domains`、`run.policy_preset` |
+| 寿命・保持 | `run.max_lifetime`、`run.idle_timeout`、`run.retention` |
+| 起動処理 | `run.start_hooks`、`run.readiness`、`run.readiness_timeout` |
 | 監視 | `run.watch_polling` |
 | ビルド | `build.dockerfile`、`build.template`、`build.tag` |
 
@@ -82,6 +86,18 @@ tag = "my-project:dev"
 | `run.image` / `build.tag` | 同じ値を指定 |
 | 認証・Proxy・runtime・token TTL・追加mount | プロジェクトには書けない。グローバル設定／明示CLIフラグで管理 |
 | 不明なキー・不一致 | `project check` がエラー |
+
+### 起動処理の書式と優先順位
+
+| 設定先 | `start_hooks` | `readiness` |
+|---|---|---|
+| グローバル `config.toml` | 文字列配列。例：`["npm ci"]` | shell文字列。例：`"test -d node_modules"` |
+| プロジェクト `codex-dock.toml` | argvの配列。例：`[["npm", "ci"]]` | argv配列。例：`["test", "-d", "node_modules"]` |
+
+- プロジェクト例はguest内で実行。`init` / `run` 前に、cloneした設定のコマンドと共有範囲を確認。
+- ファイル拒否リスト：ホスト設定へ追加して適用。
+- 最大寿命・idle：明示CLI指定がない場合、ホスト値より短い正の値だけを採用。保持期限は正のプロジェクト指定を採用。
+- 実行・回収条件：[寿命と再現性](sandbox-features.md#寿命と再現性)。
 
 - 不足するイメージは `init` / `run` 時にビルドします。
 - 既存イメージの再ビルド判定はDockerfileの更新日時を見るため、`COPY` するファイルや依存関係だけを変えた場合は `oaiso build` を実行してください。
@@ -110,6 +126,9 @@ forward_allow_ports = [80, 443]
 ```
 
 認証情報はこの例に埋め込まず、[認証ソース](auth-proxy.md#認証ソース)を使ってください。
+
+- この例は従来のホスト連携用。独立プロファイルは、最初のセクションより前へ `auth_profile` を追加し、同じ `[proxy]` 内へ `admin_secret_file` を統合。
+- [認証設定の作成手順](commands/auth.md#日常操作で使うプロファイルを固定する)。パスの例は実際の絶対パスへ置換。
 
 ## 優先順位
 
@@ -168,6 +187,20 @@ forward_allow_ports = [80, 443]
 | `no_git_metadata` | `false` | `--no-git-metadata` |
 | `profile_size` | `standard` | `--profile-size` |
 | `no_internet` | `false` | `--no-internet` |
+| `egress_allow_domains` | 空配列 | `--egress-allow-domain` |
+| `policy_preset` | 未指定 | `--policy-preset` |
+| `deny_read` / `deny_write` | 空配列 | `--deny-read` / `--deny-write` |
+| `max_lifetime` / `idle_timeout` / `retention` | `"0s"` | 同名ハイフン形式。例：`"30m"` / `"2h"`。`reap` が必要 |
+| `environment_lock` | 未指定 | `--environment-lock` |
+| `image_id` | 未指定 | `--image-id` |
+| `start_hooks` | 空配列 | `--start-hook` |
+| `readiness` | 未指定 | `--readiness` |
+| `readiness_timeout` | `"0s"`（実効60秒） | `--readiness-timeout` |
+| `ssh_proxy` / `jvm_proxy` | `false` | `--ssh-proxy` / `--jvm-proxy` |
+| `ca_bundle` | 未指定 | `--ca-bundle`。ワーカーに渡す追加PEM CA |
+
+- 上表は信頼済みグローバル設定。プロジェクトに置けるキーは[許可一覧](#プロジェクトで指定できる項目)に限定。
+- 日付・期間ではなくGo duration形式を使用。`1d` ではなく `24h`。
 
 - 明示した `--image` はテンプレートによるイメージ選択より優先します。
 - `runtime = "runc"` は同じcontainerdノードの互換モードで、VM隔離はありません。
@@ -213,6 +246,11 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 | `forward_allow_domains` / `forward_deny_domains` | 空配列 | `proxy run --forward-allow-domain` / `--forward-deny-domain` |
 | `forward_allow_cidrs` / `forward_deny_cidrs` | 空配列 | `--forward-allow-cidr` / `--forward-deny-cidr` |
 | `forward_allow_ports` / `forward_deny_ports` | 空配列 | `--forward-allow-port` / `--forward-deny-port` |
+| `allowed_models` | 空配列（制限なし） | `proxy run --allow-model`。正確な上流モデルID。制限時はWebSocket拒否 |
+| `upstream_proxy` | 未指定 | `proxy run --upstream-proxy`。明示した上流HTTP(S) Proxy |
+| `ca_bundle` | 未指定 | `proxy run --ca-bundle`。Proxy側の追加PEM CA |
+
+- `run.ca_bundle`：ワーカー側。`proxy.ca_bundle`：Proxy側。BuildKit daemonのregistry用CAは管理者が別途設定。
 
 - `admin_secret_file` と値指定（設定・環境変数を含む）が両方有効なら拒否します。
 - 明示したrunのsecretフラグは設定値より優先します。
@@ -259,6 +297,9 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 ## ホスト管理サービスの設定
 
 利用者のconfigと、root管理サービスの設定は別です。
+
+- 以下の `/etc/codex-dock/` は手動配置の例。自動配置では `/opt/codex-dock/releases/` 内の管理設定を参照。
+- 実際の起動引数・設定先は `systemctl cat codex-dock-node codex-dock-containerd codex-dock-buildkit` で確認。
 
 | 対象 | 設定場所・方法 |
 |---|---|

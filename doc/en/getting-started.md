@@ -5,7 +5,7 @@
 | Current state | Start here |
 |---|---|
 | No execution host yet | Complete [Installation](installation.md) first |
-| Host is ready | Follow steps 1–4 below |
+| Host is ready | Steps 1–4 start the first worker; steps 5–6 are optional |
 | Updating an existing installation | [Operations](../operations.md) (Japanese) |
 
 ## 1. Check the host
@@ -24,17 +24,8 @@ oaiso runtime-check
 | Build images | BuildKit and `buildctl` |
 | Build the CLI from source | Go 1.24.7 or later and Make |
 
-**From a source checkout**
-
-```bash
-make build
-make install-config
-make install-templates
-```
-
-- Builds the CLI and helper binaries.
-- Existing configuration and templates are retained.
-- Host services and pinned runtime assets require separate administrator installation.
+- This page assumes the CLI and host are installed; otherwise return to [Installation](installation.md).
+- Run initial `init` from the product source root; launch agents from your own project.
 
 ## 2. Prepare credentials
 
@@ -42,7 +33,7 @@ make install-templates
 
 | Mode | Setup | Credential source |
 |---|---|---|
-| Independent profile | [Create a profile](commands/auth.md#independent-profiles); set global `auth_profile` and `[proxy].admin_secret_file` | Selected product Store only; no host fallback |
+| Independent profile | Complete steps 1–3 of [Authentication](guides/authentication.md): register credentials, select the profile and configure the admin secret | Selected product Store only; no host fallback |
 | Legacy host integration | Configure one of the sources below | Host credentials, using [source precedence](auth-proxy.md#credential-sources) |
 
 **For legacy host integration**
@@ -56,16 +47,27 @@ make install-templates
 - File access: the proxy uses that user's UID/GID; `0600` files need no permission changes.
 - Workers receive placeholders, never real API keys or OAuth access/refresh tokens.
 - Claude details: [API-key and subscription setup](claude-code.md).
+- Saved Anthropic API keys are a compatibility input. `auth set` saves OpenAI keys only; use an independent profile for new Anthropic key storage.
+
+### Allow general traffic before first startup, if needed
+
+| Task | Default and preparation |
+|---|---|
+| AI inference only | Fixed AI routes need no general-egress grant |
+| Git, npm or pip | General egress is denied by default; [allow required destinations](guides/networking.md) |
+| Combine profile and network settings | Merge keys into the same global `[proxy]` table; retain the admin-secret setting |
 
 ## 3. Prepare images and start the proxies
 
 **Run from the repository root as your normal account.**
 
-```bash
-oaiso init
-# For Claude Code:
-oaiso init --agent claude
-```
+| Configured provider | Run exactly one |
+|---|---|
+| OpenAI | `oaiso init --agent codex` |
+| Anthropic | `oaiso init --agent claude` |
+
+- Do not run the other provider's preparation without its credentials.
+- `Ready.` means host, image and proxy preparation succeeded; verify live inference in the next step.
 
 | `init` action | Behavior or limit |
 |---|---|
@@ -76,16 +78,16 @@ oaiso init --agent claude
 | Existing proxy with different authentication | Running workers prevent a forced switch |
 | Outside this check | Live provider authentication, connectivity and inference |
 
-- Missing source: run `oaiso proxy build` once at the repository root.
+- Missing source: change to the cloned product source root and rerun `init`.
 - Once ready: return to the project directory.
 - Make Codex the default: `oaiso default codex`; add `--local` for this project only.
 
 ### Prepare each component separately
 
 ```bash
+oaiso build
 oaiso proxy build
 oaiso proxy run
-oaiso build
 ```
 
 | Component | Purpose or endpoint |
@@ -97,18 +99,21 @@ oaiso build
 
 - `proxy run` creates the required network.
 - Details: [auth proxy](auth-proxy.md).
+- For an existing team's custom Dockerfile, review [project settings](configuration.md#project-settings) and run `init` in that project. If the proxy image is missing, first build it from the product source root.
 
 ## 4. Start a worker
 
 - Run from the project directory.
 - The project is shared at `/workspace`.
+- Change from the product source checkout to your own project before launching.
+- Choose the invocation matching your prepared provider below.
 
 ```bash
 oaiso codex
 # Or:
 oaiso run --agent claude
 
-# Omit --agent for a shell with proxy authentication configured.
+# With Codex credentials; a configured default can start an agent instead.
 oaiso run
 oaiso run -- ls -la
 ```
@@ -120,6 +125,9 @@ oaiso run -- ls -la
 | `oaiso run` | Configured agent; built-in default is an authenticated shell |
 | `oaiso run -- COMMAND` | Run a command once |
 | Failed isolation check | Startup stops; no automatic fallback to runc |
+
+- Send a first prompt to check a live response. For 401/502 failures, use [Troubleshooting](../troubleshooting.md) (Japanese).
+- Foreground exit removes the worker by default; use the background example to try stop/restart.
 
 ### Share an environment with a team
 
@@ -133,10 +141,12 @@ oaiso run -- ls -la
 
 ## 5. Run in the background
 
+- This example uses Codex; substitute `--agent claude` for Claude.
+- It disables approval prompts; review the task and shared paths before running.
+
 ```bash
 oaiso run --agent codex --name add-tests \
-  --task "Add unit tests" --approval-mode full-auto \
-  --worktree --branch add-tests --new-branch -d
+  --task "Add unit tests" --approval-mode full-auto -d
 
 oaiso ps -a
 oaiso logs add-tests --follow
@@ -144,13 +154,17 @@ oaiso logs add-tests --follow
 
 - `full-auto` disables agent approval prompts.
 - Mount permissions still determine which shared files are writable.
+- Ctrl+C in `logs --follow` ends log following; the worker continues.
+- To isolate branches, first review [worktree requirements](../workspace.md) (Japanese), then add `--worktree` and branch flags.
 
 ## 6. Stop, restart and remove
 
 ```bash
 oaiso stop add-tests
 oaiso start add-tests
-oaiso rm add-tests --force
+oaiso stop add-tests
+# Save results before removing the worker.
+oaiso rm add-tests
 ```
 
 | Operation or condition | Result |
@@ -160,6 +174,9 @@ oaiso rm add-tests --force
 | Remove | Clean up managed worktrees and networks; save results first |
 | Foreground exit | Remove the worker unless `--keep` is set |
 | Shared proxies | Keep running after workers exit |
+
+- Restart reruns the main program; it does not resume suspended memory or execution state.
+- `rm --force` also removes running workers; use `stop` then `rm` for normal cleanup.
 
 ## Next steps
 

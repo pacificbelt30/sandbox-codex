@@ -40,6 +40,7 @@ plugins:
 nav:
   - ホーム: index.md
   - はじめに:
+      - 概要と用語: concepts.md
       - インストール: installation.md
       - クイックスタート: getting-started.md
   - 利用ガイド:
@@ -54,6 +55,7 @@ nav:
           - 短命トークン: auth-proxy/tokens.md
           - プロキシの単体利用: proxy-standalone.md
       - 通信と隔離:
+          - 一般通信を許可する: guides/networking.md
           - 通信の許可・拒否: proxy-policy.md
           - 追加のサンドボックス制御: sandbox-features.md
           - セキュリティと制限: security.md
@@ -97,6 +99,7 @@ nav:
   - English:
       - Home: en/index.md
       - Getting started:
+          - Overview and terminology: en/concepts.md
           - Installation: en/installation.md
           - Quick start: en/getting-started.md
       - Guides:
@@ -110,6 +113,7 @@ nav:
               - Short-lived tokens: en/auth-proxy/tokens.md
               - Standalone proxy: en/proxy-standalone.md
           - Networking and isolation:
+              - Allow general traffic: en/guides/networking.md
               - Additional sandbox controls: en/sandbox-features.md
               - Security and limitations: en/security.md
       - Reference:

@@ -6,14 +6,27 @@
 - Anthropic APIキーによる従量課金と、Claude Codeを利用できるサブスクリプションのOAuth認証に対応します。
 - 実資格情報は認証プロキシだけが保持し、公式Claude CLIにはワーカーごとの短命プレースホルダーを渡します。
 
+## 初回準備の順序
+
+1. [実行ホストをインストール](installation.md)。
+2. [独立プロファイル](guides/authentication.md)へAnthropic APIキー／OAuthを登録し、管理シークレットとグローバル設定を準備。
+3. 製品ソースのルートで `oaiso init --agent claude`。
+4. 作業プロジェクトへ移動して `oaiso claude`。
+
+- 既存のホスト認証を使う場合だけ、以下のAPIキー／サブスク例を使用。`auth_profile` 選択中はホスト環境変数を流用しない。
+- ホストのClaude CLI：従来OAuthの取得に使用。APIキーや取得済みJSONのimportには不要。
+- 実Anthropic推論とサブスク利用枠は未検証。[fixtureと実機試験の区別](testing.md#claude-codeの受入)を確認。
+
 ## APIキーで使う
 
-ホストに[Kata実行環境](setup.md)を準備した後、プロジェクトのディレクトリで実行します。
+- 以下は従来のホスト連携。製品ソースのルートで準備し、起動前に作業先へ移動。
+- `/path/to/your-project`：実際の作業プロジェクトへ置換。
 
 ```bash
 export ANTHROPIC_API_KEY='your-api-key'
 unset CLAUDE_CODE_OAUTH_TOKEN
 oaiso init --agent claude
+cd /path/to/your-project
 oaiso claude
 # 対話なしの実行
 oaiso claude -p 'このプロジェクトの構成を説明して' --model claude-sonnet-4-6
@@ -21,18 +34,20 @@ oaiso claude -p 'このプロジェクトの構成を説明して' --model claud
 
 - `oaiso claude` はClaude CLIの引数をそのまま渡します。
 - `-p`、`--output-format`、`--resume`、`--model`などはClaudeのオプションです。
-- Oaiso側のイメージ・プロファイル・マウント設定にはグローバル設定またはプロジェクトの `codex-dock.toml` を使います。
+- mount・認証プロファイルはグローバル設定。image・資源プロファイルなどはプロジェクトの `codex-dock.toml` でも[許可された範囲](configuration.md#プロジェクトで指定できる項目)を指定できます。
 - 既存の `oaiso run --agent claude` と `oaiso default claude` も使えます。
 - `run --task` は初期プロンプトであり、非対話実行には `oaiso claude -p` を使ってください。
 
 ## サブスクリプションで使う
 
-ホストの公式Claude Codeでログインします。
+- 以下は従来のホスト連携。ホストの公式Claude Codeでログイン。
+- 製品ソースのルートへ移動してから `init`。独立プロファイルへ取り込む場合は、この `init` より先に[importと選択](guides/authentication.md)を実施。
 
 ```bash
 unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 claude auth login
 oaiso init --agent claude
+cd /path/to/your-project
 oaiso claude
 ```
 
@@ -112,10 +127,10 @@ code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
 - 稼働中ワーカーは先に終了してください。
 
 ```bash
-oaiso build -t codex-dock:latest -f docker/sandbox/Dockerfile
-oaiso proxy build
 oaiso proxy stop
 oaiso proxy rm
+oaiso build --tag codex-dock:latest -f docker/sandbox/Dockerfile
+oaiso proxy build
 oaiso proxy run
 ```
 
@@ -123,5 +138,6 @@ oaiso proxy run
 - 独自テンプレートがある場合は、entrypointとClaudeの版も更新します。
 - `CODEX_DOCK_CLAUDE_VERSION=2.1.306` でビルド時の版を明示できます。
 - 別の版を選んだ場合は、固定CLIの受入テストを更新して確認してください。
+- CLI・nodeの更新も含む場合：[導入方法に合う更新手順](commands/update.md#導入方法に合わせて更新する)。`oaiso update` だけではワーカー内CLIは更新されません。
 
 検証済み範囲と実アカウントで未確認の項目は[テスト記録](testing.md#claude-codeの受入)を参照してください。

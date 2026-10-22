@@ -51,7 +51,7 @@ var authSetCmd = &cobra.Command{
 
 var authRotateCmd = &cobra.Command{
 	Use:   "rotate",
-	Short: "Rotate all active tokens issued by Auth Proxy",
+	Short: "Write a legacy rotation marker (restart the auth proxy to apply)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if selectedAuthProfile() != "" {
 			return fmt.Errorf("stop profile workers or use the proxy admin revocation API; the legacy rotate marker does not rotate independent profiles")

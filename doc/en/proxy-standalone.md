@@ -9,21 +9,22 @@
 ## 1. Start a local proxy
 
 - Prepare host [credentials](auth-proxy.md#credential-sources).
+- Create the [admin-secret file](commands/auth.md#create-admin-authority-and-start-the-proxy) first.
+- Requirements: Bash, Python 3, curl and a host Codex CLI. Select an independent profile globally first, if using one.
 - Run these examples in one bash session.
 - Both listeners bind to loopback.
 
 ```bash
-read -r -s -p 'Proxy admin secret: ' PROXY_ADMIN_SECRET
-printf '\n'
-export PROXY_ADMIN_SECRET
+export PROXY_ADMIN_SECRET_FILE="$HOME/.config/codex-dock/proxy-admin-secret"
 
 oaiso proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
-  --admin-secret "$PROXY_ADMIN_SECRET" &
+  --admin-secret-file "$PROXY_ADMIN_SECRET_FILE" &
 PROXY_PID=$!
 
 export PROXY_DATA_URL=http://127.0.0.1:18080
 export PROXY_ADMIN_URL=http://127.0.0.1:18081
+curl --retry 5 --retry-connrefused --retry-delay 1 -fsS "$PROXY_DATA_URL/health" >/dev/null
 ```
 
 - Use `serve` for this local example: `proxy run` does not publish the data port to the host.
@@ -33,16 +34,24 @@ export PROXY_ADMIN_URL=http://127.0.0.1:18081
 
 ```bash
 export SESSION_NAME=my-session
-TOKEN=$(curl --retry 5 --retry-connrefused --retry-delay 1 -fsS \
-  -X POST "$PROXY_ADMIN_URL/admin/issue" \
-  -H 'Content-Type: application/json' \
-  -H "X-Proxy-Admin-Secret: $PROXY_ADMIN_SECRET" \
-  -d "{\"container\":\"$SESSION_NAME\",\"ttl\":3600}" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+TOKEN=$(python3 - <<'PY'
+import json, os
+from pathlib import Path
+from urllib.request import Request, ProxyHandler, build_opener
+secret = Path(os.environ['PROXY_ADMIN_SECRET_FILE']).read_text().strip()
+request = Request(os.environ['PROXY_ADMIN_URL'] + '/admin/issue',
+    data=json.dumps({'container': os.environ['SESSION_NAME'], 'ttl': 3600}).encode(),
+    headers={'Content-Type': 'application/json', 'X-Proxy-Admin-Secret': secret})
+with build_opener(ProxyHandler({})).open(request, timeout=10) as response:
+    print(json.load(response)['token'])
+PY
+)
 export TOKEN
 ```
 
 Do not print tokens to logs. `/health` checks the proxy process, not this token or upstream AI connectivity.
+
+- Admin authority is read from the file, not passed in argv. The token printed by Python is captured into a shell variable.
 
 ## 3. Use a separate client directory
 
@@ -102,9 +111,17 @@ codex
 ## 4. Revoke and stop
 
 ```bash
-curl -fsS -X POST \
-  "$PROXY_ADMIN_URL/admin/revoke?container=$SESSION_NAME" \
-  -H "X-Proxy-Admin-Secret: $PROXY_ADMIN_SECRET"
+python3 - <<'PY'
+import os
+from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, ProxyHandler, build_opener
+url = os.environ['PROXY_ADMIN_URL'] + '/admin/revoke?' + urlencode({'container': os.environ['SESSION_NAME']})
+secret = Path(os.environ['PROXY_ADMIN_SECRET_FILE']).read_text().strip()
+request = Request(url, data=b'', headers={'X-Proxy-Admin-Secret': secret})
+with build_opener(ProxyHandler({})).open(request, timeout=10) as response:
+    response.read()
+PY
 kill "$PROXY_PID"
 ```
 

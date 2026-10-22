@@ -21,6 +21,22 @@ oaiso run --worktree --branch add-tests --new-branch
 - `--worktree` の場合は作成したworktreeが共有先になります。
 - その編集は元のcheckoutのファイルへ直接反映されませんが、Gitの共通メタデータとコミットは共有します。
 
+## Git worktree
+
+| 確認すること | 条件・結果 |
+|---|---|
+| 元プロジェクト | commit済みのGitリポジトリ。通常ディレクトリには使用不可 |
+| 新規ブランチ | `--worktree --branch add-tests --new-branch`。既存名と衝突しない名前を選択 |
+| 既存ブランチ | `--worktree --branch BRANCH`。別worktreeでcheckout中のブランチはGitが拒否 |
+| 作成先 | 元プロジェクトの隣に `<プロジェクト名>-dock-<ブランチ名>`。ブランチの `/` は `-` へ変換。`git worktree list` で実際のパスを確認 |
+| 元checkoutの未commit変更 | 新規worktreeへ自動コピーしない |
+| 編集・commit | 編集は別checkout。共通Git metadata・commit・ブランチは共有 |
+| 前面実行の終了・`rm` | 管理worktreeも削除。未commitの成果は先にpatch等で保存、またはcommit |
+
+- 終了後も保持する場合：`--keep`。停止・再起動・削除はワーカーのCLIで管理。
+- `--no-git-metadata`：共通metadataの自動共有をしない。worktree内のGit操作が使えなくなる場合あり。
+- 独立したGitコピーが必要なら[独立clone](sandbox-features.md#ファイル実行回収)を使用。
+
 ## ホストとVMで変更を共有する
 
 - 共有にはinline virtio-fsを使い、guest側の `virtio_fs_cache` を `none` に固定します。

@@ -28,7 +28,7 @@
 | Task | Guide |
 |---|---|
 | Separate product and host authentication | [Authentication and profiles](authentication.md) |
-| Allow or deny outbound destinations | [Network policy](../../proxy-policy.md) (Japanese) |
+| Allow or deny outbound destinations | [Network setup](networking.md), [policy rules](../../proxy-policy.md) (Japanese) |
 | Check credential storage and isolation limits | [Security](../security.md) |
 | Understand the credential proxy | [Auth proxy](../auth-proxy.md) |
 | Use the proxy in another setup | [Standalone proxy](../proxy-standalone.md) |

@@ -28,7 +28,7 @@
 | やりたいこと | ガイド |
 |---|---|
 | ホストと製品の認証を分ける | [認証方式とプロファイル](authentication.md) |
-| 通信先を許可・拒否する | [通信ポリシー](../proxy-policy.md) |
+| 通信先を許可・拒否する | [設定手順](networking.md)・[判定規則](../proxy-policy.md) |
 | 資格情報の保持先・隔離の限界を確認する | [セキュリティ](../security.md) |
 | 認証Proxyの仕組みを確認する | [認証プロキシ](../auth-proxy.md) |
 | Proxyを別の構成で使う | [プロキシの単体利用](../proxy-standalone.md) |

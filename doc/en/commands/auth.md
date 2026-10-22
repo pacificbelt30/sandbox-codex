@@ -61,22 +61,27 @@ oaiso auth profile import claude-oauth --format claude --credentials-stdin < /pr
 
 - Store admin authority in a separate `0600` file.
 - Pass its path, keeping the secret value out of process arguments.
-- The generator below refuses to overwrite an existing file.
+- The generator refuses to overwrite an existing file; skip generation when reusing an existing secret.
+- Run on the host, outside the worker.
 
 ```bash
 python3 - <<'PY'
 import os, pathlib, secrets
 path = pathlib.Path.home() / '.config/codex-dock/proxy-admin-secret'
+path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
     f.write(secrets.token_hex(32) + '\n')
 PY
-oaiso --auth-profile work proxy run --admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
-oaiso --auth-profile work run --agent codex --proxy-admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
 ```
 
 ### Fix the selection for daily operations
 
 **Location: trusted global `~/.config/codex-dock/config.toml`.**
+
+- Create the file if absent; merge these keys into existing settings without replacing unrelated values.
+- Put `auth_profile` before the first table, such as `[run]` or `[proxy]`.
+- If `[proxy]` already exists, add `admin_secret_file` there; do not duplicate the table.
+- Replace `work` and `/home/user/...` with the real profile name and absolute path; do not assume `$HOME` or `~` expands inside TOML.
 
 ```toml
 auth_profile = "work"
@@ -92,6 +97,16 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 | `auth show` | Redacted metadata for the selected profile |
 
 - Never put authentication configuration in the project's `codex-dock.toml`.
+
+**After configuring, run one preparation command from the source root:**
+
+| Stored credentials | Preparation |
+|---|---|
+| OpenAI | `oaiso init --agent codex` |
+| Anthropic | `oaiso init --agent claude` |
+
+- Then change to your project and run `oaiso codex` or `oaiso claude`.
+- An explicit one-off invocation is `oaiso --auth-profile work run --agent codex --proxy-admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"`. These flags do not carry over to later `stop`, `start` or TUI commands; use global settings for daily operations.
 
 ### Refresh, switching and sharing
 
@@ -109,8 +124,10 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 
 1. Create/import a new profile name.
 2. Stop and remove old workers.
-3. Explicitly recreate the auth proxy.
-4. Select the new profile and create new workers.
+3. With the old settings, run `oaiso proxy stop`, then `oaiso proxy rm`.
+4. Change global `auth_profile` to the new name.
+5. Run `init` for the selected agent from the source root to recreate the proxy.
+6. Create new workers from the project directory.
 
 - The following legacy commands apply without profile selection.
 - Profile mode rejects legacy `auth set` / `auth rotate`.
@@ -123,6 +140,14 @@ oaiso auth show
 
 - Shows the current authentication source.
 - Never displays actual keys or tokens.
+- Without profile selection, reports legacy OpenAI metadata only; it does not check Anthropic credentials.
+- This metadata does not establish the running proxy's selected mode or successful live authentication.
+- With both legacy OpenAI OAuth and an API key present, display precedence differs from proxy selection; check the [runtime precedence](../auth-proxy.md#credential-sources).
+
+```text
+Auth source: OPENAI_API_KEY env
+Key configured: true
+```
 
 ## `auth set`
 

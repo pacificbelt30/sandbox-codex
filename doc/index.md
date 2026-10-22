@@ -10,6 +10,7 @@
 | 実行ホスト | Linux x86_64。Docker Engine・Docker CLIは不要 |
 
 - CLIのクロスビルドだけでは、各OSでKataを実行できません。
+- 用語・保存先・停止と再開：[Oaisoの概要](concepts.md)。
 
 ## 章から探す
 

@@ -71,7 +71,9 @@ oaiso proxy run \
 - ドメイン拒否：要求された名前への制限。同じサービスへのIP直指定・別名まで一括拒否する保証はない。
 - 厳密な制限：ドメイン許可リストに、必要なCIDR・ポート制限を組み合わせる。
 - 一般egress Proxy：環境変数の `HTTP_PROXY` 等へ接続を委譲しない。
-- 上流Proxyの追加：接続先ポリシーとの整合性を保つ専用transportが必要。
+- 上流Proxyの指定：`[proxy].upstream_proxy` または `proxy run --upstream-proxy URL`。
+- 接続先を検査したIPでCONNECTし、管理対象の宛先ポリシーを維持。独自CAは `[proxy].ca_bundle` または `--ca-bundle PATH`。
+- TLS内のURL・SNIを検査する機能は、この指定でも追加されない。
 
 ## 更新と既存環境からの移行
 

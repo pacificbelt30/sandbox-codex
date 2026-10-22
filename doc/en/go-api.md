@@ -82,8 +82,12 @@ func main() {
     if err != nil { panic(err) }
     defer client.Remove(context.Background(), worker.ID, true)
 
+    command, err := client.CodexHTTPCommand(ctx, worker.ID)
+    if err != nil { panic(err) }
+    command.Argv = append(command.Argv, "exec", "Fix the tests")
     code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
-        Argv:   []string{"codex", "exec", "Fix the tests"},
+        Argv: command.Argv,
+        Env: command.Env,
         Stdout: os.Stdout,
         Stderr: os.Stderr,
     })
@@ -99,6 +103,10 @@ func main() {
 | `Agent: "codex"` / `"claude"` | Run the CLI as the main process |
 | `Exec` | Return the guest exit code separately from transport errors |
 | `Wait` | Wait for the main process, not an individual `Exec` |
+
+- This example sends a live AI request. Replace `/srv/work/project-7` with a real project and prepare an OpenAI-authenticated proxy first.
+- `CodexHTTPCommand` supplies explicit HTTP/SSE settings. Never log `command.Env`, which contains the worker placeholder.
+- CLI `auth_profile` and `admin_secret_file` are not loaded automatically. Read admin authority on the host and supply `Options`, or configure [case proxies and a Store](credential-store.md).
 
 - `LaunchRequest` also supports model, approval mode, extra mounts, read-only rootfs, and disabling shared Git metadata.
 - Its default image is `codex-dock:latest` and default resource profile is `standard`.

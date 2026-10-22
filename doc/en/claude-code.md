@@ -6,32 +6,47 @@
 - Real credentials stay in the auth proxy.
 - The CLI receives only a short-lived worker placeholder.
 
+## First setup order
+
+1. [Install the execution host](installation.md).
+2. Register an Anthropic API key or OAuth login in an [independent profile](guides/authentication.md), then configure admin authority and global selection.
+3. Run `oaiso init --agent claude` from the product source root.
+4. Change to your own project and run `oaiso claude`.
+
+- The examples below use legacy host integration only; selected profiles never import host authentication variables.
+- A host Claude CLI is used to obtain legacy OAuth credentials; it is not required for API keys or importing existing credential JSON.
+- Live Anthropic inference and subscription allowances remain unverified; see [fixture and host test scope](../testing.md#claude-codeの受入) (Japanese).
+
 ## API key
 
-Prepare the [execution host](../setup.md), then run from your project:
+- This example uses legacy host integration. Prepare from the product source root, then change directories before launch.
+- Replace `/path/to/your-project` with the real working project.
 
 ```bash
 export ANTHROPIC_API_KEY='your-api-key'
 unset CLAUDE_CODE_OAUTH_TOKEN
 oaiso init --agent claude
+cd /path/to/your-project
 oaiso claude
 # Non-interactive execution
 oaiso claude -p 'Explain this project.' --model claude-sonnet-4-6
 ```
 
 - `oaiso claude` forwards native Claude arguments, including `-p`, `--output-format`, `--resume` and `--model`.
-- Configure oaiso image, profile and mounts in global settings or the project's `codex-dock.toml`.
+- Configure mounts and authentication profiles globally; images and resource profiles also accept [allowed project keys](configuration.md#allowed-project-keys) in `codex-dock.toml`.
 - Existing `oaiso run --agent claude` and `oaiso default claude` remain available.
 - `run --task` supplies an initial prompt; use `oaiso claude -p` for non-interactive execution.
 
 ## Subscription
 
-Log in with official Claude Code on the host:
+- Legacy host integration: log in with official Claude Code on the host.
+- Run `init` from the product source root. For independent profiles, complete [import and selection](guides/authentication.md) before `init` instead.
 
 ```bash
 unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 claude auth login
 oaiso init --agent claude
+cd /path/to/your-project
 oaiso claude
 ```
 
@@ -106,16 +121,17 @@ code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
 - Deploy matching CLI/proxy source versions and run from the repository root after ending active workers:
 
 ```bash
-oaiso build -t codex-dock:latest -f docker/sandbox/Dockerfile
-oaiso proxy build
 oaiso proxy stop
 oaiso proxy rm
+oaiso build --tag codex-dock:latest -f docker/sandbox/Dockerfile
+oaiso proxy build
 oaiso proxy run
 ```
 
 - Create new workers; existing workers retain their old image and authentication environment.
 - Update the entrypoint and Claude version in custom templates too.
 - `CODEX_DOCK_CLAUDE_VERSION=2.1.306` explicitly overrides the build version.
+- If updating the CLI/node too, use the [installation-specific update procedure](commands/update.md#update-according-to-installation-method). `oaiso update` does not update the worker's agent CLI.
 - Update and run pinned-CLI acceptance when selecting another version.
 
 See the [verification record](../testing.md#claude-codeの受入) (Japanese) for tested behavior and outstanding live-account checks.

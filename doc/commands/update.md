@@ -24,17 +24,23 @@ go install github.com/pacificbelt30/codex-dock@latest
 - ビルドされた `codex-dock` バイナリと `oaiso` / `cxd` の互換aliasは `$(go env GOBIN)`、未設定なら `$(go env GOPATH)/bin` に配置されます。
 - その場所に別の `oaiso` ファイルがある場合は上書きせずエラーにします。
 
-> **注意**: このコマンドは `go install` でインストールした場合のみ有効です。
-> `make install`（`/usr/local/bin` など）や配布済みバイナリを使っている場合、
-> `go install` の出力先とは異なる場所に既存のバイナリがあるため、
-> このコマンドを実行しても実際に使っているバイナリは更新されません。
-> その場合は `git pull` 後に `make install` を再実行してください。
+## 導入方法に合わせて更新する
+
+| 導入方法 | 更新方法 |
+|---|---|
+| 自動インストール／node bundle | [setupの更新手順](../setup.md#更新する)。CLI・node・helperを同じ版へそろえる |
+| 手動配置 | [固定資産とバイナリの更新](../kata.md#固定資産の更新) |
+| GoのbinディレクトリのCLIだけ | `oaiso update`。配置済みnode・イメージは別途更新 |
+
+- `command -v oaiso` で実行中の配置先を確認。
+- `/usr/local/bin` のCLIは、このコマンドでは更新されない。Goのbinディレクトリへ別のCLIができるだけ。
+- `make install` だけでは管理サービスの版がそろわない。管理対象ノードでは上表の更新手順を使用。
 
 ---
 
 ## 関連ドキュメント
 
-- [クイックスタート](../getting-started.md) — `go install` によるインストール手順
+- [インストール](../installation.md) — 新規導入と対応環境
 
 ## ホストサービスとイメージの更新
 

@@ -27,6 +27,7 @@
 - プロキシの既定接続先は、ホスト側管理 API が `http://127.0.0.1:18081`、ワーカー側認証 API が `http://codex-auth-proxy:18080`、一般通信プロキシが `http://codex-http-proxy:18082` です。
 - 配置が異なる場合は `Options.ProxyAdminURL`、`ProxyContainerURL`、`HTTPProxyURL` を指定します。
 - 管理 API にシークレットを設定している場合は `Options.ProxyAdminSecret` にホスト側だけで渡してください。
+- CLIの `auth_profile` / `admin_secret_file` は自動で読み込まない。組み込み側で管理ファイルを読み、`Options` へ渡すか、[ケース別ProxyとStore](credential-store.md)を構成。
 
 - 一般通信は `Options.EgressPolicy` のゼロ値でも既定拒否になります。
 - ホスト側の許可ドメイン・CIDRがともに空なら一般通信を無効にし、ワーカーから許可を追加することも拒否します。
@@ -87,8 +88,12 @@ func main() {
     if err != nil { panic(err) }
     defer client.Remove(context.Background(), worker.ID, true)
 
+    command, err := client.CodexHTTPCommand(ctx, worker.ID)
+    if err != nil { panic(err) }
+    command.Argv = append(command.Argv, "exec", "Fix the tests")
     code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
-        Argv: []string{"codex", "exec", "Fix the tests"},
+        Argv: command.Argv,
+        Env: command.Env,
         Stdout: os.Stdout,
         Stderr: os.Stderr,
     })
@@ -103,6 +108,8 @@ func main() {
 - `Exec` はコマンドの終了コードと通信エラーを別々に返します。
 - `Wait` はメインプロセスの終了待ちです。
 - 待機状態のワーカーに対する個々の `Exec` の終了待ちではありません。
+- 例は実AIへの要求を送る。`/srv/work/project-7` は実在するプロジェクトへ置換し、OpenAI認証のProxyを事前に用意。
+- 例の `CodexHTTPCommand` は明示したHTTP/SSE接続を使用。資格情報を含む `command.Env` は出力しない。
 
 - `LaunchRequest` ではモデル、承認モード、追加マウント、read-only rootfs、Git metadata の非共有なども指定できます。
 - 指定しないイメージは `codex-dock:latest`、資源プロファイルは `standard` です。

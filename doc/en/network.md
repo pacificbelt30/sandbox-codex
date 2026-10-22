@@ -36,6 +36,8 @@
 
 ## Outbound policy
 
+- General egress defaults to denial; without domain/CIDR grants, workers are not connected to the general proxy.
+- First-time setup: [allow destinations before launch](guides/networking.md).
 - General egress supports domain, IP/CIDR and port allow/deny rules.
 - Denials win.
 - All nonempty allowlists must match.
@@ -52,6 +54,8 @@ oaiso proxy run \
 - These rules control general egress, not fixed AI authentication routes.
 - `run --no-internet` disconnects the general egress proxy and keeps AI routes available.
 - See [policy rules](../proxy-policy.md) (Japanese).
+- Bare domains include subdomains; `=hostname` matches only that name.
+- Changing configuration does not update existing proxies or CONNECT tunnels; recreate proxies and workers after saving results.
 
 ## Lifecycle
 

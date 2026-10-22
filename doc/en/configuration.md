@@ -58,7 +58,11 @@ tag = "my-project:dev"
 | Image and template | `run.image`, `run.template` |
 | Agent and model | `run.agent` (`shell`, `codex`, `claude`), `run.model` |
 | Approval | `run.approval_mode` (`suggest`, `auto-edit`) |
-| File and network restrictions | `run.read_only`, `run.no_internet`, `run.egress_allow_domains` |
+| Resource budget | `run.profile_size` (built-in `standard`, `small`, `compact`) |
+| File restrictions | `run.read_only`, `run.read_only_rootfs`, `run.no_git_metadata`, `run.deny_read`, `run.deny_write` |
+| Network restrictions | `run.no_internet`, `run.egress_allow_domains`, `run.policy_preset` |
+| Lifecycle | `run.max_lifetime`, `run.idle_timeout`, `run.retention` |
+| Startup | `run.start_hooks`, `run.readiness`, `run.readiness_timeout` |
 | Watchers | `run.watch_polling` |
 | Build | `build.dockerfile`, `build.template`, `build.tag` |
 
@@ -68,6 +72,18 @@ tag = "my-project:dev"
 | `run.image` / `build.tag` | Must match |
 | Credentials, proxy, runtime, token lifetime, extra host mounts | Global configuration or explicit flags only |
 | Unknown keys | Fail validation |
+
+### Startup syntax and restriction merging
+
+| Location | `start_hooks` | `readiness` |
+|---|---|---|
+| Global `config.toml` | Shell strings, e.g. `["npm ci"]` | Shell string, e.g. `"test -d node_modules"` |
+| Project `codex-dock.toml` | Array of argv arrays, e.g. `[["npm", "ci"]]` | Argv array, e.g. `["test", "-d", "node_modules"]` |
+
+- Project hooks run inside the guest; review cloned settings and shared paths before `init` or `run`.
+- File denials append to host restrictions.
+- Without explicit CLI overrides, project lifetime/idle values can only select a shorter positive limit; a positive project retention value is applied.
+- Enforcement: [lifecycle and reproducibility](sandbox-features.md#lifecycle-and-reproducibility).
 
 - `init` and `run` build missing images.
 - For an existing project image, automatic rebuilds check the Dockerfile timestamp; run `oaiso build` after changing copied files or dependencies alone.
@@ -100,6 +116,7 @@ forward_allow_ports = [80, 443]
 
 - Use the [credential sources](auth-proxy.md#credential-sources) for API keys and OAuth files.
 - Explicit flags override config.
+- This example uses legacy host authentication. For profiles, put `auth_profile` before the first table and merge `admin_secret_file` into the existing `[proxy]` table; follow [profile selection](commands/auth.md#fix-the-selection-for-daily-operations).
 - Command-specific settings override global defaults.
 - Only the documented environment overrides should be relied on; arbitrary `CODEX_DOCK_*` names are not supported.
 
@@ -147,6 +164,26 @@ Under `[run]`:
 | `shell_type` | `default_shell_type` | `--shell-type` |
 | `auto_build` | `auto_build` | Config only |
 | `mounts` | Empty | `--mount` |
+| `watch_polling` | `false` | `--watch-polling` |
+| `model` | Unset | `--model` |
+| `read_only` | `false` | `--read-only` |
+| `read_only_rootfs` | `false` | `--read-only-rootfs` |
+| `no_git_metadata` | `false` | `--no-git-metadata` |
+| `no_internet` | `false` | `--no-internet` |
+| `egress_allow_domains` | Empty | `--egress-allow-domain` |
+| `policy_preset` | Unset | `--policy-preset` |
+| `deny_read` / `deny_write` | Empty | `--deny-read` / `--deny-write` |
+| `max_lifetime` / `idle_timeout` / `retention` | `"0s"` | Matching hyphenated flags; `"30m"`, `"2h"`; requires `reap` |
+| `environment_lock` | Unset | `--environment-lock` |
+| `image_id` | Unset | `--image-id` |
+| `start_hooks` | Empty | `--start-hook` |
+| `readiness` | Unset | `--readiness` |
+| `readiness_timeout` | `"0s"` (effective 60s) | `--readiness-timeout` |
+| `ssh_proxy` / `jvm_proxy` | `false` | `--ssh-proxy` / `--jvm-proxy` |
+| `ca_bundle` | Unset | `--ca-bundle`; additional worker PEM roots |
+
+- These are trusted global settings; project keys are limited to the [allowlist](#allowed-project-keys).
+- Durations use Go syntax, such as `24h`; `1d` is not supported.
 
 Explicit `--image` wins over template image selection.
 `runtime = "runc"` is an explicit compatibility mode on the same containerd node, without VM isolation.
@@ -197,6 +234,11 @@ Under `[proxy]`:
 | `forward_allow_domains`, `forward_deny_domains` | Empty | `--forward-allow-domain`, `--forward-deny-domain` |
 | `forward_allow_cidrs`, `forward_deny_cidrs` | Empty | `--forward-allow-cidr`, `--forward-deny-cidr` |
 | `forward_allow_ports`, `forward_deny_ports` | Empty | `--forward-allow-port`, `--forward-deny-port` |
+| `allowed_models` | Empty (unrestricted) | `proxy run --allow-model`; exact upstream IDs; constrained tokens reject WebSocket |
+| `upstream_proxy` | Unset | `proxy run --upstream-proxy`; explicit HTTP(S) upstream proxy |
+| `ca_bundle` | Unset | `proxy run --ca-bundle`; additional proxy PEM roots |
+
+- `run.ca_bundle` configures the worker; `proxy.ca_bundle` configures the proxy. BuildKit registry CA trust is configured separately by the administrator.
 
 - The data URL is used by workers; the admin URL is used by the host CLI.
 - General egress uses `run --http-proxy-url`.
@@ -246,6 +288,9 @@ Runtime overrides take precedence over config, below explicit flags.
 
 ## Host service configuration
 
+- Paths under `/etc/codex-dock/` below describe manual installation; automatic setup uses managed configuration under `/opt/codex-dock/releases/`.
+- Check actual arguments with `systemctl cat codex-dock-node codex-dock-containerd codex-dock-buildkit`.
+
 - Host services are configured separately from user settings: `node serve --help`, `/etc/codex-dock/containerd.toml`, `kata.toml`, `kata-assets.json` and `buildkit.toml`.
 - `[kata].node_socket` configures the verification client.
 - If using a custom path, set `CODEX_DOCK_KATA_NODE_SOCKET` to the same value for the engine client.
@@ -273,6 +318,9 @@ Runtime overrides take precedence over config, below explicit flags.
 - `run.profile_size` selects a built-in or node-registered name.
 - The root node operator registers additional budgets through `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`, independently of user TOML.
 - See [bounds, guest assets and immutable reservations](sandbox-features.md#operator-resource-profiles).
+
+- Generate registration JSON with `oaiso profile define compact-256 --pids-limit 256`; query effective values with `oaiso profile --node --json`.
+- PID limits apply to both host and guest; generating JSON alone does not register it on the node.
 
 - Generate registration JSON with `oaiso profile define compact-256 --pids-limit 256` and inspect active PID ceilings with `oaiso profile --node --json`.
 - Limits apply on both host and guest.

@@ -10,6 +10,8 @@
 | Images | Built with BuildKit |
 | Host | Linux x86_64; Docker Engine, Docker CLI and QEMU are not runtime requirements |
 
+- Components, directories and stop/restart behavior: [Overview and terminology](concepts.md).
+
 ## Browse chapters
 
 | Chapter | Contents | Entry point |
