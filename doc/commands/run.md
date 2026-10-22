@@ -44,6 +44,8 @@ cxd run -- npm test -- --watch=false
 
 ## オプション一覧
 
+認証をホストと分けるには `cxd --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...`、または信頼済みグローバル設定を使います。[独立プロファイルの作成と起動](auth.md#独立プロファイル)を参照してください。
+
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
 | `--runtime` | | `kata` | ワーカーの隔離方式。`runc` は明示的な互換モード |

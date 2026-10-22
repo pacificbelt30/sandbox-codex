@@ -30,6 +30,10 @@ func managementConfig() sandbox.ManagerConfig {
 		if value, ok := os.LookupEnv("CODEX_DOCK_PROXY_ADMIN_SECRET"); ok {
 			secret = value
 		}
+		secret, err := resolveProxyAdminSecret(secret, viper.GetString("proxy.admin_secret_file"))
+		if err != nil {
+			return nil, err
+		}
 		return authproxy.NewRemoteProxy(adminURL, containerURL, secret)
 	}}
 }

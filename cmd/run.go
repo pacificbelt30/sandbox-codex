@@ -48,15 +48,16 @@ var runStartHooks []string
 var runReadiness string
 var runOpts sandbox.RunOptions
 var (
-	proxyAdminURL       string
-	proxyContainerURL   string
-	httpProxyURL        string
-	runProxyAdminSecret string
-	runKeep             bool
-	forceRecreateProxy  bool
-	mountFlags          []string
-	runEgressAllow      []string
-	runPolicyPreset     string
+	proxyAdminURL           string
+	proxyContainerURL       string
+	httpProxyURL            string
+	runProxyAdminSecret     string
+	runProxyAdminSecretFile string
+	runKeep                 bool
+	forceRecreateProxy      bool
+	mountFlags              []string
+	runEgressAllow          []string
+	runPolicyPreset         string
 )
 
 var runCmd = &cobra.Command{
@@ -145,6 +146,7 @@ func init() {
 	f.StringVar(&proxyContainerURL, "proxy-container-url", "http://codex-auth-proxy:18080", "Auth proxy URL reachable from worker containers (API reverse routes)")
 	f.StringVar(&httpProxyURL, "http-proxy-url", "http://codex-http-proxy:18082", "General-egress (forward) proxy URL workers use for HTTP(S)_PROXY")
 	f.StringVar(&runProxyAdminSecret, "proxy-admin-secret", "", "Admin secret for external auth proxy")
+	f.StringVar(&runProxyAdminSecretFile, "proxy-admin-secret-file", "", "Owner-only (0600) file with the auth proxy admin secret")
 	f.BoolVarP(&runOpts.Detach, "detach", "d", false, "Run container in background")
 	f.BoolVarP(&runOpts.Detach, "detach-legacy", "D", false, "Deprecated alias for --detach")
 	if err := f.MarkHidden("detach-legacy"); err != nil {
@@ -274,6 +276,9 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving --mount: %w", err)
 	}
 	runOpts.Mounts = mounts
+	if err := ensureProfilesOutsideWorkerShares(runOpts.ProjectDir, runOpts.CloneDir, mounts); err != nil {
+		return err
+	}
 
 	// Resolve approval mode: --full-auto (deprecated) maps to "full-auto"
 	// when --approval-mode has not been explicitly set from its default.
@@ -313,7 +318,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating network manager: %w", err)
 	}
 
-	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, runProxyAdminSecret)
+	adminSecret, err := effectiveRunProxySecret()
+	if err != nil {
+		return err
+	}
+	proxy, err := authproxy.NewRemoteProxy(proxyAdminURL, proxyContainerURL, adminSecret)
 	if err != nil {
 		// If the proxy simply isn't running and we're on a terminal with the
 		// default proxy URLs, offer to build/start it now instead of failing.
@@ -463,6 +472,19 @@ func runningWorkersBlockProxyRecreation(workerCount int, force bool) bool {
 // its in-memory worker tokens, so an automatic recreation is safe only when no
 // workers are running unless the caller explicitly forces it.
 func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, force bool) (*authproxy.RemoteProxy, error) {
+	if profile := selectedAuthProfile(); profile != "" || proxy.AuthProfile() != "" {
+		if profile == "" || profile != proxy.AuthProfile() {
+			return nil, fmt.Errorf("selected auth profile does not match the proxy; select the same profile and explicitly recreate a different proxy after draining workers")
+		}
+		state, connection, err := profileProxyState(ctx, profile)
+		if err != nil {
+			return nil, fmt.Errorf("loading selected auth profile: %w", err)
+		}
+		if connection != proxy.ProfileConnectionVersion() || proxyAuthStateMismatch(state, remoteProxyAuthState(proxy)) {
+			return nil, fmt.Errorf("auth profile generation differs from proxy; drain workers and explicitly recreate the proxy")
+		}
+		return proxy, nil
+	}
 	hostState := hostProxyAuthState()
 	if !proxyAuthStateMismatch(hostState, remoteProxyAuthState(proxy)) {
 		return proxy, nil
@@ -498,11 +520,16 @@ func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, 
 	// `cxd run` has its own admin-secret flag; propagate it to the shared
 	// proxy startup path used by `cxd proxy run`.
 	proxyAdminSecret = runProxyAdminSecret
+	proxyAdminSecretFile = runProxyAdminSecretFile
 	if err := startProxyContainer(ctx); err != nil {
 		return nil, fmt.Errorf("recreating auth proxy: %w", err)
 	}
 
-	refreshed, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, runProxyAdminSecret, 30)
+	adminSecret, err := effectiveRunProxySecret()
+	if err != nil {
+		return nil, err
+	}
+	refreshed, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, adminSecret, 30)
 	if err != nil {
 		return nil, fmt.Errorf("reconnecting recreated auth proxy: %w", err)
 	}
@@ -596,12 +623,20 @@ func offerToStartProxy(cmd *cobra.Command, connErr error) (*authproxy.RemoteProx
 	}
 
 	applyForwardPolicyDefaults(cmd)
+	if selectedAuthProfile() != "" || runProxyAdminSecretFile != "" {
+		proxyAdminSecret = runProxyAdminSecret
+		proxyAdminSecretFile = runProxyAdminSecretFile
+	}
 	if err := startProxyContainer(cmd.Context()); err != nil {
 		return nil, fmt.Errorf("starting auth proxy: %w", err)
 	}
 
 	// The container needs a moment to bind its listeners; retry briefly.
-	proxy, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, runProxyAdminSecret, 30)
+	adminSecret, err := effectiveRunProxySecret()
+	if err != nil {
+		return nil, err
+	}
+	proxy, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, adminSecret, 30)
 	if err != nil {
 		return nil, fmt.Errorf("auth proxy started but did not become ready: %w", err)
 	}
@@ -757,7 +792,17 @@ func applyRunConfigDefaults(cmd *cobra.Command) {
 			proxyAdminURL = value
 		}
 	}
+	if !flags.Changed("proxy-admin-secret-file") {
+		runProxyAdminSecretFile = ""
+		if !flags.Changed("proxy-admin-secret") {
+			runProxyAdminSecretFile = viper.GetString("proxy.admin_secret_file")
+		}
+	}
 	if !flags.Changed("proxy-admin-secret") {
+		runProxyAdminSecret = ""
+		if flags.Changed("proxy-admin-secret-file") {
+			return
+		}
 		runProxyAdminSecret = viper.GetString("proxy.admin_secret")
 		if value, ok := os.LookupEnv("CODEX_DOCK_PROXY_ADMIN_SECRET"); ok {
 			runProxyAdminSecret = value

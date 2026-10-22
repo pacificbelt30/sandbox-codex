@@ -25,6 +25,8 @@ This builds the CLI and helper binaries. Host service installation is a separate
 
 ## 2. Prepare credentials
 
+To keep authentication separate from host CLI logins, create an [independent profile](commands/auth.md#independent-profiles), set trusted global `auth_profile` and `[proxy].admin_secret_file`, then continue. Selected profiles never fall back to host credentials. The following sources describe legacy mode without profile selection.
+
 Configure credentials before starting the proxy.
 
 | Agent | Host credential sources |

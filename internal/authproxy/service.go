@@ -14,6 +14,13 @@ type Service interface {
 	ContainerEndpoint() string
 }
 
+// ProfileService binds a retained worker to its original independent login.
+// OAuth refresh changes the credential version, not this connection version.
+type ProfileService interface {
+	AuthProfile() string
+	ProfileConnectionVersion() string
+}
+
 // IdentityIssuer is optional so legacy CLI launches retain their original
 // token contract. A caller requesting identity must never silently downgrade.
 type IdentityIssuer interface {

@@ -36,7 +36,9 @@ The separate admin listener is not exposed to workers.
 
 ## Credential sources
 
-Each provider uses the first available source below.
+An explicitly selected [independent profile](commands/auth.md#independent-profiles) uses only its product-private `0600` FileStore, without host login/environment fallback. OAuth refresh persists to that store. Use `--admin-secret-file` or trusted global `[proxy].admin_secret_file` for admin authority.
+
+Without profile selection, each provider uses the first available legacy source below.
 
 | Priority | OpenAI | Anthropic |
 |---|---|---|
@@ -47,8 +49,7 @@ Each provider uses the first available source below.
 
 An explicit Anthropic API key selects API billing even with a saved subscription login. Unset it to use subscription OAuth. See [Claude Code](claude-code.md) for setup-token support, refresh and pinned-CLI execution. External case proxies use only their CredentialStore, without these host fallbacks.
 
-The auth proxy runs as the caller's UID/GID with a private HOME at `/var/lib/codex-dock-proxy`.
-Credential files are mounted read-only. Owner-only `0600` files work without permission changes or added capabilities.
+The legacy auth proxy runs as the caller's UID/GID with a private HOME at `/var/lib/codex-dock-proxy` and read-only credential binds. Independent profiles use the same UID/GID with only their selected directory mounted read-write for refresh. Owner-only `0600` files work without permission changes or added capabilities.
 Unreadable files and directories are rejected before startup.
 
 ## Request flow

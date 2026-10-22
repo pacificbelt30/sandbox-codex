@@ -163,15 +163,20 @@ Dockerfile、テンプレート、カスタムイメージの例は[build](comma
 
 ## `[proxy]`
 
+独立認証のグローバルキー `auth_profile` はプロファイル名、`auth_profile_dir` は保存root（既定 `~/.config/codex-dock/profiles`）です。対応フラグは `--auth-profile` / `--auth-profile-dir`。未選択時は従来のホスト連携、選択時はその保存先だけを使い、ホストへfallbackしません。プロジェクト設定では指定できません。[作成と起動](commands/auth.md#独立プロファイル)を参照してください。
+
 | キー | 既定値 | 対応箇所 |
 |---|---|---|
 | `container_url` | `http://codex-auth-proxy:18080` | `run --proxy-container-url` |
 | `admin_url` | `http://127.0.0.1:18081` | `run --proxy-admin-url`、ワーカー管理 |
 | `admin_secret` | 未設定 | 管理クライアントの認証。サーバー起動には `proxy run --admin-secret` も指定する |
+| `admin_secret_file` | 未設定 | 所有者の0600ファイル。`proxy run --admin-secret-file` / `run --proxy-admin-secret-file`、init・ワーカー管理・TUIで使用 |
 | `forward_default_deny` | `false` | `proxy run --forward-default-deny`。許可ドメイン・CIDRの両方が空なら一般通信を拒否 |
 | `forward_allow_domains` / `forward_deny_domains` | 空配列 | `proxy run --forward-allow-domain` / `--forward-deny-domain` |
 | `forward_allow_cidrs` / `forward_deny_cidrs` | 空配列 | `--forward-allow-cidr` / `--forward-deny-cidr` |
 | `forward_allow_ports` / `forward_deny_ports` | 空配列 | `--forward-allow-port` / `--forward-deny-port` |
+
+`admin_secret_file` と値指定（設定・環境変数を含む）が両方有効なら拒否します。明示したrunのsecretフラグは設定値より優先します。管理ファイル・profile保存先はworkspaceや追加mountへ含めないでください。管理secretの変更はworkerを退避した後、Proxyを明示的に再作成して行います。
 
 `container_url` はワーカーが使うURL、`admin_url` はホストCLIが使うURLです。
 一般通信用のURLは `run --http-proxy-url` で指定します。

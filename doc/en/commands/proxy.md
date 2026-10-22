@@ -31,12 +31,13 @@ cxd proxy run
 | `--http-port` | `18082` | Internal egress port, not host-published |
 | `--network` | `dock-net-proxy` | Shared egress network; created if missing |
 | `--admin-secret` | Unset | Server secret; configure the same value in host clients |
+| `--admin-secret-file` | Unset | Read admin authority from an owner-only 0600 file; mutually exclusive with a value |
 
 Policy flags are `--forward-allow-domain`, `--forward-deny-domain`, `--forward-allow-cidr`, `--forward-deny-cidr`, `--forward-allow-port` and `--forward-deny-port`.
 Domain/CIDR flags repeat; port flags repeat or accept comma-separated values.
 See [policy rules](../../proxy-policy.md) (Japanese).
 
-The auth proxy reads credentials as the caller's UID/GID through read-only binds under a private HOME.
+Legacy mode reads credentials as the caller's UID/GID through read-only binds under a private HOME. An [independent profile](auth.md#independent-profiles) selected by `--auth-profile NAME` mounts only its directory read-write for refresh and does not load host authentication.
 Old layouts, policy mismatches and missing worker-auth capability are rejected rather than silently updating existing containers.
 
 ## Stop and remove

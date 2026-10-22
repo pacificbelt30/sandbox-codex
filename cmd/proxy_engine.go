@@ -10,6 +10,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +19,23 @@ import (
 )
 
 const proxyCredentialHome = "/var/lib/codex-dock-proxy"
+const proxyProfileLabel = "io.codex-dock.auth-profile"
+
+func profileProxyID(a proxyRunArgs) string {
+	if a.profileName == "" {
+		return ""
+	}
+	return caseDigest(a.profileName + "\x00" + a.profileDirectory + "\x00" + a.profileConnection)
+}
+
+func hasProfileMount(host *container.HostConfig, directory string) bool {
+	for _, m := range host.Mounts {
+		if m.Type == mount.TypeBind && m.Source == directory && m.Target == "/run/cxd-profile" && !m.ReadOnly {
+			return true
+		}
+	}
+	return false
+}
 
 // The proxy spec has one source of truth for credentials, policy, and roles.
 // Convert its structured option vector to the node DTO; no shell/CLI is run.
@@ -62,6 +80,21 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 	if a.credentialSocket != "" {
 		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
 	}
+	if a.adminSecretFile != "" {
+		if a.role != authproxy.RoleAuth {
+			return nil, nil, fmt.Errorf("admin secret file belongs only to the auth proxy")
+		}
+		if _, err := resolveProxyAdminSecret("", a.adminSecretFile); err != nil {
+			return nil, nil, err
+		}
+		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
+	}
+	if a.profileName != "" {
+		if a.role != authproxy.RoleAuth || a.mountCreds || a.credentialSocket != "" {
+			return nil, nil, fmt.Errorf("independent profile requires exclusive auth-role storage")
+		}
+		c.User = fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid())
+	}
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if arg == "-d" {
@@ -91,6 +124,29 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 			c.Env = append(c.Env, value)
 		case "-v":
 			parts := strings.Split(value, ":")
+			if len(parts) == 3 && parts[1] == "/run/cxd-admin-secret" && parts[2] == "ro" {
+				source, err := filepath.Abs(parts[0])
+				if err != nil {
+					return nil, nil, err
+				}
+				h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: source, Target: parts[1], ReadOnly: true})
+				continue
+			}
+			if len(parts) == 3 && parts[1] == "/run/cxd-profile" && parts[2] == "rw" {
+				store, err := credentialstore.NewFileStore(parts[0])
+				if err != nil {
+					return nil, nil, err
+				}
+				loaded, err := store.Load(context.Background(), a.profileName)
+				if err != nil {
+					return nil, nil, err
+				}
+				if loaded.ConnectionVersion != a.profileConnection {
+					return nil, nil, fmt.Errorf("profile connection changed before proxy creation")
+				}
+				h.Mounts = append(h.Mounts, mount.Mount{Type: mount.TypeBind, Source: store.Directory(), Target: parts[1]})
+				continue
+			}
 			if len(parts) == 3 && (parts[1] == "/run/cxd-proxy-ca.pem" || parts[1] == "/run/cxd-broker.json") && parts[2] == "ro" {
 				source, err := filepath.Abs(parts[0])
 				if err != nil {

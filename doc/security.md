@@ -8,7 +8,7 @@ OpenAI / Anthropicの実APIキー・access token・OAuth refresh token・ID toke
 
 初回取得とOAuth更新の両方で返却項目を限定する。更新エラーは、CLIの再ログイン判断に必要な既知コードとHTTP statusだけを保持し、上流本文・任意フィールド・通信エラー詳細を返さない。[固定CLIによる試験](testing.md#codexのidトークン分離)を参照。更新前のworker内ファイルや過去ログを自動消去する変更ではないため、Proxyを更新したあと、既存workerは停止・再作成する。
 
-認証プロキシは呼出元のUID/GIDと専用HOMEで、所有者の0600認証ファイルを読み取り専用で開く。capability全削除を維持し、元ファイルの権限は変更しない。
+従来の認証プロキシは呼出元のUID/GIDと専用HOMEで、所有者の0600認証ファイルを読み取り専用で開く。独立プロファイルではホスト認証のmount・環境変数を省き、選択した0700ディレクトリだけを更新用に読み書き可能で渡す。資格情報・lockは0600、更新はCAS・fsync・atomic renameを使う。workerの再開時にもプロファイルと接続世代を照合する。capability全削除を維持し、元ファイルの権限は変更しない。管理シークレットは別の0600ファイルから読み込め、値をargvへ載せずAuth Proxyだけにreadonlyで渡す。CLIはprofile領域とworker共有の重複を拒否する。組み込み側も保存領域・管理シークレットをworkerへ共有しない。
 
 現在の製品APIキーファイルとローカルOAuth更新状態は権限制限付きの平文であり、暗号化Vaultは未実装。将来の[認証管理要件](credential-store.md#独立した認証管理の設計要件wslvmヘッドレス)にはWSL 2・Linux VM・ヘッドレスを含める。「ホスト」は信頼する制御環境を意味し、その環境自体をWSL／VMに置くことと、作業VMへ実資格情報を渡すことは区別する。
 

@@ -29,6 +29,8 @@ Codex CLI・Claude Codeに加え、以下のコーディングエージェント
 
 ## WSL・VM内での独立した認証管理
 
+初期の0600ファイルStore、独立profileの作成・明示import・選択、Auth Proxy経由のAPI/OAuth利用と更新保存は実装済みです。[使い方](commands/auth.md#独立プロファイル)を参照してください。自動login Kata・実APIキー照合・Vault・移行・WSL/VM固有の実機受入は今後の作業です。
+
 製品の制御環境がWSL 2・Linux VM・SSHヘッドレス環境でも成立する暗号化Vaultを設計対象とします。作業VMとの資格情報分離と認証Proxyを維持し、OS keyring・systemd・TPMを必須にしません。明示パスフレーズ、保存filesystemの保証、鍵lockと実行失効、別端末ブラウザ、backup・複製・rollbackを受入条件へ含めます。
 
 [詳細な設計要件](credential-store.md#独立した認証管理の設計要件wslvmヘッドレス)を参照してください。Vaultと鍵backendは未実装であり、WSL／VMのKata実行対応は別途の実機検証が必要です。

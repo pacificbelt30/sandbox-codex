@@ -138,6 +138,10 @@ See [build](commands/build.md).
 
 ## Proxy settings
 
+Trusted global `auth_profile` selects an independent profile; `auth_profile_dir` overrides its storage root (default `~/.config/codex-dock/profiles`). Corresponding flags are `--auth-profile` / `--auth-profile-dir`. An explicit selection disables host credential fallback. These keys are not allowed in project configuration. See [creation and startup](commands/auth.md#independent-profiles).
+
+Admin-secret files must be owner-only 0600 regular files. Supplying both a file and a value, including configured/environment values, fails. Explicit run secret flags override configuration. Keep these files and profile storage outside worker shares. Drain workers and explicitly recreate the proxy when changing admin authority.
+
 Under `[proxy]`:
 
 | Key | Default | Used by |
@@ -145,6 +149,7 @@ Under `[proxy]`:
 | `container_url` | `http://codex-auth-proxy:18080` | `run --proxy-container-url` |
 | `admin_url` | `http://127.0.0.1:18081` | `run --proxy-admin-url`, worker management |
 | `admin_secret` | Unset | Admin client; also supply the server secret with `proxy run --admin-secret` |
+| `admin_secret_file` | Unset | Owner-only 0600 file; `proxy run --admin-secret-file`, `run --proxy-admin-secret-file`, init, worker management and TUI |
 | `forward_default_deny` | `false` | `--forward-default-deny`; deny general egress when both domain and CIDR grants are empty |
 | `forward_allow_domains`, `forward_deny_domains` | Empty | `--forward-allow-domain`, `--forward-deny-domain` |
 | `forward_allow_cidrs`, `forward_deny_cidrs` | Empty | `--forward-allow-cidr`, `--forward-deny-cidr` |

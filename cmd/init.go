@@ -49,13 +49,8 @@ func init() {
 		if err := report.Err(); err != nil {
 			return err
 		}
-		state := hostProxyAuthState()
-		info, authErr := authproxy.GetAuthInfo()
-		if agent == "codex" && (authErr != nil || !info.KeyConfigured) {
-			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run cxd auth set; then rerun init")
-		}
-		if agent == "claude" && !state.anthropicAvailable {
-			return fmt.Errorf("anthropic credentials missing: run `claude auth login`, or set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN; then rerun init --agent claude")
+		if err := checkInitCredentials(cmd.Context(), agent); err != nil {
+			return err
 		}
 		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Credentials configured (contents are never printed)."); err != nil {
 			return err
@@ -103,11 +98,16 @@ func init() {
 			return err
 		}
 		proxyAdminSecret = runProxyAdminSecret
+		proxyAdminSecretFile = runProxyAdminSecretFile
 		applyForwardPolicyDefaults(proxyRunCmd)
 		if err = startProxyContainer(cmd.Context()); err != nil {
 			return err
 		}
-		proxy, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, runProxyAdminSecret, 30)
+		adminSecret, err := effectiveRunProxySecret()
+		if err != nil {
+			return err
+		}
+		proxy, err := connectProxyWithRetry(proxyAdminURL, proxyContainerURL, adminSecret, 30)
 		if err != nil {
 			return err
 		}
@@ -124,4 +124,30 @@ func init() {
 	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude (default: configured agent, otherwise codex)")
 	registerCompletion(prepare, "agent", cobra.FixedCompletions([]cobra.Completion{"codex", "claude"}, cobra.ShellCompDirectiveNoFileComp))
 	rootCmd.AddCommand(prepare)
+}
+
+func checkInitCredentials(ctx context.Context, agent string) error {
+	if profile := selectedAuthProfile(); profile != "" {
+		store, err := openAuthProfile(profile)
+		if err != nil {
+			return err
+		}
+		value, err := store.Load(ctx, profile)
+		if err != nil {
+			return err
+		}
+		if agent == "codex" && value.OpenAIAPIKey == "" && value.OpenAIOAuth == nil || agent == "claude" && value.AnthropicAPIKey == "" && value.AnthropicOAuth == nil {
+			return fmt.Errorf("selected profile does not configure %s credentials", agent)
+		}
+		return nil
+	}
+	if agent == "codex" {
+		info, err := authproxy.GetAuthInfo()
+		if err != nil || !info.KeyConfigured {
+			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run cxd auth set; then rerun init")
+		}
+	} else if agent == "claude" && !hostProxyAuthState().anthropicAvailable {
+		return fmt.Errorf("anthropic credentials missing: run `claude auth login`, or set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN; then rerun init --agent claude")
+	}
+	return nil
 }

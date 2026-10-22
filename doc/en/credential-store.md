@@ -37,6 +37,10 @@ For official Claude Code subscriptions, `AnthropicOAuth` accepts an access-only 
 
 This backend does not encrypt secrets. In WSL, use a private Linux-side directory; shared folders and backups need separate protection. FileStore can also serve a case-scoped Unix socket mounted only into its auth proxy as described above.
 
+The CLI's [independent profiles](commands/auth.md#independent-profiles) use FileStore through `auth profile set/import/show/list` and explicit `--auth-profile`. Selection disables host credential fallback. Each profile has a separate directory; only the selected directory is mounted read-write into its auth proxy. OAuth refresh persists there and proxy restarts reload it. Retained workers record the profile and connection generation, rejecting restart under another login. A future vault replaces the Store implementation while preserving its conformance tests; neither the vault nor automatic migration is implemented.
+
+The CLI rejects overlaps between profile storage and workspace, clone or extra mounts. Embedding API callers must also keep Store data and admin authority outside worker shares. Creation/import is create-only; re-login requires explicitly stopping/removing old workers and recreating the proxy.
+
 ## Independent credential management: WSL, VMs and headless systems
 
 This section specifies future product-vault requirements. The encrypted vault, key backends, unlock UI and dedicated login flow are not implemented. The initial FileStore, existing product API-key files and local OAuth rotation state are permission-restricted plaintext. External Store encryption belongs to the embedding product.

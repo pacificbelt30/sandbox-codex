@@ -47,14 +47,8 @@ func (p *Proxy) IssueTokenWithPolicy(containerName string, ttlSec int, id identi
 	if err := p.checkCaseGeneration(); err != nil {
 		return "", err
 	}
-	if p.cfg.CaseID != "" {
-		if err := id.Validate(); err != nil || id.CaseID != p.cfg.CaseID || id.ConnectionVersion != p.caseConnectionVersion {
-			return "", fmt.Errorf("token identity does not match credential case")
-		}
-	} else if !id.Empty() {
-		if err := id.Validate(); err != nil {
-			return "", err
-		}
+	if err := p.checkTokenIdentity(id); err != nil {
+		return "", err
 	}
 	token, err := generateToken()
 	if err != nil {
@@ -78,6 +72,17 @@ func (p *Proxy) IssueTokenWithPolicy(containerName string, ttlSec int, id identi
 		fmt.Printf("Token issued for %s (TTL=%ds)\n", containerName, ttlSec)
 	}
 	return token, nil
+}
+
+func (p *Proxy) checkTokenIdentity(id identity.Identity) error {
+	if p.cfg.CaseID != "" || p.cfg.ProfileName != "" && !id.Empty() {
+		if err := id.Validate(); err != nil || id.CaseID != p.credentialScope() || id.ConnectionVersion != p.caseConnectionVersion {
+			return fmt.Errorf("token identity does not match credential scope")
+		}
+	} else if !id.Empty() {
+		return id.Validate()
+	}
+	return nil
 }
 
 // RevokeToken immediately revokes the token for a container.

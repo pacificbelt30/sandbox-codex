@@ -97,7 +97,7 @@ func (p *Proxy) handleAdminRevokeCase(w http.ResponseWriter, r *http.Request) {
 	if !p.requireAdmin(w, r) {
 		return
 	}
-	if p.cfg.CaseID == "" {
+	if p.credentialScope() == "" {
 		http.Error(w, "not a case proxy", http.StatusBadRequest)
 		return
 	}
@@ -114,6 +114,10 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if p.cfg.ProfileName != "" {
+		w.Header().Set("X-Cxd-Auth-Profile", p.cfg.ProfileName)
+		w.Header().Set("X-Cxd-Connection-Version", p.caseConnectionVersion)
+	}
 	_ = json.NewEncoder(w).Encode(map[string]bool{
 		"worker_token_auth":    true,
 		"model_authorization":  true,
@@ -124,6 +128,7 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 		"anthropic_oauth_mode": p.IsAnthropicOAuthMode(),
 		"token_identity":       true,
 		"token_model_policy":   true,
-		"case_proxy":           p.cfg.CredentialStore != nil,
+		"case_proxy":           p.cfg.CaseID != "",
+		"independent_profile":  p.cfg.ProfileName != "",
 	})
 }

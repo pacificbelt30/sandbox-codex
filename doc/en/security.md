@@ -29,8 +29,7 @@ The egress proxy receives no real credentials.
 
 Initial acquisition and refresh return only selected worker fields. Refresh errors retain HTTP status and known codes needed for CLI recovery, without forwarding issuer bodies or transport error details. See the [pinned CLI test](../testing.md#codexのidトークン分離) (Japanese). Existing worker files and historical logs are not automatically erased: update the proxy, then stop and recreate existing workers.
 
-The auth proxy runs as the caller's UID/GID, with a private HOME and read-only credential binds.
-It can read owner-only `0600` files without changing their permissions or adding capabilities.
+The legacy auth proxy runs as the caller's UID/GID, with a private HOME and read-only credential binds. Independent profiles omit host authentication mounts/environment and mount only the selected `0700` directory read-write for CAS/fsync/atomic-rename refresh. Credentials and locks are `0600`. Worker restart verifies the profile and connection generation. Neither mode changes source permissions or adds capabilities. Admin authority can come from a separate `0600` file mounted read-only into auth only, without its value in argv. The CLI rejects profile-storage overlaps with worker shares; embedding callers must also keep credentials and admin authority outside those shares.
 Current product API-key files and local OAuth rotation state remain permission-restricted plaintext; the encrypted vault is not implemented. Future [credential-management requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems) include WSL 2, Linux VMs and headless systems. A trusted control environment may itself run in a VM; it is distinct from the untrusted work VM that must never receive real credentials.
 HTTP and WebSocket AI routes validate issued, unexpired tokens before contacting upstreams.
 Revocation, expiry or token replacement cancels active streams and tunnels.

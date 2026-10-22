@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/identity"
 )
 
@@ -25,6 +26,8 @@ type RemoteProxy struct {
 	anthropicOAuthMode bool
 	identityMode       bool
 	caseProxy          bool
+	profileName        string
+	profileConnection  string
 	credentialBroker   bool
 	modelAuthorization bool
 	modelPolicyActive  bool
@@ -65,12 +68,14 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 	return r, nil
 }
 
-func (r *RemoteProxy) ContainerEndpoint() string   { return r.containerURL }
-func (r *RemoteProxy) IsOAuthMode() bool           { return r.oauthMode }
-func (r *RemoteProxy) IsAnthropicMode() bool       { return r.anthropicMode }
-func (r *RemoteProxy) IsAnthropicOAuthMode() bool  { return r.anthropicOAuthMode }
-func (r *RemoteProxy) IsCaseProxy() bool           { return r.caseProxy }
-func (r *RemoteProxy) SupportsTokenIdentity() bool { return r.identityMode }
+func (r *RemoteProxy) ContainerEndpoint() string        { return r.containerURL }
+func (r *RemoteProxy) IsOAuthMode() bool                { return r.oauthMode }
+func (r *RemoteProxy) IsAnthropicMode() bool            { return r.anthropicMode }
+func (r *RemoteProxy) IsAnthropicOAuthMode() bool       { return r.anthropicOAuthMode }
+func (r *RemoteProxy) IsCaseProxy() bool                { return r.caseProxy }
+func (r *RemoteProxy) AuthProfile() string              { return r.profileName }
+func (r *RemoteProxy) ProfileConnectionVersion() string { return r.profileConnection }
+func (r *RemoteProxy) SupportsTokenIdentity() bool      { return r.identityMode }
 
 func (r *RemoteProxy) IssueToken(containerName string, ttlSec int) (string, error) {
 	return r.IssueTokenWithIdentity(containerName, ttlSec, identity.Identity{})
@@ -197,6 +202,13 @@ func (r *RemoteProxy) fetchMode(ctx context.Context) (map[string]bool, error) {
 	var out map[string]bool
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
+	}
+	if out["independent_profile"] {
+		r.profileName = resp.Header.Get("X-Cxd-Auth-Profile")
+		r.profileConnection = resp.Header.Get("X-Cxd-Connection-Version")
+		if credentialstore.ValidateProfileName(r.profileName) != nil || r.profileConnection == "" || out["case_proxy"] {
+			return nil, fmt.Errorf("auth proxy has incomplete independent profile metadata")
+		}
 	}
 	return out, nil
 }

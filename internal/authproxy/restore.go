@@ -27,14 +27,8 @@ func (p *Proxy) RestoreTokenWithPolicy(name, token string, ttl int, id identity.
 	if err := p.checkCaseGeneration(); err != nil {
 		return err
 	}
-	if p.cfg.CaseID != "" {
-		if err := id.Validate(); err != nil || id.CaseID != p.cfg.CaseID || id.ConnectionVersion != p.caseConnectionVersion {
-			return fmt.Errorf("token identity does not match credential case")
-		}
-	} else if !id.Empty() {
-		if err := id.Validate(); err != nil {
-			return err
-		}
+	if err := p.checkTokenIdentity(id); err != nil {
+		return err
 	}
 	if name == "" || len(name) > 255 || strings.ContainsAny(name, "\r\n\x00") || !strings.HasPrefix(token, "cdx-") || len(token) != 68 {
 		return fmt.Errorf("invalid worker placeholder")

@@ -19,7 +19,7 @@ func (p *Proxy) checkCaseGeneration() error {
 	defer p.refreshMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	current, err := p.cfg.CredentialStore.Load(ctx, p.cfg.CaseID)
+	current, err := p.cfg.CredentialStore.Load(ctx, p.credentialScope())
 	if err != nil {
 		if errors.Is(err, credentialstore.ErrNotFound) {
 			p.revokeCaseTokens()
@@ -31,6 +31,13 @@ func (p *Proxy) checkCaseGeneration() error {
 		return credentialstore.ErrConflict
 	}
 	return nil
+}
+
+func (p *Proxy) credentialScope() string {
+	if p.cfg.ProfileName != "" {
+		return p.cfg.ProfileName
+	}
+	return p.cfg.CaseID
 }
 
 func (p *Proxy) revokeCaseTokens() {

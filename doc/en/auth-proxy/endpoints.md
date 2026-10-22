@@ -30,6 +30,8 @@ If an admin secret is configured, `/admin/*` requires `X-Proxy-Admin-Secret`.
 | POST | `/admin/revoke` | Revoke token |
 | GET | `/admin/mode` | Authentication modes and capability |
 
+Independent profiles set `independent_profile` true and return their name and login generation in admin-only `X-Cxd-Auth-Profile` / `X-Cxd-Connection-Version` headers. `case_proxy` denotes external cases and remains false for local profiles. These fields contain no real credentials. Profiles require a separate admin listener and an admin secret of at least 32 bytes.
+
 ## `GET /token`
 
 Send `X-Codex-Token: cdx-<64 hexadecimal digits>`.

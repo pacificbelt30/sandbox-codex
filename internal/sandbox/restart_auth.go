@@ -51,6 +51,9 @@ func (m *Manager) restoreWorkerToken(v container.InspectResponse) error {
 	if err != nil {
 		return err
 	}
+	if err := checkWorkerProfile(p, v.Config.Labels); err != nil {
+		return err
+	}
 	r, ok := p.(authproxy.TokenRestorer)
 	if !ok {
 		return fmt.Errorf("auth proxy does not support worker restart; update the proxy")
@@ -90,6 +93,21 @@ func (m *Manager) restoreWorkerToken(v container.InspectResponse) error {
 		return identityRestorer.RestoreTokenWithIdentity(strings.TrimPrefix(v.Name, "/"), token, ttl, id)
 	}
 	return r.RestoreToken(strings.TrimPrefix(v.Name, "/"), token, ttl)
+}
+
+func checkWorkerProfile(p authproxy.Service, labels map[string]string) error {
+	saved, connection := labels[labelPrefix+"auth-profile"], labels[labelPrefix+"auth-profile-connection"]
+	var current, currentConnection string
+	if profile, ok := p.(authproxy.ProfileService); ok {
+		current, currentConnection = profile.AuthProfile(), profile.ProfileConnectionVersion()
+	}
+	if saved == "" && connection == "" && current == "" {
+		return nil
+	}
+	if saved == "" || connection == "" || saved != current || connection != currentConnection {
+		return fmt.Errorf("worker authentication profile or login changed; create a new worker")
+	}
+	return nil
 }
 
 func (m *Manager) revokeWorkerToken(v container.InspectResponse) {

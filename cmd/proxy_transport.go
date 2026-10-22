@@ -10,12 +10,15 @@ import (
 const proxyTransportLabel = "io.codex-dock.proxy-transport"
 
 func proxyTransportID(a proxyRunArgs) string {
-	if a.upstreamProxy == "" && a.caFile == "" && a.brokerFile == "" && len(a.allowedModels) == 0 {
+	if a.upstreamProxy == "" && a.caFile == "" && a.brokerFile == "" && len(a.allowedModels) == 0 && a.adminSecretFile == "" {
 		return ""
 	}
 	bundle, _ := os.ReadFile(a.caFile)
 	broker, _ := os.ReadFile(a.brokerFile)
 	bundle = append(bundle, broker...)
+	if a.adminSecretFile != "" {
+		bundle = append(bundle, []byte("\x00admin-secret-file="+a.adminSecretFile)...)
+	}
 	if len(a.allowedModels) != 0 {
 		models, _ := json.Marshal(a.allowedModels)
 		bundle = append(bundle, models...)

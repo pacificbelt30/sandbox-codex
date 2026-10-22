@@ -38,6 +38,10 @@ type Config struct {
 	// store retains the existing host-file behavior.
 	CredentialStore credentialstore.Store
 	CaseID          string
+	// ProfileName selects an independent local profile through CredentialStore.
+	// Unlike a multi-user case proxy, it retains the CLI's unscoped token API.
+	// It is mutually exclusive with CaseID and never enables host fallback.
+	ProfileName string
 	// OAuthStateDir stores rotated credentials outside the read-only login files.
 	// Empty keeps the previous in-memory behavior (mainly useful in tests).
 	OAuthStateDir string

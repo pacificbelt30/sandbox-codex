@@ -44,7 +44,22 @@ CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
 
 この固定CLI試験は、ホストの認証ファイルや資格情報の環境変数を継承せず、ローカルOAuth／Responses fixtureだけを使います。CLI出力、Proxyのverboseログ、生成されたHOME配下のファイル（`auth.json`を含む）に架空の実トークンが残らないことと、更新後もaccess欄がplaceholder・refresh欄が空文字であることを検査します。email・user IDなどの未選択claimも渡しません。
 
+独立FileStoreを使用し、OAuth更新後の実access/refresh/ID値が0600ファイルへ保存されること、別のProxyインスタンスがその保存結果を読み直せることも確認します。
+
 両ケースは実行してPASSしています。これはホスト上でのCLI／起動スクリプト結合試験であり、この修正後の実Kata・実OAuthサービスによる更新は再検証していません。通常のCIではCLIバイナリを指定しない追加試験だけがskipされ、資格情報境界の回帰試験は実行されます。
+
+## 独立プロファイルの受入
+
+2026-10-22の架空資格情報試験では、FileStoreの適合性・別プロセス間の同時更新CAS、0700/0600、symlink/hardlink拒否、保存失敗、CLI作成/import/メタデータ、profile専用mount、workspaceとの重複拒否、旧workerの別profile・別接続世代への再認可拒否を確認します。Proxy試験はOpenAI API/OAuth・Anthropic API/OAuthの4モードで、ホスト認証を無視すること、選択した資格情報の上流注入、workerへの非返却、失効を確認します。
+
+実CLIプロセスとローカルProxy listenerのスモーク試験も用意しています。管理secretは0600ファイルを使い、外部API・login・推論要求は送りません。
+
+```bash
+go build -o /private/path/cxd .
+python3 scripts/verify-auth-profiles.py --binary /private/path/cxd
+```
+
+実providerの認証成功、専用login Kata、WSLのDrvFS／VM共有filesystemの保証を確認する試験ではありません。
 
 ## Go APIの追加受入
 

@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 )
 
 // Optional official-CLI acceptance: real entrypoint, proxy listeners and local
@@ -88,11 +90,21 @@ func TestCodexCLIWorkerCredentialPrivacy(t *testing.T) {
 				}
 			}))
 			defer up.Close()
-			p := newOAuthTestProxy(t, "private-initial-access")
-			p.oauthCreds.IDToken, p.oauthCreds.AccountID = id, "acct-privacy"
-			p.oauthCreds.LastRefresh = time.Now().UTC().Format(time.RFC3339)
+			credentials := &credentialstore.OpenAIOAuth{IDToken: id, AccountID: "acct-privacy", AccessToken: "private-initial-access", RefreshToken: "rt-secret-stays-on-host", LastRefresh: time.Now().UTC().Format(time.RFC3339)}
 			if refresh {
-				p.oauthCreds.LastRefresh = "2000-01-01T00:00:00Z"
+				credentials.LastRefresh = "2000-01-01T00:00:00Z"
+			}
+			store, err := credentialstore.NewFileStore(filepath.Join(t.TempDir(), "profile"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Create(context.Background(), "privacy", credentialstore.Credentials{OpenAIOAuth: credentials}); err != nil {
+				t.Fatal(err)
+			}
+			config := Config{CredentialStore: store, ProfileName: "privacy", AdminSecret: strings.Repeat("a", 32), AdminListenAddr: "127.0.0.1:0"}
+			p, err := NewProxy(config)
+			if err != nil {
+				t.Fatal(err)
 			}
 			p.oauthTokenURL, p.chatgptURL = up.URL+"/oauth/token", up.URL
 			if err := p.Start(); err != nil {
@@ -158,6 +170,16 @@ func TestCodexCLIWorkerCredentialPrivacy(t *testing.T) {
 			assertWorkerIDToken(t, tokens["id_token"])
 			if tokens["access_token"] != token || tokens["refresh_token"] != "" {
 				t.Fatal("official CLI persisted real credentials or lost its worker placeholder")
+			}
+			if refresh {
+				saved, err := store.Load(context.Background(), "privacy")
+				if err != nil || saved.OpenAIOAuth.AccessToken != "private-rotated-access" || saved.OpenAIOAuth.RefreshToken != "private-rotated-refresh" || saved.OpenAIOAuth.IDToken != id {
+					t.Fatal("real CLI refresh was not durably saved to the independent profile")
+				}
+				reopened, err := NewProxy(config)
+				if err != nil || reopened.oauthCreds.AccessToken != saved.OpenAIOAuth.AccessToken {
+					t.Fatal("proxy restart lost the independent OAuth rotation")
+				}
 			}
 		})
 	}

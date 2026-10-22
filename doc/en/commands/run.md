@@ -43,6 +43,8 @@ cxd run -- npm test -- --watch=false
 
 ## Options
 
+To separate authentication from the host, use `cxd --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...` or trusted global configuration. See [independent profile setup](auth.md#independent-profiles).
+
 | Option | Short | Default | Description |
 |---|---|---|---|
 | `--runtime` | | `kata` | Worker isolation; `runc` is explicit compatibility mode |

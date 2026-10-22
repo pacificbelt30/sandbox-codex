@@ -371,6 +371,10 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		labels[labelPrefix+"worktree"] = absWorkspace
 	}
 	if m.proxy != nil {
+		if p, ok := m.proxy.(authproxy.ProfileService); ok && p.AuthProfile() != "" {
+			labels[labelPrefix+"auth-profile"] = p.AuthProfile()
+			labels[labelPrefix+"auth-profile-connection"] = p.ProfileConnectionVersion()
+		}
 		labels[labelPrefix+"proxy-container-url"] = m.proxy.ContainerEndpoint()
 		labels[labelPrefix+"proxy-admin-url"] = m.proxyAdminURL
 		labels[labelPrefix+"token-ttl"] = strconv.Itoa(opts.TokenTTL)

@@ -79,10 +79,16 @@ const anthropicOAuthBetaHeader = "oauth-2025-04-20"
 // defaultAnthropicVersion is sent when the container omits anthropic-version.
 const defaultAnthropicVersion = "2023-06-01"
 
+func (p *Proxy) AuthProfile() string              { return p.cfg.ProfileName }
+func (p *Proxy) ProfileConnectionVersion() string { return p.caseConnectionVersion }
+
 // NewProxy creates a new Auth Proxy.
 // In OAuth mode (detected via IsOAuthAuth), credentials are loaded from
 // ~/.codex/auth.json. In API key mode, the API key is loaded as usual.
 func NewProxy(cfg Config) (*Proxy, error) {
+	if cfg.ProfileName != "" && (cfg.CredentialStore == nil || cfg.BrokerOnly || cfg.isEgress()) {
+		return nil, fmt.Errorf("independent profile requires an auth-role credential store")
+	}
 	if err := ValidateAllowedModels(cfg.AllowedModels); err != nil {
 		return nil, err
 	}
@@ -177,10 +183,15 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		return p, nil
 	}
 	if cfg.CredentialStore != nil {
-		if cfg.CaseID == "" || cfg.OAuthStateDir != "" {
-			return nil, fmt.Errorf("external credential store requires a case ID and forbids local OAuth state")
+		if (cfg.CaseID == "") == (cfg.ProfileName == "") || cfg.OAuthStateDir != "" {
+			return nil, fmt.Errorf("credential store requires exactly one case or profile and forbids legacy OAuth state")
 		}
-		loaded, err := cfg.CredentialStore.Load(context.Background(), cfg.CaseID)
+		if cfg.ProfileName != "" {
+			if err := credentialstore.ValidateProfileName(cfg.ProfileName); err != nil {
+				return nil, err
+			}
+		}
+		loaded, err := cfg.CredentialStore.Load(context.Background(), p.credentialScope())
 		if err != nil {
 			return nil, fmt.Errorf("loading case credentials: %w", err)
 		}
@@ -202,6 +213,9 @@ func NewProxy(cfg Config) (*Proxy, error) {
 			p.anthropicOAuth = &AnthropicOAuthCredentials{AccessToken: v.AccessToken, RefreshToken: v.RefreshToken, ExpiresAt: v.ExpiresAt, SubscriptionType: v.SubscriptionType, Scopes: append([]string(nil), v.Scopes...)}
 		}
 		return p, nil
+	}
+	if cfg.ProfileName != "" {
+		return nil, fmt.Errorf("independent profile requires a credential store")
 	}
 
 	if IsOAuthAuth() {

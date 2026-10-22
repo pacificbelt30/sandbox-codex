@@ -17,6 +17,9 @@ var authShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show current auth configuration (without secrets)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if profile := selectedAuthProfile(); profile != "" {
+			return showAuthProfile(cmd, profile)
+		}
 		info, err := authproxy.GetAuthInfo()
 		if err != nil {
 			return fmt.Errorf("getting auth info: %w", err)
@@ -31,6 +34,9 @@ var authSetCmd = &cobra.Command{
 	Use:   "set",
 	Short: "Set API key from environment variable OPENAI_API_KEY",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if selectedAuthProfile() != "" {
+			return fmt.Errorf("use auth profile set NAME for independent profiles; auth set is the legacy environment importer")
+		}
 		key := os.Getenv("OPENAI_API_KEY")
 		if key == "" {
 			return fmt.Errorf("OPENAI_API_KEY environment variable not set")
@@ -47,6 +53,9 @@ var authRotateCmd = &cobra.Command{
 	Use:   "rotate",
 	Short: "Rotate all active tokens issued by Auth Proxy",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if selectedAuthProfile() != "" {
+			return fmt.Errorf("stop profile workers or use the proxy admin revocation API; the legacy rotate marker does not rotate independent profiles")
+		}
 		fmt.Println("Rotating tokens... (restart auth proxy to apply)")
 		return authproxy.RotateTokens()
 	},
@@ -57,4 +66,5 @@ func init() {
 	authCmd.AddCommand(authShowCmd)
 	authCmd.AddCommand(authSetCmd)
 	authCmd.AddCommand(authRotateCmd)
+	authCmd.AddCommand(newAuthProfileCommand())
 }

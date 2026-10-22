@@ -37,6 +37,10 @@ OAuth保存失敗時は新規要求と通信中streamを失効させます。保
 
 この実装は暗号化しません。WSLではLinux側の私有ディレクトリを使い、共有フォルダー・バックアップからの秘密保護は別途必要です。ファイル版Storeを利用する場合も、上記のケース別Unix socketを通じてAuth Proxyだけに公開できます。
 
+CLIの[独立プロファイル](commands/auth.md#独立プロファイル)はこのFileStoreを使用します。`auth profile set/import/show/list` と `--auth-profile` を提供し、選択した場合はホスト認証へfallbackしません。各プロファイルを別のディレクトリへ保存し、選択したディレクトリだけをAuth Proxyへ読み書き可能で渡します。OAuth更新も同じStoreへ永続化し、Proxy再起動時はそこから読み直します。保持したworkerには名前と接続世代を記録し、別ログインへの再開を拒否します。ファイル版からVaultへ変更する際は `Store` 実装を差し替え、同じ適合性試験を使う設計です。Vault自体と自動移行は未実装です。
+
+CLIはprofile領域とworkspace・clone・追加mountの重複を拒否します。組み込みAPIの利用者も、Storeと管理シークレットをworkerの共有領域外へ置いてください。作成・importは新規限定で、再ログイン時は旧workerの停止・削除とProxy再作成を明示的に行います。
+
 ## 独立した認証管理の設計要件：WSL・VM・ヘッドレス
 
 この節は今後の製品内Vaultの要件です。暗号化Vault、鍵backend、解除UI、専用loginフローは未実装です。初期のFileStoreと、既存の製品APIキーファイル・ローカルOAuth更新状態は権限制限付きの平文です。外部Storeの暗号化は組み込み側が担当します。

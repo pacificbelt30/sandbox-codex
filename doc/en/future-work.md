@@ -29,6 +29,8 @@ Investigate local CLI execution inside Kata separately from editor extensions an
 
 ## Independent authentication inside WSL and VMs
 
+The initial 0600 FileStore, independent profile creation/explicit import/selection and auth-proxy API/OAuth integration with durable refresh are implemented. See [usage](commands/auth.md#independent-profiles). Automated login-only Kata, live key validation, vault/migration and WSL/VM deployment acceptance remain future work.
+
 Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems. Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM. Acceptance must include explicit passphrase unlocking, filesystem guarantees, lock/revocation, a browser on another device, backup, cloning and rollback.
 
 See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems). The vault/key backends are not implemented; Kata execution support in WSL/VMs requires separate deployment testing.

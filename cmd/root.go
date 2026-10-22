@@ -44,6 +44,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/codex-dock/config.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug output")
+	rootCmd.PersistentFlags().StringVar(&authProfileName, "auth-profile", "", "Independent credential profile; never falls back to host credentials")
+	rootCmd.PersistentFlags().StringVar(&authProfileDir, "auth-profile-dir", "", "Product profile root (default: ~/.config/codex-dock/profiles)")
 
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	_ = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))

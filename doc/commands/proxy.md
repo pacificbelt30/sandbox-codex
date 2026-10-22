@@ -36,12 +36,13 @@ cxd proxy run
 | `--http-port` | `18082` | 一般通信ポート。ホストへ公開しない |
 | `--network` | `dock-net-proxy` | 共通egressネットワーク。未作成なら作成 |
 | `--admin-secret` | 未設定 | 管理APIのsecret。ホストCLI側にも同じ値を設定 |
+| `--admin-secret-file` | 未設定 | 所有者の0600ファイルから管理secretを読む。値指定と併用不可 |
 
 通信ルールには `--forward-allow-domain` / `--forward-deny-domain`、`--forward-allow-cidr` / `--forward-deny-cidr`、`--forward-allow-port` / `--forward-deny-port` を使います。
 ドメインとCIDRは繰り返し、ポートは繰り返しまたはカンマ区切りで指定できます。
 例と判定順は[通信ポリシー](../proxy-policy.md)を参照してください。
 
-認証ファイルは呼出元のUID/GIDと専用HOMEで読み取り専用マウントします。
+従来の認証ファイルは呼出元のUID/GIDと専用HOMEで読み取り専用マウントします。`--auth-profile NAME` の[独立プロファイル](auth.md#独立プロファイル)では、そのディレクトリだけをOAuth更新用に読み書き可能でマウントし、ホスト認証を読みません。
 認証ソースは[認証プロキシ](../auth-proxy.md#認証ソース)に記載しています。
 既存のlayout・通信ルール・認証API能力が対応しない場合はエラーになり、既存プロキシを自動削除しません。
 

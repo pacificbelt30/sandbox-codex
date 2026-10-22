@@ -32,6 +32,8 @@
 | POST | `/admin/revoke` | トークン失効 |
 | GET | `/admin/mode` | 認証モードと対応能力 |
 
+独立profileでは、管理用 `/admin/mode` の `independent_profile` がtrueで、`X-Cxd-Auth-Profile` と `X-Cxd-Connection-Version` ヘッダーに名前と接続世代を返します。`case_proxy` は外部ケース用であり、ローカルprofileではfalseです。この情報に実資格情報は含みません。profileは管理secret32byte以上・別admin listenerを必須とします。
+
 ## `GET /token`
 
 ```http

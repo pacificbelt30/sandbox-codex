@@ -42,7 +42,9 @@ cxd proxy run
 
 ## 認証ソース
 
-各プロバイダーについて、表の上から順に利用します。
+[独立プロファイル](commands/auth.md#独立プロファイル)を選択した場合、製品専用の0600ファイルStoreだけを使います。ホストのログイン・環境変数へfallbackせず、OAuth更新もそのStoreへ書き戻します。管理シークレットには `--admin-secret-file`、またはグローバル `[proxy].admin_secret_file` を使えます。
+
+以下はプロファイル未選択時の従来の優先順位です。各プロバイダーについて、表の上から順に利用します。
 
 | 優先順位 | OpenAI | Anthropic |
 |---|---|---|
@@ -53,7 +55,7 @@ cxd proxy run
 
 明示したAnthropic APIキーは、保存済みサブスクより優先してAPI課金を選びます。サブスク利用時はunsetしてください。[Claude Code](claude-code.md)にsetup-token、更新、固定CLIの起動手順をまとめています。ケース別プロキシは外部CredentialStoreだけを使い、このホスト側の優先順位へフォールバックしません。OpenAIの保存キーの設定は[authコマンド](commands/auth.md)を参照してください。
 
-認証プロキシは呼出元のUID/GIDで動き、専用HOME `/var/lib/codex-dock-proxy` に認証ファイルを読み取り専用でマウントします。
+従来モードの認証プロキシは呼出元のUID/GIDで動き、専用HOME `/var/lib/codex-dock-proxy` に認証ファイルを読み取り専用でマウントします。独立プロファイルも同じUID/GIDですが、選択した保存ディレクトリだけを更新用に読み書き可能で渡します。
 元ファイルが所有者だけに読み取りを許した `0600` でも利用できます。
 元ファイルの権限は変更せず、capabilityも追加しません。
 別の利用者でしか読めないファイルやディレクトリは、起動前に拒否します。

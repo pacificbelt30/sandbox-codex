@@ -93,7 +93,7 @@ func (p *Proxy) persistOAuthState(provider string, credentials any) error {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		version, err := store.SaveRefresh(ctx, p.cfg.CaseID, p.storeVersion, provider, next)
+		version, err := store.SaveRefresh(ctx, p.credentialScope(), p.storeVersion, provider, next)
 		if err != nil {
 			// A rotated refresh token may already have invalidated the saved
 			// generation even when storage is merely unavailable. Do not keep
