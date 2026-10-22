@@ -1,5 +1,5 @@
 # =============================================================================
-# codex-dock configuration file
+# 御AgentIsolation (Oaiso) configuration file
 #
 #   Location : ~/.config/codex-dock/config.toml
 #   Format   : TOML
@@ -37,12 +37,12 @@ default_token_ttl = 3600
 # network and keep worker/proxy endpoint configuration consistent.
 
 # Default sandbox image template.                      flag: --template / -T
-# If set, `codex-dock build` and `codex-dock run` use this template unless
+# If set, `oaiso build` and `oaiso run` use this template unless
 # overridden by a flag or a section-specific setting.
 # Available templates: "plain" (minimal), "pwn" (CTF/RE tools).
 # default_template = "plain"
 
-# Whether `codex-dock run` rebuilds an existing template-derived image when
+# Whether `oaiso run` rebuilds an existing template-derived image when
 # its Dockerfile has changed on disk since the image was built (compares the
 # Dockerfile's mtime against the image's build timestamp). Only applies to
 # templates with an on-disk Dockerfile (user templates, or built-in ones
@@ -65,12 +65,12 @@ debug = false
 
 
 # -----------------------------------------------------------------------------
-# [run] — defaults specific to `codex-dock run`
+# [run] — defaults specific to `oaiso run`
 # -----------------------------------------------------------------------------
 [run]
 
-# Agent started by a plain `cxd run`: shell, codex, or claude.
-# Change it with `cxd default codex` (or `cxd default codex --local`).
+# Agent started by a plain `oaiso run`: shell, codex, or claude.
+# Change it with `oaiso default codex` (or `oaiso default codex --local`).
 # agent = "shell"
 
 # Worker isolation. Kata is the default; missing Kata/KVM is an error.
@@ -121,9 +121,9 @@ approval_mode = "suggest"
 # policy_preset = "api" # offline, test, dependencies, api (all opt-in)
 # deny_read = ["/workspace/.env"]
 # deny_write = ["/workspace/config"]
-# max_lifetime = "2h"  # requires cxd reap --watch
+# max_lifetime = "2h"  # requires oaiso reap --watch
 # idle_timeout = "30m" # management execution activity, not guest CPU
-# retention = "24h"    # requires cxd reap --watch; 0 never deletes
+# retention = "24h"    # requires oaiso reap --watch; 0 never deletes
 # start_hooks = ["npm ci"] # guest shell commands in GLOBAL config
 # readiness = "test -d node_modules"
 # readiness_timeout = "60s"
@@ -140,7 +140,7 @@ approval_mode = "suggest"
 
 
 # -----------------------------------------------------------------------------
-# [build] — defaults specific to `codex-dock build`
+# [build] — defaults specific to `oaiso build`
 # -----------------------------------------------------------------------------
 [build]
 

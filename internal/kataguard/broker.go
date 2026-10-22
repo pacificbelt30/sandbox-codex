@@ -276,7 +276,7 @@ type VersionMismatchError struct {
 }
 
 func (e *VersionMismatchError) Error() string {
-	return fmt.Sprintf("CLI/node versions differ (%s / %s); update the matching node bundle with codex-dock setup", e.ClientVersion, e.NodeVersion)
+	return fmt.Sprintf("CLI/node versions differ (%s / %s); update the matching node bundle with oaiso setup", e.ClientVersion, e.NodeVersion)
 }
 
 func (c *Client) Validate(ctx context.Context, runtime string) error {

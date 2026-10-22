@@ -68,10 +68,10 @@ func Hint(err error) string {
 	case strings.Contains(s, "permission denied"):
 		return "Run id and ls -l /run/codex-dock-node.sock; join the codex-dock group and log in again. Do not chmod the socket to 0666."
 	case strings.Contains(s, "shared workspace"), strings.Contains(s, "virtio_fs"), strings.Contains(s, "manifest"), strings.Contains(s, "checksum"), strings.Contains(s, "profile"):
-		return "Run codex-dock setup --bundle PATH --operator USER to review the installed profile, then codex-dock setup --bundle PATH --operator USER --apply as root; see doc/setup.md."
+		return "Run oaiso setup --bundle PATH --operator USER to review the installed profile, then oaiso setup --bundle PATH --operator USER --apply as root; see doc/setup.md."
 	case strings.Contains(s, "cgroup"):
 		return "Check stat -fc %T /sys/fs/cgroup and systemctl status codex-dock-node; cpu, memory and pids must be delegated on cgroup v2."
 	default:
-		return "Run systemctl status codex-dock-containerd codex-dock-node and journalctl -u codex-dock-node -n 50; use codex-dock setup for a new host."
+		return "Run systemctl status codex-dock-containerd codex-dock-node and journalctl -u codex-dock-node -n 50; use oaiso setup for a new host."
 	}
 }

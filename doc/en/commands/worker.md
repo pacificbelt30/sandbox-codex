@@ -6,10 +6,10 @@
 
 ---
 
-## `cxd ps`
+## `oaiso ps`
 
 ```bash
-cxd ps [--all]
+oaiso ps [--all]
 ```
 
 Lists running (and optionally stopped) containers.
@@ -22,21 +22,21 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
-## `cxd start`
+## `oaiso start`
 
 ```bash
-cxd start NAME_OR_ID
+oaiso start NAME_OR_ID
 ```
 
 Restart a retained worker with the same ID and workspace.
 Kata checks run again and the saved placeholder is restored before user code is released.
 If a pinned proxy IP changed, create a new worker instead.
-`cxd vm start` remains available for Kata VM inventory recovery.
+`oaiso vm start` remains available for Kata VM inventory recovery.
 
-## `cxd stop`
+## `oaiso stop`
 
 ```bash
-cxd stop [NAME|ID...] [--all] [--timeout 10]
+oaiso stop [NAME|ID...] [--all] [--timeout 10]
 ```
 
 > Stopping a container also immediately revokes its Auth Proxy token.
@@ -44,18 +44,18 @@ cxd stop [NAME|ID...] [--all] [--timeout 10]
 
 ---
 
-## `cxd rm`
+## `oaiso rm`
 
 ```bash
-cxd rm [NAME|ID...] [--force]
+oaiso rm [NAME|ID...] [--force]
 ```
 
 ---
 
-## `cxd logs`
+## `oaiso logs`
 
 ```bash
-cxd logs NAME|ID [--tail 100] [--follow]
+oaiso logs NAME|ID [--tail 100] [--follow]
 ```
 
 ---
@@ -63,7 +63,7 @@ cxd logs NAME|ID [--tail 100] [--follow]
 ## Related Documentation
 
 - [TUI Dashboard](ui.md)
-- [`cxd run`](run.md)
+- [`oaiso run`](run.md)
 - [Quick Start](../getting-started.md)
 
 See [VM management](../../vm.md) (Japanese) for host process and allocation reconciliation.

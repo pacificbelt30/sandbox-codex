@@ -2,17 +2,17 @@
 
 **日本語** | [English](../en/commands/build.md)
 
-`cxd build` はBuildKitでOCIイメージを作り、ワーカーと同じcontainerd namespaceへ取り込みます。
+`oaiso build` はBuildKitでOCIイメージを作り、ワーカーと同じcontainerd namespaceへ取り込みます。
 Dockerfile形式を使いますが、Docker EngineとDocker CLIは不要です。
 
 ## 基本操作
 
 ```bash
-cxd build
-cxd build --template list
-cxd build --template pwn
-cxd build -f ./Dockerfile --tag my-codex:v1
-cxd run --image my-codex:v1
+oaiso build
+oaiso build --template list
+oaiso build --template pwn
+oaiso build -f ./Dockerfile --tag my-codex:v1
+oaiso run --image my-codex:v1
 ```
 
 | オプション | 内容 |
@@ -26,9 +26,9 @@ cxd run --image my-codex:v1
 別の版を試す場合は、そのビルドだけ `CODEX_DOCK_CODEX_VERSION` を指定します。
 
 ```bash
-CODEX_DOCK_CODEX_VERSION=0.163.0 cxd build --template plain --tag codex-dock:codex-0.163.0
-cxd image check codex-dock:codex-0.163.0 --agent codex
-cxd run --image codex-dock:codex-0.163.0 --agent codex
+CODEX_DOCK_CODEX_VERSION=0.163.0 oaiso build --template plain --tag codex-dock:codex-0.163.0
+oaiso image check codex-dock:codex-0.163.0 --agent codex
+oaiso run --image codex-dock:codex-0.163.0 --agent codex
 ```
 
 BuildKitで作成したOCIイメージはワーカーと同じ専用containerd namespaceに取り込まれます。候補タグを使って試せるため、現在使っているイメージはそのまま残せます。
@@ -36,7 +36,7 @@ BuildKitで作成したOCIイメージはワーカーと同じ専用containerd n
 `--template` と `-f` は同時に指定できません。
 `run` 時にイメージがない場合は、対応するテンプレートまたは既定Dockerfileから自動ビルドします。
 任意のイメージ名を指定する場合は、先にそのタグをビルドしてください。
-プロジェクトの `codex-dock.toml` に `[build]` を記述すると、`cxd build`、`init`、`run` が同じビルド元を使えます。クローン先でも不足するイメージを自動ビルドします。設定例は[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
+プロジェクトの `codex-dock.toml` に `[build]` を記述すると、`oaiso build`、`init`、`run` が同じビルド元を使えます。クローン先でも不足するイメージを自動ビルドします。設定例は[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
 
 Claude Codeも `CLAUDE_CLI_VERSION=2.1.306` に固定しています。ビルド時の変更には `CODEX_DOCK_CLAUDE_VERSION` を使います。イメージ・プロキシの更新と検証範囲は[Claude Code](../claude-code.md)を参照してください。
 
@@ -45,7 +45,7 @@ Claude Codeも `CLAUDE_CLI_VERSION=2.1.306` に固定しています。ビルド
 組み込みイメージから派生すると、エージェントと認証用entrypointを引き継げます。
 
 ```bash
-cxd build
+oaiso build
 ```
 
 新しい作業ディレクトリに `Dockerfile` を作成します。
@@ -62,8 +62,8 @@ USER codex
 そのディレクトリでビルドします。
 
 ```bash
-cxd build -f ./Dockerfile --tag my-codex:jq
-cxd run --image my-codex:jq -- jq --version
+oaiso build -f ./Dockerfile --tag my-codex:jq
+oaiso run --image my-codex:jq -- jq --version
 ```
 
 ビルド時の `USER root` はパッケージ追加用です。
@@ -77,7 +77,7 @@ Kataワーカーの実行ユーザーは非rootに解決し、capability・secco
 通常の認証付き起動には、対応するentrypointが必要です。
 
 ```bash
-cxd build --print-entrypoint > entrypoint.sh
+oaiso build --print-entrypoint > entrypoint.sh
 ```
 
 Dockerfileに組み込みます。
@@ -102,8 +102,8 @@ CLI更新時にはentrypointも再取得してください。
 ```bash
 mkdir -p ~/.config/codex-dock/templates/mytool
 cp Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
-cxd build --template mytool
-cxd run --template mytool
+oaiso build --template mytool
+oaiso run --template mytool
 ```
 
 `plain` のタグは `codex-dock:latest`、他は `codex-dock:<名前>` です。
@@ -137,8 +137,8 @@ BuildKit daemonのregistry通信は、管理者が別途proxyとCAを設定し�
 ## 起動前に互換性を調べる
 
 ```bash
-cxd image check my-codex:v1 --agent codex
-cxd image check my-codex:v1 --agent claude --json
+oaiso image check my-codex:v1 --agent codex
+oaiso image check my-codex:v1 --agent claude --json
 ```
 
 管理サービスがイメージの読み取り専用snapshotを検査します。イメージ内のコードはホストで実行しません。
@@ -147,4 +147,4 @@ Linux amd64、bash・curl・python3・git、選択したagent、ENTRYPOINT/CMD�
 認証entrypointがCLIの組み込み版と違う場合は警告します。独自wrapperもあり得るため、この違いだけで拒否はしません。
 
 不足があれば非ゼロ終了します。通過しても、共有ライブラリ、実行ユーザー、認証・通信の動作までは保証しません。
-カスタムイメージは準備済みKataノードで `cxd run --image my-codex:v1 -- true` も実行してください。
+カスタムイメージは準備済みKataノードで `oaiso run --image my-codex:v1 -- true` も実行してください。

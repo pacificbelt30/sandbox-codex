@@ -52,7 +52,7 @@ func Ensure(ctx context.Context, socket, image string, rules networkpolicy.Rules
 	}
 	if existing, err := cli.NetworkInspect(ctx, network.EgressNetworkName, dn.InspectOptions{}); err == nil {
 		if existing.Driver != "bridge" || existing.Labels[managedLabel] != "true" {
-			return "", fmt.Errorf("egress network %q is not managed by cxd", network.EgressNetworkName)
+			return "", fmt.Errorf("egress network %q is not managed by Oaiso", network.EgressNetworkName)
 		}
 	} else if errdefs.IsNotFound(err) {
 		_, err = cli.NetworkCreate(ctx, network.EgressNetworkName, dn.CreateOptions{Driver: "bridge", Options: map[string]string{"com.docker.network.bridge.name": network.EgressBridgeName}, Labels: map[string]string{managedLabel: "true"}})

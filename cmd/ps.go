@@ -14,7 +14,7 @@ var psAll bool
 
 var psCmd = &cobra.Command{
 	Use:   "ps",
-	Short: "List codex-dock worker containers",
+	Short: "List Oaiso worker containers",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := sandbox.NewManager(sandbox.ManagerConfig{Verbose: verbose})
 		if err != nil {

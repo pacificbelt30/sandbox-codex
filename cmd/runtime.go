@@ -84,7 +84,7 @@ func init() {
 func runtimeReport(ctx context.Context) diagnostics.Report {
 	var r diagnostics.Report
 	policyErr := configuredPolicy().Validate()
-	r.Add("egress-policy", "Host rules are valid; private addresses stay blocked", "Run cxd policy check and cxd proxy configure to inspect host rules.", policyErr)
+	r.Add("egress-policy", "Host rules are valid; private addresses stay blocked", "Run oaiso policy check and oaiso proxy configure to inspect host rules.", policyErr)
 	isolation, registration, resolveErr := sandbox.ResolveRuntime(runOpts.Runtime, runOpts.KataRuntime)
 	r.Add("runtime", registration, "Choose --runtime kata or explicit --runtime runc.", resolveErr)
 	if isolation == sandbox.RuntimeKata {

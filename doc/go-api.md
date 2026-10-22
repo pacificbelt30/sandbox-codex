@@ -2,7 +2,7 @@
 
 **日本語** | [English](en/go-api.md)
 
-`github.com/pacificbelt30/codex-dock/pkg/cxd` は、同じホストの製品からワーカーを操作する Go パッケージです。新しいサーバーを公開しません。内部では既存の `cxd node serve` が提供する root 管理の Unix ソケットを使用します。呼び出し元にはそのソケットへの権限が必要です。この権限では任意のイメージ、コマンド、ホストマウントを指定できるため、信頼したホストプロセスだけに付与してください。
+`github.com/pacificbelt30/codex-dock/pkg/cxd` は、同じホストの製品からワーカーを操作する Go パッケージです。新しいサーバーを公開しません。内部では既存の `oaiso node serve` が提供する root 管理の Unix ソケットを使用します。呼び出し元にはそのソケットへの権限が必要です。この権限では任意のイメージ、コマンド、ホストマウントを指定できるため、信頼したホストプロセスだけに付与してください。
 
 ## 利用前の準備
 
@@ -163,10 +163,10 @@ TemporaryStorage: []cxd.TemporaryStorage{{
 [`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-codex/blob/main/examples/embedding/main.go) は公開APIだけを使い、対応機能・プロファイル確認 → Create → Start → 出力を受け取りながらExecを取消 → 同じワーカーで再実行 → Stop → RemoveRequestを行います。回収には取消済みの実行contextと独立した1分のcontextを使います。`-model` でトークンごとの認可、`-temporary-mib` で一時領域を追加でき、`-prompt` を指定した場合だけ実CodexをHTTP/SSEで呼びます。既定の試験コマンドはAIへ接続しません。
 
 ```bash
-go build -o /var/tmp/cxd-embedding ./examples/embedding
-/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-1 -profile compact
+go build -o /var/tmp/oaiso-embedding ./examples/embedding
+/var/tmp/oaiso-embedding -project /srv/work/demo -request-id demo/attempt-1 -profile compact
 # 更新済みbootstrapと許可モデルがある場合。実際の上流を使用する。
-/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-2 \
+/var/tmp/oaiso-embedding -project /srv/work/demo -request-id demo/attempt-2 \
   -profile compact -temporary-mib 64 -model MODEL_ID -prompt 'Run the project tests.'
 ```
 
@@ -174,6 +174,6 @@ go build -o /var/tmp/cxd-embedding ./examples/embedding
 
 この例は終了時に自分の要求を削除します。終了後の再試行には新しいRequestIDを使ってください。応答不明・回収失敗の場合は表示された要求IDで `Request` / `RemoveRequest` を再試行できます。利用者の認可、業務状態、DB Adapter、レビュー・承認・Git運用は呼び出し側に残します。Credential Store Adapterは上の適合テストを再利用してください。
 
-`make kata-api-e2e VERSION=<nodeと同じ版>` は例をビルドし、架空の上流と実Kata上で同じ実行ファイルを検証します。`scripts/verify-go-api.py --binary ./cxd --version <版> --run '^TestKataAPIIntegration/embedding-example$'` で絞り込めます。実行対象が0件またはskipだけの場合は成功にしません。[障害系受入の準備](testing.md#公開go-apiの障害系受入)も参照してください。
+`make kata-api-e2e VERSION=<nodeと同じ版>` は例をビルドし、架空の上流と実Kata上で同じ実行ファイルを検証します。`scripts/verify-go-api.py --binary ./oaiso --version <版> --run '^TestKataAPIIntegration/embedding-example$'` で絞り込めます。実行対象が0件またはskipだけの場合は成功にしません。[障害系受入の準備](testing.md#公開go-apiの障害系受入)も参照してください。
 
 隔離の完了条件、再試行、保持したworktreeの回収は[停止と隔離](sandbox-features.md#通信の停止と隔離)を参照してください。`Policy` の `Quarantined` は永続化済みの隔離要求、`QuarantinePending` は停止未確認を表します。`Quarantine` のエラーを成功として扱わないでください。

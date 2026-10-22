@@ -1,10 +1,12 @@
-# cxd documentation
+# 御AgentIsolation (Oaiso) documentation
 
 [日本語](../index.md) | **English**
 
-cxd runs Codex CLI and Claude Code in separate Kata VMs.
+Oaiso runs Codex CLI and Claude Code in separate Kata VMs.
 Containerd manages workers, and Dragonball runs the VMs. Images are built with BuildKit.
 Docker Engine, Docker CLI and QEMU are not runtime requirements.
+
+The formal name is **御AgentIsolation**, styled **Oaiso** in English and pronounced “oh-eye-so”. The Japanese prefix 御 adds politeness and respect. The command is `oaiso`; `cxd` and `codex-dock` remain compatibility names. Existing configuration, credentials, service names and Go API identifiers are retained. See [migration compatibility](../migration.md#oaisoへの名称変更) (Japanese).
 
 ## Start here
 

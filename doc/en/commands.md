@@ -10,32 +10,32 @@ Full command reference for codex-dock. See the individual pages below for detail
 
 | Command | Description | Details |
 |---|---|---|
-| [`cxd claude`](claude-code.md) | Run official Claude Code | Native flags; API or subscription |
-| [`cxd codex`](commands/run.md#launch-codex-cli-directly) | Pass Codex CLI arguments through unchanged | Mount current directory and exec Codex |
-| [`cxd run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
-| [`cxd completion`](commands/completion.md) | Generate Tab completion scripts | Bash, Zsh, Fish, PowerShell |
-| [`cxd profile`](commands/run.md) | Show Kata VM resource profiles | JSON output |
-| [`cxd default`](configuration.md#project-settings) | Show or change the agent started by `cxd run` | Global config or `--local` |
-| `cxd project init/check` | Create and validate repository-local settings | [Configuration](configuration.md#project-settings) |
-| [`cxd setup`](../setup.md) | Install, update or restore the node | Plan, --apply, --rollback (Japanese guide) |
-| [`cxd init`](../getting-started.md) | Prepare the first worker | Readiness, credentials, image and proxies |
-| [`cxd runtime-check`](../troubleshooting.md) | Diagnose execution host | doctor alias, --json and recovery steps |
-| [`cxd image check`](../commands/build.md) | Inspect image compatibility | Platform, tools and auth entrypoint |
-| [`cxd vm`](../vm.md) | Reconcile and manage Kata VMs | ps / inspect / start / stop / rm / prune |
-| [`cxd start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
-| `cxd exec` | Run a command in an existing worker | Timeout, stdin, JSON result |
-| `cxd wait` | Wait for a worker to exit | Exit code, timeout, JSON result |
-| [`cxd proxy`](commands/proxy.md) | Manage Auth Proxy | build / run / serve / stop / rm |
-| [`cxd ps`](commands/worker.md#cxd-ps) | List workers | Show running containers |
-| [`cxd stop`](commands/worker.md#cxd-stop) | Stop containers | Single or all |
-| [`cxd rm`](commands/worker.md#cxd-rm) | Remove containers | Stopped or forced |
-| [`cxd logs`](commands/worker.md#cxd-logs) | View logs | Tail and follow |
-| [`cxd auth`](commands/auth.md) | Manage authentication | show / set / rotate |
-| [`cxd network`](commands/network-cmd.md) | Manage network | create / rm / status |
-| [`cxd firewall`](commands/firewall.md) | (Removed) | Replaced by the router model |
-| [`cxd build`](commands/build.md) | Build sandbox image | Dockerfile auto-detection |
-| [`cxd ui`](commands/ui.md) | TUI dashboard | Key bindings |
-| [`cxd update`](commands/update.md) | Update cxd itself | Update via `go install` |
+| [`oaiso claude`](claude-code.md) | Run official Claude Code | Native flags; API or subscription |
+| [`oaiso codex`](commands/run.md#launch-codex-cli-directly) | Pass Codex CLI arguments through unchanged | Mount current directory and exec Codex |
+| [`oaiso run`](commands/run.md) | Start a sandbox container | Options, approval modes, parallel execution, package management |
+| [`oaiso completion`](commands/completion.md) | Generate Tab completion scripts | Bash, Zsh, Fish, PowerShell |
+| [`oaiso profile`](commands/run.md) | Show Kata VM resource profiles | JSON output |
+| [`oaiso default`](configuration.md#project-settings) | Show or change the agent started by `oaiso run` | Global config or `--local` |
+| `oaiso project init/check` | Create and validate repository-local settings | [Configuration](configuration.md#project-settings) |
+| [`oaiso setup`](../setup.md) | Install, update or restore the node | Plan, --apply, --rollback (Japanese guide) |
+| [`oaiso init`](../getting-started.md) | Prepare the first worker | Readiness, credentials, image and proxies |
+| [`oaiso runtime-check`](../troubleshooting.md) | Diagnose execution host | doctor alias, --json and recovery steps |
+| [`oaiso image check`](../commands/build.md) | Inspect image compatibility | Platform, tools and auth entrypoint |
+| [`oaiso vm`](../vm.md) | Reconcile and manage Kata VMs | ps / inspect / start / stop / rm / prune |
+| [`oaiso start`](commands/worker.md) | Restart retained worker | Same ID, restored authentication |
+| `oaiso exec` | Run a command in an existing worker | Timeout, stdin, JSON result |
+| `oaiso wait` | Wait for a worker to exit | Exit code, timeout, JSON result |
+| [`oaiso proxy`](commands/proxy.md) | Manage Auth Proxy | build / run / serve / stop / rm |
+| [`oaiso ps`](commands/worker.md#oaiso-ps) | List workers | Show running containers |
+| [`oaiso stop`](commands/worker.md#oaiso-stop) | Stop containers | Single or all |
+| [`oaiso rm`](commands/worker.md#oaiso-rm) | Remove containers | Stopped or forced |
+| [`oaiso logs`](commands/worker.md#oaiso-logs) | View logs | Tail and follow |
+| [`oaiso auth`](commands/auth.md) | Manage authentication | show / set / rotate |
+| [`oaiso network`](commands/network-cmd.md) | Manage network | create / rm / status |
+| [`oaiso firewall`](commands/firewall.md) | (Removed) | Replaced by the router model |
+| [`oaiso build`](commands/build.md) | Build sandbox image | Dockerfile auto-detection |
+| [`oaiso ui`](commands/ui.md) | TUI dashboard | Key bindings |
+| [`oaiso update`](commands/update.md) | Update oaiso itself | Update via `go install` |
 
 ---
 

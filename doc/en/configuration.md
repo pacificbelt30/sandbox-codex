@@ -3,22 +3,22 @@
 [日本語](../configuration.md) | **English**
 
 User settings live in `~/.config/codex-dock/config.toml`.
-Use `cxd --config PATH COMMAND` to select another file.
+Use `oaiso --config PATH COMMAND` to select another file.
 `make install-config` installs the example without overwriting an existing file.
 
 ## Project settings
 
-Run `cxd project init` at the repository root to create a tracked `codex-dock.toml`, and `cxd project check` to validate it. `init`, `run`, `codex`, and `build` read the file from the current directory; `run --project DIR` reads `DIR/codex-dock.toml`. Parent directories are not searched.
+Run `oaiso project init` at the repository root to create a tracked `codex-dock.toml`, and `oaiso project check` to validate it. `init`, `run`, `codex`, and `build` read the file from the current directory; `run --project DIR` reads `DIR/codex-dock.toml`. Parent directories are not searched.
 
-You can also change the agent started by a plain `cxd run` from the CLI. `cxd default` shows the effective value and where it came from.
+You can also change the agent started by a plain `oaiso run` from the CLI. `oaiso default` shows the effective value and where it came from.
 
 ```bash
-cxd default codex          # global config
-cxd default claude --local # this project only
-cxd default shell          # restore the authenticated shell
+oaiso default codex          # global config
+oaiso default claude --local # this project only
+oaiso default shell          # restore the authenticated shell
 ```
 
-`--local` creates or updates `codex-dock.toml` in this directory. Commit the file to share it. An explicit `--agent`, `--exec`, `IMAGE COMMAND`, or `-- COMMAND` overrides the default. `cxd codex` always starts Codex.
+`--local` creates or updates `codex-dock.toml` in this directory. Commit the file to share it. An explicit `--agent`, `--exec`, `IMAGE COMMAND`, or `-- COMMAND` overrides the default. `oaiso codex` always starts Codex.
 
 ```toml
 [run]
@@ -43,7 +43,7 @@ tag = "my-project:dev"
 
 `packages.dock` is also loaded automatically. Pin dependency versions in the project Dockerfile or package list when repeatability matters. Project templates must be built-in or unchanged copies of built-in templates; commit a Dockerfile instead of depending on a locally edited template. The project file accepts `run.image`, `run.template`, `run.agent` (`shell`, `codex`, or `claude`), `run.model`, `run.approval_mode` (`suggest` or `auto-edit`), `run.watch_polling`, `run.read_only`, `run.no_internet`, `build.dockerfile`, `build.template`, and `build.tag`. Project `read_only` and `no_internet` can only be `true`, so a repository cannot relax host restrictions. Credentials, proxy endpoints, runtime selection, token lifetime and extra host mounts stay in the global config or explicit flags. Unknown keys fail validation.
 
-`init` and `run` build missing images. For an existing project image, automatic rebuilds check the Dockerfile timestamp; run `cxd build` after changing copied files or dependencies alone.
+`init` and `run` build missing images. For an existing project image, automatic rebuilds check the Dockerfile timestamp; run `oaiso build` after changing copied files or dependencies alone.
 
 Products can use [`PrepareProject` in the Go API](go-api.md) to validate the same project file and build missing images. The Go API does not load global settings; the product must apply host settings and authorization. It copies `egress_allow_domains` into `LaunchRequest.EgressAllowDomains`.
 
@@ -213,4 +213,4 @@ Host `[proxy].allowed_models` optionally allows exact upstream model IDs. Empty 
 
 `run.profile_size` selects a built-in or node-registered name. The root node operator registers additional budgets through `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`, independently of user TOML. See [bounds, guest assets and immutable reservations](sandbox-features.md#operator-resource-profiles).
 
-Generate registration JSON with `cxd profile define compact-256 --pids-limit 256` and inspect active PID ceilings with `cxd profile --node --json`. Limits apply on both host and guest.
+Generate registration JSON with `oaiso profile define compact-256 --pids-limit 256` and inspect active PID ceilings with `oaiso profile --node --json`. Limits apply on both host and guest.

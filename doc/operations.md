@@ -5,11 +5,11 @@
 ## 状態とログを見る
 
 ```bash
-cxd ps -a
-cxd vm ps -a
-cxd vm inspect WORKER
-cxd logs WORKER --follow
-cxd ui
+oaiso ps -a
+oaiso vm ps -a
+oaiso vm inspect WORKER
+oaiso logs WORKER --follow
+oaiso ui
 ```
 
 `ps` はワーカー、`vm ps` はcontainerd・予約台帳・ホストプロセスを照合したVMを表示します。
@@ -19,10 +19,10 @@ VMが動いていてもアプリケーションの正常応答までは保証し
 ## 停止・再起動・削除する
 
 ```bash
-cxd stop WORKER
-cxd start WORKER
-cxd stop WORKER
-cxd rm WORKER
+oaiso stop WORKER
+oaiso start WORKER
+oaiso stop WORKER
+oaiso rm WORKER
 ```
 
 停止中は認証が失効し、コンテナとsnapshotは再起動用に残ります。
@@ -35,7 +35,7 @@ cxd rm WORKER
 ## 並列で実行する
 
 ```bash
-cxd run --agent codex --parallel 2 --worktree \
+oaiso run --agent codex --parallel 2 --worktree \
   --task "テストを追加して" --approval-mode full-auto --detach
 ```
 
@@ -58,11 +58,11 @@ CPUとメモリの要件は[Kataの手順](kata.md#必要なホスト)を参照�
 4. リポジトリのルートで、次を実行する。
 
 ```bash
-cxd proxy stop
-cxd proxy rm
-cxd proxy build
-cxd proxy run
-cxd runtime-check
+oaiso proxy stop
+oaiso proxy rm
+oaiso proxy build
+oaiso proxy run
+oaiso runtime-check
 ```
 
 名前を省略した `proxy stop` と `proxy rm` は、既定の2つのプロキシが対象です。
@@ -74,7 +74,7 @@ cxd runtime-check
 [Go API](go-api.md)を組み込んだ製品がある場合は、受付を止めてから製品に組み込んだ Go パッケージも同じソース版へ更新し、再接続を確認してください。対応しない node には `Open` が `ErrVersionMismatch` を返します。
 
 Kataのshim・kernel・guest imageなどの固定資産を更新する場合は、別途[Kataの資産更新](kata.md#固定資産の更新)が必要です。
-`cxd update` はGoのインストール先にCLIを置く操作だけで、ホストサービスやイメージを更新しません。
+`oaiso update` はGoのインストール先にCLIを置く操作だけで、ホストサービスやイメージを更新しません。
 
 ## ワーカー内のCodex CLIを更新する
 
@@ -82,9 +82,9 @@ Kataのshim・kernel・guest imageなどの固定資産を更新する場合は�
 
 組み込みイメージのCodex CLIは版を固定しています。ゲストの起動時更新確認も無効にしており、実行中にnpmで書き換えません。更新は次の順で行います。
 
-1. 新版を `CODEX_DOCK_CODEX_VERSION=<版> cxd build --template plain --tag codex-dock:codex-<版>` で別タグにビルドする。
-2. `cxd image check codex-dock:codex-<版> --agent codex` で実行ファイルとイメージの基本要件を確認する。
-3. 検証用ホストで `cxd run --image codex-dock:codex-<版> --agent codex` を起動し、APIキーとChatGPT認証で実際の対話・SSE・OAuth更新を確認する。`image check` だけでは認証の互換性を確認できない。
+1. 新版を `CODEX_DOCK_CODEX_VERSION=<版> oaiso build --template plain --tag codex-dock:codex-<版>` で別タグにビルドする。
+2. `oaiso image check codex-dock:codex-<版> --agent codex` で実行ファイルとイメージの基本要件を確認する。
+3. 検証用ホストで `oaiso run --image codex-dock:codex-<版> --agent codex` を起動し、APIキーとChatGPT認証で実際の対話・SSE・OAuth更新を確認する。`image check` だけでは認証の互換性を確認できない。
 4. 問題がなければ新規ワーカーの `default_image` を候補タグに切り替える。既存ワーカーは古いイメージのまま完了させる。失敗したら以前のタグに戻す。
 
 将来の自動更新は、定期ジョブでnpmの新版を検出して候補タグを作り、上記の実環境ゲートを通過した後に新規ワーカー向け既定タグだけを切り替える形を推奨します。このリポジトリでは候補の自動検出・自動昇格はまだ行いません。
@@ -96,9 +96,9 @@ Kataのshim・kernel・guest imageなどの固定資産を更新する場合は�
 ワーカーを削除した後、プロキシと共通egressネットワークを止める場合は次を実行します。
 
 ```bash
-cxd proxy stop
-cxd proxy rm
-cxd network rm
+oaiso proxy stop
+oaiso proxy rm
+oaiso network rm
 ```
 
 孤立したVM予約は[VM管理の回収手順](vm.md#孤立した資源の回収)で確認します。

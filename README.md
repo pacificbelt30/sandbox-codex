@@ -1,8 +1,9 @@
-# cxd
+# 御AgentIsolation（Oaiso）
 
 Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです。
 ワーカーごとに独立したカーネルを使い、認証情報と外部通信はプロキシで管理します。
-コマンド名は `cxd` です。既存の `codex-dock` コマンドも引き続き使えます。設定ファイルやサービス名は従来の名前を維持します。
+正式名称は **御AgentIsolation**、英字表記は **Oaiso**、コマンド名は **`oaiso`** です。「御」は丁寧さ・敬意を添える接頭辞で、「おあいそ」と読みます。
+旧コマンドの `cxd` と `codex-dock` も互換名として利用できます。設定・認証情報の保存先、サービス名、イメージ名、Go module・`pkg/cxd` は既存環境との互換性のため維持します。
 
 実行には **Linux x86_64・KVM・containerd・Kata runtime-rs・Dragonball** が必要です。
 イメージはBuildKitで作成します。Docker Engine、Docker CLI、QEMUは実行時に使いません。
@@ -11,7 +12,7 @@ Codex CLIとClaude Codeを、KataのVMで隔離して実行するツールです
 
 ## できること
 
-- **Claude Code**：[APIキーとサブスクの両方](doc/claude-code.md)に対応。`cxd claude` で公式CLIを起動します。
+- **Claude Code**：[APIキーとサブスクの両方](doc/claude-code.md)に対応。`oaiso claude` で公式CLIを起動します。
 - **VM隔離**：ワーカーごとにCPU・メモリ・プロセス数を制限します。
 - **認証の分離**：実APIキーやOAuthのaccess token・refresh tokenは認証プロキシで扱います。ワーカーには短命トークンを渡します。
 	OAuth の更新結果はホストの `~/.local/state/codex-dock/oauth/` に権限 0700/0600 で保存され、プロキシ再起動後も復元されます。ログインをやり直して元の認証ファイルが変わると、以前の更新結果は使用しません。
@@ -34,21 +35,21 @@ ChatGPT認証を使う場合は、同じ利用者の `~/.codex/auth.json` を参
 APIキーを使う場合は、先に `OPENAI_API_KEY` または `ANTHROPIC_API_KEY` を設定してください。
 
 ```bash
-cxd init
-cxd codex
+oaiso init
+oaiso codex
 
 # Codex CLI の引数もそのまま渡せる
-cxd codex "このリポジトリを調べて"
+oaiso codex "このリポジトリを調べて"
 
 # Claude Codeを使う場合
-cxd init --agent claude
-cxd run --agent claude
+oaiso init --agent claude
+oaiso run --agent claude
 ```
 
 プロキシイメージを初めてビルドする際は、リポジトリのルートで `init` を実行します。
-`cxd run` は組み込み既定値では認証済みシェルを開きます。`cxd default codex` で既定を Codex に、`cxd default codex --local` でこのプロジェクトだけ Codex に変更できます。`cxd default` で有効な値を確認できます。
+`oaiso run` は組み込み既定値では認証済みシェルを開きます。`oaiso default codex` で既定を Codex に、`oaiso default codex --local` でこのプロジェクトだけ Codex に変更できます。`oaiso default` で有効な値を確認できます。
 導入スクリプトと `make install` は Bash・Zsh・Fish の Tab 補完も配置します。[手動で有効にする方法](doc/commands/completion.md)もあります。
-`cxd codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
+`oaiso codex` はカレントディレクトリを `/workspace` にマウントし、Codex CLI を直接起動します。コンテナの細かい指定には `run --agent codex` を使います。
 通常の操作はoperator groupに属する利用者で行います。
 Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り替えません。
 
@@ -56,16 +57,16 @@ Kataの検証に失敗した場合は起動を中止し、runcへ自動で切り
 
 ```bash
 # 独立したブランチでバックグラウンド実行
-cxd run --agent codex --task "テストを追加して" \
+oaiso run --agent codex --task "テストを追加して" \
   --worktree --branch add-tests --new-branch -d
 
-cxd ps -a
-cxd vm ps -a
-cxd logs WORKER --follow
-cxd stop WORKER
-cxd start WORKER
-cxd rm WORKER
-cxd ui
+oaiso ps -a
+oaiso vm ps -a
+oaiso logs WORKER --follow
+oaiso stop WORKER
+oaiso start WORKER
+oaiso rm WORKER
+oaiso ui
 ```
 
 `ps` はワーカーの状態、`vm ps` は台帳・containerd・ホストプロセスを照合したVMの状態を表示します。
@@ -74,7 +75,7 @@ cxd ui
 
 ## プロジェクトごとの設定
 
-リポジトリのルートで `cxd project init` を実行すると、コミット可能な `codex-dock.toml` ができます。`cxd project check` で内容を検証できます。クローン先ではホストのセットアップと認証を済ませ、リポジトリのルートで `cxd init`、`cxd codex` を実行します。
+リポジトリのルートで `oaiso project init` を実行すると、コミット可能な `codex-dock.toml` ができます。`oaiso project check` で内容を検証できます。クローン先ではホストのセットアップと認証を済ませ、リポジトリのルートで `oaiso init`、`oaiso codex` を実行します。
 
 プロジェクト設定にはイメージ、ビルド元、モデルなどを記述します。`packages.dock` もコミットすれば追加パッケージを共有できます。認証情報、containerd/Kataの接続先、プロキシ、追加ホストマウントはグローバル設定または明示したCLI引数で管理します。[設定例と優先順位](doc/configuration.md#プロジェクト設定)を参照してください。
 

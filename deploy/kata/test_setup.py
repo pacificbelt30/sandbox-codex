@@ -27,6 +27,33 @@ class SetupTests(unittest.TestCase):
             setup.check_new_cli_collision({'release': '/opt/new', 'cxd_cli': True}, path)
             setup.check_new_cli_collision(None, path)
 
+    def test_oaiso_upgrade_preserves_unmanaged_commands_and_completions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ['oaiso', '_oaiso', 'oaiso.fish', 'codex-dock.fish']:
+                path = Path(tmp) / name
+                path.write_text('another program')
+                with self.assertRaisesRegex(ValueError, 'unmanaged oaiso installation file'):
+                    setup.check_oaiso_collision({'cxd_cli': True}, [path])
+                self.assertEqual(path.read_text(), 'another program')
+                setup.check_oaiso_collision({'oaiso_cli': True}, [path])
+                setup.check_oaiso_collision(None, [path])
+            path = Path(tmp) / 'absent'
+            setup.check_oaiso_collision({'cxd_cli': True}, [path])
+            path.symlink_to('missing-target')
+            with self.assertRaisesRegex(ValueError, 'unmanaged oaiso installation file'):
+                setup.check_oaiso_collision({'cxd_cli': True}, [path])
+
+    def test_completion_uses_selected_invocation_for_each_alias(self):
+        for name in ['oaiso', 'cxd', 'codex-dock']:
+            with patch('setup.run') as run:
+                run.return_value.stdout = 'script'
+                self.assertEqual(setup.completion_script('/release/bin/codex-dock', 'zsh', name), b'script')
+                run.assert_called_once_with([name, 'completion', 'zsh'], executable='/release/bin/codex-dock', capture_output=True)
+        expected = set(setup.COMPLETIONS.values())
+        for paths in setup.LEGACY_COMPLETIONS.values():
+            expected.update(paths.values())
+        self.assertTrue(expected.issubset(set(setup.MANAGED)))
+
     def test_plan_shows_bundle_version_and_operator_before_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = Path(tmp)

@@ -2,14 +2,14 @@
 
 [日本語](../../commands/proxy.md) | **English**
 
-`cxd proxy` manages the auth and general egress proxies on containerd.
+`oaiso proxy` manages the auth and general egress proxies on containerd.
 See [auth proxy](../auth-proxy.md) and [update procedure](../../operations.md#cliプロキシを更新する) (Japanese).
 
 ## Build
 
 ```bash
-cxd proxy build
-cxd proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
+oaiso proxy build
+oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
 `--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
@@ -19,7 +19,7 @@ The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / 
 ## Start
 
 ```bash
-cxd proxy run
+oaiso proxy run
 ```
 
 | Flag | Default | Purpose |
@@ -44,12 +44,12 @@ Old layouts, policy mismatches and missing worker-auth capability are rejected r
 
 ```bash
 # Both default proxies
-cxd proxy stop
-cxd proxy rm
+oaiso proxy stop
+oaiso proxy rm
 
 # One named proxy
-cxd proxy stop --name codex-http-proxy
-cxd proxy rm --name codex-http-proxy
+oaiso proxy stop --name codex-http-proxy
+oaiso proxy rm --name codex-http-proxy
 ```
 
 Use `--name` for custom names. `proxy rm --force` removes a running container.
@@ -60,7 +60,7 @@ Finish worker tasks first; these proxies are shared services.
 The internal `proxy serve` command is available for development and standalone use:
 
 ```bash
-cxd proxy serve --role auth \
+oaiso proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
   --admin-secret "$PROXY_ADMIN_SECRET"
 ```
@@ -69,4 +69,4 @@ Role `auth` serves AI/token/admin routes; `egress` forwards general traffic.
 The default data listen address is `0.0.0.0:18080`, so set loopback explicitly for local use.
 This command does not create Kata isolation or worker networks. See [standalone use](../proxy-standalone.md).
 
-Repeat `cxd proxy run --allow-model model-id` to enforce exact model IDs in fixed AI request bodies. See [supported routes and limitations](../sandbox-features.md#model-authorization-and-staged-startup).
+Repeat `oaiso proxy run --allow-model model-id` to enforce exact model IDs in fixed AI request bodies. See [supported routes and limitations](../sandbox-features.md#model-authorization-and-staged-startup).

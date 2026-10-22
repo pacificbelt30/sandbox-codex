@@ -11,13 +11,13 @@ Claude CodeをKata VM内で実行できます。Anthropic APIキーによる従�
 ```bash
 export ANTHROPIC_API_KEY='your-api-key'
 unset CLAUDE_CODE_OAUTH_TOKEN
-cxd init --agent claude
-cxd claude
+oaiso init --agent claude
+oaiso claude
 # 対話なしの実行
-cxd claude -p 'このプロジェクトの構成を説明して' --model claude-sonnet-4-6
+oaiso claude -p 'このプロジェクトの構成を説明して' --model claude-sonnet-4-6
 ```
 
-`cxd claude` はClaude CLIの引数をそのまま渡します。`-p`、`--output-format`、`--resume`、`--model`などはClaudeのオプションです。cxd側のイメージ・プロファイル・マウント設定にはグローバル設定またはプロジェクトの `codex-dock.toml` を使います。既存の `cxd run --agent claude` と `cxd default claude` も使えます。`run --task` は初期プロンプトであり、非対話実行には `cxd claude -p` を使ってください。
+`oaiso claude` はClaude CLIの引数をそのまま渡します。`-p`、`--output-format`、`--resume`、`--model`などはClaudeのオプションです。Oaiso側のイメージ・プロファイル・マウント設定にはグローバル設定またはプロジェクトの `codex-dock.toml` を使います。既存の `oaiso run --agent claude` と `oaiso default claude` も使えます。`run --task` は初期プロンプトであり、非対話実行には `oaiso claude -p` を使ってください。
 
 ## サブスクリプションで使う
 
@@ -26,11 +26,11 @@ cxd claude -p 'このプロジェクトの構成を説明して' --model claude-
 ```bash
 unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 claude auth login
-cxd init --agent claude
-cxd claude
+oaiso init --agent claude
+oaiso claude
 ```
 
-ホストの `~/.claude/.credentials.json` に保存された `claudeAiOauth` をプロキシが読みます。macOS Keychainや独自の `CLAUDE_CONFIG_DIR` からの自動取り込みはありません。ファイルがない環境では、ホストで `claude setup-token` を実行し、その出力をホストの `CLAUDE_CODE_OAUTH_TOKEN` に設定してから `cxd init --agent claude` を実行できます。実トークンをDockerfile、プロジェクト設定、ワーカーへの追加環境変数に入れないでください。
+ホストの `~/.claude/.credentials.json` に保存された `claudeAiOauth` をプロキシが読みます。macOS Keychainや独自の `CLAUDE_CONFIG_DIR` からの自動取り込みはありません。ファイルがない環境では、ホストで `claude setup-token` を実行し、その出力をホストの `CLAUDE_CODE_OAUTH_TOKEN` に設定してから `oaiso init --agent claude` を実行できます。実トークンをDockerfile、プロジェクト設定、ワーカーへの追加環境変数に入れないでください。
 
 認証ソースは `ANTHROPIC_API_KEY` → `CLAUDE_CODE_OAUTH_TOKEN` → `~/.claude/.credentials.json` → 保存済みAnthropic APIキーの順です。明示したAPIキーがあるとAPI課金になります。サブスク利用時はそれをunsetしてください。稼働済みプロキシの認証方式は、ホストの環境変数を変更するだけでは切り替わりません。
 
@@ -75,11 +75,11 @@ code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
 組み込みワーカーはClaude Code **2.1.306** を固定しています。新CLIとプロキシを同じソース版で配置し、リポジトリのルートで次を実行します。稼働中ワーカーは先に終了してください。
 
 ```bash
-cxd build -t codex-dock:latest -f docker/sandbox/Dockerfile
-cxd proxy build
-cxd proxy stop
-cxd proxy rm
-cxd proxy run
+oaiso build -t codex-dock:latest -f docker/sandbox/Dockerfile
+oaiso proxy build
+oaiso proxy stop
+oaiso proxy rm
+oaiso proxy run
 ```
 
 既存ワーカーは古いイメージ・認証用環境変数を保持するため、新しく作成してください。独自テンプレートがある場合は、entrypointとClaudeの版も更新します。`CODEX_DOCK_CLAUDE_VERSION=2.1.306` でビルド時の版を明示できます。別の版を選んだ場合は、固定CLIの受入テストを更新して確認してください。

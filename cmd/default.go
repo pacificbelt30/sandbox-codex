@@ -41,11 +41,11 @@ var defaultLocal bool
 
 var defaultCmd = &cobra.Command{
 	Use:   "default [shell|codex|claude]",
-	Short: "Show or change the agent started by a plain cxd run",
-	Long: `Show the effective agent for a plain cxd run, or save a new default.
+	Short: "Show or change the agent started by a plain oaiso run",
+	Long: `Show the effective agent for a plain oaiso run, or save a new default.
 Changes are global unless --local is used to write codex-dock.toml in the current project.
 An explicit --agent, --exec, IMAGE COMMAND, or -- COMMAND overrides the default.
-The native cxd codex command always starts Codex.`,
+The native oaiso codex command always starts Codex.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDefaultCommand,
 }

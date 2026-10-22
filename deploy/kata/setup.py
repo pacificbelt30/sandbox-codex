@@ -27,14 +27,21 @@ STATE = Path('/var/lib/codex-dock-setup')
 SOCKET = '/run/codex-dock-containerd/containerd.sock'
 SERVICES = ['codex-dock-node', 'codex-dock-buildkit', 'codex-dock-containerd']
 COMPLETIONS = {
-    'bash': Path('/usr/local/share/bash-completion/completions/cxd'),
-    'zsh': Path('/usr/local/share/zsh/site-functions/_cxd'),
-    'fish': Path('/usr/local/share/fish/vendor_completions.d/cxd.fish'),
+    'bash': Path('/usr/local/share/bash-completion/completions/oaiso'),
+    'zsh': Path('/usr/local/share/zsh/site-functions/_oaiso'),
+    'fish': Path('/usr/local/share/fish/vendor_completions.d/oaiso.fish'),
 }
+LEGACY_COMPLETIONS = {
+    name: {shell: path.with_name(path.name.replace('oaiso', name))
+           for shell, path in COMPLETIONS.items()}
+    for name in ['cxd', 'codex-dock']
+}
+OAISO_FILES = [Path('/usr/local/bin/oaiso'), *COMPLETIONS.values(),
+               *LEGACY_COMPLETIONS['codex-dock'].values()]
 MANAGED = [Path('/etc/systemd/system') / (s + '.service') for s in SERVICES] + [
     Path('/usr/local/bin/codex-dock'), Path('/usr/local/bin/cxd'), Path('/usr/local/bin/buildctl'),
     Path('/etc/sysctl.d/80-codex-dock.conf'), Path('/etc/modules-load.d/codex-dock.conf'),
-    *COMPLETIONS.values()]
+    *LEGACY_COMPLETIONS['cxd'].values(), *OAISO_FILES]
 BUNDLE_FILES = ['codex-dock', 'codex-dock-worker-guard', 'codex-dock-io-logger']
 PACKAGES = {'ip': 'iproute2', 'nft': 'nftables', 'sysctl': 'procps',
             'gcc': 'gcc', 'debugfs': 'e2fsprogs', 'zstd': 'zstd',
@@ -47,8 +54,9 @@ def run(args, **kwargs):
     return subprocess.run([str(a) for a in args], text=True, **kwargs)
 
 
-def completion_script(cli, shell):
-    return run([cli, 'completion', shell], capture_output=True).stdout.encode()
+def completion_script(cli, shell, command='oaiso'):
+    # Set argv[0] explicitly: Cobra generates completion for the invoked name.
+    return run([command, 'completion', shell], executable=str(cli), capture_output=True).stdout.encode()
 
 
 def sha(path):
@@ -407,6 +415,13 @@ def check_new_cli_collision(current, path=Path('/usr/local/bin/cxd')):
         raise ValueError(f'unmanaged cxd command exists: {path}; preserve it before updating the node')
 
 
+def check_oaiso_collision(current, paths=None):
+    if current and not current.get('oaiso_cli'):
+        for path in OAISO_FILES if paths is None else paths:
+            if path.exists() or path.is_symlink():
+                raise ValueError(f'unmanaged oaiso installation file exists: {path}; preserve it before updating the node')
+
+
 def apply(args, record):
     trusted(STATE)
     STATE.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -415,6 +430,7 @@ def apply(args, record):
     current = json.loads(current_path.read_text()) if current_path.exists() else None
     if not args.rollback:
         check_new_cli_collision(current)
+        check_oaiso_collision(current)
     for path in MANAGED:
         trusted(path)
         if not current and path.exists():
@@ -481,8 +497,10 @@ def apply(args, record):
         for name in ['codex-dock', 'buildctl']:
             atomic(Path('/usr/local/bin') / name, (binary / name).read_bytes(), 0o755)
         atomic(Path('/usr/local/bin/cxd'), (binary / 'codex-dock').read_bytes(), 0o755)
-        for shell, path in COMPLETIONS.items():
-            atomic(path, completion_script(binary / 'codex-dock', shell))
+        atomic(Path('/usr/local/bin/oaiso'), (binary / 'codex-dock').read_bytes(), 0o755)
+        for command, paths in {'oaiso': COMPLETIONS, **LEGACY_COMPLETIONS}.items():
+            for shell, path in paths.items():
+                atomic(path, completion_script(binary / 'codex-dock', shell, command))
         atomic(Path('/etc/sysctl.d/80-codex-dock.conf'), b'net.ipv4.ip_forward = 1\n')
         atomic(Path('/etc/modules-load.d/codex-dock.conf'), b'vhost_vsock\nvhost_net\n')
         run(['sysctl', '-q', '-w', 'net.ipv4.ip_forward=1'])
@@ -490,8 +508,9 @@ def apply(args, record):
         run(['systemctl', 'enable', *SERVICES])
         release['rollback'] = str(journal)
         release['cxd_cli'] = True
+        release['oaiso_cli'] = True
         atomic(current_path, json.dumps(release, indent=2).encode())
-        print('Node ready. Log in again for codex-dock group membership, then run cxd init as the operator. Existing firewall policy is unchanged; forwarding must allow proxy egress.', flush=True)
+        print('Node ready. Log in again for codex-dock group membership, then run oaiso init as the operator. Existing firewall policy is unchanged; forwarding must allow proxy egress.', flush=True)
     except Exception:
         if transaction:
             subprocess.run(['systemctl', 'stop', *SERVICES])

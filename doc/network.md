@@ -30,7 +30,7 @@ adminはworker側IPへbindしない。hostの管理サービスsocketとnative c
 一般通信は `internal/networkpolicy` でdomain・IP/CIDR・portのallow/denyを評価する。HTTP、CONNECT、redirectへ同じ判定を適用し、DNS応答全体を検査したうえで選択したIPへdialを固定する。private/loopback/link-local/cloud metadata等は既定で拒否する。
 
 ```bash
-cxd proxy run \
+oaiso proxy run \
   --forward-allow-domain github.com \
   --forward-allow-domain registry.npmjs.org \
   --forward-deny-domain example.invalid
@@ -47,9 +47,9 @@ networkのID・subnet・endpoint・namespace inode・bridge alias・firewall has
 管理サービス再起動時は稼働中VM・namespaceを保持する。ホスト再起動で資源が消えた場合は、containerd taskが存在せずカーネルも空であることを確認し、保存済みIDと接続情報から復元する。稼働中taskのnetwork欠落や所有権の変化は自動で採用しない。
 
 ```bash
-cxd network create
-cxd network status
-cxd network rm
+oaiso network create
+oaiso network status
+oaiso network rm
 ```
 
 ワーカーのnetworkは通常の `run / stop / rm` に合わせて管理する。プロキシ単体は `scripts/smoke-proxy.sh`、VMを含めた通信分離は `TestKataAcceptance` で確認する。旧 `scripts/e2e-docker.sh` は移行前Docker経路用の検証であり、現行構成の検証には使用しない。

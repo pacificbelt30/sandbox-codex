@@ -39,7 +39,7 @@ func Inspect(ctx context.Context, socket, worker string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	if v.Config == nil || v.Config.Labels[managedLabel] != "true" {
-		return Snapshot{}, fmt.Errorf("worker is not managed by cxd")
+		return Snapshot{}, fmt.Errorf("worker is not managed by Oaiso")
 	}
 	result := Snapshot{Source: "running worker configuration", Worker: v.ID, Quarantined: v.Config.Labels[workerpolicy.QuarantinedLabel] == "true"}
 	if result.Quarantined {
@@ -71,7 +71,7 @@ func Inspect(ctx context.Context, socket, worker string) (Snapshot, error) {
 		return result, err
 	}
 	if p.Config == nil || p.Config.Labels[proxyPolicyLabel] == "" {
-		return result, fmt.Errorf("proxy does not advertise an immutable cxd egress policy")
+		return result, fmt.Errorf("proxy does not advertise an immutable Oaiso egress policy")
 	}
 	if ip, err := netip.ParseAddr(u.Hostname()); err == nil && !proxySharesAddress(v, p, ip) {
 		return result, fmt.Errorf("selected proxy address drifted from the worker network")

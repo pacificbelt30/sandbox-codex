@@ -105,7 +105,7 @@ func RunWithOptions(cfg sandbox.ManagerConfig, configPath string) error {
 					running++
 				}
 			}
-			header.SetText(fmt.Sprintf("[green]codex-dock[white]  [%d workers running / %d total]", running, len(workers)))
+			header.SetText(fmt.Sprintf("[green]御AgentIsolation (Oaiso)[white]  [%d workers running / %d total]", running, len(workers)))
 
 			// Update table
 			for i := table.GetRowCount() - 1; i > 0; i-- {

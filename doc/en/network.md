@@ -42,7 +42,7 @@ Private, loopback, link-local and metadata addresses remain blocked.
 DNS answers and redirects are checked, and the dialer uses a verified address.
 
 ```bash
-cxd proxy run \
+oaiso proxy run \
   --forward-allow-domain github.com \
   --forward-allow-domain registry.npmjs.org \
   --forward-deny-domain blocked.github.com
@@ -59,9 +59,9 @@ Network IDs, addresses, namespace identity and firewall state are recorded priva
 Subnets are selected from `10.253.0.0/16`; existing addresses and routes are checked for conflicts.
 
 ```bash
-cxd network create
-cxd network status
-cxd network rm
+oaiso network create
+oaiso network status
+oaiso network rm
 ```
 
 See [host setup](../kata.md) and [troubleshooting](../troubleshooting.md) (Japanese).

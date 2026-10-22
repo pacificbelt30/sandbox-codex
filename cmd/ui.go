@@ -10,7 +10,7 @@ import (
 
 var uiCmd = &cobra.Command{
 	Use:   "ui",
-	Short: "Launch dock-ui TUI container manager",
+	Short: "Launch the Oaiso TUI worker manager",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path, err := proxyConfigPath()
 		if err != nil {

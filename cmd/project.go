@@ -13,7 +13,7 @@ const projectConfigExample = `# Commit this file with the project. Host credenti
 [run]
 image = "codex-dock:latest"
 approval_mode = "suggest"
-# agent = "codex" # cxd default codex --local also sets this
+# agent = "codex" # oaiso default codex --local also sets this
 # model = "..."
 # watch_polling = true
 # read_only = true
@@ -61,7 +61,7 @@ func init() {
 			return err
 		}
 		if cfg == nil {
-			return fmt.Errorf("no %s in %s; run `cxd project init`", projectConfigName, cwd)
+			return fmt.Errorf("no %s in %s; run `oaiso project init`", projectConfigName, cwd)
 		}
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), projectSettingsSummary(cfg))
 		return err

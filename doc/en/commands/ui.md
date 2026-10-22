@@ -1,11 +1,11 @@
-# `cxd ui` — TUI Dashboard
+# `oaiso ui` — TUI Dashboard
 
 > [日本語](../../commands/ui.md) | **English**
 >
 > [← Command Reference](../commands.md)
 
 ```bash
-cxd ui
+oaiso ui
 ```
 
 Launches a terminal UI for real-time monitoring and management of all workers.
@@ -31,4 +31,4 @@ Launches a terminal UI for real-time monitoring and management of all workers.
 ## Related Documentation
 
 - [Worker Management](worker.md)
-- [`cxd run`](run.md)
+- [`oaiso run`](run.md)

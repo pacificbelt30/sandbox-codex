@@ -1,6 +1,6 @@
-# cxd Makefile
+# 御AgentIsolation (Oaiso) Makefile
 
-BINARY      := cxd
+BINARY      := oaiso
 WORKER_GUARD := codex-dock-worker-guard
 IO_LOGGER := codex-dock-io-logger
 MODULE      := github.com/pacificbelt30/codex-dock
@@ -25,6 +25,7 @@ all: build image proxy-image
 ## build: compile the binary for the current platform
 build: worker-guard io-logger
 	go build $(LDFLAGS) -o $(BINARY) .
+	ln -sfn $(BINARY) cxd
 	ln -sfn $(BINARY) codex-dock
 
 ## worker-guard: build the static Linux x86_64 Kata bootstrap
@@ -40,6 +41,7 @@ node-bundle:
 	mkdir -p dist/node-bundle
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/node-bundle/codex-dock .
 	ln -sfn codex-dock dist/node-bundle/cxd
+	ln -sfn codex-dock dist/node-bundle/oaiso
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-worker-guard ./cmd/worker-guard
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-io-logger ./cmd/io-logger
 	python3 deploy/kata/bundle.py dist/node-bundle "$(VERSION)"
@@ -48,13 +50,16 @@ node-bundle:
 install: build
 	install -d $(BINDIR)
 	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
+	install -m 0755 $(BINARY) $(BINDIR)/cxd
 	install -m 0755 $(BINARY) $(BINDIR)/codex-dock
 	install -m 0755 $(IO_LOGGER) $(BINDIR)/$(IO_LOGGER)
 	install -d $(PREFIX)/share/bash-completion/completions $(PREFIX)/share/zsh/site-functions $(PREFIX)/share/fish/vendor_completions.d
-	./$(BINARY) completion bash > $(PREFIX)/share/bash-completion/completions/cxd
-	./$(BINARY) completion zsh > $(PREFIX)/share/zsh/site-functions/_cxd
-	./$(BINARY) completion fish > $(PREFIX)/share/fish/vendor_completions.d/cxd.fish
-	chmod 0644 $(PREFIX)/share/bash-completion/completions/cxd $(PREFIX)/share/zsh/site-functions/_cxd $(PREFIX)/share/fish/vendor_completions.d/cxd.fish
+	@set -e; for name in $(BINARY) cxd codex-dock; do \
+		./$$name completion bash > $(PREFIX)/share/bash-completion/completions/$$name; \
+		./$$name completion zsh > $(PREFIX)/share/zsh/site-functions/_$$name; \
+		./$$name completion fish > $(PREFIX)/share/fish/vendor_completions.d/$$name.fish; \
+		chmod 0644 $(PREFIX)/share/bash-completion/completions/$$name $(PREFIX)/share/zsh/site-functions/_$$name $(PREFIX)/share/fish/vendor_completions.d/$$name.fish; \
+	done
 	@echo "Installed $(BINDIR)/$(BINARY)"
 
 ## install-config: place the default config file (skips if already exists)
@@ -104,13 +109,15 @@ proxy-docker: proxy-image
 
 ## uninstall: remove the installed binary
 uninstall:
-	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/codex-dock
-	rm -f $(PREFIX)/share/bash-completion/completions/cxd $(PREFIX)/share/zsh/site-functions/_cxd $(PREFIX)/share/fish/vendor_completions.d/cxd.fish
+	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/cxd $(BINDIR)/codex-dock
+	@for name in $(BINARY) cxd codex-dock; do \
+		rm -f $(PREFIX)/share/bash-completion/completions/$$name $(PREFIX)/share/zsh/site-functions/_$$name $(PREFIX)/share/fish/vendor_completions.d/$$name.fish; \
+	done
 	@echo "Removed $(BINDIR)/$(BINARY)"
 
 ## clean: remove build artifacts
 clean:
-	rm -f $(BINARY) codex-dock codex-dock-* coverage.out
+	rm -f $(BINARY) cxd codex-dock codex-dock-* coverage.out
 
 ## test: run tests with race detection and coverage
 test:

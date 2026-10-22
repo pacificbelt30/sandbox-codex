@@ -18,8 +18,8 @@ RUN --mount=type=secret,id=proxy_ca \
     && rm -rf /var/lib/apt/lists/* /tmp/codex-dock-apt.conf
 
 # Install agent CLIs:
-#   - @openai/codex          → `codex-dock run --agent codex`
-#   - @anthropic-ai/claude-code → `codex-dock run --agent claude`
+#   - @openai/codex          → `oaiso run --agent codex`
+#   - @anthropic-ai/claude-code → `oaiso run --agent claude`
 # Both are installed so a single sandbox image can run either agent.
 ARG CODEX_CLI_VERSION=0.163.0
 ARG CLAUDE_CLI_VERSION=2.1.306

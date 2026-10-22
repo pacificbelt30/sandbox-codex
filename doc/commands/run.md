@@ -1,4 +1,4 @@
-# `cxd run` — サンドボックスコンテナの起動
+# `oaiso run` — サンドボックスコンテナの起動
 
 > **日本語** | [English](../en/commands/run.md)
 >
@@ -10,7 +10,7 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 実行ホストはLinux x86_64です。[導入](../getting-started.md)と[ネットワーク](../network.md)を参照してください。
 
 イメージがなければ自動ビルドします。テンプレートに対応するタグはそのテンプレートを使います。
-`cxd run` 単体では既定のエージェントを起動します。組み込み既定値は認証済みシェルです。`cxd default codex` でグローバル、`cxd default codex --local` でプロジェクト単位の既定値を変更できます。`cxd default` は現在有効な設定を表示します。
+`oaiso run` 単体では既定のエージェントを起動します。組み込み既定値は認証済みシェルです。`oaiso default codex` でグローバル、`oaiso default codex --local` でプロジェクト単位の既定値を変更できます。`oaiso default` は現在有効な設定を表示します。
 ディスク上のDockerfileが更新された場合の再ビルドは[auto_build](../configuration.md#auto_build)で設定します。
 独自タグやテンプレートは[build](build.md)を参照してください。
 リポジトリ直下に `codex-dock.toml` があれば、その `[run]` と `[build]` を読み込みます。`--project DIR` では `DIR/codex-dock.toml` を使います。[プロジェクト設定](../configuration.md#プロジェクト設定)を参照してください。
@@ -18,16 +18,16 @@ containerdが管理し、DragonballでVMを起動します。既定は `--runtim
 ## Codex CLI を直接起動する
 
 ```bash
-cxd codex
-cxd codex "このリポジトリを調べて"
-cxd codex exec --json "変更点を要約して"
+oaiso codex
+oaiso codex "このリポジトリを調べて"
+oaiso codex exec --json "変更点を要約して"
 ```
 
-引数は `codex` にそのまま渡します。カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。イメージ、worktree、追加マウント、detachなどのコンテナ指定には `cxd run --agent codex` を使います。新規VMの起動時間は通常のホスト上の `codex` より長くなります。
+引数は `codex` にそのまま渡します。カレントディレクトリを `/workspace` にマウントし、ワーカー内でCodexを直接 `exec` します。承認モードなどのワーカー既定値は設定ファイルの `[run]` で指定できます。イメージ、worktree、追加マウント、detachなどのコンテナ指定には `oaiso run --agent codex` を使います。新規VMの起動時間は通常のホスト上の `codex` より長くなります。
 
 ```bash
-cxd run [OPTIONS] [IMAGE [COMMAND...]]
-cxd run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
+oaiso run [OPTIONS] [IMAGE [COMMAND...]]
+oaiso run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
 ```
 
 イメージとコマンドの位置は `docker run IMAGE COMMAND` と同じです。フラグはイメージの前に置きます。
@@ -35,16 +35,16 @@ cxd run [OPTIONS] -- COMMAND...  # 既定イメージでコマンドを実行
 コマンドは `--exec` と同等ですが、全体を1つの文字列にクォートする必要はありません。
 
 ```bash
-cxd run -d --name worker codex-dock:latest
-cxd run codex-dock:latest npm test -- --watch=false
-cxd run -- npm test -- --watch=false
+oaiso run -d --name worker codex-dock:latest
+oaiso run codex-dock:latest npm test -- --watch=false
+oaiso run -- npm test -- --watch=false
 ```
 
 ---
 
 ## オプション一覧
 
-認証をホストと分けるには `cxd --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...`、または信頼済みグローバル設定を使います。[独立プロファイルの作成と起動](auth.md#独立プロファイル)を参照してください。
+認証をホストと分けるには `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...`、または信頼済みグローバル設定を使います。[独立プロファイルの作成と起動](auth.md#独立プロファイル)を参照してください。
 
 | オプション | 省略形 | デフォルト | 説明 |
 |---|---|---|---|
@@ -113,12 +113,12 @@ cxd run -- npm test -- --watch=false
 - `--shell` は `entrypoint.sh` を完全にバイパスして**認証なし**の素のシェルを起動します（デバッグ用）。
   認証済みシェルが欲しい場合は `--agent shell` を指定してください。
 
-設定した既定エージェントは、`cxd run IMAGE COMMAND`、`cxd run -- COMMAND`、`--exec` のコマンド実行時には適用しません。明示した `--agent codex` / `--agent claude` はコマンドより優先します。
+設定した既定エージェントは、`oaiso run IMAGE COMMAND`、`oaiso run -- COMMAND`、`--exec` のコマンド実行時には適用しません。明示した `--agent codex` / `--agent claude` はコマンドより優先します。
 
 ```bash
-cxd run --agent codex  --approval-mode full-auto
-cxd run --agent claude --approval-mode full-auto --task "Refactor the auth module"
-cxd run --agent shell  # 認証済みシェル（codex / claude 両方利用可）
+oaiso run --agent codex  --approval-mode full-auto
+oaiso run --agent claude --approval-mode full-auto --task "Refactor the auth module"
+oaiso run --agent shell  # 認証済みシェル（codex / claude 両方利用可）
 ```
 
 ---
@@ -138,16 +138,16 @@ cxd run --agent shell  # 認証済みシェル（codex / claude 両方利用可�
 
 ```bash
 # 認証設定済みの環境でコマンドを1つ実行して終了
-cxd run --exec "ls -la"
+oaiso run --exec "ls -la"
 
 # 同じことを、コマンド全体をクォートせずに
-cxd run -- ls -la
+oaiso run -- ls -la
 
 # バックグラウンドでコマンドを実行
-cxd run --exec "npm test" --detach
+oaiso run --exec "npm test" --detach
 
 # --agent を指定すると --exec は無視され、エージェントが起動する
-cxd run --agent codex --exec "ls -la"   # → Codex CLI が起動する
+oaiso run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 ```
 
 ---
@@ -186,10 +186,10 @@ cxd run --agent codex --exec "ls -la"   # → Codex CLI が起動する
 
 ```bash
 # zsh で対話シェルを起動
-cxd run --shell-type zsh
+oaiso run --shell-type zsh
 
 # zsh の素のデバッグシェル（entrypoint.sh をバイパス）
-cxd run --shell --shell-type zsh
+oaiso run --shell --shell-type zsh
 ```
 
 設定ファイル（`~/.config/codex-dock/config.toml`）の `default_shell_type`（グローバル）/
@@ -218,16 +218,16 @@ VM内の入れ子namespaceとseccompの不整合を避けるためです。承�
 
 ```bash
 # エージェント既定の承認設定
-cxd run --agent codex --task "テストを書いて"
+oaiso run --agent codex --task "テストを書いて"
 
 # Codexはモデル判断で承認要求、Claudeは編集を自動許可
-cxd run --agent codex --approval-mode auto-edit --task "リファクタリング"
+oaiso run --agent codex --approval-mode auto-edit --task "リファクタリング"
 
 # 完全自動実行（承認なし）
-cxd run --agent codex --approval-mode full-auto --task "バグ修正"
+oaiso run --agent codex --approval-mode full-auto --task "バグ修正"
 
 # エージェントの承認・内側sandboxを無効化
-cxd run --agent codex --approval-mode danger --task "ビルドスクリプトを実行"
+oaiso run --agent codex --approval-mode danger --task "ビルドスクリプトを実行"
 ```
 
 ---
@@ -239,14 +239,14 @@ cxd run --agent codex --approval-mode danger --task "ビルドスクリプトを
 
 | 値 | 動作 |
 |---|---|
-| `current` (省略時のデフォルト) | `cxd` コマンドを実行しているユーザの uid:gid を自動取得 |
+| `current` (省略時のデフォルト) | `oaiso` コマンドを実行しているユーザの uid:gid を自動取得 |
 | `codex` | 従来のデフォルト挙動。コンテナ内 `codex` ユーザ（`1001:1001`）で実行 |
 | `""` | イメージのデフォルトユーザを使用 |
 | `dir` | `--project` で指定したディレクトリ所有者の uid:gid を自動取得 |
 | `uid` または `uid:gid` | 明示的に指定（例: `1000`, `1000:1000`） |
 
 > **注意**: カスタムユーザを指定した場合、そのユーザがコンテナの `/etc/passwd` に存在しない
-> ことがあります。`cxd` は `HOME=/var/tmp/codex-home` を自動注入します。認証ファイルや
+> ことがあります。`oaiso` は `HOME=/var/tmp/codex-home` を自動注入します。認証ファイルや
 > Codex CLI 設定はその `HOME` 配下に作成され、`/workspace` 配下に補助ディレクトリは作成しません。
 
 ---
@@ -268,10 +268,10 @@ cxd run --agent codex --approval-mode danger --task "ビルドスクリプトを
 
 ```bash
 # ホストの共有データディレクトリを読み取り専用でマウント
-cxd run --mount /home/user/datasets:/data:ro
+oaiso run --mount /home/user/datasets:/data:ro
 
 # 複数のディレクトリをマウント（読み書き・読み取り専用を混在）
-cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
+oaiso run --mount ./cache:/cache --mount /opt/models:/models:ro
 ```
 
 > 追加マウントされたディレクトリはプロジェクトディレクトリ本体（`/workspace`）とは
@@ -279,7 +279,7 @@ cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 
 `--read-only-rootfs` はイメージの rootfs に適用され、`/workspace` と追加 mount の読み書き設定は変えません。起動時のパッケージ追加は使えないため、必要なパッケージはイメージに入れてください。HOME と `/tmp`・`/var/tmp` は一時的な tmpfs になり、ワーカー削除後には残りません。`--no-git-metadata` を指定した linked worktree では共通 Git metadata をマウントしません。VM 内で Git を使う場合は私有の metadata と mount を別途用意してください。
 
-`cxd profile --json` はプロファイルごとの CPU、guest RAM、ホスト側上限、PID 上限を出力します。`small` は 1 CPU・guest 1 GiB・ホスト上限 2 GiB、`standard` は 1 CPU・guest 2 GiB・ホスト上限 3 GiB です。`--profile-size small` は Kata のみで使えます。小型の実際のメモリ使用量・起動性能はホストで測定してください。
+`oaiso profile --json` はプロファイルごとの CPU、guest RAM、ホスト側上限、PID 上限を出力します。`small` は 1 CPU・guest 1 GiB・ホスト上限 2 GiB、`standard` は 1 CPU・guest 2 GiB・ホスト上限 3 GiB です。`--profile-size small` は Kata のみで使えます。小型の実際のメモリ使用量・起動性能はホストで測定してください。
 
 設定ファイル（`~/.config/codex-dock/config.toml`）の `[run]` セクションでも
 `mounts` として既定値を指定できます（`--mount` を指定した場合はそちらが優先）。
@@ -321,7 +321,7 @@ npm:typescript
 `--parallel N` を指定すると、N 個のコンテナが同時に起動します。
 
 ```bash
-cxd run --parallel 2 --worktree --branch myfeature
+oaiso run --parallel 2 --worktree --branch myfeature
 ```
 
 ノードの既定上限は同時2台です。自動的に以下のブランチが作成されます：
@@ -337,61 +337,61 @@ cxd run --parallel 2 --worktree --branch myfeature
 
 ```bash
 # 基本的な実行（カレントディレクトリをマウント）
-cxd run
+oaiso run
 
 # タスクを指定して完全自動実行
-cxd run --agent codex --task "ユニットテストを書いて" --approval-mode full-auto
+oaiso run --agent codex --task "ユニットテストを書いて" --approval-mode full-auto
 
 # git worktree を使って feature ブランチで作業
-cxd run --worktree --branch feature-auth --new-branch
+oaiso run --worktree --branch feature-auth --new-branch
 
 # 並列ワーカー2つを起動（各ワーカーに別ブランチ）
-cxd run --parallel 2 --worktree
+oaiso run --parallel 2 --worktree
 
 # 追加パッケージをインストールして実行
-cxd run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
+oaiso run --pkg "apt:libssl-dev" --pkg "pip:requests" --pkg "npm:lodash"
 
 # packages.dock ファイルを使用
-cxd run --pkg-file ./packages.dock
+oaiso run --pkg-file ./packages.dock
 
 # バックグラウンドで完全自動実行
-cxd run --agent codex --task "リファクタリング" --approval-mode full-auto --detach
+oaiso run --agent codex --task "リファクタリング" --approval-mode full-auto --detach
 
 # 読み取り専用・インターネットなしでセキュアに実行
-cxd run --agent codex --read-only --no-internet --task "コードレビュー"
+oaiso run --agent codex --read-only --no-internet --task "コードレビュー"
 
 # 特定のOCIイメージを使用
-cxd run --image my-custom-codex:v2
+oaiso run --image my-custom-codex:v2
 
 # テンプレートイメージを使用（未ビルドなら自動ビルド）
-cxd run --image codex-dock:pwn
+oaiso run --image codex-dock:pwn
 
 # --template でテンプレート名から直接指定（--image codex-dock:pwn と同じ）
-cxd run --template pwn
+oaiso run --template pwn
 
 # ~/.config/codex-dock/templates/ に置いた自作テンプレートも同様に使える
-cxd run --template mytool
+oaiso run --template mytool
 
 # カスタムモデルを指定
-cxd run --model "o3"
+oaiso run --model "o3"
 
 # エージェントを使わずコマンドを1つ実行して終了
-cxd run --exec "ls -la"
+oaiso run --exec "ls -la"
 
 # デフォルトで、コマンド実行ユーザと同じ uid:gid でコンテナを起動
-cxd run
+oaiso run
 
 # 従来どおり codex(1001:1001) ユーザで実行
-cxd run --user codex
+oaiso run --user codex
 
 # 明示的にコマンド実行ユーザを指定
-cxd run --user current
+oaiso run --user current
 
 # プロジェクトディレクトリの所有者と同じ uid:gid でコンテナを起動
-cxd run --user dir --project /srv/myapp
+oaiso run --user dir --project /srv/myapp
 
 # uid:gid を明示指定
-cxd run --user 1000:1000
+oaiso run --user 1000:1000
 ```
 
 ---

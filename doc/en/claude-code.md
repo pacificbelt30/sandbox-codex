@@ -11,13 +11,13 @@ Prepare the [execution host](../setup.md), then run from your project:
 ```bash
 export ANTHROPIC_API_KEY='your-api-key'
 unset CLAUDE_CODE_OAUTH_TOKEN
-cxd init --agent claude
-cxd claude
+oaiso init --agent claude
+oaiso claude
 # Non-interactive execution
-cxd claude -p 'Explain this project.' --model claude-sonnet-4-6
+oaiso claude -p 'Explain this project.' --model claude-sonnet-4-6
 ```
 
-`cxd claude` forwards native Claude arguments, including `-p`, `--output-format`, `--resume` and `--model`. Configure cxd image, profile and mounts in global settings or the project's `codex-dock.toml`. Existing `cxd run --agent claude` and `cxd default claude` remain available. `run --task` supplies an initial prompt; use `cxd claude -p` for non-interactive execution.
+`oaiso claude` forwards native Claude arguments, including `-p`, `--output-format`, `--resume` and `--model`. Configure oaiso image, profile and mounts in global settings or the project's `codex-dock.toml`. Existing `oaiso run --agent claude` and `oaiso default claude` remain available. `run --task` supplies an initial prompt; use `oaiso claude -p` for non-interactive execution.
 
 ## Subscription
 
@@ -26,11 +26,11 @@ Log in with official Claude Code on the host:
 ```bash
 unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 claude auth login
-cxd init --agent claude
-cxd claude
+oaiso init --agent claude
+oaiso claude
 ```
 
-The proxy reads `claudeAiOauth` from host `~/.claude/.credentials.json`. Automatic import from macOS Keychain or a custom `CLAUDE_CONFIG_DIR` is not supported. If the file is unavailable, run `claude setup-token` on the host, put its output in the host's `CLAUDE_CODE_OAUTH_TOKEN`, then run `cxd init --agent claude`. Keep real tokens out of Dockerfiles, project settings and additional worker environment variables.
+The proxy reads `claudeAiOauth` from host `~/.claude/.credentials.json`. Automatic import from macOS Keychain or a custom `CLAUDE_CONFIG_DIR` is not supported. If the file is unavailable, run `claude setup-token` on the host, put its output in the host's `CLAUDE_CODE_OAUTH_TOKEN`, then run `oaiso init --agent claude`. Keep real tokens out of Dockerfiles, project settings and additional worker environment variables.
 
 Source precedence is `ANTHROPIC_API_KEY` → `CLAUDE_CODE_OAUTH_TOKEN` → `~/.claude/.credentials.json` → saved Anthropic API key. An explicit API key selects API billing; unset it for subscription use. Changing host environment variables does not change an already running proxy's authentication.
 
@@ -75,11 +75,11 @@ With model restrictions, use exact upstream model IDs. Messages and count_tokens
 The built-in worker pins Claude Code **2.1.306**. Deploy matching CLI/proxy source versions and run from the repository root after ending active workers:
 
 ```bash
-cxd build -t codex-dock:latest -f docker/sandbox/Dockerfile
-cxd proxy build
-cxd proxy stop
-cxd proxy rm
-cxd proxy run
+oaiso build -t codex-dock:latest -f docker/sandbox/Dockerfile
+oaiso proxy build
+oaiso proxy stop
+oaiso proxy rm
+oaiso proxy run
 ```
 
 Create new workers; existing workers retain their old image and authentication environment. Update the entrypoint and Claude version in custom templates too. `CODEX_DOCK_CLAUDE_VERSION=2.1.306` explicitly overrides the build version. Update and run pinned-CLI acceptance when selecting another version.

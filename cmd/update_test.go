@@ -17,7 +17,7 @@ func TestExecuteUpdate_GoNotFound(t *testing.T) {
 	}
 }
 
-func TestGoInstallKeepsCxdCommand(t *testing.T) {
+func TestGoInstallKeepsCanonicalAndLegacyCommands(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fixture uses a shell script")
 	}
@@ -39,20 +39,42 @@ func TestGoInstallKeepsCxdCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	alias := filepath.Join(bin, "cxd")
-	if target, err := os.Readlink(alias); err != nil || target != "codex-dock" {
-		t.Fatalf("cxd alias = %q, %v", target, err)
+	for _, name := range []string{"oaiso", "cxd"} {
+		if target, err := os.Readlink(filepath.Join(bin, name)); err != nil || target != "codex-dock" {
+			t.Fatalf("%s alias = %q, %v", name, target, err)
+		}
 	}
-	if err := os.Remove(alias); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(alias, []byte("unrelated"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensureGoInstalledAlias(context.Background(), goBin); err == nil || !strings.Contains(err.Error(), "leave it untouched") {
-		t.Fatalf("unrelated cxd was accepted: %v", err)
-	}
-	if data, err := os.ReadFile(alias); err != nil || string(data) != "unrelated" {
-		t.Fatalf("unrelated cxd changed: %q, %v", data, err)
+	for _, aliasName := range []string{"oaiso", "cxd"} {
+		alias := filepath.Join(bin, aliasName)
+		if err := os.Remove(alias); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(alias, []byte("unrelated"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureGoInstalledAlias(context.Background(), goBin); err == nil || !strings.Contains(err.Error(), "leave it untouched") {
+			t.Fatalf("unrelated %s was accepted: %v", aliasName, err)
+		}
+		if data, err := os.ReadFile(alias); err != nil || string(data) != "unrelated" {
+			t.Fatalf("unrelated %s changed: %q, %v", aliasName, data, err)
+		}
+		if err := os.Remove(alias); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("elsewhere", alias); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureGoInstalledAlias(context.Background(), goBin); err == nil || !strings.Contains(err.Error(), "leave it untouched") {
+			t.Fatal("unrelated symlink accepted")
+		}
+		if target, err := os.Readlink(alias); err != nil || target != "elsewhere" {
+			t.Fatal("unrelated symlink modified")
+		}
+		if err := os.Remove(alias); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("codex-dock", alias); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

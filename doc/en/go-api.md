@@ -1,8 +1,8 @@
-# Go API for embedding cxd
+# Go API for embedding oaiso
 
 [日本語](../go-api.md) | **English**
 
-`github.com/pacificbelt30/codex-dock/pkg/cxd` lets a trusted product on the same host manage workers through the existing `cxd node serve` Unix socket. It does not expose a new network service. Access to the root managed socket permits arbitrary images, commands, and host mounts, so grant it only to trusted host processes.
+`github.com/pacificbelt30/codex-dock/pkg/cxd` lets a trusted product on the same host manage workers through the existing `oaiso node serve` Unix socket. It does not expose a new network service. Access to the root managed socket permits arbitrary images, commands, and host mounts, so grant it only to trusted host processes.
 
 ## Before connecting
 
@@ -159,10 +159,10 @@ This requires Kata and an updated pinned bootstrap. Drain workers before install
 [`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-codex/blob/main/examples/embedding/main.go) uses only public APIs: capability/profile checks → Create → Start → cancel a streaming Exec → run another command in the same worker → Stop → RemoveRequest. Cleanup uses a separate one-minute context. Add `-model` for per-token authorization and `-temporary-mib` for temporary storage. Only `-prompt` invokes Codex over explicit HTTP/SSE; the default test command makes no AI request.
 
 ```bash
-go build -o /var/tmp/cxd-embedding ./examples/embedding
-/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-1 -profile compact
+go build -o /var/tmp/oaiso-embedding ./examples/embedding
+/var/tmp/oaiso-embedding -project /srv/work/demo -request-id demo/attempt-1 -profile compact
 # Requires an updated bootstrap and an allowed model; uses the real upstream.
-/var/tmp/cxd-embedding -project /srv/work/demo -request-id demo/attempt-2 \
+/var/tmp/oaiso-embedding -project /srv/work/demo -request-id demo/attempt-2 \
   -profile compact -temporary-mib 64 -model MODEL_ID -prompt 'Run the project tests.'
 ```
 
@@ -170,6 +170,6 @@ The example reads `CODEX_DOCK_KATA_NODE_SOCKET`, `CXD_EXAMPLE_PROXY_ADMIN_URL`, 
 
 The example removes its request at exit. Use a new RequestID for another completed attempt. After an uncertain response or cleanup failure, use the reported ID with `Request` / `RemoveRequest`. Caller authorization, business state, database adapters, review/approval and Git workflows stay in the host application. Reuse the conformance suite above for Credential Store adapters.
 
-`make kata-api-e2e VERSION=<matching-node-version>` builds and runs this executable with synthetic upstreams in real Kata. Select it alone with `scripts/verify-go-api.py --binary ./cxd --version <version> --run '^TestKataAPIIntegration/embedding-example$'`. A run with no executed subtests or only skips fails. See the [acceptance setup](../testing.md#公開go-apiの障害系受入).
+`make kata-api-e2e VERSION=<matching-node-version>` builds and runs this executable with synthetic upstreams in real Kata. Select it alone with `scripts/verify-go-api.py --binary ./oaiso --version <version> --run '^TestKataAPIIntegration/embedding-example$'`. A run with no executed subtests or only skips fails. See the [acceptance setup](../testing.md#公開go-apiの障害系受入).
 
 See [quarantine](sandbox-features.md#stop-communication-and-quarantine) for completion, retries and retained worktree cleanup. `Policy.Quarantined` means the prohibition was persisted; `QuarantinePending` means its stop is unconfirmed. Never treat an error from `Quarantine` as success.

@@ -221,7 +221,7 @@ func connectionHint(err error) string {
 	if !strings.Contains(strings.ToLower(netErr.Err.Error()), "connection refused") {
 		return ""
 	}
-	return "\nHint: auth proxy is not running. Run `codex-dock init` or `codex-dock proxy run` on the prepared containerd host."
+	return "\nHint: auth proxy is not running. Run `oaiso init` or `oaiso proxy run` on the prepared containerd host."
 }
 
 func (r *RemoteProxy) SupportsCredentialBroker() bool { return r.credentialBroker }

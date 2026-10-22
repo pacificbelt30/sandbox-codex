@@ -168,7 +168,7 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 			}
 		}
 		if !supported || !idleSafe || !temporarySupported {
-			return "", fmt.Errorf("worker policy requires a newer cxd node; upgrade the node before enabling it")
+			return "", fmt.Errorf("worker policy requires a newer Oaiso node; upgrade the node before enabling it")
 		}
 	}
 	if opts.Compatibility.SSHProxy || opts.Compatibility.CABundle != "" {

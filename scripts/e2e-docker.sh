@@ -4,7 +4,7 @@
 # real Docker daemon. SKIPS cleanly (exit 0) when Docker is unavailable.
 #
 # What it verifies (the parts the Go unit tests / smoke test cannot):
-#   - `codex-dock proxy run` brings up BOTH proxies (codex-auth-proxy +
+#   - `oaiso proxy run` brings up BOTH proxies (codex-auth-proxy +
 #     codex-http-proxy) on the egress network, publishing only the admin port to
 #     host loopback (data/forward ports stay internal).
 #   - A worker on its per-worker Internal network can reach the auth proxy
@@ -13,7 +13,7 @@
 #   - Two workers on separate per-worker networks cannot reach each other.
 #   - The http proxy with --block-private refuses private/LAN destinations.
 #
-# The worker side mirrors what `codex-dock run` builds (per-worker Internal net
+# The worker side mirrors what `oaiso run` builds (per-worker Internal net
 # with both proxies attached), using a small curl image so it needs no agent or
 # real API credentials. Requires: go, docker (with image pull access).
 set -u
@@ -40,7 +40,7 @@ PASS=0; FAIL=0
 ok(){ echo "PASS: $1"; PASS=$((PASS+1)); }
 no(){ echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
-BIN="$(mktemp -d)/cxd"
+BIN="$(mktemp -d)/oaiso"
 cleanup(){
   # Remove every container attached to the per-worker nets BEFORE removing the
   # nets. The proxies are multi-homed onto W1NET/W2NET, so the nets can't be
@@ -52,7 +52,7 @@ cleanup(){
 }
 trap cleanup EXIT
 
-echo "=== build cxd ==="
+echo "=== build oaiso ==="
 go build -o "$BIN" . || { echo "build failed"; exit 1; }
 
 # Worker (curl) image — pulled on the host before attaching to an Internal net.
@@ -67,10 +67,10 @@ if [ -n "$WORKER_IMAGE" ] && ! docker pull "$LISTENER_IMAGE" >/dev/null 2>&1; th
   LISTENER_IMAGE=""
 fi
 
-echo "=== start proxies (cxd proxy run) ==="
+echo "=== start proxies (oaiso proxy run) ==="
 "$BIN" proxy rm -f >/dev/null 2>&1 || true
 if ! "$BIN" proxy run >/dev/null 2>&1; then
-  echo "FAIL: cxd proxy run failed (proxy image build needs registry access?)"
+  echo "FAIL: oaiso proxy run failed (proxy image build needs registry access?)"
   exit 1
 fi
 
@@ -92,7 +92,7 @@ if [ -z "$WORKER_IMAGE" ]; then
   [ "$FAIL" = 0 ] && exit 0 || exit 1
 fi
 
-echo "=== build worker topology (mirrors cxd run) ==="
+echo "=== build worker topology (mirrors oaiso run) ==="
 docker network create --internal "$W1NET" >/dev/null
 docker network create --internal "$W2NET" >/dev/null
 docker network connect "$W1NET" "$AUTH" >/dev/null; docker network connect "$W1NET" "$HTTP" >/dev/null

@@ -1,4 +1,4 @@
-# `cxd run` — Start a Sandbox Container
+# `oaiso run` — Start a Sandbox Container
 
 > [日本語](../../commands/run.md) | **English**
 >
@@ -9,7 +9,7 @@ The default is `--runtime kata`. Dedicated Linux bridges, namespaces and nftable
 The execution host is Linux x86_64. See [quick start](../getting-started.md) and [network](../network.md).
 
 Missing images are built automatically from the matching template or default Dockerfile.
-A plain `cxd run` starts the configured default agent. The built-in default is the authenticated shell. Use `cxd default codex` globally or `cxd default codex --local` for this project; `cxd default` shows the effective setting.
+A plain `oaiso run` starts the configured default agent. The built-in default is the authenticated shell. Use `oaiso default codex` globally or `oaiso default codex --local` for this project; `oaiso default` shows the effective setting.
 On-disk template rebuilds are controlled by [auto_build](../configuration.md#auto_build).
 See [build](build.md) for custom tags and templates.
 At a repository root, `run` reads `[run]` and `[build]` from `codex-dock.toml`; `--project DIR` uses `DIR/codex-dock.toml`. See [project settings](../configuration.md#project-settings).
@@ -17,33 +17,33 @@ At a repository root, `run` reads `[run]` and `[build]` from `codex-dock.toml`; 
 ## Launch Codex CLI directly
 
 ```bash
-cxd codex
-cxd codex "Inspect this repository"
-cxd codex exec --json "Summarize the changes"
+oaiso codex
+oaiso codex "Inspect this repository"
+oaiso codex exec --json "Summarize the changes"
 ```
 
-Arguments are forwarded verbatim to Codex. The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper. Configure worker defaults under `[run]`; use `cxd run --agent codex` for image, worktree, mount and detach options. Starting a fresh VM takes longer than running Codex on the host.
+Arguments are forwarded verbatim to Codex. The current directory is mounted at `/workspace`, and the worker execs Codex without an interactive shell wrapper. Configure worker defaults under `[run]`; use `oaiso run --agent codex` for image, worktree, mount and detach options. Starting a fresh VM takes longer than running Codex on the host.
 
 ```bash
-cxd run [OPTIONS] [IMAGE [COMMAND...]]
-cxd run [OPTIONS] -- COMMAND...  # Run in the default image
+oaiso run [OPTIONS] [IMAGE [COMMAND...]]
+oaiso run [OPTIONS] -- COMMAND...  # Run in the default image
 ```
 
-IMAGE and COMMAND follow Docker's positional order. Put codex-dock flags before IMAGE.
+IMAGE and COMMAND follow Docker's positional order. Put Oaiso flags before IMAGE.
 With `--image` or `--template`, positional arguments are treated as the command.
 The command is equivalent to `--exec` without quoting it as one string.
 
 ```bash
-cxd run -d --name worker codex-dock:latest
-cxd run codex-dock:latest npm test -- --watch=false
-cxd run -- npm test -- --watch=false
+oaiso run -d --name worker codex-dock:latest
+oaiso run codex-dock:latest npm test -- --watch=false
+oaiso run -- npm test -- --watch=false
 ```
 
 ---
 
 ## Options
 
-To separate authentication from the host, use `cxd --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...` or trusted global configuration. See [independent profile setup](auth.md#independent-profiles).
+To separate authentication from the host, use `oaiso --auth-profile NAME run --proxy-admin-secret-file /private/admin-secret ...` or trusted global configuration. See [independent profile setup](auth.md#independent-profiles).
 
 | Option | Short | Default | Description |
 |---|---|---|---|
@@ -116,7 +116,7 @@ Shared files remain writable according to mount permissions. See [security](../s
 
 ## `--exec`
 
-The configured default agent does not apply to `cxd run IMAGE COMMAND`, `cxd run -- COMMAND`, or `--exec`; these run the command. An explicit `--agent codex` or `--agent claude` takes priority over the command. Use `--agent shell` to request the authenticated shell when a different default is configured.
+The configured default agent does not apply to `oaiso run IMAGE COMMAND`, `oaiso run -- COMMAND`, or `--exec`; these run the command. An explicit `--agent codex` or `--agent claude` takes priority over the command. Use `--agent shell` to request the authenticated shell when a different default is configured.
 
 Runs a single command inside the sandbox instead of an interactive shell.
 Passed into the container as the `DOCK_EXEC_CMD` environment variable, which
@@ -132,16 +132,16 @@ shell case).
 
 ```bash
 # Run one command in the auth-configured environment, then exit
-cxd run --exec "ls -la"
+oaiso run --exec "ls -la"
 
 # Equivalent, without needing to quote the whole command as one string
-cxd run -- ls -la
+oaiso run -- ls -la
 
 # Run in the background
-cxd run --exec "npm test" --detach
+oaiso run --exec "npm test" --detach
 
 # --agent takes priority over --exec, so this launches Codex CLI, not `ls -la`
-cxd run --agent codex --exec "ls -la"
+oaiso run --agent codex --exec "ls -la"
 ```
 
 ---
@@ -185,10 +185,10 @@ container outright.
 
 ```bash
 # Launch the interactive shell with zsh
-cxd run --shell-type zsh
+oaiso run --shell-type zsh
 
 # Raw debug shell with zsh (bypasses entrypoint.sh)
-cxd run --shell --shell-type zsh
+oaiso run --shell --shell-type zsh
 ```
 
 The default can be changed via `default_shell_type` (global) / `run.shell_type`
@@ -204,7 +204,7 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 | Value | Behavior |
 |---|---|
 | `""` (omitted) | Image default user (`codex` uid:1001) |
-| `current` | Automatically uses the uid:gid of the user running `cxd` |
+| `current` | Automatically uses the uid:gid of the user running `oaiso` |
 | `dir` | Automatically uses the uid:gid of the `--project` directory owner |
 | `uid` or `uid:gid` | Explicit value (e.g., `1000`, `1000:1000`) |
 
@@ -220,7 +220,7 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 ```
 
 - `<host-path>`: directory on the host (relative paths are resolved against the current
-  working directory when `cxd run` is invoked)
+  working directory when `oaiso run` is invoked)
 - `<container-path>`: absolute path inside the container; `/workspace` is reserved for
   `--project` and cannot be used here
 - `:ro` / `:rw`: read-only / read-write (defaults to `rw` when omitted)
@@ -228,10 +228,10 @@ Runs the container process as a specific uid:gid for filesystem permission consi
 
 ```bash
 # Mount a shared dataset directory read-only
-cxd run --mount /home/user/datasets:/data:ro
+oaiso run --mount /home/user/datasets:/data:ro
 
 # Mount multiple directories, mixing read-write and read-only
-cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
+oaiso run --mount ./cache:/cache --mount /opt/models:/models:ro
 ```
 
 > Additional mounts can be independently read-only regardless of `/workspace`.
@@ -239,7 +239,7 @@ cxd run --mount ./cache:/cache --mount /opt/models:/models:ro
 
 `--read-only-rootfs` does not change `/workspace` or additional mount permissions. Install needed packages in the image first; startup package installation is rejected. HOME, `/tmp`, and `/var/tmp` are temporary tmpfs storage. With `--no-git-metadata`, a linked worktree's shared Git metadata is not mounted; provide private metadata and mounts if Git must run inside the VM.
 
-`cxd profile --json` reports the CPU, guest RAM, host limit, and PID limit of each profile. `small` provides 1 CPU, 1 GiB guest RAM, and a 2 GiB host limit; `standard` provides 1 CPU, 2 GiB guest RAM, and a 3 GiB host limit. `--profile-size small` requires Kata. Measure actual memory use and startup performance on the execution host.
+`oaiso profile --json` reports the CPU, guest RAM, host limit, and PID limit of each profile. `small` provides 1 CPU, 1 GiB guest RAM, and a 2 GiB host limit; `standard` provides 1 CPU, 2 GiB guest RAM, and a 3 GiB host limit. `--profile-size small` requires Kata. Measure actual memory use and startup performance on the execution host.
 
 This can also be set as a default via `mounts` in the `[run]` section of the config
 file (`~/.config/codex-dock/config.toml`); an explicit `--mount` always overrides it.
@@ -266,7 +266,7 @@ libssl-dev              # no prefix → treated as apt (default)
 ## Parallel Workers
 
 ```bash
-cxd run --parallel 2 --worktree --branch myfeature
+oaiso run --parallel 2 --worktree --branch myfeature
 ```
 
 The default node limit is 2 simultaneous workers. Creates branches: `myfeature-1`, `myfeature-2`.
@@ -277,34 +277,34 @@ The default node limit is 2 simultaneous workers. Creates branches: `myfeature-1
 
 ```bash
 # Basic run (mount current directory)
-cxd run
+oaiso run
 
 # Run with task in full-auto mode
-cxd run --agent codex --task "Write unit tests" --approval-mode full-auto
+oaiso run --agent codex --task "Write unit tests" --approval-mode full-auto
 
 # Use git worktree on a feature branch
-cxd run --worktree --branch feature-auth --new-branch
+oaiso run --worktree --branch feature-auth --new-branch
 
 # Run 2 parallel workers
-cxd run --parallel 2 --worktree
+oaiso run --parallel 2 --worktree
 
 # Install additional packages
-cxd run --pkg "apt:libssl-dev" --pkg "pip:requests"
+oaiso run --pkg "apt:libssl-dev" --pkg "pip:requests"
 
 # Run in background
-cxd run --agent codex --task "Refactor" --approval-mode full-auto --detach
+oaiso run --agent codex --task "Refactor" --approval-mode full-auto --detach
 
 # Secure run: read-only, no internet
-cxd run --agent codex --read-only --no-internet --task "Code review"
+oaiso run --agent codex --read-only --no-internet --task "Code review"
 
 # Use a template image (auto-built if not present)
-cxd run --image codex-dock:pwn
+oaiso run --image codex-dock:pwn
 
 # Same thing via --template
-cxd run --template pwn
+oaiso run --template pwn
 
 # Works for your own templates under ~/.config/codex-dock/templates/ too
-cxd run --template mytool
+oaiso run --template mytool
 ```
 
 ---

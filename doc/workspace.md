@@ -1,19 +1,19 @@
 # ファイル共有と所有者
 
-`cxd run` は、カレントディレクトリをVM内の `/workspace` に共有します。
+`oaiso run` は、カレントディレクトリをVM内の `/workspace` に共有します。
 ファイルをコピーする方式ではありません。読み書き可能なマウントでは、変更がホストとVMの両方に反映されます。
 
 ## 共有するディレクトリを選ぶ
 
 ```bash
 # カレントディレクトリを共有
-cxd run
+oaiso run
 
 # 別のディレクトリを共有
-cxd run --project ./my-project
+oaiso run --project ./my-project
 
 # worktreeを作成して、その別checkoutを共有
-cxd run --worktree --branch add-tests --new-branch
+oaiso run --worktree --branch add-tests --new-branch
 ```
 
 `--project` を指定しても、VM内の作業場所は `/workspace` です。
@@ -40,7 +40,7 @@ VM内で行った変更のinotify通知は届きます。
 Chokidar / Watchpackを使う開発ツールは、起動時に次の指定ができます。
 
 ```bash
-cxd run --watch-polling -- npm run dev
+oaiso run --watch-polling -- npm run dev
 ```
 
 `CHOKIDAR_USEPOLLING=true`、`CHOKIDAR_INTERVAL=1000`、`WATCHPACK_POLLING=1000` をワーカーへ渡します。
@@ -89,7 +89,7 @@ fs.watchFile('/workspace/example.txt', { interval: 200 }, () => {
 ```bash
 id
 stat -c '%u:%g %a %n' example.txt
-cxd run -- stat -c '%u:%g %a %n' /workspace/example.txt
+oaiso run -- stat -c '%u:%g %a %n' /workspace/example.txt
 ```
 
 新規ファイルのUIDは作成したプロセス、GIDは通常その主GIDになります。
@@ -101,13 +101,13 @@ cxd run -- stat -c '%u:%g %a %n' /workspace/example.txt
 
 ```bash
 # workspaceだけを読み取り専用にする
-cxd run --read-only
+oaiso run --read-only
 
 # データは読み取り専用、cacheは読み書き可能
-cxd run --mount ./data:/data:ro --mount ./cache:/cache:rw
+oaiso run --mount ./data:/data:ro --mount ./cache:/cache:rw
 
 # workspaceを読み取り専用、出力先を読み書き可能にする
-cxd run --read-only --mount ./output:/output:rw
+oaiso run --read-only --mount ./output:/output:rw
 ```
 
 `--read-only` は `/workspace` に適用します。追加マウントはそれぞれ `ro` / `rw` で指定します。

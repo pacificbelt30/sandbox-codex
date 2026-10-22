@@ -1,10 +1,12 @@
-# cxd ドキュメント
+# 御AgentIsolation（Oaiso）ドキュメント
 
 **日本語** | [English](en/index.md)
 
-cxdは、Codex CLIとClaude CodeをKataのVMで隔離して実行します。
+御AgentIsolation（Oaiso）は、Codex CLIとClaude CodeをKataのVMで隔離して実行します。
 containerdがワーカーを管理し、DragonballがVMを動かします。
 Docker EngineとDocker CLIは不要です。
+
+正式名称の「御」は丁寧さ・敬意を表し、略称のOaisoは「おあいそ」と読みます。コマンドは `oaiso`、旧 `cxd` / `codex-dock` は互換名です。設定・認証情報・サービス・Go APIの既存識別子は引き継ぎます。[名称変更と互換性](migration.md#oaisoへの名称変更)を参照してください。
 
 ## 初めて使う
 

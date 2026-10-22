@@ -70,7 +70,7 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildTag, "tag", "t", "codex-dock:latest", "Image tag")
 	buildCmd.Flags().StringVarP(&buildDockerfile, "dockerfile", "f", "", "Path to Dockerfile")
 	buildCmd.Flags().StringVarP(&buildTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Use --template list to see available templates.`)
-	buildCmd.Flags().BoolVar(&buildPrintEntrypoint, "print-entrypoint", false, `Print the embedded entrypoint.sh to stdout and exit (no build). Use this to vendor the canonical entrypoint into a custom, non-derived Dockerfile (i.e. one that does not FROM codex-dock:*), so it stays in sync with the auth-proxy protocol: cxd build --print-entrypoint > entrypoint.sh`)
+	buildCmd.Flags().BoolVar(&buildPrintEntrypoint, "print-entrypoint", false, `Print the embedded entrypoint.sh to stdout and exit (no build). Use this to vendor the canonical entrypoint into a custom, non-derived Dockerfile (i.e. one that does not FROM codex-dock:*), so it stays in sync with the auth-proxy protocol: oaiso build --print-entrypoint > entrypoint.sh`)
 	registerCompletion(buildCmd, "template", completeTemplates)
 }
 

@@ -1,4 +1,4 @@
-# `cxd network` — Network Management
+# `oaiso network` — Network Management
 
 > [日本語](../../commands/network-cmd.md) | **English**
 >
@@ -6,24 +6,24 @@
 
 Manages the egress network (`dock-net-proxy`, used for the proxy's internet reachability). Per-worker `Internal` networks are created and removed automatically with each worker, so no manual management is needed.
 
-> The old `cxd firewall` (iptables) command has been removed; isolation is enforced by the root node service with Linux bridges, namespaces and nftables.
+> The old `oaiso firewall` (iptables) command has been removed; isolation is enforced by the root node service with Linux bridges, namespaces and nftables.
 
 ---
 
 ## `network create`
 
 ```bash
-cxd network create
+oaiso network create
 ```
 
-> Also auto-created by `cxd proxy run` if missing.
+> Also auto-created by `oaiso proxy run` if missing.
 
 ---
 
 ## `network rm`
 
 ```bash
-cxd network rm
+oaiso network rm
 ```
 
 > Stop/remove the proxy container first if it is still attached.
@@ -33,7 +33,7 @@ cxd network rm
 ## `network status`
 
 ```bash
-cxd network status
+oaiso network status
 ```
 
 ```

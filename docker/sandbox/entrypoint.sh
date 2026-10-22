@@ -1,5 +1,5 @@
 #!/bin/bash
-# codex-dock secure entrypoint
+# Oaiso secure entrypoint
 # Fetches short-lived credentials from the Auth Proxy and launches the selected
 # agent (Codex CLI or Claude Code), or drops into an interactive shell.
 #
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 log() {
-    echo "[codex-dock] $*" >&2
+    echo "[oaiso] $*" >&2
 }
 
 DOCK_AGENT="${DOCK_AGENT:-}"

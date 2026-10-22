@@ -22,15 +22,15 @@
 ## 通信の確認と設定
 
 ```bash
-cxd policy check --json
-cxd policy show --worker WORKER --json
-cxd policy explain api.example.com:443 --resolve --json
-cxd policy events --worker WORKER --follow --json
-cxd policy presets
-cxd run --policy-preset api --egress-allow-domain api.example.com -d
-cxd run --policy-preset dependencies -d
-cxd run --policy-preset offline -d
-cxd proxy configure
+oaiso policy check --json
+oaiso policy show --worker WORKER --json
+oaiso policy explain api.example.com:443 --resolve --json
+oaiso policy events --worker WORKER --follow --json
+oaiso policy presets
+oaiso run --policy-preset api --egress-allow-domain api.example.com -d
+oaiso run --policy-preset dependencies -d
+oaiso run --policy-preset offline -d
+oaiso proxy configure
 ```
 
 `policy show --worker` はワーカーが選んだプロキシの実設定とIDを読みます。`--worker` がない場合は、新規起動用のホスト設定です。`explain` は接続を開きません。`--resolve` なしの許可は名前・ポートだけの暫定判定です。指定時は全DNS応答を検証します。実際の接続時にも再検証します。
@@ -48,8 +48,8 @@ cxd proxy configure
 既存ワーカーの通信も止める必要がある場合は、ホストから次を実行します。
 
 ```bash
-cxd policy quarantine --worker WORKER
-cxd policy show --worker WORKER --json
+oaiso policy quarantine --worker WORKER
+oaiso policy show --worker WORKER --json
 ```
 
 `policy revoke` は同じ操作の別名です。**対象ワーカーの全実行を停止します。一般HTTP/CONNECTだけでなく、固定AI通信・背景ジョブ・実行中のエージェントも終了します。** 他のワーカーと共有Proxyは停止しません。隔離操作はworkspace・管理worktree・コンテナ・ログを削除しません。設定済みの保持期限による `reap` や明示的な削除は従来どおり適用されるため、長く保全する成果物は先に回収してください。単なる設定保存や通常の `stop` は、この隔離操作ではありません。
@@ -63,19 +63,19 @@ cxd policy show --worker WORKER --json
 ## ファイル・実行・回収
 
 ```bash
-cxd run --deny-read /workspace/.env --deny-write /workspace/config -d
-cxd exec --workdir /workspace --env MODE=test WORKER -- npm test
-cxd exec -it WORKER -- bash
-cxd files get WORKER src/main.go --local main.go.copy
-cxd files put WORKER input.json --local input.json
-cxd files list WORKER src
-cxd jobs start WORKER -- sh -c 'npm test'
-cxd jobs list WORKER
-cxd jobs logs WORKER JOB_ID --offset 0
-cxd jobs kill WORKER JOB_ID
-cxd artifact diff WORKER --output changes.patch
-cxd artifact commit WORKER --message 'Save staged changes'
-cxd run --clone-dir /absolute/new-copy -d
+oaiso run --deny-read /workspace/.env --deny-write /workspace/config -d
+oaiso exec --workdir /workspace --env MODE=test WORKER -- npm test
+oaiso exec -it WORKER -- bash
+oaiso files get WORKER src/main.go --local main.go.copy
+oaiso files put WORKER input.json --local input.json
+oaiso files list WORKER src
+oaiso jobs start WORKER -- sh -c 'npm test'
+oaiso jobs list WORKER
+oaiso jobs logs WORKER JOB_ID --offset 0
+oaiso jobs kill WORKER JOB_ID
+oaiso artifact diff WORKER --output changes.patch
+oaiso artifact commit WORKER --message 'Save staged changes'
+oaiso run --clone-dir /absolute/new-copy -d
 ```
 
 ファイル制限は `/workspace/` 以下の明示したパスにOCI mask/readonlyを適用します。未指定時は追加制限をかけません。対象は起動時に存在する通常ファイル・ディレクトリに限り、symlinkやworkspace外への解決は拒否します。将来作るファイルへの継承ルールではありません。パスの別名やハードリンクに対するinode単位の機密ラベルではありません。複数マウントに同じ内容を露出しないでください。
@@ -89,12 +89,12 @@ PTYではstdout/stderrが一つになります。ストリーミング実行・�
 ## 寿命と再現性
 
 ```bash
-cxd run --max-lifetime 2h --idle-timeout 30m --retention 24h -d
-cxd reap --dry-run
-cxd reap --watch
-cxd environment lock IMAGE --source Dockerfile --source package-lock.json
-cxd run --image IMAGE --environment-lock codex-dock.lock.json -d
-cxd run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
+oaiso run --max-lifetime 2h --idle-timeout 30m --retention 24h -d
+oaiso reap --dry-run
+oaiso reap --watch
+oaiso environment lock IMAGE --source Dockerfile --source package-lock.json
+oaiso run --image IMAGE --environment-lock codex-dock.lock.json -d
+oaiso run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
 ```
 
 寿命・idle・保持期限は `reap --watch` またはGo APIの定期的な `Reap` 呼出しが適用します。CLI起動だけで監視サービスを常駐配置することはありません。監視が止まれば期限の適用も止まります。idleは最後の管理API実行の時刻で、guestのCPU使用やファイル更新を計測した値ではありません。対応ノードでは開始待ちexec・実行中exec/PTY・背景ジョブをidle回収から除外します。停止直前にノード内で再確認するため、新しいexecとの競合でも停止しません。agentのメインプロセスや管理API外で起動した処理の活動は判定しないため、これらを使う場合はidle制限を無効にしてください。最大寿命の明示制限は実行中でも適用されます。停止はtoken失効を伴い、削除は既存の所有権確認・削除journalを通します。保持期限ゼロは削除しません。
@@ -105,7 +105,7 @@ lockはノード上のOCI image digestと指定ファイルのSHA-256を固定�
 
 ## 資格情報と互換性
 
-`cxd proxy run --credential-routes /absolute/private-routes.json` は、ホストの0600 JSONを認証プロキシだけにread-onlyで渡します。一般通信プロキシには資格情報を渡しません。例は架空の値です。
+`oaiso proxy run --credential-routes /absolute/private-routes.json` は、ホストの0600 JSONを認証プロキシだけにread-onlyで渡します。一般通信プロキシには資格情報を渡しません。例は架空の値です。
 
 ```json
 [{"Name":"service","Upstream":"https://api.example.com","Paths":["/v1"],"Methods":["GET","POST"],"Header":"X-Service-Key","Prefix":"","Provider":"openai","Secret":"HOST_SECRET"}]
@@ -114,8 +114,8 @@ lockはノード上のOCI image digestと指定ファイルのSHA-256を固定�
 guestは `http://AUTH_PROXY/broker/service/v1/...` に、発行済みplaceholderのBearer認証を付けて要求します。固定HTTPS origin・許可パス境界・メソッド・providerを検証してから秘密を注入します。encoded path、WebSocket、上流redirectの追跡は拒否します。秘密値はレスポンスAPIから取得できません。ただし許可した上流が秘密をechoする場合まで防げないため、信頼できるAPIだけを設定してください。設定ファイル変更時は退避・再作成が必要です。組み込みでは `StartCredentialBroker` と `CredentialRoute.Secret` callbackも使えます。独立brokerのlistener・workerネットワークへの配置は呼出し側で明示します。
 
 ```bash
-cxd run --ssh-proxy --jvm-proxy --ca-bundle /absolute/extra-ca.pem -d
-cxd proxy run --upstream-proxy http://proxy.example.com:3128 --ca-bundle /absolute/extra-ca.pem
+oaiso run --ssh-proxy --jvm-proxy --ca-bundle /absolute/extra-ca.pem -d
+oaiso proxy run --upstream-proxy http://proxy.example.com:3128 --ca-bundle /absolute/extra-ca.pem
 ```
 
 SSHは `GIT_SSH_COMMAND` のCONNECT helperで一般通信ポリシーを通します。SSH鍵・ホストagent socketは自動共有しません。JVMはHTTP(S) proxy propertiesを設定します。CAはワーカーでsystem bundleに追加し、curl/Python/Nodeに適用します。JVMとkeytoolがある場合はsystem truststoreをワーカーのHOMEへコピーしてCAを追加します。プロキシ側のCAはsystem rootsに追加し、HTTPとWebSocket両経路でTLSを検証します。
@@ -137,7 +137,7 @@ TUIログは追記描画に変更し、2000行・約4 MiBで区切ります。�
 
 ## モデル認可と段階的な起動
 
-`cxd proxy run --allow-model model-id`（繰返し可）、ホスト設定 `[proxy].allowed_models`、または `CaseProxyOptions.AllowedModels` で、その認証プロキシ全体のAI要求を制限します。空リストでは既存の転送を変更しません。設定は起動時に固定し、変更にはワーカー退避・プロキシ再作成が必要です。`ProxyCapabilities` は対応能力と有効状態を別々に返します。
+`oaiso proxy run --allow-model model-id`（繰返し可）、ホスト設定 `[proxy].allowed_models`、または `CaseProxyOptions.AllowedModels` で、その認証プロキシ全体のAI要求を制限します。空リストでは既存の転送を変更しません。設定は起動時に固定し、変更にはワーカー退避・プロキシ再作成が必要です。`ProxyCapabilities` は対応能力と有効状態を別々に返します。
 
 制限時はPOSTのJSONを最大8 MiBまで読み、正確な `model` 文字列を照合します。重複キー・大小文字違いのmodelキー・不正JSON・圧縮本文・encoded pathを拒否します。queryはClaude Messages/count_tokensの正確な `beta=true` だけを許可し、それ以外は拒否します。検査後の本文はそのまま送信し、上流redirectは追跡しません。対応経路は `/v1/responses`、`/v1/responses/compact`、`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings`、`/v1/moderations`、`/chatgpt/codex/responses`、`/chatgpt/codex/responses/compact`、`/anthropic/v1/messages`、`/anthropic/v1/messages/count_tokens` です。その他のAI経路とWebSocketは拒否するため、HTTP対応のクライアント設定が必要です。モデル一覧取得やbatch・ファイルAPIもこのモードでは転送しません。
 
@@ -153,8 +153,8 @@ Go APIの `Create` は、既存 `Launch` と同じ検証済み設定で初回起
 
 ## 管理者定義の資源プロファイル
 
-PID上限はプロファイルごとに指定できます。たとえば、`cxd profile define compact-256 --base compact --pids-limit 256` は、compactのCPU・メモリ予算を維持した256 PIDのJSON配列を標準出力へ生成します。ファイルやnode設定は自動で変更しません。既存の定義がある場合は、生成した要素をその配列に追加してください。
-`cxd profile --node --json` は稼働中nodeの組み込み・登録済みプロファイルを取得し、`cxd profile compact-256 --node` は選んだ上限を表示します。`--node` なしの一覧は従来どおり組み込み値です。
+PID上限はプロファイルごとに指定できます。たとえば、`oaiso profile define compact-256 --base compact --pids-limit 256` は、compactのCPU・メモリ予算を維持した256 PIDのJSON配列を標準出力へ生成します。ファイルやnode設定は自動で変更しません。既存の定義がある場合は、生成した要素をその配列に追加してください。
+`oaiso profile --node --json` は稼働中nodeの組み込み・登録済みプロファイルを取得し、`oaiso profile compact-256 --node` は選んだ上限を表示します。`--node` なしの一覧は従来どおり組み込み値です。
 
 組み込みの `standard`・`small`・`compact` は変更しません。管理者はroot所有でグループ・全体への書き込みを許可しないJSONファイルに、追加の名前とCPU・guest/hostメモリ・PID上限を登録できます。`node serve --resource-profiles /etc/codex-dock/resource-profiles.json` で読み込みます。例は次のとおりです。
 

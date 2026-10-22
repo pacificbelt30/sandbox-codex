@@ -25,7 +25,7 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 TMP="$(mktemp -d)"
-BIN="$TMP/cxd"
+BIN="$TMP/oaiso"
 AUTH=18080; ADMIN=18081; EGRESS=18082; EGRESS_BLOCK=18083; EGRESS_DENY=18084; ORIGIN=18090
 PASS=0; FAIL=0; REPORT=""
 ok(){ REPORT+="PASS: $1"$'\n'; PASS=$((PASS+1)); }

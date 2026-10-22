@@ -2,14 +2,14 @@
 
 **日本語** | [English](../en/commands/proxy.md)
 
-`cxd proxy` は、認証用と一般通信用の2つのプロキシを管理します。
+`oaiso proxy` は、認証用と一般通信用の2つのプロキシを管理します。
 仕組みは[認証プロキシ](../auth-proxy.md)、更新は[運用手順](../operations.md#cliプロキシを更新する)を参照してください。
 
 ## ビルドする
 
 ```bash
-cxd proxy build
-cxd proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
+oaiso proxy build
+oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
 ```
 
 | フラグ | 内容 |
@@ -24,7 +24,7 @@ Dockerfileは `docker/proxy/Dockerfile`、旧配置の `auth-proxy.Dockerfile` /
 ## 起動する
 
 ```bash
-cxd proxy run
+oaiso proxy run
 ```
 
 | フラグ | 既定値 | 内容 |
@@ -50,12 +50,12 @@ cxd proxy run
 
 ```bash
 # 名前を省略すると既定の2つが対象
-cxd proxy stop
-cxd proxy rm
+oaiso proxy stop
+oaiso proxy rm
 
 # 個別に指定
-cxd proxy stop --name codex-http-proxy
-cxd proxy rm --name codex-http-proxy
+oaiso proxy stop --name codex-http-proxy
+oaiso proxy rm --name codex-http-proxy
 ```
 
 `proxy rm --force` は実行中でも削除します。
@@ -67,7 +67,7 @@ cxd proxy rm --name codex-http-proxy
 開発や単体利用には、内部コマンドの `proxy serve` を使えます。
 
 ```bash
-cxd proxy serve --role auth \
+oaiso proxy serve --role auth \
   --listen 127.0.0.1:18080 --admin-listen 127.0.0.1:18081 \
   --admin-secret "$PROXY_ADMIN_SECRET"
 ```
@@ -77,4 +77,4 @@ cxd proxy serve --role auth \
 KataワーカーのネットワークやVM隔離は、このコマンドでは用意しません。
 詳しくは[単体利用](../proxy-standalone.md)を参照してください。
 
-`cxd proxy run --allow-model model-id` は繰返し指定でき、固定AI経路の要求本文でモデルを強制します。[対応経路と制約](../sandbox-features.md#モデル認可と段階的な起動)を確認してください。
+`oaiso proxy run --allow-model model-id` は繰返し指定でき、固定AI経路の要求本文でモデルを強制します。[対応経路と制約](../sandbox-features.md#モデル認可と段階的な起動)を確認してください。

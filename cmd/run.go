@@ -62,7 +62,7 @@ var (
 
 var runCmd = &cobra.Command{
 	Use:   "run [flags] [IMAGE [COMMAND...]]",
-	Short: "Start a sandboxed Codex worker container",
+	Short: "Start an isolated coding-agent worker or shell",
 	Long: `Start a Kata VM-isolated worker managed through containerd and Dragonball (Linux/KVM required).
 Use --runtime runc for explicit compatibility without VM isolation.
 Auth credentials are injected via the Auth Proxy instead of being directly mounted.
@@ -71,9 +71,9 @@ A positional IMAGE and optional COMMAND work like "docker run IMAGE COMMAND".
 Without an image, use "-- COMMAND..." to run a command in the default image.
 Both forms are equivalent to --exec without quoting the whole command:
 
-  cxd run -d --agent codex codex-dock:latest
-  cxd run codex-dock:latest npm test -- --watch=false
-  cxd run -- npm test -- --watch=false`,
+  oaiso run -d --agent codex codex-dock:latest
+  oaiso run codex-dock:latest npm test -- --watch=false
+  oaiso run -- npm test -- --watch=false`,
 	Args: cobra.ArbitraryArgs,
 	RunE: runWorker,
 }
@@ -87,7 +87,7 @@ func init() {
 	f.StringVar(&runOpts.KataRuntime, "kata-runtime", sandbox.DefaultKataRuntime, "Kata v2 runtime registration on the dedicated containerd node")
 	f.StringVarP(&runOpts.Image, "image", "i", "codex-dock:latest", "OCI image for the sandbox")
 	f.StringVar(&runOpts.ResourceProfile, "profile-size", "standard", "Kata resource profile: standard, small, compact or a node-registered name")
-	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "cxd build --template list" to see available templates.`)
+	f.StringVarP(&runTemplate, "template", "T", "", `Sandbox image template (e.g. "plain", "pwn"). Resolved to the template's image tag; an explicit --image always takes precedence. Use "oaiso build --template list" to see available templates.`)
 	f.StringArrayVarP(&runOpts.Packages, "pkg", "p", nil, "Additional packages to install (apt:<pkg>, pip:<pkg>, npm:<pkg>)")
 	f.StringVar(&runOpts.PkgFile, "pkg-file", "", "Path to package definition file (packages.dock)")
 	f.StringVar(&runOpts.ProjectDir, "project", ".", "Project directory to mount as /workspace")
@@ -99,7 +99,7 @@ func init() {
   shell    interactive shell with auth configured (built-in default)
   codex    launch OpenAI Codex CLI
   claude   launch Anthropic Claude Code
-  Configure the default with "cxd default codex" or "cxd default shell".`)
+  Configure the default with "oaiso default codex" or "oaiso default shell".`)
 	f.StringVarP(&runOpts.Task, "task", "t", "", "Initial task prompt for the agent")
 	f.StringVarP(&runOpts.ExecCmd, "exec", "e", "", `Run this command instead of an interactive shell. An explicit --agent codex/claude takes priority; the configured default agent does not apply.
   Mutually exclusive with a "-- command..." trailing on the command line (see the "run" command's usage), which is usually easier for multi-word commands since it avoids having to quote the whole thing as one string.`)
@@ -121,9 +121,9 @@ func init() {
 	f.StringVar(&runOpts.Compatibility.CABundle, "ca-bundle", "", "Additional PEM CA certificates mounted read-only in the worker")
 	f.StringArrayVar(&runOpts.Filesystem.DenyRead, "deny-read", nil, "Mask a guest path below /workspace (repeatable, opt-in)")
 	f.StringArrayVar(&runOpts.Filesystem.DenyWrite, "deny-write", nil, "Make a guest path below /workspace read-only (repeatable, opt-in)")
-	f.DurationVar(&runOpts.Lifecycle.MaxLifetime, "max-lifetime", 0, "Opt-in maximum lifetime enforced by cxd reap")
-	f.DurationVar(&runOpts.Lifecycle.IdleTimeout, "idle-timeout", 0, "Opt-in idle timeout since last cxd exec; enforced by cxd reap")
-	f.DurationVar(&runOpts.Lifecycle.Retention, "retention", 0, "Opt-in retention after exit; cxd reap removes expired workers")
+	f.DurationVar(&runOpts.Lifecycle.MaxLifetime, "max-lifetime", 0, "Opt-in maximum lifetime enforced by oaiso reap")
+	f.DurationVar(&runOpts.Lifecycle.IdleTimeout, "idle-timeout", 0, "Opt-in idle timeout since last oaiso exec; enforced by oaiso reap")
+	f.DurationVar(&runOpts.Lifecycle.Retention, "retention", 0, "Opt-in retention after exit; oaiso reap removes expired workers")
 	f.StringVar(&runEnvironmentLock, "environment-lock", "", "Validate a lock file and require its image digest")
 	f.StringArrayVar(&runStartHooks, "start-hook", nil, "Guest shell command before agent startup (repeatable)")
 	f.StringVar(&runReadiness, "readiness", "", "Guest shell probe that must succeed before startup completes")
@@ -292,7 +292,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	runOpts.ApprovalMode = mode
 
 	// An implicit agent default applies only to an interactive run. Explicit
-	// commands and the native `cxd codex` entry point keep their own behavior.
+	// commands and the native `oaiso codex` entry point keep their own behavior.
 	agent, err := resolveSelectedAgent(cmd, runOpts.ExecCmd)
 	if err != nil {
 		return err
@@ -517,8 +517,8 @@ func reconcileProxyAuthState(ctx context.Context, proxy *authproxy.RemoteProxy, 
 		return nil, fmt.Errorf("removing stale auth proxy container %q: %w", proxyRunName, err)
 	}
 
-	// `cxd run` has its own admin-secret flag; propagate it to the shared
-	// proxy startup path used by `cxd proxy run`.
+	// `oaiso run` has its own admin-secret flag; propagate it to the shared
+	// proxy startup path used by `oaiso proxy run`.
 	proxyAdminSecret = runProxyAdminSecret
 	proxyAdminSecretFile = runProxyAdminSecretFile
 	if err := startProxyContainer(ctx); err != nil {

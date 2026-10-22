@@ -130,7 +130,7 @@ func inspectImageRoot(root string, ic v1.Image, agent string) diagnostics.Report
 	} else {
 		_, commandErr = find(command[0])
 	}
-	r.Add("entrypoint", "image command exists", "Set ENTRYPOINT [\"/entrypoint.sh\"] and COPY the script printed by codex-dock build --print-entrypoint.", commandErr)
+	r.Add("entrypoint", "image command exists", "Set ENTRYPOINT [\"/entrypoint.sh\"] and COPY the script printed by oaiso build --print-entrypoint.", commandErr)
 	path, err := fs.RootPath(root, "/entrypoint.sh")
 	if err == nil {
 		var info os.FileInfo
@@ -144,7 +144,7 @@ func inspectImageRoot(root string, ic v1.Image, agent string) diagnostics.Report
 		data, err = os.ReadFile(path)
 	}
 	if err != nil || sha256.Sum256(data) != sha256.Sum256(dockerdefaults.Entrypoint) {
-		r.Checks = append(r.Checks, diagnostics.Check{Name: "auth-entrypoint", Status: "warning", Detail: "entrypoint differs from this CLI; custom wrappers need a real Kata smoke test", Fix: "Vendor codex-dock build --print-entrypoint or inherit the matching codex-dock base image."})
+		r.Checks = append(r.Checks, diagnostics.Check{Name: "auth-entrypoint", Status: "warning", Detail: "entrypoint differs from this CLI; custom wrappers need a real Kata smoke test", Fix: "Vendor oaiso build --print-entrypoint or inherit the matching codex-dock base image."})
 	} else {
 		r.Add("auth-entrypoint", "canonical auth entrypoint matches this CLI", "", nil)
 	}

@@ -1,4 +1,4 @@
-# `cxd auth` — 認証管理
+# `oaiso auth` — 認証管理
 
 > **日本語** | [English](../en/commands/auth.md)
 >
@@ -11,10 +11,10 @@ API キーや OAuth の認証情報を管理します。
 ホストCLIのログインとは別の認証を使う場合は、プロファイルを明示選択します。選択中はホストの環境変数・認証ファイルへfallbackしません。存在しないプロファイルや権限不備はエラーです。
 
 ```bash
-cxd auth profile set work --provider openai  # TTYで非表示入力
-cxd auth profile set claude-work --provider anthropic
-cxd auth profile show work
-cxd auth profile list
+oaiso auth profile set work --provider openai  # TTYで非表示入力
+oaiso auth profile set claude-work --provider anthropic
+oaiso auth profile show work
+oaiso auth profile list
 ```
 
 非対話入力には `--key-stdin` を明示します。キーを引数へ書かず、安全な入力元からstdinへ渡してください。保存先は `~/.config/codex-dock/profiles/work/work.json`。rootとプロファイルのディレクトリは `0700`、JSONとlockファイルは `0600`、平文保存です。`--auth-profile-dir` またはグローバル設定の `auth_profile_dir` でrootを変更できます。WSLではLinux側の私有ディレクトリを使い、共有・同期フォルダーを避けてください。
@@ -22,8 +22,8 @@ cxd auth profile list
 OAuthも、認証元を明示したstdin入力で取り込めます。
 
 ```bash
-cxd auth profile import work-oauth --format codex --credentials-stdin < /private/product-login/auth.json
-cxd auth profile import claude-oauth --format claude --credentials-stdin < /private/product-login/.credentials.json
+oaiso auth profile import work-oauth --format codex --credentials-stdin < /private/product-login/auth.json
+oaiso auth profile import claude-oauth --format claude --credentials-stdin < /private/product-login/.credentials.json
 ```
 
 `codex` は公式CLI形式の `tokens` と `last_refresh`、`claude` は `claudeAiOauth` を読みます。既定の `credentials` は `credentialstore.Credentials` のJSON形式で、両providerを含められます。元ファイルは自動探索・削除しません。専用login Kataの自動起動や入力キーの実API照合は未実装です。
@@ -37,8 +37,8 @@ path = pathlib.Path.home() / '.config/codex-dock/proxy-admin-secret'
 with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
     f.write(secrets.token_hex(32) + '\n')
 PY
-cxd --auth-profile work proxy run --admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
-cxd --auth-profile work run --agent codex --proxy-admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
+oaiso --auth-profile work proxy run --admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
+oaiso --auth-profile work run --agent codex --proxy-admin-secret-file "$HOME/.config/codex-dock/proxy-admin-secret"
 ```
 
 通常利用では、信頼済みのグローバル設定 `~/.config/codex-dock/config.toml` に選択と管理ファイルのパスを置くと、`init`・`run`・`start`・TUIで同じ設定を使えます。プロジェクト設定には置きません。
@@ -49,7 +49,7 @@ auth_profile = "work"
 admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 ```
 
-ネイティブCLI互換の `cxd codex` / `cxd claude` は引数をそのCLIへ渡すため、プロファイル選択にはグローバル設定を使ってください。`cxd run` は上記フラグに対応します。`auth show` は選択したプロファイルのモードだけを表示します。
+ネイティブCLI互換の `oaiso codex` / `oaiso claude` は引数をそのCLIへ渡すため、プロファイル選択にはグローバル設定を使ってください。`oaiso run` は上記フラグに対応します。`auth show` は選択したプロファイルのモードだけを表示します。
 
 作成・importは既存プロファイルを上書きしません。再ログインは新しい名前へ取り込み、旧ワーカーを停止・削除した後にProxyを明示的に再作成して切り替えてください。異なるプロファイル・接続世代へ既存ワーカーを再認可しません。OAuthの通常更新は同じプロファイルへCAS保存し、接続世代を維持します。選択した保存ディレクトリだけをAuth Proxyへ読み書き可能でmountし、ワーカーとegressには渡しません。保存先や管理シークレットをworkspace・追加mountへ含めないでください。
 
@@ -60,7 +60,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 ## `auth show` — 認証状態の確認
 
 ```bash
-cxd auth show
+oaiso auth show
 ```
 
 現在の認証ソースを表示します（実際のキーやトークンは表示されません）。
@@ -92,7 +92,7 @@ Configured:  no
 
 ```bash
 export OPENAI_API_KEY=sk-...
-cxd auth set
+oaiso auth set
 ```
 
 `OPENAI_API_KEY` 環境変数の値を `~/.config/codex-dock/apikey` に保存します。
@@ -103,7 +103,7 @@ cxd auth set
 ## `auth rotate` — トークンのローテーション
 
 ```bash
-cxd auth rotate
+oaiso auth rotate
 ```
 
 現行実装はローカルに `.rotate` マーカーを作成するだけで、稼働中プロキシのトークンを即時失効させません。
@@ -115,7 +115,7 @@ cxd auth rotate
 
 | ファイル | 場所 | 説明 |
 |---|---|---|
-| API キー | `~/.config/codex-dock/apikey` | `cxd auth set` で保存 |
+| API キー | `~/.config/codex-dock/apikey` | `oaiso auth set` で保存 |
 | OAuth クレデンシャル | `~/.codex/auth.json` | Codex CLI が生成（`codex login` で作成） |
 
 詳細は [設定リファレンス — 認証ファイル](../configuration.md#認証ファイルの場所) を参照してください。

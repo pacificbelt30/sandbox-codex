@@ -37,7 +37,7 @@ func (m *Manager) QuarantineContext(parent context.Context, worker string) error
 		}
 	}
 	if !supported {
-		return fmt.Errorf("durable quarantine requires an updated cxd node; stop the worker explicitly until it is upgraded")
+		return fmt.Errorf("durable quarantine requires an updated Oaiso node; stop the worker explicitly until it is upgraded")
 	}
 	unlock, err := m.lockCleanup(ctx, v.ID)
 	if err != nil {

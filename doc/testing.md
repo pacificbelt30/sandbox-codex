@@ -62,13 +62,15 @@ CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
 
 ## 独立プロファイルの受入
 
+名称変更後の実CLI受入は `python3 scripts/verify-cli-names.py --binary ./oaiso` で確認できます。`make build` 後、`oaiso` / `cxd` / `codex-dock` のヘルプ・版表示、Bash/Zsh/Fish/PowerShell補完、主要コマンド、既存の `~/.config/codex-dock/` に置いた架空の認証profileの読み込みを別HOMEで試験します。node・外部APIは使いません。インストーラーのPython試験では、新しいコマンド・補完の管理外ファイルを上書きしないこととrollback対象への登録も確認します。
+
 2026-10-22の架空資格情報試験では、FileStoreの適合性・別プロセス間の同時更新CAS、0700/0600、symlink/hardlink拒否、保存失敗、CLI作成/import/メタデータ、profile専用mount、workspaceとの重複拒否、旧workerの別profile・別接続世代への再認可拒否を確認します。Proxy試験はOpenAI API/OAuth・Anthropic API/OAuthの4モードで、ホスト認証を無視すること、選択した資格情報の上流注入、workerへの非返却、失効を確認します。
 
 実CLIプロセスとローカルProxy listenerのスモーク試験も用意しています。管理secretは0600ファイルを使い、外部API・login・推論要求は送りません。
 
 ```bash
-go build -o /private/path/cxd .
-python3 scripts/verify-auth-profiles.py --binary /private/path/cxd
+go build -o /private/path/oaiso .
+python3 scripts/verify-auth-profiles.py --binary /private/path/oaiso
 ```
 
 実providerの認証成功、専用login Kata、WSLのDrvFS／VM共有filesystemの保証を確認する試験ではありません。
@@ -249,7 +251,7 @@ P0/P1の追加後に、既存サービスとは別のcontainerd・BuildKit・Kat
 
 追加で、固定Codex 0.163.0を生成設定なしの明示HTTP/SSEで呼ぶ `codex-http`、容量超過時のENOSPC・所有者・exec/noexec・node再起動時の保持・VM停止時の消去を調べる `temporary-storage`、[公開APIの組み込み例](go-api.md#実行できる組み込み例)を実際にビルドして実行する `embedding-example` を含みます。
 
-絞り込みは `python3 scripts/verify-go-api.py --binary ./cxd --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。対象が0件、skipだけ、または途中失敗の場合は検証成功にしません。登録プロファイルも試す場合は `CODEX_DOCK_KATA_CUSTOM_PROFILE=<登録名>` を設定してください。`custom-profile` が実際のguest CPU・メモリ・PID上限とnode/VM再起動後の値を確認します。標準ケースの追加機能を使うため、対応するnodeと固定bootstrapを配置してください。
+絞り込みは `python3 scripts/verify-go-api.py --binary ./oaiso --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。対象が0件、skipだけ、または途中失敗の場合は検証成功にしません。登録プロファイルも試す場合は `CODEX_DOCK_KATA_CUSTOM_PROFILE=<登録名>` を設定してください。`custom-profile` が実際のguest CPU・メモリ・PID上限とnode/VM再起動後の値を確認します。標準ケースの追加機能を使うため、対応するnodeと固定bootstrapを配置してください。
 
 `CODEX_DOCK_NODE_RESTART_REQUEST_DIR` を設定すると、ホスト側supervisorとの追加連携を有効にします。試験はこのディレクトリの古い `complete` を削除し、`request` に `restart` または `namespace <完全なcontainer ID>` を書きます。supervisorは対象nodeだけを再起動し、後者では停止済みの所有権確認済みnamespaceを失わせてから復旧させ、nodeが再接続可能になった後だけ `complete` を作成してください。
 
@@ -414,7 +416,7 @@ Linux/KVMの独立したノードでGo APIから実Kataを動かす試験:
 
 ```bash
 make build
-python3 scripts/verify-go-api.py --binary "$PWD/cxd" --version "$(./cxd --version | awk '{print $NF}')" --run '^TestKataAPIIntegration/claude-'
+python3 scripts/verify-go-api.py --binary "$PWD/oaiso" --version "$(./oaiso --version | awk '{print $NF}')" --run '^TestKataAPIIntegration/claude-'
 ```
 
 既存の `make kata-api-e2e` にもClaudeのAPIキー・OAuthケースを含めています。待機ワーカーの `ClaudeCommand` と、`Agent: "claude"` を指定したメインプロセス起動の両方を試験します。公式CLIのMessages/SSE、Bashツールの実行と結果の返送、明示モデル制限、ワーカー停止・再起動後の仮トークン復元、OAuthの一度だけの更新・外部Store保存・接続世代維持を確認します。単体試験ではsetup-token、認証方式の優先順位、余分なクエリの拒否、更新のHTTP失敗・不正応答・取消・保存失敗・版競合・再起動後の読込・stream失効も対象です。

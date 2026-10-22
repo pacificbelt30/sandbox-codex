@@ -75,7 +75,7 @@ func init() {
 					return err
 				}
 			} else if name == "" {
-				return fmt.Errorf("custom image %s is unavailable; build it first with cxd build -f Dockerfile --tag %s", runOpts.Image, runOpts.Image)
+				return fmt.Errorf("custom image %s is unavailable; build it first with oaiso build -f Dockerfile --tag %s", runOpts.Image, runOpts.Image)
 			} else {
 				if err = buildFromTemplate(cmd.Context(), name, runOpts.Image); err != nil {
 					return err
@@ -114,11 +114,11 @@ func init() {
 		if _, err = reconcileProxyAuthState(cmd.Context(), proxy, false); err != nil {
 			return err
 		}
-		launch := "cxd codex"
+		launch := "oaiso codex"
 		if agent == "claude" {
-			launch = "cxd run --agent claude"
+			launch = "oaiso run --agent claude"
 		}
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: %s\nFor host edit watchers add --watch-polling to `cxd run` (Chokidar/Watchpack).\n", launch)
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Ready. From your project run: %s\nFor host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).\n", launch)
 		return err
 	}}
 	prepare.Flags().StringVar(&agent, "agent", "codex", "Prepare credentials and image checks for codex or claude (default: configured agent, otherwise codex)")
@@ -144,7 +144,7 @@ func checkInitCredentials(ctx context.Context, agent string) error {
 	if agent == "codex" {
 		info, err := authproxy.GetAuthInfo()
 		if err != nil || !info.KeyConfigured {
-			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run cxd auth set; then rerun init")
+			return fmt.Errorf("OpenAI credentials missing: run codex login, or set OPENAI_API_KEY and run oaiso auth set; then rerun init")
 		}
 	} else if agent == "claude" && !hostProxyAuthState().anthropicAvailable {
 		return fmt.Errorf("anthropic credentials missing: run `claude auth login`, or set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN; then rerun init --agent claude")

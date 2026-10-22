@@ -21,8 +21,8 @@ AI APIの固定経路には、そのルールを適用しません。
 ビルドはGoソースがあるリポジトリのルートで行ってください。
 
 ```bash
-cxd proxy build
-cxd proxy run
+oaiso proxy build
+oaiso proxy run
 ```
 
 `proxy run` はcontainerd上で2つのruncコンテナを起動します。

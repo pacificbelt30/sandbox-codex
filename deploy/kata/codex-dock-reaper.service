@@ -1,9 +1,9 @@
 [Unit]
-Description=Apply explicitly configured cxd worker lifecycle policies
+Description=Apply explicitly configured Oaiso worker lifecycle policies
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cxd reap --watch
+ExecStart=/usr/local/bin/oaiso reap --watch
 Restart=on-failure
 RestartSec=5
 UMask=0077

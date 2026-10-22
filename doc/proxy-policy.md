@@ -21,7 +21,7 @@ forward_deny_cidrs = []
 `proxy run`には同名の単数形フラグがある。ドメイン・CIDRは繰り返し指定、ポートは繰り返しまたはカンマ区切りで指定する。明示したフラグは対応する設定ファイル項目を上書きする。
 
 ```bash
-cxd proxy run \
+oaiso proxy run \
   --forward-allow-domain github.com \
   --forward-deny-domain blocked.github.com \
   --forward-allow-port 80,443 \
@@ -46,9 +46,9 @@ cxd proxy run \
 
 プロキシでのポリシー拒否はHTTP/CONNECTとも403で返します。ドメイン・ポートをDNS問い合わせ前に、解決されたIPをTCP接続前に検査します。直接通信の隔離は名前解決の失敗に依存せず、経路・転送制御とnftablesで維持します。
 
-ルールは起動時に検証して固定する。未知のロール、誤ったドメイン/CIDR/ポートは起動エラー。ホットリロードは提供しない。通常のワーカーは共有egress proxyを使用する。`cxd run --egress-allow-domain api.example.com` を指定したワーカーは、ポリシーの識別子を持つ専用egress proxyに接続する。異なる許可リストのワーカーはproxyを共有しない。同じ許可リストのワーカーは共有できる。プロジェクトの `codex-dock.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。ホストのグローバル許可ドメインがある場合、ワーカーの指定はその範囲内に限る。`--no-internet` は一般通信を止める。
+ルールは起動時に検証して固定する。未知のロール、誤ったドメイン/CIDR/ポートは起動エラー。ホットリロードは提供しない。通常のワーカーは共有egress proxyを使用する。`oaiso run --egress-allow-domain api.example.com` を指定したワーカーは、ポリシーの識別子を持つ専用egress proxyに接続する。異なる許可リストのワーカーはproxyを共有しない。同じ許可リストのワーカーは共有できる。プロジェクトの `codex-dock.toml` では `[run] egress_allow_domains = ["api.example.com"]` と書ける。ホストのグローバル許可ドメインがある場合、ワーカーの指定はその範囲内に限る。`--no-internet` は一般通信を止める。
 
-許可ルールの変更は新しいproxyと新しいワーカーに適用される。設定編集だけでは既存のCONNECTや通信中のストリームを打ち切らない。緊急時は `cxd policy quarantine --worker <ID>` で対象ワーカーを停止・隔離する。一般通信だけでなくAI通信と全ジョブも終了し、再起動は禁止される。workspace・worktree・ログは保持する。新しいルールで再開するには新しいワーカー・要求IDを使う。隔離の詳細と失敗時の扱いは[追加制御](sandbox-features.md#通信の停止と隔離)を参照。不要になったポリシーproxyは、利用ワーカーを停止した後に `cxd proxy rm --name <proxy名> --force` で回収できる。
+許可ルールの変更は新しいproxyと新しいワーカーに適用される。設定編集だけでは既存のCONNECTや通信中のストリームを打ち切らない。緊急時は `oaiso policy quarantine --worker <ID>` で対象ワーカーを停止・隔離する。一般通信だけでなくAI通信と全ジョブも終了し、再起動は禁止される。workspace・worktree・ログは保持する。新しいルールで再開するには新しいワーカー・要求IDを使う。隔離の詳細と失敗時の扱いは[追加制御](sandbox-features.md#通信の停止と隔離)を参照。不要になったポリシーproxyは、利用ワーカーを停止した後に `oaiso proxy rm --name <proxy名> --force` で回収できる。
 
 TUIの `Default deny` も未設定時は有効になる。CLIでの新規ワーカー作成時に既定拒否で宛先が未許可なら、一般egressへ接続しない。Go APIもゼロ値で既定拒否となる。宛先の許可なしに公開先への通信を許可するには `Options.EgressPolicy.AllowPublicDestinations: true` を明示する。ホスト側に許可が一つもない場合、ワーカー側から許可ドメインを追加して緩めることはできない。
 Go APIのホストポリシーは `LaunchRequest.EgressAllowDomains` を省略しても管理proxyで強制する。`=api.example.com` のホスト規則をワーカーが `api.example.com` に広げることも拒否する。設定内容は不変の要求条件に含まれ、同じRequestIDへ異なるポリシーを送ると競合する。
@@ -58,9 +58,9 @@ Go APIのホストポリシーは `LaunchRequest.EgressAllowDomains` を省略�
 既定のproxyイメージはCLIのビルド版とprotocolラベルを照合し、古い場合はソースcheckoutからBuildKitで再ビルドする。独自の `proxy_image` は自動で上書きせず、互換性が不明なら明示的な再ビルドを要求する。
 
 1. 稼働ワーカーを停止し、成果を保存する。
-2. 現行バイナリで `cxd proxy build` を実行する。
-3. `cxd proxy stop --name codex-http-proxy`、`cxd proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。
-4. `cxd proxy run` で新しい設定の一般通信用proxyを作成する。
+2. 現行バイナリで `oaiso proxy build` を実行する。
+3. `oaiso proxy stop --name codex-http-proxy`、`oaiso proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。
+4. `oaiso proxy run` で新しい設定の一般通信用proxyを作成する。
 5. ワーカーを新規作成する。KataワーカーはproxyのIPを固定しており、IP変更時は保存済みワーカーの再起動を拒否する。
 
 改造版proxyではトークンと既存認証protocolを維持する。auth proxyも更新する場合は、同じ停止期間に[更新手順](operations.md#cliプロキシを更新する)を適用する。

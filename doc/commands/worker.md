@@ -6,12 +6,12 @@
 
 ---
 
-## `cxd ps` — ワーカー一覧
+## `oaiso ps` — ワーカー一覧
 
 実行中のコンテナを一覧表示します。
 
 ```bash
-cxd ps [OPTIONS]
+oaiso ps [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -28,42 +28,42 @@ codex-calm-beacon      running   2m10s     main           (interactive)
 
 ---
 
-## `cxd start` — ワーカーの再起動
+## `oaiso start` — ワーカーの再起動
 
 ```bash
-cxd start NAME_OR_ID
+oaiso start NAME_OR_ID
 ```
 
 停止済みワーカーを同じID・workspaceで再起動します。
 Kataの起動検証をやり直し、保存済みplaceholderを復元してから処理を解放します。
 プロキシIPが変わった場合は再起動を拒否するため、新しいワーカーを作成してください。
-Kata VM の台帳を指定して復旧する場合は、従来の `cxd vm start` も使えます。
+Kata VM の台帳を指定して復旧する場合は、従来の `oaiso vm start` も使えます。
 
-## `cxd exec` — 既存ワーカーでの実行
+## `oaiso exec` — 既存ワーカーでの実行
 
 ```bash
-cxd exec --timeout 30s worker-name -- npm test
-cxd exec --json worker-name -- sh -c 'echo ok; echo warning >&2'
-cxd exec -i worker-name -- cat < input.txt
+oaiso exec --timeout 30s worker-name -- npm test
+oaiso exec --json worker-name -- sh -c 'echo ok; echo warning >&2'
+oaiso exec -i worker-name -- cat < input.txt
 ```
 
-標準出力と標準エラーは別々に転送され、`cxd exec` はゲストの終了コードをシェルへ返します。タイムアウトは124、Ctrl+Cによる取消は130です。`--json` は `exit_code`、`stdout`、`stderr`、失敗時の `error` を返します。メモリ使用を抑えるため、JSON出力は各ストリーム8 MiBまでです。
+標準出力と標準エラーは別々に転送され、`oaiso exec` はゲストの終了コードをシェルへ返します。タイムアウトは124、Ctrl+Cによる取消は130です。`--json` は `exit_code`、`stdout`、`stderr`、失敗時の `error` を返します。メモリ使用を抑えるため、JSON出力は各ストリーム8 MiBまでです。
 
-## `cxd wait` — 終了待ち
+## `oaiso wait` — 終了待ち
 
 ```bash
-exit_code=$(cxd wait --timeout 5m worker-name)
-cxd wait --json worker-name
+exit_code=$(oaiso wait --timeout 5m worker-name)
+oaiso wait --json worker-name
 ```
 
 ワーカーの終了コードを表示します。`--json` では `{"exit_code": 0}` の形式です。待機タイムアウトは124、Ctrl+Cは130です。
 
-## `cxd stop` — コンテナの停止
+## `oaiso stop` — コンテナの停止
 
 実行中のコンテナを停止します。
 
 ```bash
-cxd stop [NAME|ID...] [OPTIONS]
+oaiso stop [NAME|ID...] [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -75,13 +75,13 @@ cxd stop [NAME|ID...] [OPTIONS]
 
 ```bash
 # 特定のコンテナを停止
-cxd stop codex-brave-atlas
+oaiso stop codex-brave-atlas
 
 # 複数のコンテナを停止
-cxd stop codex-brave-atlas codex-calm-beacon
+oaiso stop codex-brave-atlas codex-calm-beacon
 
 # 全コンテナを停止
-cxd stop --all
+oaiso stop --all
 ```
 
 > コンテナ停止時に Auth Proxy の短命トークンも自動的に失効します。
@@ -89,12 +89,12 @@ cxd stop --all
 
 ---
 
-## `cxd rm` — コンテナの削除
+## `oaiso rm` — コンテナの削除
 
 停止済みのコンテナを削除します。
 
 ```bash
-cxd rm [NAME|ID...] [OPTIONS]
+oaiso rm [NAME|ID...] [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -105,20 +105,20 @@ cxd rm [NAME|ID...] [OPTIONS]
 
 ```bash
 # 停止済みコンテナを削除
-cxd rm codex-brave-atlas
+oaiso rm codex-brave-atlas
 
 # 実行中のコンテナを強制削除
-cxd rm --force codex-brave-atlas
+oaiso rm --force codex-brave-atlas
 ```
 
 ---
 
-## `cxd logs` — ログの表示
+## `oaiso logs` — ログの表示
 
 コンテナのログを表示します。
 
 ```bash
-cxd logs NAME|ID [OPTIONS]
+oaiso logs NAME|ID [OPTIONS]
 ```
 
 | オプション | 省略形 | デフォルト | 説明 |
@@ -130,13 +130,13 @@ cxd logs NAME|ID [OPTIONS]
 
 ```bash
 # 直近 100 行を表示
-cxd logs codex-brave-atlas
+oaiso logs codex-brave-atlas
 
 # リアルタイムでログを追跡
-cxd logs codex-brave-atlas --follow
+oaiso logs codex-brave-atlas --follow
 
 # 直近 50 行を表示
-cxd logs codex-brave-atlas --tail 50
+oaiso logs codex-brave-atlas --tail 50
 ```
 
 ---
@@ -144,7 +144,7 @@ cxd logs codex-brave-atlas --tail 50
 ## 関連ドキュメント
 
 - [TUI ダッシュボード](ui.md) — コンテナの一元管理
-- [`cxd run`](run.md) — コンテナの起動
+- [`oaiso run`](run.md) — コンテナの起動
 - [クイックスタート](../getting-started.md) — 後片付けの手順
 
 VMの実プロセス・cgroupと台帳の照合は[VM管理](../vm.md)を参照してください。

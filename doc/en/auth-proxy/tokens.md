@@ -11,7 +11,7 @@ Tokens use 32 cryptographically random bytes, encoded as 64 hexadecimal characte
 The default TTL is 3600 seconds.
 
 ```bash
-cxd run --agent codex --token-ttl 7200
+oaiso run --agent codex --token-ttl 7200
 ```
 
 Expired tokens are rejected immediately and their active HTTP/WS connections are canceled.
@@ -28,7 +28,7 @@ The 30-second record cleanup loop does not delay authentication expiry.
 | Remove | Revoke and reclaim resources; retain retry records on failure |
 | Stop proxy | Revoke all tokens and connections; issuance records are in memory |
 
-Use `cxd start NAME` to restart a stopped worker.
+Use `oaiso start NAME` to restart a stopped worker.
 The admin restore API accepts saved placeholders, not real API keys or another worker's token.
 
 ## Worker data

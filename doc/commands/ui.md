@@ -1,4 +1,4 @@
-# `cxd ui` — TUI ダッシュボード
+# `oaiso ui` — TUI ダッシュボード
 
 > **日本語** | [English](../en/commands/ui.md)
 >
@@ -7,7 +7,7 @@
 全ワーカーをリアルタイムで監視・管理するターミナル UI を起動します。
 
 ```bash
-cxd ui
+oaiso ui
 ```
 
 ---
@@ -16,7 +16,7 @@ cxd ui
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ codex-dock  [実行中: 2 / 合計: 4]                            │
+│ Oaiso       [実行中: 2 / 合計: 4]                            │
 ├──────────────────────────────────────────────────────────────┤
 │  NAME              BRANCH      STATUS      UPTIME  TASK       │
 │  codex-brave-atl   feature-1   running     5m23s   テスト作成 │
@@ -48,4 +48,4 @@ cxd ui
 ## 関連ドキュメント
 
 - [ワーカー管理コマンド](worker.md) — ps / stop / rm / logs
-- [`cxd run`](run.md) — 並列ワーカーの起動
+- [`oaiso run`](run.md) — 並列ワーカーの起動

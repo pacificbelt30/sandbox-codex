@@ -28,6 +28,8 @@ go.work.sum
 .env
 
 # CLI binaries
+/oaiso
+/oaiso-*
 /cxd
 /codex-dock
 /codex-dock-*

@@ -9,8 +9,8 @@ import (
 
 var networkCmd = &cobra.Command{
 	Use:   "network",
-	Short: "Manage codex-dock isolated networks",
-	Long: `Manage codex-dock's isolated networks through the trusted node service.
+	Short: "Manage Oaiso isolated networks",
+	Long: `Manage Oaiso's isolated networks through the trusted node service.
 
 The node manages dedicated bridges, namespaces and nftables:
   - the egress network (dock-net-proxy) gives the auth proxy internet access;

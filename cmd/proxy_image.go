@@ -14,7 +14,7 @@ import (
 
 // An installed Linux CLI bundle is static and already matches the node. Build
 // its proxy image directly from those bytes, so a project clone need not carry
-// the cxd source checkout just to refresh a stale proxy image.
+// the oaiso source checkout just to refresh a stale proxy image.
 func buildProxyImageFromExecutable(ctx context.Context, tag string) (bool, error) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return false, nil

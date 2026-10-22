@@ -22,15 +22,15 @@ Default deny-all, mandatory file masks/clones/deletion, TLS MITM, live policy ch
 ## Inspect and configure network policy
 
 ```bash
-cxd policy check --json
-cxd policy show --worker WORKER --json
-cxd policy explain api.example.com:443 --resolve --json
-cxd policy events --worker WORKER --follow --json
-cxd policy presets
-cxd run --policy-preset api --egress-allow-domain api.example.com -d
-cxd run --policy-preset dependencies -d
-cxd run --policy-preset offline -d
-cxd proxy configure
+oaiso policy check --json
+oaiso policy show --worker WORKER --json
+oaiso policy explain api.example.com:443 --resolve --json
+oaiso policy events --worker WORKER --follow --json
+oaiso policy presets
+oaiso run --policy-preset api --egress-allow-domain api.example.com -d
+oaiso run --policy-preset dependencies -d
+oaiso run --policy-preset offline -d
+oaiso proxy configure
 ```
 
 Worker inspection reads its actual selected proxy configuration and policy ID. Without `--worker`, commands inspect host settings for new workers. Explanation never opens a connection. Without `--resolve`, an allowed decision covers only the hostname and port. With it, every DNS answer is checked; connection establishment repeats those checks.
@@ -46,8 +46,8 @@ Denial events contain time, reason code, observed source address, destination au
 To stop communication from an existing worker, run these commands on the host:
 
 ```bash
-cxd policy quarantine --worker WORKER
-cxd policy show --worker WORKER --json
+oaiso policy quarantine --worker WORKER
+oaiso policy show --worker WORKER --json
 ```
 
 `policy revoke` is an alias. **This stops ALL execution in the selected worker, including general HTTP/CONNECT, fixed AI communication, background jobs and agents.** Other workers and shared proxies remain running. The quarantine operation retains the workspace, managed worktree, container and logs. Existing retention policies through `reap` and explicit deletion still apply; export artifacts that need longer preservation. Saving settings or using ordinary `stop` does not quarantine a worker.
@@ -61,19 +61,19 @@ Resume with a new worker and RequestID under the new policy. Unquarantine, polic
 ## Files, execution and recovery
 
 ```bash
-cxd run --deny-read /workspace/.env --deny-write /workspace/config -d
-cxd exec --workdir /workspace --env MODE=test WORKER -- npm test
-cxd exec -it WORKER -- bash
-cxd files get WORKER src/main.go --local main.go.copy
-cxd files put WORKER input.json --local input.json
-cxd files list WORKER src
-cxd jobs start WORKER -- sh -c 'npm test'
-cxd jobs list WORKER
-cxd jobs logs WORKER JOB_ID --offset 0
-cxd jobs kill WORKER JOB_ID
-cxd artifact diff WORKER --output changes.patch
-cxd artifact commit WORKER --message 'Save staged changes'
-cxd run --clone-dir /absolute/new-copy -d
+oaiso run --deny-read /workspace/.env --deny-write /workspace/config -d
+oaiso exec --workdir /workspace --env MODE=test WORKER -- npm test
+oaiso exec -it WORKER -- bash
+oaiso files get WORKER src/main.go --local main.go.copy
+oaiso files put WORKER input.json --local input.json
+oaiso files list WORKER src
+oaiso jobs start WORKER -- sh -c 'npm test'
+oaiso jobs list WORKER
+oaiso jobs logs WORKER JOB_ID --offset 0
+oaiso jobs kill WORKER JOB_ID
+oaiso artifact diff WORKER --output changes.patch
+oaiso artifact commit WORKER --message 'Save staged changes'
+oaiso run --clone-dir /absolute/new-copy -d
 ```
 
 File restrictions use OCI masked/readonly paths below `/workspace/`. Targets must already exist as regular files/directories inside the workspace; symlinks and resolutions outside it are rejected. These are not inherited rules for future files, nor inode labels for aliases/hardlinks. Avoid exposing the same sensitive content through additional mounts. File APIs execute with guest Python 3, reject symlinks in every component, accept regular files up to 64 MiB, and atomically replace uploads in the same directory. Directory listings allow at most 10000 entries. VM validation and guest permissions remain enforced.
@@ -85,12 +85,12 @@ Independent clones copy committed content without hardlinking Git objects. Desti
 ## Lifecycle and reproducibility
 
 ```bash
-cxd run --max-lifetime 2h --idle-timeout 30m --retention 24h -d
-cxd reap --dry-run
-cxd reap --watch
-cxd environment lock IMAGE --source Dockerfile --source package-lock.json
-cxd run --image IMAGE --environment-lock codex-dock.lock.json -d
-cxd run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
+oaiso run --max-lifetime 2h --idle-timeout 30m --retention 24h -d
+oaiso reap --dry-run
+oaiso reap --watch
+oaiso environment lock IMAGE --source Dockerfile --source package-lock.json
+oaiso run --image IMAGE --environment-lock codex-dock.lock.json -d
+oaiso run --start-hook 'npm ci' --readiness 'test -f node_modules/.package-lock.json' --readiness-timeout 2m -d
 ```
 
 Lifecycle limits require `reap --watch` or periodic Go API `Reap` calls. No host service is installed automatically; limits stop being applied while the supervisor is down. Idle means time since management execution activity, not guest CPU/filesystem activity. Updated nodes protect registered jobs and exec/PTY sessions; disable idle limits for main-agent work or activity outside the management API. Explicit maximum lifetime can still stop busy workers. Stop revokes tokens; removal uses existing ownership checks and deletion journals. Zero retention never deletes a worker.
@@ -101,7 +101,7 @@ Project `[run]` supports `policy_preset`, `deny_read`, `deny_write`, `max_lifeti
 
 ## Credentials and compatibility
 
-`cxd proxy run --credential-routes /absolute/private-routes.json` mounts a 0600 host JSON file read-only into the auth proxy alone. The egress proxy remains credential-free. Example values are synthetic:
+`oaiso proxy run --credential-routes /absolute/private-routes.json` mounts a 0600 host JSON file read-only into the auth proxy alone. The egress proxy remains credential-free. Example values are synthetic:
 
 ```json
 [{"Name":"service","Upstream":"https://api.example.com","Paths":["/v1"],"Methods":["GET","POST"],"Header":"X-Service-Key","Prefix":"","Provider":"openai","Secret":"HOST_SECRET"}]
@@ -110,8 +110,8 @@ Project `[run]` supports `policy_preset`, `deny_read`, `deny_write`, `max_lifeti
 Guests send live placeholder Bearer tokens to `http://AUTH_PROXY/broker/service/v1/...`. Fixed HTTPS origin, path boundaries, method and provider are checked before injecting credentials. Encoded paths, WebSockets and following upstream redirects are disallowed. Secrets are never returned by a credential retrieval API. Only configure trusted upstream APIs: an upstream that echoes its received secret can expose it. Changes require drain/recreation. Embedders can also use `StartCredentialBroker` with `CredentialRoute.Secret` callbacks, explicitly arranging listeners and worker network placement.
 
 ```bash
-cxd run --ssh-proxy --jvm-proxy --ca-bundle /absolute/extra-ca.pem -d
-cxd proxy run --upstream-proxy http://proxy.example.com:3128 --ca-bundle /absolute/extra-ca.pem
+oaiso run --ssh-proxy --jvm-proxy --ca-bundle /absolute/extra-ca.pem -d
+oaiso proxy run --upstream-proxy http://proxy.example.com:3128 --ca-bundle /absolute/extra-ca.pem
 ```
 
 SSH uses a `GIT_SSH_COMMAND` CONNECT helper through the egress policy. Host SSH keys/agent sockets are not shared automatically. JVM HTTP(S) proxy properties are opt-in. Worker CA bundles extend system trust for curl, Python and Node. When Java and keytool are installed, the worker copies the system JVM truststore into its HOME and imports the additional certificates. Proxy CA bundles extend system roots for both HTTP and WebSocket TLS verification. Proxy chaining sends CONNECT to locally verified destination IPs and preserves private-IP blocking. Credential-bearing upstream proxy URLs are rejected.
@@ -133,7 +133,7 @@ The [verification record](../testing.md) distinguishes fixture tests, native Kat
 
 ## Model authorization and staged startup
 
-Use repeated `cxd proxy run --allow-model model-id`, host `[proxy].allowed_models`, or `CaseProxyOptions.AllowedModels` to restrict a whole auth proxy to exact submitted model IDs. Empty preserves legacy behavior. The immutable configuration requires draining workers and recreating the proxy to change. `ProxyCapabilities` reports support and active enforcement separately.
+Use repeated `oaiso proxy run --allow-model model-id`, host `[proxy].allowed_models`, or `CaseProxyOptions.AllowedModels` to restrict a whole auth proxy to exact submitted model IDs. Empty preserves legacy behavior. The immutable configuration requires draining workers and recreating the proxy to change. `ProxyCapabilities` reports support and active enforcement separately.
 
 When enabled, authenticated POST requests are checked before credential injection or upstream I/O. Only JSON bodies up to 8 MiB are accepted; duplicate keys, case variants of `model`, invalid JSON, compressed bodies and encoded paths are rejected. The only allowed query is exact `beta=true` on Claude Messages/count_tokens; every other query is denied. The original checked bytes are forwarded and redirects are not followed. Supported paths are `/v1/responses`, `/v1/responses/compact`, `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/moderations`, `/chatgpt/codex/responses`, `/chatgpt/codex/responses/compact`, `/anthropic/v1/messages`, and `/anthropic/v1/messages/count_tokens`. All other AI paths, model-listing/batch/file APIs and WebSockets are denied. Clients must support HTTP. This controls the submitted ID, not upstream alias resolution. Custom broker routes, general egress and separately supplied credentials have separate policies; disable or restrict egress and do not configure alternative AI broker routes when model enforcement is mandatory.
 
@@ -141,7 +141,7 @@ When enabled, authenticated POST requests are checked before credential injectio
 
 ## Supervised collection and memory observation
 
-The optional systemd user unit `deploy/kata/codex-dock-reaper.service` runs the installed `/usr/local/bin/cxd reap --watch` and restarts on failure after five seconds. Copy it to `~/.config/systemd/user/`, reload the user manager and explicitly enable/start the unit. Monitor its journal and status. An administrator must configure user linger if it needs to survive logout. Nothing is enabled automatically. Multi-case products should periodically call Reap through clients holding their own admin credentials and monitor failures.
+The optional systemd user unit `deploy/kata/codex-dock-reaper.service` runs the installed `/usr/local/bin/oaiso reap --watch` and restarts on failure after five seconds. Copy it to `~/.config/systemd/user/`, reload the user manager and explicitly enable/start the unit. Monitor its journal and status. An administrator must configure user linger if it needs to survive logout. Nothing is enabled automatically. Multi-case products should periodically call Reap through clients holding their own admin credentials and monitor failures.
 
 Updated nodes protect pending execs, active exec/PTY sessions and detached jobs against idle collection, checking atomically with stopping so newly started work is protected too. Main agent activity and work started outside the management API are not measured; disable idle limits for these workloads. Explicit maximum lifetime still applies to busy workers.
 
@@ -149,8 +149,8 @@ ResourceUsage returns a verified running VM's host cgroup current memory, option
 
 ## Operator resource profiles
 
-PID limits are configured per profile. For example, `cxd profile define compact-256 --base compact --pids-limit 256` prints a JSON array with compact's CPU/memory budgets and a 256-PID ceiling. It does not edit files or node configuration. If definitions already exist, add the generated element to their array.
-`cxd profile --node --json` queries built-in and registered profiles on the running node; `cxd profile compact-256 --node` displays one selected budget. Without `--node`, the command continues to display built-in defaults.
+PID limits are configured per profile. For example, `oaiso profile define compact-256 --base compact --pids-limit 256` prints a JSON array with compact's CPU/memory budgets and a 256-PID ceiling. It does not edit files or node configuration. If definitions already exist, add the generated element to their array.
+`oaiso profile --node --json` queries built-in and registered profiles on the running node; `oaiso profile compact-256 --node` displays one selected budget. Without `--node`, the command continues to display built-in defaults.
 
 Built-in `standard`, `small` and `compact` budgets are unchanged. Operators can register additional CPU, guest/host memory and PID combinations in a root-owned JSON file with no group/world write permission. Load it with `node serve --resource-profiles /etc/codex-dock/resource-profiles.json`:
 

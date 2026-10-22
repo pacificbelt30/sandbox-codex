@@ -2,17 +2,17 @@
 
 [日本語](../../commands/build.md) | **English**
 
-`cxd build` uses standalone BuildKit and imports OCI output into the worker's containerd namespace.
+`oaiso build` uses standalone BuildKit and imports OCI output into the worker's containerd namespace.
 Dockerfile format is supported without Docker Engine or Docker CLI.
 
 ## Commands
 
 ```bash
-cxd build
-cxd build --template list
-cxd build --template pwn
-cxd build -f ./Dockerfile --tag my-codex:v1
-cxd run --image my-codex:v1
+oaiso build
+oaiso build --template list
+oaiso build --template pwn
+oaiso build -f ./Dockerfile --tag my-codex:v1
+oaiso run --image my-codex:v1
 ```
 
 | Option | Purpose |
@@ -25,9 +25,9 @@ cxd run --image my-codex:v1
 The built-in worker pins Codex CLI with `CODEX_CLI_VERSION` in its Dockerfile. To test another exact version, build a separate OCI image in the worker's containerd namespace:
 
 ```bash
-CODEX_DOCK_CODEX_VERSION=0.163.0 cxd build --template plain --tag codex-dock:codex-0.163.0
-cxd image check codex-dock:codex-0.163.0 --agent codex
-cxd run --image codex-dock:codex-0.163.0 --agent codex
+CODEX_DOCK_CODEX_VERSION=0.163.0 oaiso build --template plain --tag codex-dock:codex-0.163.0
+oaiso image check codex-dock:codex-0.163.0 --agent codex
+oaiso run --image codex-dock:codex-0.163.0 --agent codex
 ```
 
 `--template` and `-f` are mutually exclusive.
@@ -39,7 +39,7 @@ Claude Code is pinned with `CLAUDE_CLI_VERSION=2.1.306`. Use `CODEX_DOCK_CLAUDE_
 
 ## Custom image
 
-First build the base image with `cxd build`.
+First build the base image with `oaiso build`.
 Create this Dockerfile in a new working directory:
 
 ```dockerfile
@@ -54,8 +54,8 @@ USER codex
 Then build and run it from that directory:
 
 ```bash
-cxd build -f ./Dockerfile --tag my-codex:jq
-cxd run --image my-codex:jq -- jq --version
+oaiso build -f ./Dockerfile --tag my-codex:jq
+oaiso run --image my-codex:jq -- jq --version
 ```
 
 The image inherits the agents and auth entrypoint.
@@ -68,7 +68,7 @@ Install the selected agent and entrypoint dependencies, using `docker/sandbox/Do
 Get the matching entrypoint from your CLI:
 
 ```bash
-cxd build --print-entrypoint > entrypoint.sh
+oaiso build --print-entrypoint > entrypoint.sh
 ```
 
 After creating the non-root user and installing dependencies, include:
@@ -91,8 +91,8 @@ User templates override built-ins with the same name.
 ```bash
 mkdir -p ~/.config/codex-dock/templates/mytool
 cp Dockerfile ~/.config/codex-dock/templates/mytool/Dockerfile
-cxd build --template mytool
-cxd run --template mytool
+oaiso build --template mytool
+oaiso run --template mytool
 ```
 
 `plain` uses `codex-dock:latest`; other names use `codex-dock:<name>`.

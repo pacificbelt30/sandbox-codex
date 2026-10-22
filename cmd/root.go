@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/pacificbelt30/codex-dock/internal/buildinfo"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -18,20 +20,26 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:           "cxd",
+	Use:           "oaiso",
 	Version:       buildinfo.Version,
-	Short:         "AI Sandbox Container Manager for Codex CLI and Claude Code",
+	Short:         "御AgentIsolation (Oaiso) — isolated execution for coding agents",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 		return initConfig()
 	},
-	Long: `cxd runs Codex CLI and Claude Code in Kata VM-isolated workers
+	Long: `御AgentIsolation (Oaiso) runs Codex CLI and Claude Code in Kata VM-isolated workers
 managed through containerd and Dragonball, with auth proxy, network separation and parallel workers.
 Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,
 }
 
 func Execute() {
+	// Generate completion for the name actually invoked, including legacy
+	// aliases. Unknown executable names retain the canonical oaiso command.
+	switch name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"); name {
+	case "cxd", "codex-dock":
+		rootCmd.Use = name
+	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		var exitErr interface{ ExitCode() int }
