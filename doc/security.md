@@ -10,6 +10,8 @@ OpenAI / Anthropicの実APIキー・access token・OAuth refresh token・ID toke
 
 認証プロキシは呼出元のUID/GIDと専用HOMEで、所有者の0600認証ファイルを読み取り専用で開く。capability全削除を維持し、元ファイルの権限は変更しない。
 
+現在の製品APIキーファイルとローカルOAuth更新状態は権限制限付きの平文であり、暗号化Vaultは未実装。将来の[認証管理要件](credential-store.md#独立した認証管理の設計要件wslvmヘッドレス)にはWSL 2・Linux VM・ヘッドレスを含める。「ホスト」は信頼する制御環境を意味し、その環境自体をWSL／VMに置くことと、作業VMへ実資格情報を渡すことは区別する。
+
 AI APIのHTTP・WebSocketは、発行済みで有効な短命トークンを上流接続前に検証する。未発行・失効・期限切れ・重複・矛盾する認証は401で拒否する。失効・期限切れ・置換時は既存のHTTP streamとWebSocketも終了する。
 
 admin listenerはauth proxyのprimary egress IPにbindし、hostでは127.0.0.1へ公開する。workerから見えるdata listenerにはadmin操作を公開しない。placeholderの失効・再起動時の復元はhostのManagerだけが行う。

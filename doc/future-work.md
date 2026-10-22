@@ -26,3 +26,9 @@ Codex CLI・Claude Codeに加え、以下のコーディングエージェント
 - CLI版・配布物・imageを固定し、ユーザー／プロジェクトの設定に依存しない明示的な起動設定を提供する。[上流仕様の変更検知](upstream-compatibility.md)にも監視対象を追加する。
 - 実Kataで起動、ツール実行、ストリーム、取消、停止・再起動、失効、ログ・ファイル・snapshotへの資格情報漏出を確認する。対応済みの機能と未対応の制約を[動作確認](testing.md)に記録する。
 - 導入前にCLI配布物・SDK・保存する基準データのライセンスと、認証・再配布・サブスク利用の条件を確認する。
+
+## WSL・VM内での独立した認証管理
+
+製品の制御環境がWSL 2・Linux VM・SSHヘッドレス環境でも成立する暗号化Vaultを設計対象とします。作業VMとの資格情報分離と認証Proxyを維持し、OS keyring・systemd・TPMを必須にしません。明示パスフレーズ、保存filesystemの保証、鍵lockと実行失効、別端末ブラウザ、backup・複製・rollbackを受入条件へ含めます。
+
+[詳細な設計要件](credential-store.md#独立した認証管理の設計要件wslvmヘッドレス)を参照してください。Vaultと鍵backendは未実装であり、WSL／VMのKata実行対応は別途の実機検証が必要です。

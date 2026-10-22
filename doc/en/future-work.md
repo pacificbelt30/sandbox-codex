@@ -26,3 +26,9 @@ Investigate local CLI execution inside Kata separately from editor extensions an
 - Pin CLI versions, distributions and images; provide explicit launch settings independent of user/project configuration. Extend [static upstream checks](upstream-compatibility.md) for each agent.
 - Verify startup, tools, streaming, cancellation, stop/restart, revocation and credential leakage into logs, files and snapshots in real Kata. Record verified behavior and unsupported constraints in the [testing guide](../testing.md).
 - Review CLI/SDK licenses, retained baseline data, distribution terms and authentication/subscription conditions before integration.
+
+## Independent authentication inside WSL and VMs
+
+Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems. Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM. Acceptance must include explicit passphrase unlocking, filesystem guarantees, lock/revocation, a browser on another device, backup, cloning and rollback.
+
+See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems). The vault/key backends are not implemented; Kata execution support in WSL/VMs requires separate deployment testing.

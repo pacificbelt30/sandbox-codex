@@ -31,6 +31,7 @@ Initial acquisition and refresh return only selected worker fields. Refresh erro
 
 The auth proxy runs as the caller's UID/GID, with a private HOME and read-only credential binds.
 It can read owner-only `0600` files without changing their permissions or adding capabilities.
+Current product API-key files and local OAuth rotation state remain permission-restricted plaintext; the encrypted vault is not implemented. Future [credential-management requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems) include WSL 2, Linux VMs and headless systems. A trusted control environment may itself run in a VM; it is distinct from the untrusted work VM that must never receive real credentials.
 HTTP and WebSocket AI routes validate issued, unexpired tokens before contacting upstreams.
 Revocation, expiry or token replacement cancels active streams and tunnels.
 Admin operations are on a separate listener, unreachable from worker networks.
