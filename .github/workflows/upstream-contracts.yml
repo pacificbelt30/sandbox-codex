@@ -1,0 +1,90 @@
+name: Upstream static contracts
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      codex_version:
+        description: Codex npm version or dist-tag to inspect
+        default: latest
+      claude_version:
+        description: Claude Code npm version or dist-tag to inspect
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-static-contracts
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install schema reader and test static rules
+        run: |
+          python3 -m pip install -r requirements-contracts.txt
+          python3 -m unittest discover -s scripts -p 'test_upstream_contracts.py'
+          python3 scripts/upstream-contracts.py validate-baseline
+
+      - name: Stage official candidate CLIs without lifecycle scripts
+        env:
+          CODEX_CANDIDATE: ${{ inputs.codex_version || 'latest' }}
+          CLAUDE_CANDIDATE: ${{ inputs.claude_version || 'latest' }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/agent-cli" --ignore-scripts --no-audit --no-fund \
+            "@openai/codex@$CODEX_CANDIDATE" "@anthropic-ai/claude-code@$CLAUDE_CANDIDATE"
+          # Native Claude releases use this installer to select the platform binary.
+          # This only modifies the disposable runner's staged package directory.
+          installer="$RUNNER_TEMP/agent-cli/node_modules/@anthropic-ai/claude-code/install.cjs"
+          if [ -f "$installer" ]; then node "$installer"; fi
+
+      - name: Capture declarations without login or inference
+        id: capture
+        continue-on-error: true
+        run: |
+          python3 scripts/upstream-contracts.py capture \
+            --codex "$RUNNER_TEMP/agent-cli/node_modules/.bin/codex" \
+            --claude "$RUNNER_TEMP/agent-cli/node_modules/.bin/claude" \
+            --out "$RUNNER_TEMP/contracts/candidate.json"
+
+      - name: Compare with reviewed baseline
+        id: compare
+        if: always() && steps.capture.outcome != 'skipped'
+        run: |
+          python3 scripts/upstream-contracts.py compare \
+            --candidate "$RUNNER_TEMP/contracts/candidate.json" \
+            --json "$RUNNER_TEMP/contracts/report.json" \
+            --markdown "$RUNNER_TEMP/contracts/report.md"
+
+      - name: Publish run summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/contracts/report.md" ]; then
+            cat "$RUNNER_TEMP/contracts/report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Static inspection did not complete; compatibility is unknown.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-static-contracts
+          path: ${{ runner.temp }}/contracts/
+          if-no-files-found: warn
+          retention-days: 30

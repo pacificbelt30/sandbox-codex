@@ -82,6 +82,9 @@ jobs:
       - name: Test install script
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
+      - name: Validate reviewed upstream contracts (offline)
+        run: python3 scripts/upstream-contracts.py validate-baseline
+
       - name: Run tests
         run: |
           make test

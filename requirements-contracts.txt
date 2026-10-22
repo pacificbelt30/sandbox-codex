@@ -1,0 +1,2 @@
+# Development/CI only; runtime binaries gain no new dependencies.
+PyYAML==6.0.3

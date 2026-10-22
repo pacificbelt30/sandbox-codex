@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "sources": [
+    {
+      "id": "openai-rest",
+      "kind": "openapi",
+      "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
+      "operations": [
+        ["POST", "/responses"],
+        ["POST", "/responses/compact"],
+        ["POST", "/chat/completions"],
+        ["POST", "/completions"],
+        ["POST", "/embeddings"],
+        ["POST", "/moderations"]
+      ]
+    },
+    {
+      "id": "codex-config",
+      "kind": "schema",
+      "url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
+      "roots": [
+        "#/properties/model_provider",
+        "#/properties/model_providers",
+        "#/properties/features/properties/apps",
+        "#/properties/features/properties/enable_request_compression",
+        "#/properties/features/properties/responses_websockets",
+        "#/properties/features/properties/responses_websockets_v2",
+        "#/properties/chatgpt_base_url"
+      ]
+    },
+    {
+      "id": "codex-cli",
+      "kind": "cli",
+      "binary": "codex",
+      "commands": [
+        {"name": "root", "argv": [], "required_flags": ["--config", "--model", "--dangerously-bypass-approvals-and-sandbox"]},
+        {"name": "exec", "argv": ["exec"], "required_flags": ["--config", "--json", "--skip-git-repo-check"]}
+      ]
+    },
+    {
+      "id": "codex-app-server",
+      "kind": "codex-schema",
+      "binary": "codex",
+      "usage": "advisory",
+      "files": ["InitializeParams.json", "ThreadStartParams.json", "TurnStartParams.json", "TurnInterruptParams.json"]
+    },
+    {
+      "id": "codex-oauth-storage",
+      "kind": "text",
+      "url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/login/src/auth/storage.rs"
+    },
+    {
+      "id": "codex-oauth-refresh",
+      "kind": "text",
+      "url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/login/src/oauth/client.rs"
+    },
+    {
+      "id": "openai-sdk-response-request",
+      "kind": "python-types",
+      "usage": "advisory",
+      "url": "https://raw.githubusercontent.com/openai/openai-python/main/src/openai/types/responses/response_create_params.py"
+    },
+    {
+      "id": "openai-sdk-response-events",
+      "kind": "python-types",
+      "usage": "advisory",
+      "url": "https://raw.githubusercontent.com/openai/openai-python/main/src/openai/types/responses/response_stream_event.py"
+    },
+    {
+      "id": "claude-cli",
+      "kind": "cli",
+      "binary": "claude",
+      "commands": [
+        {"name": "root", "argv": [], "required_flags": ["--setting-sources", "--model", "--print", "--output-format", "--dangerously-skip-permissions"]},
+        {"name": "auth-status", "argv": ["auth", "status"], "required_flags": ["--text"]}
+      ]
+    },
+    {
+      "id": "anthropic-sdk-messages",
+      "kind": "python-types",
+      "url": "https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/message_create_params.py"
+    },
+    {
+      "id": "anthropic-sdk-count-tokens",
+      "kind": "python-types",
+      "url": "https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/message_count_tokens_params.py"
+    },
+    {
+      "id": "anthropic-sdk-events",
+      "kind": "python-types",
+      "url": "https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/raw_message_stream_event.py"
+    },
+    {
+      "id": "claude-agent-sdk-types",
+      "kind": "python-types",
+      "usage": "advisory",
+      "url": "https://raw.githubusercontent.com/anthropics/claude-agent-sdk-python/main/src/claude_agent_sdk/types.py"
+    },
+    {
+      "id": "claude-auth-release-notes",
+      "kind": "text",
+      "url": "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md",
+      "match_lines": "(?i)oauth|refresh.?token|access.?token|authenticat|credential|subscription|login|sign.?in|api.?key|CLAUDE_CODE_OAUTH"
+    }
+  ]
+}

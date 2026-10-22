@@ -75,6 +75,7 @@ nav:
       - ネットワーク: network.md
       - セキュリティ: security.md
       - 性能とベンチマーク: performance.md
+      - 上流仕様の変更検知: upstream-compatibility.md
       - テストと動作確認: testing.md
       - 廃止したfirewall機能: firewall.md
       - 旧firewallコマンド: commands/firewall.md
@@ -105,6 +106,7 @@ nav:
       - Network: en/network.md
       - Security: en/security.md
       - Performance and benchmarks: en/performance.md
+      - Upstream compatibility: en/upstream-compatibility.md
       - Removed firewall: en/firewall.md
       - Removed firewall command: en/commands/firewall.md
 

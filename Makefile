@@ -17,7 +17,7 @@ TEMPLATES_DIR := $(CONFIG_DIR)/templates
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     := -ldflags "-X $(MODULE)/internal/buildinfo.Version=$(VERSION)"
 
-.PHONY: all build node-bundle worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test kata-e2e kata-api-e2e lint vet tidy help
+.PHONY: all build node-bundle worker-guard io-logger install install-config install-templates install-all image proxy-image docker proxy-docker uninstall clean test contracts-check kata-e2e kata-api-e2e lint vet tidy help
 
 ## all: build binary and OCI images
 all: build image proxy-image
@@ -115,6 +115,11 @@ clean:
 ## test: run tests with race detection and coverage
 test:
 	go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+## contracts-check: test static upstream rules and validate the reviewed baseline offline
+contracts-check:
+	python3 -m unittest discover -s scripts -p 'test_upstream_contracts.py'
+	python3 scripts/upstream-contracts.py validate-baseline
 
 ## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
 kata-e2e: build
