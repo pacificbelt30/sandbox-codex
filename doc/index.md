@@ -39,6 +39,7 @@ Docker EngineとDocker CLIは不要です。
 - [セキュリティ](security.md)：保護する範囲と制限
 - [認証API](auth-proxy/endpoints.md)・[短命トークン](auth-proxy/tokens.md)
 - [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
+- [今後の対応](future-work.md)：追加するコーディングエージェントと対応条件
 
 通常の実行先はLinux x86_64です。CLIのクロスビルドは、各OSでKataを実行できることを意味しません。
 
