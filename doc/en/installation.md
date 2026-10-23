@@ -16,57 +16,41 @@
 | OS and CPU | Ubuntu 26.04, Linux x86_64 |
 | Host features | systemd, KVM (`/dev/kvm`), cgroup v2 with `cpu memory pids` |
 | Account | A normal user with `sudo` access |
-| Build tools | Git, Make, Go 1.24.7 or later, uv (manages Python 3.12) |
+| Prerequisites | Bash, curl and CA certificates; Go, Make and Git are not required |
+| Host Python | uv-managed Python 3.12; missing uv/Python is prepared in user-owned directories |
 | Memory guidance | At least 8 GiB for the default two-worker configuration; allow extra capacity for builds |
-| Network | Access to source, pinned runtime archives, OS packages and container images |
+| Network | Access to GitHub Releases, uv/Python, pinned runtime archives, OS packages and container images |
 | WSL or a VM host | All requirements above, plus nested virtualization |
 
 - Operator group membership grants root-equivalent host management access. Choose trusted users only.
 
-## 2. Get tools and source
+## 2. Prepare curl
 
-**Run in a normal user's shell.**
+**Run as a normal user if curl is missing.**
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git make curl ca-certificates golang-go
-
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.12
-
-go version
-uv --version
-uv run --no-project --no-config --managed-python --python 3.12 python --version
-test -c /dev/kvm && echo 'KVM device found'
-cat /sys/fs/cgroup/cgroup.controllers
-
-git clone https://github.com/pacificbelt30/sandbox-codex.git
-cd sandbox-codex
+sudo apt-get install -y curl ca-certificates
 ```
 
-- Check the reported versions: Go 1.24.7 or later and uv-managed Python 3.12.
-- Install uv using [Astral’s official instructions](https://docs.astral.sh/uv/getting-started/installation/); [uv manages Python](https://docs.astral.sh/uv/guides/install-python/).
-- `install.sh` selects Python through uv and passes the same absolute interpreter path to the plan and privileged application. The OS Python is retained.
-- Python distributions come from uv-managed [python-build-standalone](https://docs.astral.sh/uv/concepts/python-versions/#managed-python-distributions).
-- Check that the controller list includes `cpu memory pids`.
-- Missing KVM: meet the [host requirements](../kata.md#必要なホスト) (Japanese) before continuing.
-- Retain this checkout until initial setup completes; the first proxy image build also uses the source.
+- The installer uses [Astral’s official installer](https://docs.astral.sh/uv/getting-started/installation/) to prepare uv in `~/.local/bin` if needed.
+- Host Python is [uv-managed 3.12](https://docs.astral.sh/uv/guides/install-python/); the OS Python is retained.
+- Check KVM with `test -c /dev/kvm` and controllers with `cat /sys/fs/cgroup/cgroup.controllers`.
 
 ## 3. Review the plan and install
 
-**Run from the cloned `sandbox-codex` directory.**
+**Run from any directory; no source checkout is required.**
 
 ```bash
-./scripts/install.sh
-./scripts/install.sh --apply
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash -s -- --apply
 ```
 
 **Example plan output (excerpt)**
 
 ```text
 Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3
-Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator: user; cache: /var/cache/codex-dock-setup; offline: no
+Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: /var/cache/codex-dock-setup; offline: no
 ```
 
 - `<version>`, paths and account names vary by installation.
@@ -75,7 +59,8 @@ Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator:
 
 | Command or option | Behavior |
 |---|---|
-| No options | Build matching CLI/helpers, verify the bundle and display the installation plan |
+| No options | Download and verify the matching release binaries, then display the plan |
+| `--version v0.0.2` | Download a specific release |
 | `--apply` | Apply through `sudo` after the plan succeeds, forwarding the selected Python’s absolute path |
 | No operator option | Register the invoking normal user |
 | `--operator USER` | Register another existing normal user; required when invoking the script as root |
@@ -127,7 +112,7 @@ user sudo codex-dock
 ## Next: credentials and first worker
 
 1. [Choose credentials](getting-started.md#2-prepare-credentials): independent profile or legacy host integration.
-2. From the source root, run `oaiso init`; use `oaiso init --agent claude` for Claude Code.
+2. Run `oaiso init`; use `oaiso init --agent claude` for Claude Code.
 3. From your project, run `oaiso codex` or `oaiso run --agent claude`.
 
 - Normal `init` and `run` operations do not require `sudo`.
@@ -138,18 +123,19 @@ user sudo codex-dock
 
 - A directory containing the prebuilt `oaiso` CLI, worker guard, I/O logger and `bundle.json` (version and SHA-256 checksums).
 - Normal installation creates it in `dist/node-bundle/`; you do not need to specify the option.
-- Use `--bundle PATH` to reuse a build or bring it from another host. The destination host needs uv/Python, but not Go/Make.
+- Use `--bundle PATH` to use an extracted release bundle or bring one from another host. The destination host needs uv/Python, but not Go/Make.
 - It excludes Kata archives, container images, projects and credentials. Offline installation also needs prepared archives and Python.
 
 ```bash
-./scripts/install.sh --bundle /path/to/node-bundle
-./scripts/install.sh --bundle /path/to/node-bundle --apply
+bash install.sh --bundle /path/to/node-bundle
+bash install.sh --bundle /path/to/node-bundle --apply
 ```
 
 ## Other installation paths
 
 | Method | Scope and reference |
 |---|---|
+| Build from source | [Developer build procedure](../setup.md#ソースからビルドする場合) (Japanese); requires Go, Make, Git and uv |
 | Manual host installation | [Kata host setup](../kata.md) (Japanese) |
 | Prebuilt CLI/helper directory | [Bundle contents](../setup.md#ビルド済みバンドルとは) (Japanese); `--bundle PATH` skips Go/Make on this host |
 | Offline installation | [Offline setup](../setup.md#オフライン配置) (Japanese) |

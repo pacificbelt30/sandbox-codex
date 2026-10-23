@@ -50,7 +50,7 @@ cd sandbox-codex
 
 - 公式リリースの配布物とSHA256を確認し、新しい作業ディレクトリへ展開する。
 - 必要なツールはuv、zstd、debugfs（e2fsprogs）、静的リンク可能なCコンパイラー。
-- ホストPythonは[インストール手順](installation.md#2-ツールとソースを取得)と同じuv管理の3.12を使う。
+- ホストPythonは[インストール手順](installation.md#2-ツールを準備する)と同じuv管理の3.12を使う。
 
 ```bash
 curl -fL -o kata-static-4.2.0-amd64.tar.zst \

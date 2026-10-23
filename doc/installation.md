@@ -16,57 +16,42 @@
 | OS・CPU | Ubuntu 26.04・Linux x86_64 |
 | ホスト機能 | systemd・KVM（`/dev/kvm`）・cgroup v2の `cpu memory pids` |
 | 実行アカウント | `sudo` が使える通常ユーザー |
-| ビルドツール | Git・Make・Go 1.24.7以上・uv（Python 3.12を管理） |
+| 事前ツール | Bash・curl・CA証明書。Go・Make・Gitは不要 |
+| ホストPython | uv管理の3.12。uv・Pythonがなければユーザー用領域へ自動準備 |
 | メモリ目安 | 既定の2ワーカー構成は8 GiB以上。ビルド用の余裕も確保 |
-| 通信 | ソース・固定ランタイム配布物・OSパッケージ・コンテナイメージの取得先に到達可能 |
+| 通信 | GitHub Releases・uv/Python・固定ランタイム配布物・OSパッケージ・コンテナイメージの取得先に到達可能 |
 | WSL／VM | 上記要件に加え、nested virtualizationが必要 |
 
 - operator groupにはホストのroot相当の管理権限を付与。信頼する利用者だけを指定。
 
-## 2. ツールとソースを取得
+## 2. ツールを準備する
 
-**通常ユーザーのシェルで実行。**
+**通常ユーザーのシェルで実行。curlが未導入の場合だけ必要です。**
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git make curl ca-certificates golang-go
-
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.12
-
-go version
-uv --version
-uv run --no-project --no-config --managed-python --python 3.12 python --version
-test -c /dev/kvm && echo 'KVM device found'
-cat /sys/fs/cgroup/cgroup.controllers
-
-git clone https://github.com/pacificbelt30/sandbox-codex.git
-cd sandbox-codex
+sudo apt-get install -y curl ca-certificates
 ```
 
-- 表示された版：Go 1.24.7以上・uv管理のPython 3.12であることを確認。
-- uv本体：[Astral公式のインストール手順](https://docs.astral.sh/uv/getting-started/installation/)。Python：[uvの管理方法](https://docs.astral.sh/uv/guides/install-python/)。
-- `install.sh` はuvでPythonを選び、配置計画と管理者権限での適用に同じPythonを使います。OSのPythonは変更しません。
-- Pythonの配布物：uvが管理する[python-build-standalone](https://docs.astral.sh/uv/concepts/python-versions/#managed-python-distributions)を使用。
-- cgroupの表示：`cpu memory pids` が含まれることを確認。
+- uv本体：[Astral公式インストーラー](https://docs.astral.sh/uv/getting-started/installation/)で `~/.local/bin` へ準備。既に使えるuvがあれば利用します。
+- Python：[uv管理の3.12](https://docs.astral.sh/uv/guides/install-python/)を使用。OSのPythonは変更しません。
+- `test -c /dev/kvm` でKVM、`cat /sys/fs/cgroup/cgroup.controllers` で `cpu memory pids` を確認。
 - KVMがない場合：[ホスト要件](kata.md#必要なホスト)を満たしてから続行。
-- ソース：初回のProxyイメージ作成にも使用。初期設定完了まで保持。
 
 ## 3. 計画を確認してインストール
 
-**クローンした `sandbox-codex` ディレクトリで実行。**
+**任意のディレクトリで実行。リポジトリのcloneは不要です。**
 
 ```bash
-./scripts/install.sh
-./scripts/install.sh --apply
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash -s -- --apply
 ```
 
 **計画の出力例（抜粋）**
 
 ```text
 Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3
-Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator: user; cache: /var/cache/codex-dock-setup; offline: no
+Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: /var/cache/codex-dock-setup; offline: no
 ```
 
 - `<version>`・パス・利用者名は環境により変わる値。
@@ -75,7 +60,8 @@ Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator:
 
 | コマンド・指定 | 動作 |
 |---|---|
-| 指定なし | 同じ版のCLI・helperをビルドし、検証・配置計画を表示 |
+| 指定なし | 同じリリースのCLI・補助プログラムを取得・検証し、配置計画を表示 |
+| `--version v0.0.2` | 指定版を取得 |
 | `--apply` | 計画成功後に `sudo` で配置。選択済みPythonの絶対パスも渡す |
 | operator省略 | スクリプトを実行した通常ユーザーを登録 |
 | `--operator USER` | 別の既存通常ユーザーを登録。rootから実行する場合は必須 |
@@ -127,7 +113,7 @@ user sudo codex-dock
 ## 次は認証と初回起動
 
 1. [認証方式を選ぶ](getting-started.md#2-認証方式を選ぶ)。独立プロファイル／従来のホスト連携から選択。
-2. ソースのルートで `oaiso init`。Claude Codeの場合は `oaiso init --agent claude`。
+2. `oaiso init`。Claude Codeの場合は `oaiso init --agent claude`。
 3. 作業するプロジェクトで `oaiso codex` または `oaiso run --agent claude`。
 
 - 通常の `init`・`run`：`sudo` 不要。
@@ -138,6 +124,7 @@ user sudo codex-dock
 
 | 方法 | 範囲・参照先 |
 |---|---|
+| ソースからビルド | [開発者向けのビルド手順](setup.md#ソースからビルドする場合)。Go・Make・Git・uvが必要 |
 | 手動で実行ホストを配置 | [Kata実行ホストの準備](kata.md) |
 | 別の場所でビルドした実行ファイル一式を使用 | [ビルド済みバンドルとは](setup.md#ビルド済みバンドルとは)。`--bundle PATH`。ホストのGo・Makeは不要 |
 | オフライン導入 | [オフライン配置](setup.md#オフライン配置) |

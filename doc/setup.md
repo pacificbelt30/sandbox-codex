@@ -12,24 +12,23 @@
 
 ## 初めて配置する
 
-### 1. 必要なツールを用意する
-
-- 実行場所：ソースのルート。
-- 必要なツール：Go 1.24.7以上・Make・uv。ホストPythonはuv管理の3.12を使用。
-- uvとPythonの準備：[インストール手順](installation.md#2-ツールとソースを取得)。
-- ビルド対象：同じ版のCLIとhelperをまとめたバンドル。
-- Docker：このビルドには使わない。
-
-### 2. 計画を確認して適用する
+### 配置計画を確認して適用する
 
 ```bash
-./scripts/install.sh
-./scripts/install.sh --apply
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash -s -- --apply
 ```
+
+- GitHub Releasesのビルド済みCLI・補助プログラムを使います。Go・Make・ソース取得は不要です。
+- uvとPython 3.12は、なければユーザー用領域へ準備します。
+- リリースのインストーラーは、そのリリースと同じ版の配布物を取得します。
+- 配布アーカイブのSHA-256、`bundle.json` の版と各ファイルのSHA-256、実CLIの版を検証してから実行します。
+- SHA-256は破損・取り違えの検出用です。配布元の独立した署名検証ではありません。
 
 | 指定 | 動作・条件 |
 |---|---|
-| 指定なし | バンドルを作成・検証して計画を表示 |
+| 指定なし | リリースのバンドルを取得・検証して計画を表示 |
+| `--version TAG` | 指定した版を取得 |
 | `--apply` | 計画の成功後、同じCLIと選択済みPythonの絶対パスを使って `sudo` で配置 |
 | `--operator USER` | 権限を与える既存の通常利用者を指定 |
 | operator省略 | スクリプトを実行した通常利用者を選択 |
@@ -40,7 +39,8 @@
 ### ビルド済みバンドルとは
 
 - **同じ版の実行ファイルと、検証用の一覧をまとめたディレクトリ**です。
-- 通常の `./scripts/install.sh` が `dist/node-bundle/` に作成します。通常利用では `--bundle` の指定は不要です。
+- リリースのインストーラーが自動で取得・展開します。通常利用では `--bundle` の指定は不要です。
+- ソースからビルドする場合は `make node-bundle` が `dist/node-bundle/` に作成します。
 - 別ホストでビルドしたものや、前に作成したものを使うときだけ `--bundle PATH` を指定します。持ち込み先のホストにGo・Makeは不要です。
 - 自分でビルドしたもの、または配布元を確認したものを使ってください。
 
@@ -49,16 +49,36 @@ node-bundle/
 ├── oaiso                    CLI・管理サービス・埋め込みセットアップ処理
 ├── codex-dock-worker-guard  VM起動時の検証用プログラム
 ├── codex-dock-io-logger     入出力・ログ用プログラム
-└── bundle.json             版と各ファイルのSHA-256
+├── bundle.json             版と各ファイルのSHA-256
+├── LICENSE                 製品のライセンス（リリース配布物）
+└── THIRD_PARTY_NOTICES.txt  依存ライブラリのライセンス／notice（リリース配布物）
 ```
 
 ```bash
-./scripts/install.sh --bundle /path/to/node-bundle
-./scripts/install.sh --bundle /path/to/node-bundle --apply
+bash install.sh --bundle /path/to/node-bundle
+bash install.sh --bundle /path/to/node-bundle --apply
 ```
 
 - 含まないもの：Kata等の配布物、コンテナイメージ、プロジェクト、認証情報。
 - オフライン導入には、バンドルに加えて[配布物のキャッシュとPythonの準備](#オフライン配置)が必要です。
+
+### ソースからビルドする場合
+
+**開発者・独自変更を含む版を使う場合の手順です。**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git make golang-go
+export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.12
+git clone https://github.com/pacificbelt30/sandbox-oasis.git
+cd sandbox-oasis
+./scripts/install.sh
+./scripts/install.sh --apply
+```
+
+- Go 1.24.7以上・Make・Git・uvが必要です。
+- uvの取得：[公式手順](https://docs.astral.sh/uv/getting-started/installation/)。
 
 ### 個別に計画・適用する場合
 
@@ -104,7 +124,7 @@ oaiso init --agent claude
 ```
 
 - 通常の認証・`run`：`sudo` 不要。
-- Proxyイメージの新規ビルド：リポジトリのルートで `init` を実行。
+- リリース版のProxyイメージは、配置済みの静的CLIから作成します。ソースの取得は不要です。
 - 詳細：[クイックスタート](getting-started.md)。
 
 ## 自動で準備するもの
@@ -134,8 +154,8 @@ oaiso init --agent claude
 
 1. 作業中の成果を保存。
 2. 旧版CLIでワーカーとProxyを停止・削除。
-3. 新しいソースで `./scripts/install.sh` を実行し、計画を確認。
-4. `./scripts/install.sh --apply` で新しいバンドルを適用。
+3. [配布インストーラー](installation.md#3-計画を確認してインストール)を再実行して最新版の計画を確認。
+4. 同じインストーラーに `--apply` を付け、新しいCLI・node・補助プログラムを同時に配置。
 5. 再ログイン後、通常利用者で `oaiso init` と実Kata受入試験を実行。
 
 | 更新時の条件 | 動作 |

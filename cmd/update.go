@@ -13,13 +13,15 @@ const updateModulePath = "github.com/pacificbelt30/codex-dock/cmd/oaiso@latest"
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update oaiso to the latest version",
+	Short: "Update a Go-installed CLI (node releases use the release installer)",
 	Long: `update runs "go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest",
 fetching and building oaiso into GOBIN or $(go env GOPATH)/bin.
 
 Only oaiso is installed; no legacy command aliases are created.
 Requires a published release containing cmd/oaiso.
-It does not update binaries installed with "make install" or a node bundle.`,
+It does not update binaries installed with "make install" or a node bundle.
+For release installations, rerun the release installer to keep the CLI, node
+and helpers on the same version; see the installation guide.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return executeUpdate(cmd.Context())
 	},
@@ -33,7 +35,7 @@ func init() {
 func executeUpdate(ctx context.Context) error {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		return fmt.Errorf("go toolchain not found in PATH: %w", err)
+		return fmt.Errorf("this command updates a Go-installed CLI: %w; for release installations, rerun the release installer with --apply", err)
 	}
 
 	fmt.Printf("Updating oaiso via go install %s...\n", updateModulePath)

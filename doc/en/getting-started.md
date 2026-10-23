@@ -42,7 +42,7 @@ oaiso runtime-check
 | Build the CLI from source | Go 1.24.7 or later and Make |
 
 - This page assumes the CLI and host are installed; otherwise return to [Installation](installation.md).
-- Run initial `init` from the product source root; launch agents from your own project.
+- Release installations can run `init` from any directory; launch agents from your own project.
 
 ## 2. Prepare credentials
 
@@ -100,12 +100,12 @@ For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 |---|---|
 | Diagnose host and find credentials | Does not print credential contents or rewrite settings |
 | Prepare worker image | Builds missing images and checks compatibility |
-| Start proxies | Building a missing proxy image requires the Go source |
+| Start proxies | Release installations package the installed static CLI into the proxy image |
 | Choose agent | Explicit `--agent`, then configured default; a shell default prepares Codex |
 | Existing proxy with different authentication | Running workers prevent a forced switch |
 | Outside this check | Live provider authentication, connectivity and inference |
 
-- Missing source: change to the cloned product source root and rerun `init`.
+- Release installations create the proxy image from the installed static CLI. Source-built dynamic CLIs require their source checkout to build the proxy.
 - Once ready: return to the project directory.
 - Make Codex the default: `oaiso default codex`; add `--local` for this project only.
 
@@ -113,7 +113,6 @@ For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 
 ```bash
 oaiso build
-oaiso proxy build
 oaiso proxy run
 ```
 
@@ -126,7 +125,7 @@ oaiso proxy run
 
 - `proxy run` creates the required network.
 - Details: [auth proxy](auth-proxy.md).
-- For an existing team's custom Dockerfile, review [project settings](configuration.md#project-settings) and run `init` in that project. If the proxy image is missing, first build it from the product source root.
+- For an existing team's custom Dockerfile, review [project settings](configuration.md#project-settings) and run `init` in that project. Release installations prepare a missing proxy image from the installed static CLI.
 
 ## 4. Start a worker
 

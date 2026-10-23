@@ -16,26 +16,18 @@
 
 - 対象：**Ubuntu 26.04・x86_64・systemd・KVM・cgroup v2**。
 - 実行者：`sudo` が使える通常ユーザー。管理操作はスクリプトが昇格。
-- ビルド要件：Go 1.24.7以上・Make。ホストPythonはuvで3.12を準備。
+- 配布：GitHub Releasesのビルド済み版。Go・Make・ソース取得は不要。
+- ホストPython：uvで3.12を自動準備。
 - ほかのLinux：[手動配置](doc/kata.md)。WSL／VM：上記要件とnested virtualizationが必要。
 
-**1. 依存ツール・ソースを取得し、インストール**
+**1. 配置計画を確認し、インストール**
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y git make curl ca-certificates golang-go
-
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.12
-go version
-
-git clone https://github.com/pacificbelt30/sandbox-codex.git
-cd sandbox-codex
-
-./scripts/install.sh          # 配置計画を確認
-./scripts/install.sh --apply  # CLI・Kata・containerd・BuildKit・サービスを配置
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash -s -- --apply
 ```
+
+- `curl` がない場合は `sudo apt-get update && sudo apt-get install -y curl ca-certificates`。
 
 **2. ログアウト・再ログイン後、確認**
 
@@ -68,7 +60,7 @@ oaiso runtime-check
 
 | 順序 | 担当 | 実施内容 |
 |---|---|---|
-| 1 | 管理者 | [インストール](doc/installation.md)。Ubuntu 26.04対応ホストでは `./scripts/install.sh` で計画、`--apply` で適用 |
+| 1 | 管理者 | [インストール](doc/installation.md)。Ubuntu 26.04対応ホストでは配布インストーラーで計画、`--apply` で適用 |
 | 2 | 利用者 | [認証とイメージを準備](doc/getting-started.md)。ホストと分ける場合は[独立プロファイル](doc/commands/auth.md#独立プロファイル)を選択 |
 | 3 | 利用者 | プロジェクトでワーカーを起動 |
 
@@ -82,7 +74,7 @@ oaiso runtime-check
 - 以下はどちらか1つ。`/path/to/your-project` は実際の作業プロジェクトへ置換。
 - Git・npm・pipなどを使う場合は、先に[一般通信の宛先](doc/guides/networking.md)も許可。
 
-**Codex：製品ソースのルートで準備 → 作業先で起動**
+**Codex：初期設定 → 作業先で起動**
 
 ```bash
 oaiso init --agent codex
@@ -94,7 +86,7 @@ oaiso codex "このリポジトリを調べて"
 
 ```
 
-**Claude Code：製品ソースのルートで準備 → 作業先で起動**
+**Claude Code：初期設定 → 作業先で起動**
 
 ```bash
 oaiso init --agent claude
@@ -104,7 +96,7 @@ oaiso claude
 
 **起動時の要点**
 
-- 初回のProxyイメージ作成：リポジトリのルートで `init` を実行。
+- リリース版はソースを取得せずに `init` できます。
 - 通常操作：管理グループ（`codex-dock`）に所属する通常ユーザーで実行。
 - `oaiso run` の組み込み既定値：認証済みシェル。
 - Codexを既定にする：`oaiso default codex`。

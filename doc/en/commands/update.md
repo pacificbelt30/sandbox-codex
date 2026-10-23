@@ -4,7 +4,8 @@
 >
 > [← Command Reference](../commands.md)
 
-Updates `oaiso` installations managed by `go install`.
+- Release installations: [rerun the release installer](../../setup.md#更新する) to update the CLI, node and helpers together.
+- This command updates only CLI installations managed by `go install`.
 
 ```bash
 oaiso update
@@ -21,7 +22,7 @@ go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest
 ```
 
 - Fails with an error if `go` is not found on `PATH`.
-- Requires a published release containing `cmd/oaiso`; the old `v0.0.1` release does not include it. Until then, run `go install ./cmd/oaiso` from the checked-out source, or use the host update procedure below.
+- For source-installed CLIs. Release installations use the release installer without adding Go.
 - `oaiso` is placed in `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when GOBIN is unset.
 - No legacy commands or aliases are generated. For existing old files, see [migration](../../migration.md#oaisoへの名称変更) (Japanese).
 

@@ -62,7 +62,11 @@ jobs:
           uv run --no-project --no-config --managed-python --python 3.12 python scripts/verify-cli-names.py --binary ./oaiso
 
       - name: Build installable node bundle
-        run: make node-bundle VERSION=ci
+        run: |
+          make node-bundle VERSION=v0.0.0-ci
+          uv run --no-project --no-config --managed-python --python 3.12 python scripts/package-release.py --bundle dist/node-bundle --output dist/release --version v0.0.0-ci
+          cd dist/release
+          sha256sum --check SHA256SUMS
 
       - name: Cross-compile (macOS arm64)
         run: GOOS=darwin GOARCH=arm64 go build -o oaiso-darwin-arm64 .

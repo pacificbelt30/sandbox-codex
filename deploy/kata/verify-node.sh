@@ -11,10 +11,18 @@ setup_python=${CODEX_DOCK_SETUP_PYTHON:-/usr/bin/python3}
 mkdir -p /evidence /var/cache/codex-dock-setup
 for archive in /cache-input/*; do cp "$archive" /var/cache/codex-dock-setup/; done
 chmod -R go-w /var/cache/codex-dock-setup
-/bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline > /evidence/plan.txt
+if [[ -n ${CODEX_DOCK_RELEASE_INSTALLER:-} ]]; then
+ cat "$CODEX_DOCK_RELEASE_INSTALLER" | bash -s -- --bundle /bundle --operator kata-test --offline > /evidence/plan.txt
+else
+ /bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline > /evidence/plan.txt
+fi
 [[ ! -e /etc/systemd/system/codex-dock-node.service ]]
 proof 'planning leaves services uninstalled'
-/bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline --apply > /evidence/setup.txt 2>&1
+if [[ -n ${CODEX_DOCK_RELEASE_INSTALLER:-} ]]; then
+ cat "$CODEX_DOCK_RELEASE_INSTALLER" | bash -s -- --bundle /bundle --operator kata-test --offline --apply > /evidence/setup.txt 2>&1
+else
+ /bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline --apply > /evidence/setup.txt 2>&1
+fi
 cli runtime-check --json > /evidence/readiness.json
 initial_release=$(release)
 proof 'fresh setup and operator readiness'

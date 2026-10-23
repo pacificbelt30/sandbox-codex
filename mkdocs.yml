@@ -1,8 +1,8 @@
 site_name: 御AgentISOlation (Oaiso)
 site_description: 御AgentISOlation（Oaiso）— AIエージェントの隔離実行基盤。コマンドは oaiso。
-site_url: https://pacificbelt30.github.io/sandbox-codex/
-repo_name: pacificbelt30/sandbox-codex
-repo_url: https://github.com/pacificbelt30/sandbox-codex
+site_url: https://pacificbelt30.github.io/sandbox-oasis/
+repo_name: pacificbelt30/sandbox-oasis
+repo_url: https://github.com/pacificbelt30/sandbox-oasis
 
 docs_dir: doc
 
@@ -43,6 +43,7 @@ nav:
       - 概要と用語: concepts.md
       - インストール: installation.md
       - クイックスタート: getting-started.md
+      - リリース情報: release-notes.md
   - 利用ガイド:
       - 概要: guides/index.md
       - エージェント:
@@ -93,6 +94,7 @@ nav:
       - テストと動作確認: testing.md
       - 今後の対応: future-work.md
       - ドキュメントの追加・修正: development/documentation.md
+      - リリースの作成: development/releases.md
       - 廃止機能:
           - firewall: firewall.md
           - 旧firewallコマンド: commands/firewall.md

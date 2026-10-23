@@ -4,7 +4,8 @@
 >
 > [← コマンドリファレンス一覧](../commands.md)
 
-`go install` で導入した `oaiso` を最新版に更新します。
+- リリース版の更新：[配布インストーラーを再実行](../setup.md#更新する)します。CLI・node・補助プログラムを同じ版へそろえます。
+- このコマンドは `go install` で導入したCLIだけを更新します。
 
 ```bash
 oaiso update
@@ -21,7 +22,7 @@ go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest
 ```
 
 - `go` コマンドが `PATH` に存在しない場合はエラーになります。
-- `cmd/oaiso` を含むリリースの公開が必要です。旧リリース `v0.0.1` は未対応。公開前は取得済みソースで `go install ./cmd/oaiso`、または後述のホスト更新手順を使用。
+- ソースからのCLI更新用です。通常のリリース導入ではGoを追加せず、配布インストーラーで更新します。
 - `oaiso` は `$(go env GOBIN)`、未設定なら `$(go env GOPATH)/bin` に配置されます。
 - 旧コマンド・互換aliasは生成しません。既にある旧ファイルの回収は[移行手順](../migration.md#oaisoへの名称変更)を参照。
 

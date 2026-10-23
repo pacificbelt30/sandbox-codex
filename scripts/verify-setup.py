@@ -31,10 +31,15 @@ def main():
                         help='Preloaded worker image matching the current entrypoint and pinned agents')
     parser.add_argument('--setup-python', type=Path,
                         help='Standalone Python executable; mount its installation read-only for setup verification')
+    parser.add_argument('--release-installer', type=Path,
+                        help='Exercise the standalone installer through a pipe for initial plan/apply')
+    parser.add_argument('--uv', type=Path, help='uv executable for the standalone installer test')
     parser.add_argument('--image', default='codex-dock-setup-node:verification')
     parser.add_argument('--sudo-docker', action='store_true')
     parser.add_argument('--offline', action='store_true')
     args = parser.parse_args()
+    if args.release_installer and not (args.setup_python and args.uv):
+        parser.error('--release-installer also requires --setup-python and --uv')
     if args.setup_python:
         args.setup_python = args.setup_python.resolve(strict=True)
         if args.setup_python.parent.name != 'bin' or not os.access(args.setup_python, os.X_OK):
@@ -85,6 +90,11 @@ def main():
             prefix = args.setup_python.parent.parent
             argv += ['-e', 'CODEX_DOCK_SETUP_PYTHON='+str(args.setup_python),
                      '--mount', f'type=bind,src={prefix},dst={prefix},readonly']
+        if args.release_installer:
+            argv += ['-e', 'CODEX_DOCK_RELEASE_INSTALLER=/release-install.sh',
+                     '-e', 'UV_PYTHON_INSTALL_DIR='+str(args.setup_python.parent.parent.parent),
+                     '--mount', f'type=bind,src={args.release_installer.resolve(strict=True)},dst=/release-install.sh,readonly',
+                     '--mount', f'type=bind,src={args.uv.resolve(strict=True)},dst=/usr/local/bin/uv,readonly']
         for source, target, readonly in [
             (args.bundle, '/bundle', True), (args.next_bundle, '/bundle-next', True),
             (args.images, '/images.tar', True), (args.acceptance, '/acceptance.test', True),

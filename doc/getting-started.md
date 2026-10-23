@@ -42,7 +42,7 @@ oaiso runtime-check
 | 診断エラーの解決 | [トラブルシューティング](troubleshooting.md) |
 
 - このページはCLIと実行ホストの配置後に実施。未配置なら[インストール](installation.md)へ戻る。
-- 以下の `init` は製品ソースのルート、エージェント起動は自分の作業プロジェクトで実行。
+- リリース版の `init` は任意のディレクトリで実行できます。エージェントは自分の作業プロジェクトで起動します。
 
 ## 2. 認証方式を選ぶ
 
@@ -79,7 +79,7 @@ oaiso runtime-check
 
 ## 3. プロキシとイメージを用意する
 
-**通常利用者で、リポジトリのルートから実行します。**
+**通常利用者で実行します。リリース版はソースの取得不要です。**
 
 | 登録した資格情報 | 実行するコマンド（どちらか1つ） |
 |---|---|
@@ -103,12 +103,12 @@ For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 |---|---|
 | ホスト診断・認証ソースの存在確認 | 認証本文を表示しない。既存設定を書き換えない |
 | ワーカーイメージの作成・互換性検査 | 不足時にビルド |
-| Proxy起動 | Proxyイメージがない場合はGoソースが必要 |
+| Proxy起動 | リリース版は配置済みの静的CLIからイメージを準備 |
 | 使用エージェントの選択 | `--agent` → 設定した既定値。シェル既定ならCodexを準備 |
 | 認証方式が異なる既存Proxy | ワーカー稼働中は強制変更せずエラー |
 | 検証対象外 | 実サービスへの認証成功・疎通・推論 |
 
-- ソースが見つからない場合：クローンした製品ソースへ移動して `init` を再実行。
+- ソースから作った動的リンク版でProxyのソース不足が表示された場合は、そのソースのルートで `init` を再実行。リリース版はソース不要。
 - 準備後：作業するプロジェクトへ移動。
 - Codexを既定にする：`oaiso default codex`。
 - プロジェクト限定は `--local`。
@@ -117,7 +117,6 @@ For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 
 ```bash
 oaiso build
-oaiso proxy build
 oaiso proxy run
 ```
 
@@ -130,7 +129,7 @@ oaiso proxy run
 
 - `proxy run` がネットワークを自動作成。
 - 詳細：[認証プロキシ](auth-proxy.md)。
-- 既存チームプロジェクトの独自Dockerfileは、[設定を確認](configuration.md#プロジェクト設定)してプロジェクト側で `init`。Proxyイメージがない場合だけ先に製品ソースで `oaiso proxy build`。
+- 既存チームプロジェクトの独自Dockerfileは、[設定を確認](configuration.md#プロジェクト設定)してプロジェクト側で `init`。リリース版はProxyイメージも配置済みCLIから準備します。
 
 ## 4. ワーカーを起動する
 
