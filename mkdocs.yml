@@ -73,7 +73,8 @@ nav:
           - ネットワーク管理: commands/network-cmd.md
           - TUI: commands/ui.md
           - シェル補完: commands/completion.md
-          - CLIの更新: commands/update.md
+          - 配布版の更新: commands/upgrade.md
+          - Go版CLIの更新: commands/update.md
       - 設定: configuration.md
       - 組み込みAPI:
           - Go API: go-api.md
@@ -134,7 +135,8 @@ nav:
               - Network: en/commands/network-cmd.md
               - TUI: en/commands/ui.md
               - Completion: en/commands/completion.md
-              - Update: en/commands/update.md
+              - Distribution updates: en/commands/upgrade.md
+              - Go CLI update: en/commands/update.md
           - Configuration: en/configuration.md
           - Embedding API:
               - Go API: en/go-api.md

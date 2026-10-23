@@ -12,7 +12,7 @@
 | Subscription login Kata | Real Kata with fake credentials verified; live login unverified: pinned CLI, memory-only login, temporary VM cleanup, no secret retention in console logs or work VMs |
 | Consolidated status | In progress: distinguish stored, connection-checked, inference-tested, runtime and update states |
 | Lightweight local encrypted storage | [Specification prepared](development/local-credential-store.md); no additional daemon, WSL/headless unlocking |
-| Unified update guidance | Not implemented: show CLI, node, helper and image update scope and order |
+| Unified update guidance | Implemented in development: `oaiso upgrade` plans/applies distribution updates and explains image update order |
 
 - [Development-version login](commands/login.md) is separate from published v0.0.2 installation instructions.
 

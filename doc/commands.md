@@ -35,6 +35,7 @@
 | [`oaiso network`](commands/network-cmd.md) | ネットワーク管理 | create / rm / status |
 | [`oaiso build`](commands/build.md) | サンドボックスイメージのビルド | Dockerfile の自動検出 |
 | [`oaiso ui`](commands/ui.md) | TUI ダッシュボード | キーバインド一覧 |
+| [`oaiso upgrade`](commands/upgrade.md) | 配布版ホスト更新の計画と適用（開発版） | `--version`・`--apply`、イメージ更新の案内 |
 | [`oaiso update`](commands/update.md) | Goで配置したCLIの更新 | リリース版は[配布インストーラー](setup.md#更新する)で更新 |
 | [`oaiso policy`](sandbox-features.md#通信の確認と設定) | 実効通信規則・拒否理由・隔離 | show / check / explain / events / presets / quarantine（revoke別名） |
 | [`oaiso capabilities`](sandbox-features.md) | nodeの検証済み対応機能 | JSON出力 |

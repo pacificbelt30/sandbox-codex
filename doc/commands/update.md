@@ -48,3 +48,5 @@ go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest
 
 - このコマンドはnode・guard・IO logger・固定資産・プロキシイメージを更新しません。
 - [Kataの配置](../kata.md)と[運用時の更新](../operations.md#cliプロキシを更新する)を参照してください。
+
+- 開発版では配布版の更新計画に[`oaiso upgrade`](upgrade.md)も使えます。

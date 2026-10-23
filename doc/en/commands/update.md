@@ -48,3 +48,5 @@ go install github.com/pacificbelt30/codex-dock/cmd/oaiso@latest
 
 - This command does not update the node, guard, IO logger, pinned assets or proxy images.
 - See [host setup](../../kata.md) and [operations](../../operations.md) (Japanese).
+
+- Development builds also provide [`oaiso upgrade`](upgrade.md) for distribution update plans.
