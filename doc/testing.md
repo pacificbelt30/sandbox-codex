@@ -16,8 +16,10 @@
 | 実Kata | 配布アーカイブを展開してパイプ導入。ソース・Go・事前Proxyイメージなしで初期化とVM起動・削除が成功 |
 | 更新・復旧 | 稼働中の更新拒否、正常更新、意図的な起動失敗からの自動復旧、明示rollback成功 |
 | 後片付け | VM・コンテナ・task・namespace・専用nftablesの残存0件を記録し、使い捨てノードと専用ボリュームを回収 |
+| 公開配布物 | [v0.0.2](https://github.com/pacificbelt30/sandbox-oasis/releases/tag/v0.0.2)の3ファイルを取得。GitHub側digestとSHA256SUMSの一致、公開インストーラーのパイプ実行による実アーカイブ取得・検証・配置計画が成功 |
+| CI | Go race/coverage・vet・lint・Python 77件、通常CIの配布物生成、Release workflowが成功 |
 
-- テストの上流AI応答は架空の資格情報を使います。実ログイン・実推論の確認ではありません。
+- 試験には架空の資格情報を使い、実ログイン・実推論は行っていません。
 - 通常CIは配布物の生成まで確認し、公開はタグをpushしたときのRelease workflowで実施します。
 
 ## ホストPythonのuv管理を検証（2026-10-23）
