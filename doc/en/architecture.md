@@ -75,7 +75,8 @@ flowchart LR
 
 - Stop records the exit code and time from containerd's exit notification.
 - When waiting for a running task to exit, a failed notification or a channel closed without a result remains an error.
-- Task deletion retains stopped/absent checks and Kata retirement verification.
+- Task deletion retains stopped/absent checks.
+- Before releasing guest user code, reattaching a worker, or waiting for stop, Kata supervisor processes are verified and moved to a sibling cgroup within the same resource limits.
 
 - Deletion intent is persisted before resources are removed.
 - Failed cleanup can be retried.

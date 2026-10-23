@@ -13,9 +13,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Retire is called by the native backend only after containerd confirms the
-// guest task has exited, before Task.Delete sends shim Shutdown. Kata 4.2's
-// embedded VMM tries to destroy its own occupied sandbox cgroup. A sibling leaf
+// Retire prepares the supervisor before user code is released or stop is sent,
+// and is safe to repeat after exit. Kata 4.2 may destroy its own sandbox cgroup
+// while serving Wait, before reporting the guest's exit. A sibling leaf
 // empties that sandbox while keeping every thread inside the SAME CPU/memory/
 // swap/PID envelope. This never moves a process outside its allocation.
 //
@@ -54,6 +54,16 @@ func (g *Guard) Retire(ctx context.Context, allocation, worker string) error {
 		if process.Kind != "runtime" && process.Kind != "logger" {
 			return fmt.Errorf("unexpected Dragonball occupant")
 		}
+		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", process.PID))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(string(data)) == "0::"+strings.TrimPrefix(target, "/sys/fs/cgroup") {
+			continue
+		}
 		if err = g.moveRetiredProcess(ctx, allocation, worker, process.PID, target); err != nil {
 			return err
 		}
@@ -71,6 +81,22 @@ func (g *Guard) moveRetiredProcess(ctx context.Context, allocation, worker strin
 		return err
 	}
 	defer func() { _ = unix.Close(fd) }()
+	// Reattest this exact occupant after opening its pidfd. A process from the
+	// initial scan may have exited; never stop or move a replacement elsewhere.
+	processes, err := g.scanProcesses(ctx, allocation, worker, false)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, process := range processes {
+		if process.PID == pid {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
 	if err = unix.PidfdSendSignal(fd, unix.SIGSTOP, nil, 0); err == unix.ESRCH {
 		return nil
 	} else if err != nil {

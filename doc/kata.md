@@ -158,7 +158,8 @@ oaiso runtime-check
 ## Dragonball 4.2 の回収対応
 
 - 組み込みVMMのshim自身がsandbox cgroupに入るため、終了時に自身のcgroupを削除するとEBUSYになる。
-- task終了後に、固定したshimとログプロセスのinode・worker ID・所属・資源上限を確認し、同じ資源上限内の `supervisor` leafへ移してからShutdownする。
+- guestのユーザーコードを開始する前に、固定したshimとログプロセスのinode・worker ID・所属・資源上限を確認し、同じ資源上限内の `supervisor` leafへ移す。
+- 管理サービスの再起動による再接続時と、停止の終了待ちを始める前にも確認する。Kataは終了通知を返す前にcgroupを削除することがあるため、task終了後の移動だけでは遅い。
 - 資源上限の外へは移さない。
 
 - network namespaceを保持したまま再起動すると、残ったtcfilter設定と衝突する場合がある。

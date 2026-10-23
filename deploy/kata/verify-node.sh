@@ -20,16 +20,24 @@ proof 'fresh setup and operator readiness'
 ctr_node images import --local /images.tar > /evidence/import.txt
 install -d -o kata-test -g 1000 -m 0700 /home/kata-test/.config/codex-dock /home/kata-test/project
 proxy_fixture=${CODEX_DOCK_KATA_PROXY_IMAGE:-codex-dock-proxy:policy-verification}
-export CODEX_DOCK_KATA_PROXY_IMAGE=$proxy_fixture
+worker_fixture=${CODEX_DOCK_KATA_TEST_IMAGE:-codex-dock:kata-guard}
+export CODEX_DOCK_KATA_PROXY_IMAGE=$proxy_fixture CODEX_DOCK_KATA_TEST_IMAGE=$worker_fixture
 python3 - <<'PYCONFIG'
 import json,os
 from pathlib import Path
-Path('/home/kata-test/.config/codex-dock/config.toml').write_text('default_image = "codex-dock:kata-guard"\nproxy_image = '+json.dumps(os.environ['CODEX_DOCK_KATA_PROXY_IMAGE'])+'\nauto_build = false\n')
+Path('/home/kata-test/.config/codex-dock/config.toml').write_text('default_image = '+json.dumps(os.environ['CODEX_DOCK_KATA_TEST_IMAGE'])+'\nproxy_image = '+json.dumps(os.environ['CODEX_DOCK_KATA_PROXY_IMAGE'])+'\nauto_build = false\n')
 PYCONFIG
 chown kata-test:1000 /home/kata-test/.config/codex-dock/config.toml
 chmod 0600 /home/kata-test/.config/codex-dock/config.toml
 cli init > /evidence/init.txt 2>&1
-cli image check codex-dock:kata-guard --agent codex --json > /evidence/image.json
+cli image check "$worker_fixture" --agent codex --json > /evidence/image.json
+python3 - <<'PYIMAGE'
+import json
+from pathlib import Path
+checks = json.loads(Path('/evidence/image.json').read_text())['checks']
+if not any(check['name'] == 'auth-entrypoint' and check['status'] == 'ok' for check in checks):
+    raise SystemExit('test worker entrypoint does not match this CLI; rebuild the worker image before acceptance')
+PYIMAGE
 proof 'init prepares proxy and validates custom-compatible image without real credentials'
 cd /home/kata-test/project
 printf host > input
@@ -89,7 +97,7 @@ if [[ -x /acceptance.test ]]; then
  install -d -o 12001 -g 12002 -m 2777 /home/kata-test/owner-fixture/project/setgid
  install -d -o root -g 1000 -m 0770 /run/setup-node-restart
  operator env CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_TEST_BINARY=/usr/local/bin/oaiso \
-  CODEX_DOCK_KATA_TEST_IMAGE=codex-dock:kata-guard CODEX_DOCK_KATA_PROXY_IMAGE="$proxy_fixture" \
+  CODEX_DOCK_KATA_TEST_IMAGE="$worker_fixture" CODEX_DOCK_KATA_PROXY_IMAGE="$proxy_fixture" \
   CODEX_DOCK_KATA_OWNER_FIXTURE=/home/kata-test/owner-fixture/project \
   CODEX_DOCK_NODE_RESTART_REQUEST_DIR=/run/setup-node-restart \
   /acceptance.test -test.run "${CODEX_DOCK_KATA_ACCEPTANCE_RUN:-^TestKata(Acceptance|WorkspaceSharing|GoAPI)$}" -test.v -test.count=1 -test.timeout=25m > /evidence/acceptance.txt 2>&1 &
@@ -101,19 +109,68 @@ if [[ -x /acceptance.test ]]; then
    if [[ $action == namespace ]]; then
     [[ $cid =~ ^[0-9a-f]{64}$ ]]
     [[ -z $(ctr_node tasks list -q | awk -v cid="$cid" '$0==cid{print}') ]]
+    python3 - "$cid" <<'PYBEFORE'
+import json, os, sys
+from pathlib import Path
+cid = sys.argv[1]
+stat = os.stat('/run/netns/cdx-' + cid[:24])
+Path('/run/setup-node-restart/before.json').write_text(json.dumps({'device': stat.st_dev, 'inode': stat.st_ino}))
+PYBEFORE
     ip netns del "cdx-${cid:0:24}"
+    [[ ! -e /run/netns/cdx-${cid:0:24} ]]
    else
     [[ $action == restart ]]
-    systemctl restart codex-dock-node
-    for attempt in $(seq 1 60); do [[ -S /run/codex-dock-node.sock ]] && break; sleep .2; done
    fi
-   printf complete > /run/setup-node-restart/complete
+   systemctl restart codex-dock-node
+   ready=''
+   for attempt in $(seq 1 60); do
+    if cli vm ps -a --json > /dev/null 2>&1; then ready=1; break; fi
+    sleep .2
+   done
+   [[ $ready == 1 ]]
+   if [[ $action == namespace ]]; then
+    python3 - "$cid" <<'PYAFTER'
+import json, os, sys
+from pathlib import Path
+root = Path('/run/setup-node-restart')
+cid = sys.argv[1]
+stat = os.stat('/run/netns/cdx-' + cid[:24])
+before = json.loads((root / 'before.json').read_text())
+after = {'device': stat.st_dev, 'inode': stat.st_ino}
+if before == after:
+    raise SystemExit('stopped worker namespace was not replaced')
+proof = {'operation': 'namespace', 'container_id': cid, 'removed': True, 'before': before, 'after': after}
+(root / 'complete.tmp').write_text(json.dumps(proof))
+os.replace(root / 'complete.tmp', root / 'complete')
+PYAFTER
+   else
+    printf ready > /run/setup-node-restart/complete.tmp
+    mv /run/setup-node-restart/complete.tmp /run/setup-node-restart/complete
+   fi
   fi
   sleep .2
  done
  wait "$test_pid"
  proof "native Kata acceptance on newly installed node: ${CODEX_DOCK_KATA_ACCEPTANCE_RUN:-all}"
 fi
+# Case proxies intentionally retain their shared egress network for reuse.
+# This disposable controller owns an initially empty node: remove only that
+# expected, unused network, and retain evidence instead of masking other leaks.
+curl --fail --silent --show-error --unix-socket /run/codex-dock-node.sock http://localhost/networks > /evidence/networks-after-acceptance.json
+cleanup_egress=$(python3 - <<'PYCLEANUP'
+import json
+from pathlib import Path
+networks = json.loads(Path('/evidence/networks-after-acceptance.json').read_text())
+for network in networks:
+    if network['Name'] != 'dock-net-proxy' or network.get('Containers'):
+        raise SystemExit('unexpected or occupied network remains after acceptance; retain evidence')
+if networks:
+    if len(networks) != 1:
+        raise SystemExit('ambiguous shared egress network')
+    print('remove')
+PYCLEANUP
+)
+if [[ $cleanup_egress == remove ]]; then cli network rm; fi
 ctr_node images list -q | sort > /evidence/images-before-update.txt
 /bundle-next/oaiso setup --bundle /bundle-next --operator kata-test --offline --apply > /evidence/update.txt 2>&1
 updated_release=$(release)
@@ -149,7 +206,21 @@ proof 'failed new service activation automatically restores previous working rel
 [[ $(release) == "$initial_release" ]]
 cli runtime-check --json > /evidence/readiness-rollback.json
 cli vm ps -a --json > /evidence/final-vms.json
-[[ -z $(ctr_node containers list -q) && -z $(ctr_node tasks list -q) ]]
-[[ -z $(ip netns list) ]]
-[[ -z $(nft list tables | awk '$3 ~ /^cdx_/ { print }') ]]
+ctr_node containers list -q > /evidence/final-containers.txt
+ctr_node tasks list -q > /evidence/final-tasks.txt
+ip netns list > /evidence/final-netns.txt
+nft list tables > /evidence/final-nft-tables.txt
+python3 - <<'PYEMPTY'
+import json
+from pathlib import Path
+if json.loads(Path('/evidence/final-vms.json').read_text())['vms']:
+    raise SystemExit('VM inventory is not empty; inspect final-vms.json')
+for name in ['final-containers.txt', 'final-tasks.txt', 'final-netns.txt']:
+    if Path('/evidence', name).read_text().strip():
+        raise SystemExit('resources remain; inspect ' + name)
+for line in Path('/evidence/final-nft-tables.txt').read_text().splitlines():
+    fields = line.split()
+    if len(fields) > 2 and fields[2].startswith('cdx_'):
+        raise SystemExit('owned firewall table remains; inspect final-nft-tables.txt')
+PYEMPTY
 proof 'explicit rollback restores matching CLI/node with no remaining containers, VMs or networks'

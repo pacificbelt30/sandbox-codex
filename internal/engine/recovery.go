@@ -54,6 +54,11 @@ func (b *Backend) recover(ctx context.Context) error {
 		}
 		h.io = task.IO()
 		b.hubs[r.ID] = h
+		if err = b.prepareSupervisor(ctx, r); err != nil {
+			_ = h.Close()
+			delete(b.hubs, r.ID)
+			return fmt.Errorf("prepare recovered worker supervisor %s: %w", r.ID, err)
+		}
 		wait, err := task.Wait(namespaces.WithNamespace(context.Background(), Namespace))
 		if err != nil {
 			return err

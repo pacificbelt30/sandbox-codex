@@ -56,8 +56,8 @@ type Options struct {
 	Logger                                           string
 	DNS                                              []string
 	TemporaryStorage                                 bool
-	// Retire moves an attested, exited Dragonball shim to a sibling leaf
-	// inside the same bounded envelope before its self-owned cgroup is deleted.
+	// Retire keeps an attested Dragonball supervisor in a sibling leaf inside
+	// the same bounded envelope before its self-owned cgroup is deleted.
 	Retire      func(context.Context, string, string) error
 	AbortCreate func(context.Context, string, string) error
 	Tools       map[string]string
@@ -670,13 +670,8 @@ func (b *Backend) deleteTask(ctx context.Context, r *record, t cd.Task) error {
 	if s.Status != cd.Stopped {
 		return fmt.Errorf("task must exit before deletion")
 	}
-	if r.Host.Runtime != "runc" {
-		if b.opts.Retire == nil {
-			return fmt.Errorf("dragonball retirement verifier missing")
-		}
-		if err = b.opts.Retire(ctx, r.Config.Labels["codex-dock.allocation"], r.ID); err != nil {
-			return err
-		}
+	if err = b.prepareSupervisor(ctx, r); err != nil {
+		return err
 	}
 	_, err = t.Delete(ctx)
 	if errdefs.IsNotFound(err) {
@@ -684,6 +679,17 @@ func (b *Backend) deleteTask(ctx context.Context, r *record, t cd.Task) error {
 	}
 	return err
 }
+
+func (b *Backend) prepareSupervisor(ctx context.Context, r *record) error {
+	if r.Host.Runtime == "runc" {
+		return nil
+	}
+	if b.opts.Retire == nil {
+		return fmt.Errorf("dragonball retirement verifier missing")
+	}
+	return b.opts.Retire(ctx, r.Config.Labels["codex-dock.allocation"], r.ID)
+}
+
 func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout int) error {
 	if r.FailedCreate {
 		return b.abortTask(ctx, r, c)
@@ -694,6 +700,11 @@ func (b *Backend) stop(ctx context.Context, r *record, c cd.Container, timeout i
 	}
 	if err != nil {
 		return fmt.Errorf("loading task to stop: %w", err)
+	}
+	// Wait can trigger Kata's cgroup cleanup itself. Preparing only after exit
+	// is too late, especially after reconnecting to a live VM.
+	if err = b.prepareSupervisor(ctx, r); err != nil {
+		return fmt.Errorf("preparing Dragonball supervisor for stop: %w", err)
 	}
 	wait, err := t.Wait(ctx)
 	if err != nil {

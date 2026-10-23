@@ -27,6 +27,8 @@ def main():
                         help='Go test name pattern for the real-Kata acceptance binary')
     parser.add_argument('--cache', type=Path, default=ROOT / '.kata-verification/setup-e2e/cache')
     parser.add_argument('--proxy-image', default='codex-dock-proxy:policy-verification')
+    parser.add_argument('--worker-image', default='codex-dock:kata-guard',
+                        help='Preloaded worker image matching the current entrypoint and pinned agents')
     parser.add_argument('--image', default='codex-dock-setup-node:verification')
     parser.add_argument('--sudo-docker', action='store_true')
     parser.add_argument('--offline', action='store_true')
@@ -67,6 +69,7 @@ def main():
                 '--privileged', '--cgroupns=private', '--network=none',
                 '--device', '/dev/kvm', '--device', '/dev/vhost-vsock', '--device', '/dev/vhost-net',
                 '-e', 'CODEX_DOCK_DISPOSABLE_NODE=1', '-e', 'CODEX_DOCK_KATA_PROXY_IMAGE='+args.proxy_image,
+                '-e', 'CODEX_DOCK_KATA_TEST_IMAGE='+args.worker_image,
                 '-e', 'CODEX_DOCK_KATA_ACCEPTANCE_RUN='+args.acceptance_run,
                 '--mount', f'type=volume,src={volume},dst=/var/lib/codex-dock-containerd']
         for source, target, readonly in [

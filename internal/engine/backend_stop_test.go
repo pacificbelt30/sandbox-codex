@@ -32,9 +32,18 @@ type stopExitTask struct {
 	exit       *cd.ExitStatus
 	terminated bool
 	deleted    bool
+	beforeKill func() error
+	beforeWait func() error
 }
 
-func (t *stopExitTask) Wait(context.Context) (<-chan cd.ExitStatus, error) { return t.wait, nil }
+func (t *stopExitTask) Wait(context.Context) (<-chan cd.ExitStatus, error) {
+	if t.beforeWait != nil {
+		if err := t.beforeWait(); err != nil {
+			return nil, err
+		}
+	}
+	return t.wait, nil
+}
 func (t *stopExitTask) Status(context.Context) (cd.Status, error) {
 	if t.terminated {
 		return cd.Status{}, errdefs.ErrNotFound
@@ -42,12 +51,57 @@ func (t *stopExitTask) Status(context.Context) (cd.Status, error) {
 	return cd.Status{Status: cd.Running}, nil
 }
 func (t *stopExitTask) Kill(context.Context, syscall.Signal, ...cd.KillOpts) error {
+	if t.beforeKill != nil {
+		if err := t.beforeKill(); err != nil {
+			return err
+		}
+	}
 	t.terminated = true
 	if t.exit != nil {
 		t.wait <- *t.exit
 	}
 	close(t.wait)
 	return nil
+}
+
+func TestKataStopPreparesSupervisorBeforeSignalingGuest(t *testing.T) {
+	at := time.Now().UTC()
+	task := &stopExitTask{wait: make(chan cd.ExitStatus, 1), exit: cd.NewExitStatus(0, at, nil)}
+	prepared := false
+	task.beforeKill = func() error {
+		if !prepared {
+			return errors.New("Kata Wait would destroy an occupied sandbox cgroup")
+		}
+		return nil
+	}
+	task.beforeWait = task.beforeKill
+	b := &Backend{opts: Options{State: t.TempDir(), Retire: func(_ context.Context, allocation, worker string) error {
+		if allocation != "reservation" || worker != strings.Repeat("c", 64) {
+			t.Fatal("retirement did not use the worker's exact identity")
+		}
+		prepared = true
+		return nil
+	}}}
+	r := &record{ID: strings.Repeat("c", 64), Config: container.Config{Labels: map[string]string{"codex-dock.allocation": "reservation"}}, Host: container.HostConfig{Runtime: "io.containerd.kata.v2"}}
+	if err := b.stop(context.Background(), r, stopContainer{task: task}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if !prepared || !task.terminated || r.FinishedAt == "" {
+		t.Fatal("stop did not prepare the supervisor and retain exit evidence")
+	}
+}
+
+func TestKataStopRejectsUnverifiedSupervisorWithoutSignaling(t *testing.T) {
+	cause := errors.New("allocation ownership mismatch")
+	task := &stopExitTask{wait: make(chan cd.ExitStatus, 1)}
+	b := &Backend{opts: Options{State: t.TempDir(), Retire: func(context.Context, string, string) error { return cause }}}
+	r := &record{ID: strings.Repeat("d", 64), Host: container.HostConfig{Runtime: "io.containerd.kata.v2"}}
+	if err := b.stop(context.Background(), r, stopContainer{task: task}, 1); !errors.Is(err, cause) {
+		t.Fatalf("retirement error was lost: %v", err)
+	}
+	if task.terminated || task.deleted || r.FinishedAt != "" {
+		t.Fatal("unverified worker was signaled or marked stopped")
+	}
 }
 func (t *stopExitTask) Delete(context.Context, ...cd.ProcessDeleteOpts) (*cd.ExitStatus, error) {
 	t.deleted = true

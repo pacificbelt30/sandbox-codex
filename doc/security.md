@@ -128,7 +128,7 @@
 
 ### cgroup・孤児回収
 
-- Dragonball終了時：同じ上限内のsibling leafへ回収処理を移す。
+- Dragonballの管理プロセス：所有権を検証し、ユーザーコードの開始前・再接続時・停止待ちの前に、同じ資源上限内の別cgroupへ移す。
 - `cgroup.kill`：専用予約の全占有プロセスを確認した場合だけ使用。
 - 対象外：他サービスのgroup・任意PID・不明namespace。
 - 管理層へ接続不能：`unknown` とし、孤児として削除しない。

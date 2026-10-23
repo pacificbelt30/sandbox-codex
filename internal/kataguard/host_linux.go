@@ -331,7 +331,13 @@ func (g *Guard) Verify(ctx context.Context, id, worker string) error {
 	if _, err = g.scanProcesses(ctx, id, worker, true); err != nil {
 		return err
 	}
-	return g.trackAllocation(ctx, id, worker)
+	if err = g.trackAllocation(ctx, id, worker); err != nil {
+		return err
+	}
+	// Kata may clean up its sandbox while serving Wait, before the engine sees
+	// an exit result. Keep its supervisor out of that self-deleted leaf before
+	// the bootstrap gate releases user code, including naturally exiting tasks.
+	return g.Retire(ctx, id, worker)
 }
 
 func (g *Guard) scanProcesses(ctx context.Context, id, worker string, complete bool) ([]VMProcess, error) {
