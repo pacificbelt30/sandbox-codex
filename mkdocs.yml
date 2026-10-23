@@ -87,6 +87,7 @@ nav:
       - トラブルシューティング: troubleshooting.md
       - 性能とベンチマーク: performance.md
   - 開発:
+      - 開発用ツールの準備: development/toolchain.md
       - 仕組み:
           - アーキテクチャ: architecture.md
           - ネットワーク: network.md
@@ -145,6 +146,7 @@ nav:
               - Networking: en/network.md
           - Upstream compatibility: en/upstream-compatibility.md
           - Future work: en/future-work.md
+          - Development tools: en/development/toolchain.md
           - Documentation editing: en/development/documentation.md
           - Removed features:
               - Firewall: en/firewall.md

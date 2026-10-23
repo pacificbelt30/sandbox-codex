@@ -110,7 +110,7 @@
 
 ## コードを確認する
 
-- Go 1.24.7以上を使います。
+- [開発用ツール](development/toolchain.md)を準備。Goは[公式Linux手順](https://go.dev/doc/install)で1.24.7以上を導入します。
 - race検査にはCコンパイラーも必要です。
 
 ```bash

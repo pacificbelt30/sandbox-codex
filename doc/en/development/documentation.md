@@ -17,7 +17,7 @@
 
 ## Write a page
 
-1. Start with the purpose, prerequisites and first action.
+1. Start with the purpose, prerequisites and first action; link required tools to their official installation instructions.
 2. Use numbered steps and commands for procedures.
 3. Use tables for choices, settings, defaults and limitations.
 4. Keep supporting bullets short, with one point per item.

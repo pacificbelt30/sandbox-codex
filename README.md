@@ -17,7 +17,7 @@
 - 対象：**Ubuntu 26.04・x86_64・systemd・KVM・cgroup v2**。
 - 実行者：`sudo` が使える通常ユーザー。管理操作はスクリプトが昇格。
 - 配布：GitHub Releasesのビルド済み版。Go・Make・ソース取得は不要。
-- ホストPython：uvで3.12を自動準備。
+- ホストPython：[uv公式手順](https://docs.astral.sh/uv/getting-started/installation/)でuvを準備し、[uv管理のPython 3.12](https://docs.astral.sh/uv/guides/install-python/)を使用。未導入なら自動準備。
 - ほかのLinux：[手動配置](doc/kata.md)。WSL／VM：上記要件とnested virtualizationが必要。
 
 **1. 配置計画を確認し、インストール**
@@ -39,7 +39,7 @@ oaiso runtime-check
 **3. 認証を選び、初回起動**
 
 - [クイックスタートの「認証方式を選ぶ」](doc/getting-started.md#2-認証方式を選ぶ)へ進む。
-- 詳細・配置先・更新：[Installation](doc/installation.md)。
+- 詳細・配置先・更新：[Installation](doc/installation.md)。[必要なツールの公式手順](doc/installation.md#ツールの公式手順)も掲載。
 - `--bundle`：[ビルド済みの実行ファイル一式を使う場合](doc/setup.md#ビルド済みバンドルとは)の指定。通常は不要。
 - `make install` はCLI・補助ツール・補完の配置のみ。実行ホストの準備には上の手順を使用。
 
@@ -173,7 +173,8 @@ git add oaiso.toml       # チームで共有する場合
 
 ## 開発
 
-- 必要なツール：Go 1.24.7以上・Make。
+- ビルド済み版の利用にGoは不要。ソースからビルドする場合はGo 1.24.7以上・Makeなどを準備。
+- [開発用ツールの準備](doc/development/toolchain.md)：[Go公式のLinux手順](https://go.dev/doc/install)と各ツールの公式手順。
 - `make build`：CLI・ワーカー起動用guard・IO loggerを作成。
 - ホストへの配置：[Kataの手順](doc/kata.md)。
 - ドキュメントを修正する場合：[ページの追加・修正手順](doc/development/documentation.md)。

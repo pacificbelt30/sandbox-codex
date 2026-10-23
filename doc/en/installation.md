@@ -150,3 +150,21 @@ user sudo codex-dock
 | Offline installation | [Offline setup](../setup.md#オフライン配置) (Japanese) |
 | Build and install CLI, helpers and completion | `make build` / `sudo make install`; excludes Kata and host services |
 | Updates and rollback | [Update and recovery](../setup.md#更新する) (Japanese) |
+
+## Official tool installation instructions
+
+- Prebuilt installations **do not require Go, Make or Git**. Prepare [development tools](development/toolchain.md) only for source builds.
+- Use the installer above to deploy Oaiso with its pinned runtime versions and settings.
+
+| Tool | Installation or purpose | Official instructions or downloads |
+|---|---|---|
+| Bash | Host shell; use Ubuntu's supplied shell | [GNU Bash installation](https://www.gnu.org/software/bash/manual/html_node/Installing-Bash.html) |
+| curl | Download the installer and release assets | [Official download guide](https://curl.se/download.html) |
+| uv | Prepared automatically when missing | [uv installation](https://docs.astral.sh/uv/getting-started/installation/) |
+| Python | Managed 3.12, prepared through uv for setup and updates | [Install Python with uv](https://docs.astral.sh/uv/guides/install-python/) |
+| Kata Containers | Worker VM isolation; deployed by the installer | [Installation guides](https://github.com/kata-containers/kata-containers/blob/main/docs/install/README.md) |
+| containerd | VM/container management; deployed by the installer | [Getting started](https://github.com/containerd/containerd/blob/main/docs/getting-started.md) |
+| BuildKit | Worker/proxy image builds; deployed by the installer | [Quick start](https://github.com/moby/buildkit#quick-start) |
+| runc | Proxy containers; deployed by the installer | [Releases](https://github.com/opencontainers/runc#releases) |
+
+- Go is needed in environments that build Oaiso or a product embedding its Go API. See the [official Go Linux procedure](https://go.dev/doc/install) and our [command examples](development/toolchain.md#2-install-go-using-the-official-linux-procedure).

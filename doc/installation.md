@@ -142,3 +142,21 @@ user sudo codex-dock
 | オフライン導入 | [オフライン配置](setup.md#オフライン配置) |
 | CLI・補助ツール・補完をビルド・配置 | `make build` / `sudo make install`。Kata・管理サービスの配置は含まない |
 | 更新・ロールバック | [更新と復旧](setup.md#更新する) |
+
+## ツールの公式手順
+
+- ビルド済み版の導入には **Go・Make・Gitは不要**。ソースからのビルド時は[開発用ツール](development/toolchain.md)を準備。
+- 本製品の配置には上のインストーラーを使用。実行基盤は本製品の固定版・設定で配置します。
+
+| ツール | 配置方法・用途 | 公式の導入手順・配布元 |
+|---|---|---|
+| Bash | ホストのシェル。Ubuntu標準のものを使用 | [GNU Bashの導入](https://www.gnu.org/software/bash/manual/html_node/Installing-Bash.html) |
+| curl | ホストでインストーラー・配布物を取得 | [公式ダウンロード案内](https://curl.se/download.html) |
+| uv | 未導入ならインストーラーが自動準備 | [uvのインストール](https://docs.astral.sh/uv/getting-started/installation/) |
+| Python | uv管理の3.12を自動準備。配置・更新処理に使用 | [uvによるPythonの導入](https://docs.astral.sh/uv/guides/install-python/) |
+| Kata Containers | VMによるワーカー隔離。インストーラーが配置 | [インストールガイド](https://github.com/kata-containers/kata-containers/blob/main/docs/install/README.md) |
+| containerd | VM・コンテナの管理。インストーラーが配置 | [Getting started](https://github.com/containerd/containerd/blob/main/docs/getting-started.md) |
+| BuildKit | ワーカー・Proxyのイメージ作成。インストーラーが配置 | [Quick start](https://github.com/moby/buildkit#quick-start) |
+| runc | Proxyコンテナの実行。インストーラーが配置 | [公式配布物の導入](https://github.com/opencontainers/runc#releases) |
+
+- Goが必要になるのは、製品自体やGo APIを使う呼び出し側をソースからビルドする環境です。[Go公式のLinux手順](https://go.dev/doc/install)に沿った[コマンド例](development/toolchain.md#2-goを公式linux手順で導入する)を掲載しています。

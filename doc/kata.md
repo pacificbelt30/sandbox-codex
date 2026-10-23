@@ -49,7 +49,9 @@ cd sandbox-oasis
 ```
 
 - 公式リリースの配布物とSHA256を確認し、新しい作業ディレクトリへ展開する。
-- 必要なツールはuv、zstd、debugfs（e2fsprogs）、静的リンク可能なCコンパイラー。
+- Go・Make・Git・uv・Cコンパイラー：[開発用ツールの準備と公式手順](development/toolchain.md)。
+- 追加ツール：zstd（[公式配布](https://github.com/facebook/zstd/releases)）、debugfsを含むe2fsprogs（[公式配布・導入案内](https://e2fsprogs.sourceforge.net/)）。
+- 実行基盤の公式手順：[Kata・containerd・BuildKit・runc](installation.md#ツールの公式手順)。
 - ホストPythonは[インストール手順](installation.md#2-ツールを準備する)と同じuv管理の3.12を使う。
 
 ```bash

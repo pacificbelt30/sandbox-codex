@@ -66,21 +66,20 @@ bash install.sh --bundle /path/to/node-bundle --apply
 
 ### ソースからビルドする場合
 
-**開発者・独自変更を含む版を使う場合の手順です。**
+**開発者・独自変更を含む版を使う場合の手順です。ビルド済み版の導入では不要です。**
+
+1. [開発用ツールを準備](development/toolchain.md)。Goは公式Linuxアーカイブから導入し、`go version` を確認。
+2. 以下でソースを取得し、配置計画を確認して適用。
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y git make golang-go
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.12
 git clone https://github.com/pacificbelt30/sandbox-oasis.git
 cd sandbox-oasis
 ./scripts/install.sh
 ./scripts/install.sh --apply
 ```
 
-- Go 1.24.7以上・Make・Git・uvが必要です。
-- uvの取得：[公式手順](https://docs.astral.sh/uv/getting-started/installation/)。
+- 必要なツールと公式手順：[Go・Make・Git・uv・Python](development/toolchain.md#必要なツールと公式手順)。
+- Goの最低版は `go.mod` の1.24.7。公式の安定版と対応するSHA-256を使用してください。
 
 ### 個別に計画・適用する場合
 

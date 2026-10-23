@@ -57,6 +57,7 @@
 - [認証API](auth-proxy/endpoints.md)・[短命トークン](auth-proxy/tokens.md)
 - [テストと動作確認](testing.md)：自動テスト、実Kata試験、確認済みの範囲
 - [今後の対応](future-work.md)：追加するコーディングエージェントと対応条件
+- [開発用ツールを準備する](development/toolchain.md)：Go公式のLinux手順と各ツールの導入リンク
 - [ドキュメントを追加・修正する](development/documentation.md)：開発者向け。ページの書き方と確認コマンド
 
 [追加のサンドボックス制御](sandbox-features.md)
