@@ -137,6 +137,8 @@
 
 ## 独立した認証管理の設計要件：WSL・VM・ヘッドレス
 
+- 実装する保存方式・暗号・解錠・移行：[ローカル暗号化ストアの仕様](development/local-credential-store.md)。
+
 - この節は今後の製品内Vaultの要件です。
 - 暗号化Vault、鍵backend、解除UI、専用loginフローは未実装です。
 - 初期のFileStoreと、既存の製品APIキーファイル・ローカルOAuth更新状態は権限制限付きの平文です。

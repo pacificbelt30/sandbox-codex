@@ -132,6 +132,8 @@
 
 ## Independent credential management: WSL, VMs and headless systems
 
+- Storage, encryption, unlocking and migration: [local credential store specification](development/local-credential-store.md).
+
 - This section specifies future product-vault requirements.
 - The encrypted vault, key backends, unlock UI and dedicated login flow are not implemented.
 - The initial FileStore, existing product API-key files and local OAuth rotation state are permission-restricted plaintext.
