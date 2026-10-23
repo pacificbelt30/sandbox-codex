@@ -53,9 +53,10 @@ Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4
 Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: /var/cache/codex-dock-setup; offline: no
 ```
 
-- `<version>`, paths and account names vary by installation.
-- Plan only: the final line includes `No host changes. Add --apply as root.`
-- Successful application: the final line starts with `Node ready.` Log in again, then verify below.
+- Versions, paths and account names are examples and vary by installation and release.
+- Plan only ends with `Plan only. Re-run the installer with --apply to install this release.`
+- Successful application ends with `Node installed. Log in again, then run oaiso init.` Log in again before checking below.
+- Planning can download uv, Python and release assets. Host services are installed only with `--apply`.
 
 | Command or option | Behavior |
 |---|---|
@@ -75,6 +76,17 @@ Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: 
 
 - Existing Docker and default containerd packages are retained.
 - Network setup, verification and recovery: [setup details](../setup.md) (Japanese).
+
+### Download and review a pinned release
+
+**Example for v0.0.2. Inspect the saved script, then use the same file for planning and installation.**
+
+```bash
+curl -fsSL -o install.sh https://github.com/pacificbelt30/sandbox-oasis/releases/download/v0.0.2/install.sh
+less install.sh
+bash install.sh --version v0.0.2
+bash install.sh --version v0.0.2 --apply
+```
 
 ## 4. Log in again and verify
 
@@ -113,7 +125,7 @@ user sudo codex-dock
 
 1. [Choose credentials](getting-started.md#2-prepare-credentials): independent profile or legacy host integration.
 2. Run `oaiso init`; use `oaiso init --agent claude` for Claude Code.
-3. From your project, run `oaiso codex` or `oaiso run --agent claude`.
+3. From your project, run `oaiso codex` or `oaiso claude`.
 
 - Normal `init` and `run` operations do not require `sudo`.
 - Real API keys and OAuth tokens stay in the Auth Proxy; work VMs receive short-lived placeholders.
@@ -122,14 +134,11 @@ user sudo codex-dock
 ## What `--bundle` means
 
 - A directory containing the prebuilt `oaiso` CLI, worker guard, I/O logger and `bundle.json` (version and SHA-256 checksums).
-- Normal installation creates it in `dist/node-bundle/`; you do not need to specify the option.
+- The release installer downloads and extracts it into a temporary directory; normally you do not specify the option. `make node-bundle` creates `dist/node-bundle/` only when building from source.
 - Use `--bundle PATH` to use an extracted release bundle or bring one from another host. The destination host needs uv/Python, but not Go/Make.
 - It excludes Kata archives, container images, projects and credentials. Offline installation also needs prepared archives and Python.
 
-```bash
-bash install.sh --bundle /path/to/node-bundle
-bash install.sh --bundle /path/to/node-bundle --apply
-```
+- Use a saved `install.sh` and a verified extracted bundle. See [download and bundle examples](../setup.md#ビルド済みバンドルとは) (Japanese), including offline prerequisites.
 
 ## Other installation paths
 

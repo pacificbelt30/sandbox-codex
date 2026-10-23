@@ -5,22 +5,7 @@
 - `oaiso proxy` は、認証用と一般通信用の2つのプロキシを管理します。
 - 仕組みは[認証プロキシ](../auth-proxy.md)、更新は[運用手順](../operations.md#cliプロキシを更新する)を参照してください。
 
-## ビルドする
-
-```bash
-oaiso proxy build
-oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
-```
-
-| フラグ | 内容 |
-|---|---|
-| `--tag`, `-t` | タグ。既定は設定の `proxy_image` |
-| `--dockerfile`, `-f` | Dockerfileのパス |
-
-- BuildKitを使い、OCI出力を専用containerdへ取り込みます。
-- ビルドコンテキストはカレントディレクトリです。
-- Goソースが必要なため、リポジトリのルートで実行してください。
-- Dockerfileは `docker/proxy/Dockerfile`、旧配置の `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`、設定ディレクトリの順に探します。
+- リリース版では `init` / `proxy run` が配置済みの静的CLIから必要なイメージを作成します。通常は `proxy build` の実行・ソース取得・Goの導入は不要です。
 
 ## 起動する
 
@@ -53,6 +38,25 @@ oaiso proxy run
 - `--auth-profile NAME` の[独立プロファイル](auth.md#独立プロファイル)では、そのディレクトリだけをOAuth更新用に読み書き可能でマウントし、ホスト認証を読みません。
 - 認証ソースは[認証プロキシ](../auth-proxy.md#認証ソース)に記載しています。
 - 既存のlayout・通信ルール・認証API能力が対応しない場合はエラーになり、既存プロキシを自動削除しません。
+
+## ビルドする
+
+**開発・独自のProxyイメージをソースから作る場合の手順です。**
+
+```bash
+oaiso proxy build
+oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
+```
+
+| フラグ | 内容 |
+|---|---|
+| `--tag`, `-t` | タグ。既定は設定の `proxy_image` |
+| `--dockerfile`, `-f` | Dockerfileのパス |
+
+- BuildKitを使い、OCI出力を専用containerdへ取り込みます。
+- ビルドコンテキストはカレントディレクトリです。
+- Goソースが必要なため、リポジトリのルートで実行してください。
+- Dockerfileは `docker/proxy/Dockerfile`、旧配置の `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`、設定ディレクトリの順に探します。
 
 ## 通信設定を編集する
 

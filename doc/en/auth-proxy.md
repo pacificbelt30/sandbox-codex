@@ -16,13 +16,15 @@ General egress rules do not control the fixed AI routes.
 
 ## Start
 
-- Prepare the [Kata host](../kata.md) and credentials first.
-- Build from the repository root.
+- Complete [installation](installation.md) and [credential setup](getting-started.md#2-prepare-credentials), then run as your normal user.
+- Release installations prepare the proxy image from the installed static CLI; no source checkout or Go is required.
 
 ```bash
-oaiso proxy build
 oaiso proxy run
 ```
+
+- To prepare the worker image too, use `oaiso init` or `oaiso init --agent claude` instead.
+- For custom images built from source, see [proxy build](commands/proxy.md#build).
 
 - Both proxies run as runc containers on containerd.
 - Workers use Kata VMs.

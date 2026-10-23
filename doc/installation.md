@@ -54,9 +54,10 @@ Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4
 Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: /var/cache/codex-dock-setup; offline: no
 ```
 
-- `<version>`・パス・利用者名は環境により変わる値。
-- 計画だけの実行：末尾に `No host changes. Add --apply as root.` を含む行が表示される。
-- 適用成功：末尾に `Node ready.` で始まる行が表示される。再ログイン後、次の手順で確認。
+- 版・パス・利用者名は例。実際の環境とリリースにより変わります。
+- 計画だけの実行：最後に `Plan only. Re-run the installer with --apply to install this release.` と表示。
+- 適用成功：最後に `Node installed. Log in again, then run oaiso init.` と表示。再ログイン後、次の手順で確認。
+- 計画表示まででもuv・Python・配布物を取得します。管理サービスなどの配置は `--apply` 時です。
 
 | コマンド・指定 | 動作 |
 |---|---|
@@ -76,6 +77,17 @@ Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: 
 
 - 既存Docker／既定containerdのパッケージは置き換えない。
 - ネットワーク・検証・失敗時の復旧：[自動セットアップの詳細](setup.md)。
+
+### 版を固定して取得・実行する
+
+**v0.0.2を指定する例。保存したスクリプトを確認してから、同じファイルで計画・適用します。**
+
+```bash
+curl -fsSL -o install.sh https://github.com/pacificbelt30/sandbox-oasis/releases/download/v0.0.2/install.sh
+less install.sh
+bash install.sh --version v0.0.2
+bash install.sh --version v0.0.2 --apply
+```
 
 ## 4. 再ログインして確認
 
@@ -114,7 +126,7 @@ user sudo codex-dock
 
 1. [認証方式を選ぶ](getting-started.md#2-認証方式を選ぶ)。独立プロファイル／従来のホスト連携から選択。
 2. `oaiso init`。Claude Codeの場合は `oaiso init --agent claude`。
-3. 作業するプロジェクトで `oaiso codex` または `oaiso run --agent claude`。
+3. 作業するプロジェクトで `oaiso codex` または `oaiso claude`。
 
 - 通常の `init`・`run`：`sudo` 不要。
 - 実APIキー・OAuthトークン：Auth Proxyで保持。作業VMには短命トークンだけを渡す。

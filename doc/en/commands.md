@@ -35,7 +35,7 @@
 | [`oaiso network`](commands/network-cmd.md) | Manage network | create / rm / status |
 | [`oaiso build`](commands/build.md) | Build sandbox image | Dockerfile auto-detection |
 | [`oaiso ui`](commands/ui.md) | TUI dashboard | Key bindings |
-| [`oaiso update`](commands/update.md) | Update oaiso itself | Update via `go install` |
+| [`oaiso update`](commands/update.md) | Update Go-installed CLI | Release installations use the [release installer](../setup.md#更新する) (Japanese) |
 | [`oaiso policy`](sandbox-features.md) | Inspect policies, explain denials and quarantine | show / check / explain / events / presets / quarantine (alias revoke) |
 | [`oaiso capabilities`](sandbox-features.md) | Validated node capabilities | JSON output |
 | [`oaiso files`](sandbox-features.md#files-execution-and-recovery) | Workspace file operations | get / put / list |

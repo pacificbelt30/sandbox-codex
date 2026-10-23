@@ -34,7 +34,7 @@
 
 | Location | Contents and use |
 |---|---|
-| Product source checkout | `scripts/install.sh`, `docker/proxy/Dockerfile` and Go source; needed for the first proxy build |
+| Product source checkout | Development and custom builds; not required to install or initialize a release |
 | Working project | Repository the agent edits; launch `oaiso codex` or `oaiso claude` here |
 | Guest `/workspace` | Shared project; writable by default, with changes reflected on the host |
 | `~/.config/codex-dock/config.toml` | Host user settings: credential selection, proxies and launch defaults |

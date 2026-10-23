@@ -10,7 +10,7 @@
 
 1. [実行ホストをインストール](installation.md)。
 2. [独立プロファイル](guides/authentication.md)へAnthropic APIキー／OAuthを登録し、管理シークレットとグローバル設定を準備。
-3. 製品ソースのルートで `oaiso init --agent claude`。
+3. 通常ユーザーで `oaiso init --agent claude`。リリース版は任意のディレクトリで実行可能。
 4. 作業プロジェクトへ移動して `oaiso claude`。
 
 - 既存のホスト認証を使う場合だけ、以下のAPIキー／サブスク例を使用。`auth_profile` 選択中はホスト環境変数を流用しない。
@@ -19,7 +19,7 @@
 
 ## APIキーで使う
 
-- 以下は従来のホスト連携。製品ソースのルートで準備し、起動前に作業先へ移動。
+- 以下は従来のホスト連携。認証を準備してから `init` を実行し、起動前に作業先へ移動。
 - `/path/to/your-project`：実際の作業プロジェクトへ置換。
 
 ```bash
@@ -41,7 +41,7 @@ oaiso claude -p 'このプロジェクトの構成を説明して' --model claud
 ## サブスクリプションで使う
 
 - 以下は従来のホスト連携。ホストの公式Claude Codeでログイン。
-- 製品ソースのルートへ移動してから `init`。独立プロファイルへ取り込む場合は、この `init` より先に[importと選択](guides/authentication.md)を実施。
+- ログイン後に `init`。独立プロファイルへ取り込む場合は、この `init` より先に[importと選択](guides/authentication.md)を実施。
 
 ```bash
 unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
@@ -123,19 +123,19 @@ code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
 ## イメージの更新
 
 - 組み込みワーカーはClaude Code **2.1.306** を固定しています。
-- 新CLIとプロキシを同じソース版で配置し、リポジトリのルートで次を実行します。
-- 稼働中ワーカーは先に終了してください。
+- CLI・nodeも更新する場合は、先に[導入方法に合う更新手順](commands/update.md#導入方法に合わせて更新する)を実施。リリース版は配布インストーラーを再実行します。
+- 稼働中ワーカーを終了・削除してから、通常ユーザーで次を実行。リリース版は製品ソースの取得不要。
 
 ```bash
 oaiso proxy stop
 oaiso proxy rm
-oaiso build --tag codex-dock:latest -f docker/sandbox/Dockerfile
-oaiso proxy build
+oaiso build --template plain --tag codex-dock:latest
 oaiso proxy run
 ```
 
 - 既存ワーカーは古いイメージ・認証用環境変数を保持するため、新しく作成してください。
-- 独自テンプレートがある場合は、entrypointとClaudeの版も更新します。
+- リリース版の `proxy run` は、必要なProxyイメージを配置済みの静的CLIから作成します。
+- 独自イメージ・テンプレートは、実際に使うDockerfile・entrypointとClaudeの版も更新。同名の利用者テンプレートは組み込み版より優先されます。
 - `CODEX_DOCK_CLAUDE_VERSION=2.1.306` でビルド時の版を明示できます。
 - 別の版を選んだ場合は、固定CLIの受入テストを更新して確認してください。
 - CLI・nodeの更新も含む場合：[導入方法に合う更新手順](commands/update.md#導入方法に合わせて更新する)。`oaiso update` だけではワーカー内CLIは更新されません。

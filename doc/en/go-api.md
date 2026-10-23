@@ -276,7 +276,7 @@ TemporaryStorage: []cxd.TemporaryStorage{{
 
 ### Runnable embedding example
 
-- [`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-codex/blob/main/examples/embedding/main.go) uses only public APIs: capability/profile checks → Create → Start → cancel a streaming Exec → run another command in the same worker → Stop → RemoveRequest.
+- [`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-oasis/blob/main/examples/embedding/main.go) uses only public APIs: capability/profile checks → Create → Start → cancel a streaming Exec → run another command in the same worker → Stop → RemoveRequest.
 - Cleanup uses a separate one-minute context.
 - Add `-model` for per-token authorization and `-temporary-mib` for temporary storage.
 - Only `-prompt` invokes Codex over explicit HTTP/SSE; the default test command makes no AI request.

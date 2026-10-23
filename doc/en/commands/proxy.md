@@ -5,17 +5,7 @@
 - `oaiso proxy` manages the auth and general egress proxies on containerd.
 - See [auth proxy](../auth-proxy.md) and [update procedure](../../operations.md#cliプロキシを更新する) (Japanese).
 
-## Build
-
-```bash
-oaiso proxy build
-oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
-```
-
-- `--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
-- Standalone BuildKit imports OCI output into containerd.
-- Build from the repository root: the current directory is the context and Go source is required.
-- The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`, then the config directory.
+- Release installations prepare required images from the installed static CLI during `init` / `proxy run`. Ordinary use does not require `proxy build`, a source checkout or Go.
 
 ## Start
 
@@ -47,6 +37,20 @@ oaiso proxy run
 - Legacy mode reads credentials as the caller's UID/GID through read-only binds under a private HOME.
 - An [independent profile](auth.md#independent-profiles) selected by `--auth-profile NAME` mounts only its directory read-write for refresh and does not load host authentication.
 - Old layouts, policy mismatches and missing worker-auth capability are rejected rather than silently updating existing containers.
+
+## Build
+
+**For development and custom proxy images built from source.**
+
+```bash
+oaiso proxy build
+oaiso proxy build --tag my-proxy:v1 -f ./docker/proxy/Dockerfile
+```
+
+- `--tag/-t` overrides `proxy_image`; `--dockerfile/-f` selects the Dockerfile.
+- Standalone BuildKit imports OCI output into containerd.
+- Build from the repository root: the current directory is the context and Go source is required.
+- The search order is `docker/proxy/Dockerfile`, legacy `auth-proxy.Dockerfile` / `docker/auth-proxy.Dockerfile`, then the config directory.
 
 ## Edit network settings
 

@@ -60,13 +60,12 @@
 
 ## 公開前に確認する
 
-- 前提：Python 3と `venv`。Ubuntuでは `sudo apt-get install -y python3-venv`。
+- 前提：[uv](https://docs.astral.sh/uv/getting-started/installation/)。ホストの配置・CIと同じuv管理Python 3.12を使用。
 - 実行場所：リポジトリのルート。
 
 ```bash
-python3 -m venv "$HOME/.cache/oaiso/docs-venv"
-"$HOME/.cache/oaiso/docs-venv/bin/python" -m pip install -r requirements-docs.txt
-"$HOME/.cache/oaiso/docs-venv/bin/python" -m mkdocs build --strict
+uv python install 3.12
+uv run --no-project --no-config --managed-python --python 3.12 --with-requirements requirements-docs.txt mkdocs build --strict
 ```
 
 - コマンドの成功条件：終了コード `0` と、末尾の `Documentation built in ... seconds`。

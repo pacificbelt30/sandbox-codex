@@ -3,9 +3,9 @@
 | 目的 | このページの操作・参照先 |
 |---|---|
 | 初回準備 | [クイックスタート](getting-started.md) |
-| ホストの配置 | [Kataの手順](kata.md) |
+| ホストの配置 | [インストール](installation.md) |
 | 自動配置環境の更新・復旧 | [setup](setup.md#更新する) |
-| 手動配置環境のCLI・Proxy更新 | [更新手順](#cliプロキシを更新する) |
+| CLI・Proxy・ワーカーイメージの更新 | [更新対象と手順](#cliプロキシを更新する) |
 
 ## 状態とログを見る
 
@@ -68,38 +68,48 @@ oaiso run --agent codex --parallel 2 --worktree \
 
 ## CLI・プロキシを更新する
 
-- 自動配置した環境：[setupによる更新・復旧](setup.md#更新する)。
-- 以下の手順：手動配置の更新用。
-- 認証方式・通信ポリシーを変える場合も同じ順序。
-- 共有Proxyを更新する前に、対象ワーカーの作業を終了。
+| 導入方法・変更内容 | 手順 |
+|---|---|
+| 配布インストーラーで導入 | [setupの更新・復旧](setup.md#更新する)。CLI・node・補助プログラムを同じ版へ更新 |
+| ソースから手動配置 | [Kataの固定資産・バイナリ更新](kata.md#固定資産の更新)後、下のイメージ更新を実施 |
+| 認証方式・通信設定だけ変更 | CLI・node・イメージの更新は不要。新設定でProxy・ワーカーを再作成 |
 
-### 更新手順
+### イメージを更新して再作成する
 
-1. `ps -a` で対象を確認し、ログと成果を保存。
-2. 旧版CLIでワーカーを停止・削除。
-3. CLIと管理サービスを同じ版へ更新。
-4. ワーカーイメージも同じソース版から更新し、リポジトリのルートで以下を実行。
-5. 更新後は新規ワーカーを作成。
+1. `oaiso ps -a` で対象を確認し、ログと成果を保存。
+2. 共有Proxyを使う全ワーカーを旧版CLIで停止・削除。
+3. Proxyも旧版CLIで停止・削除。
+4. CLI・nodeの更新が必要な場合は、上表の手順で配置。
+5. 通常ユーザーで、既定のワーカーイメージを再ビルドし、Proxyを起動。
+6. `runtime-check` と新規ワーカーの動作を確認。
+
+**手順3：Proxyを停止・削除**
 
 ```bash
 oaiso proxy stop
 oaiso proxy rm
-oaiso build --tag codex-dock:latest -f docker/sandbox/Dockerfile
-oaiso proxy build
+```
+
+**手順5〜6：リリース版の既定イメージを更新**
+
+```bash
+oaiso build --template plain --tag codex-dock:latest
 oaiso proxy run
 oaiso runtime-check
 ```
 
+- リリース版のProxyイメージは、新しい静的CLIから必要に応じて作成します。ソース取得・Goは不要。
+- ソースから明示的にProxyをビルドする場合は、製品のソースルートで `oaiso proxy build` を実行してから `proxy run`。[ビルドの詳細](commands/proxy.md#ビルドする)。
+- `init` だけでは、既存のワーカーイメージが必ず更新されるとは限りません。
+
 | 条件・操作 | 注意点 |
 |---|---|
 | 保存済みワーカー | Proxy IPが変わると再起動できないため、新規作成 |
-| ソース配置 | `make build` 後、[配置手順](kata.md)のバイナリを更新 |
 | `proxy stop` / `proxy rm` の名前省略 | 既定の2つのProxyが対象 |
 | 独自Proxy名 | それぞれ `--name NAME` で指定 |
 | `proxy build` のみ実行 | 既存コンテナは更新されない |
 | 独自ワーカーイメージ・テンプレート | 既定イメージに加え、実際に使うDockerfile・entrypointも更新 |
 | 利用者ディレクトリのテンプレート | 同名の組み込み版より優先し、自動上書きしない。更新元とentrypointを別途確認 |
-| 認証方式・通信設定だけの変更 | CLI・node・イメージの再ビルドは不要。新設定でProxy・ワーカーを再作成 |
 | 旧Proxy | `worker_token_auth: true` 非対応なら新CLIは拒否 |
 | 新規ワーカーの起動 | 新しいイメージからProxyを再作成した後 |
 

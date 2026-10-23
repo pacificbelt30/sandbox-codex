@@ -59,13 +59,12 @@ Reviewed: 2026-10-22. These references inform information organization, not Oais
 
 ## Validate
 
-- Requirements: Python 3 and `venv`. On Ubuntu: `sudo apt-get install -y python3-venv`.
+- Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Use managed Python 3.12, as in host setup and CI.
 - Run from the repository root.
 
 ```bash
-python3 -m venv "$HOME/.cache/oaiso/docs-venv"
-"$HOME/.cache/oaiso/docs-venv/bin/python" -m pip install -r requirements-docs.txt
-"$HOME/.cache/oaiso/docs-venv/bin/python" -m mkdocs build --strict
+uv python install 3.12
+uv run --no-project --no-config --managed-python --python 3.12 --with-requirements requirements-docs.txt mkdocs build --strict
 ```
 
 - Check navigation coverage, page links and heading links.

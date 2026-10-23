@@ -112,7 +112,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 
 - Never put authentication configuration in the project's `oaiso.toml`.
 
-**After configuring, run one preparation command from the source root:**
+**After configuring, run one preparation command as your normal user (any directory for release installations):**
 
 | Stored credentials | Preparation |
 |---|---|
@@ -140,7 +140,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 2. Stop and remove old workers.
 3. With the old settings, run `oaiso proxy stop`, then `oaiso proxy rm`.
 4. Change global `auth_profile` to the new name.
-5. Run `init` for the selected agent from the source root to recreate the proxy.
+5. Run `init` for the selected agent as your normal user to recreate the proxy.
 6. Create new workers from the project directory.
 
 - The following legacy commands apply without profile selection.

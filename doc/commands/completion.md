@@ -3,7 +3,8 @@
 > **日本語** | [English](../en/commands/completion.md)
 
 - `oaiso` は Bash・Zsh・Fish・PowerShell 向けの補完スクリプトを生成できます。
-- `scripts/install.sh --apply` と `make install` は、Bash・Zsh・Fish 用のスクリプトを標準のシステムディレクトリに配置します。
+- [配布インストーラー](../installation.md)の `--apply` でBash・Zsh・Fish用の補完も標準のシステムディレクトリへ配置します。
+- ソースから導入する場合は `scripts/install.sh --apply` または `make install` でも配置します。
 - 新しいシェルを開くと利用できます。
 - Bash では `bash-completion` パッケージが必要です。
 

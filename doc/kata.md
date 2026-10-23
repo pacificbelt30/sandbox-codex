@@ -44,8 +44,8 @@ buildctl → 独立BuildKit → OCI archive → 同じcontainerd namespace
 - 以降の配置例は、このルートから実行してください。
 
 ```bash
-git clone git@github.com:pacificbelt30/sandbox-codex.git
-cd sandbox-codex
+git clone https://github.com/pacificbelt30/sandbox-oasis.git
+cd sandbox-oasis
 ```
 
 - 公式リリースの配布物とSHA256を確認し、新しい作業ディレクトリへ展開する。

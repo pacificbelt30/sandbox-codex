@@ -10,7 +10,7 @@
 
 1. [Install the execution host](installation.md).
 2. Register an Anthropic API key or OAuth login in an [independent profile](guides/authentication.md), then configure admin authority and global selection.
-3. Run `oaiso init --agent claude` from the product source root.
+3. Run `oaiso init --agent claude` as your normal user. Release installations work from any directory.
 4. Change to your own project and run `oaiso claude`.
 
 - The examples below use legacy host integration only; selected profiles never import host authentication variables.
@@ -19,7 +19,7 @@
 
 ## API key
 
-- This example uses legacy host integration. Prepare from the product source root, then change directories before launch.
+- This example uses legacy host integration. Prepare credentials and run `init`, then change to your project before launch.
 - Replace `/path/to/your-project` with the real working project.
 
 ```bash
@@ -40,7 +40,7 @@ oaiso claude -p 'Explain this project.' --model claude-sonnet-4-6
 ## Subscription
 
 - Legacy host integration: log in with official Claude Code on the host.
-- Run `init` from the product source root. For independent profiles, complete [import and selection](guides/authentication.md) before `init` instead.
+- Run `init` after logging in. For independent profiles, complete [import and selection](guides/authentication.md) before `init` instead.
 
 ```bash
 unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
@@ -118,18 +118,19 @@ code, err := client.Exec(ctx, worker.ID, cxd.ExecRequest{
 ## Update images
 
 - The built-in worker pins Claude Code **2.1.306**.
-- Deploy matching CLI/proxy source versions and run from the repository root after ending active workers:
+- To update the CLI/node too, first follow the [installation-specific update procedure](commands/update.md#update-according-to-installation-method). Release installations rerun the release installer.
+- End and remove active workers, then run as your normal user. Release installations need no product source checkout:
 
 ```bash
 oaiso proxy stop
 oaiso proxy rm
-oaiso build --tag codex-dock:latest -f docker/sandbox/Dockerfile
-oaiso proxy build
+oaiso build --template plain --tag codex-dock:latest
 oaiso proxy run
 ```
 
 - Create new workers; existing workers retain their old image and authentication environment.
-- Update the entrypoint and Claude version in custom templates too.
+- Release `proxy run` prepares required proxy images from the installed static CLI.
+- Update the actual Dockerfile, entrypoint and Claude version in custom images/templates too. User templates override built-in templates with the same name.
 - `CODEX_DOCK_CLAUDE_VERSION=2.1.306` explicitly overrides the build version.
 - If updating the CLI/node too, use the [installation-specific update procedure](commands/update.md#update-according-to-installation-method). `oaiso update` does not update the worker's agent CLI.
 - Update and run pinned-CLI acceptance when selecting another version.

@@ -116,7 +116,7 @@ For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 ### 手動で分けて準備する場合
 
 ```bash
-oaiso build
+oaiso build --template plain --tag codex-dock:latest
 oaiso proxy run
 ```
 

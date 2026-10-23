@@ -112,7 +112,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 
 - プロジェクトの `oaiso.toml` に認証設定を置かない。
 
-**設定後、ソースのルートで1つだけ実行**
+**設定後、通常ユーザーで1つだけ実行（リリース版は任意のディレクトリで実行可能）**
 
 | 保存した資格情報 | 初回準備 |
 |---|---|
@@ -140,7 +140,7 @@ admin_secret_file = "/home/user/.config/codex-dock/proxy-admin-secret"
 2. 旧ワーカーを停止・削除。
 3. 旧設定のまま `oaiso proxy stop` → `oaiso proxy rm`。
 4. グローバル設定の `auth_profile` を新しい名前へ変更。
-5. ソースのルートで対象エージェントの `init` を実行し、Proxyを再作成。
+5. 対象エージェントの `init` を通常ユーザーで実行し、Proxyを再作成。
 6. 作業プロジェクトで新規ワーカーを起動。
 
 - 以下の従来コマンド：プロファイル未選択時に利用。

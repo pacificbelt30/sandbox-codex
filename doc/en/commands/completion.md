@@ -3,7 +3,8 @@
 > [日本語](../../commands/completion.md) | **English**
 
 - `oaiso` can generate completion scripts for Bash, Zsh, Fish, and PowerShell.
-- `scripts/install.sh --apply` and `make install` place Bash, Zsh, and Fish scripts in the standard system directories.
+- The [release installer](../installation.md) with `--apply` installs Bash, Zsh and Fish completion in the standard system directories.
+- Source installations also install completion through `scripts/install.sh --apply` or `make install`.
 - Open a new shell to use them.
 - Bash requires the `bash-completion` package.
 

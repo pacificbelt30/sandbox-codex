@@ -523,7 +523,7 @@ CODEX_DOCK_DISPOSABLE_SETUP=1 uv run --no-project --no-config --managed-python -
 
 ## 2026-10-21の性能計測
 
-- 対象の実装は、[認証トークンの索引化（61c9665）](https://github.com/pacificbelt30/sandbox-codex/commit/61c9665c4077b312162ea4b5bd84e21dcede2b8d)、[停止時の終了通知の保存（b6746b6）](https://github.com/pacificbelt30/sandbox-codex/commit/b6746b6f24003ce91712e8ca8df672fa978be660)、[資産検証の並列化（cd4f68f）](https://github.com/pacificbelt30/sandbox-codex/commit/cd4f68f4bad31e6231095b7e8c5c7acfe16c4f5d)です。
+- 対象の実装は、[認証トークンの索引化（61c9665）](https://github.com/pacificbelt30/sandbox-oasis/commit/61c9665c4077b312162ea4b5bd84e21dcede2b8d)、[停止時の終了通知の保存（b6746b6）](https://github.com/pacificbelt30/sandbox-oasis/commit/b6746b6f24003ce91712e8ca8df672fa978be660)、[資産検証の並列化（cd4f68f）](https://github.com/pacificbelt30/sandbox-oasis/commit/cd4f68f4bad31e6231095b7e8c5c7acfe16c4f5d)です。
 - 再計測手順は[性能とベンチマーク](performance.md)にまとめています。
 
 - Intel Core i5-8500、Linux amd64、Go 1.27.2、GOMAXPROCS=4で、同じbenchmarkを変更前後の別バイナリーで順次実行しました。

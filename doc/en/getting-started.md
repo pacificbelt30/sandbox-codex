@@ -76,7 +76,7 @@ oaiso runtime-check
 
 ## 3. Prepare images and start the proxies
 
-**Run from the repository root as your normal account.**
+**Run as your normal user. Release installations work from any directory.**
 
 | Configured provider | Run exactly one |
 |---|---|
@@ -112,7 +112,7 @@ For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 ### Prepare each component separately
 
 ```bash
-oaiso build
+oaiso build --template plain --tag codex-dock:latest
 oaiso proxy run
 ```
 
@@ -131,13 +131,12 @@ oaiso proxy run
 
 - Run from the project directory.
 - The project is shared at `/workspace`.
-- Change from the product source checkout to your own project before launching.
 - Choose the invocation matching your prepared provider below.
 
 ```bash
 oaiso codex
 # Or:
-oaiso run --agent claude
+oaiso claude
 
 # With Codex credentials; a configured default can start an agent instead.
 oaiso run

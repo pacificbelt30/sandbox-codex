@@ -17,13 +17,15 @@
 
 ## 起動する
 
-- [Kata実行ホスト](kata.md)を用意し、認証を設定してから実行します。
-- ビルドはGoソースがあるリポジトリのルートで行ってください。
+- [インストール](installation.md)と[認証の設定](getting-started.md#2-認証方式を選ぶ)を済ませ、通常ユーザーで実行します。
+- リリース版は、必要なProxyイメージを配置済みの静的CLIから作成します。ソース取得・Goは不要です。
 
 ```bash
-oaiso proxy build
 oaiso proxy run
 ```
+
+- 初回のワーカーイメージも準備する場合は、代わりに `oaiso init` または `oaiso init --agent claude` を使用。
+- 独自のProxyイメージをソースから作る場合：[proxy build](commands/proxy.md#ビルドする)。
 
 - `proxy run` はcontainerd上で2つのruncコンテナを起動します。
 - ワーカーはKata VMで動作します。

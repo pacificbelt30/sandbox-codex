@@ -120,16 +120,17 @@ oaiso proxy run \
 - 既存コンテナへ設定を反映したことにはせず、稼働中プロキシも自動で削除しない。
 - 設定ファイルの編集だけでは稼働中プロキシは変化しない。
 
-- 既定のproxyイメージはCLIのビルド版とprotocolラベルを照合し、古い場合はソースcheckoutからBuildKitで再ビルドする。
+- 既定のproxyイメージはCLIのビルド版とprotocolラベルを照合する。リリース版では、必要なイメージを配置済みの静的CLIからBuildKitで作成する。ソース取得・Goは不要。
 - 独自の `proxy_image` は自動で上書きせず、互換性が不明なら明示的な再ビルドを要求する。
 
-1. 稼働ワーカーを停止し、成果を保存する。
-2. 現行バイナリで `oaiso proxy build` を実行する。
-3. `oaiso proxy stop --name codex-http-proxy`、`oaiso proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。
-4. `oaiso proxy run` で新しい設定の一般通信用proxyを作成する。
-5. ワーカーを新規作成する。
+1. 稼働ワーカーの成果を保存し、停止・削除する。
+2. `oaiso proxy stop --name codex-http-proxy`、`oaiso proxy rm --name codex-http-proxy` で一般通信用proxyを回収する。
+3. `oaiso proxy run` で新しい設定の一般通信用proxyを作成する。
+4. ワーカーを新規作成する。
 
-    - KataワーカーはproxyのIPを固定しており、IP変更時は保存済みワーカーの再起動を拒否する。
+- 上は通信設定だけを変更する場合。CLI・イメージの更新を伴う場合は、認証用も含めて[更新手順](operations.md#cliプロキシを更新する)を実施。
+
+- KataワーカーはproxyのIPを固定しており、IP変更時は保存済みワーカーの再起動を拒否する。
 
 - 改造版proxyではトークンと既存認証protocolを維持する。
 - auth proxyも更新する場合は、同じ停止期間に[更新手順](operations.md#cliプロキシを更新する)を適用する。

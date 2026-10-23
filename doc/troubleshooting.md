@@ -91,7 +91,8 @@ command -v buildctl
 ```
 
 - BuildKitのソケットと `BUILDKIT_HOST`、利用者のソケット権限を確認します。
-- プロキシイメージはGoソースが必要なので、リポジトリのルートからビルドします。
+- リリース版の `init` / `proxy run` は配置済みの静的CLIからProxyイメージを作成します。ホストの `/etc/ssl/certs/ca-certificates.crt` とBuildKitの利用権限も確認。
+- 明示的な `proxy build` や、ソースから作った動的リンク版でのビルドには製品のソースが必要です。[ソースからのビルド](commands/proxy.md#ビルドする)を参照。
 - 外向きproxyやCAが必要な環境では、CLIのbuild argsとBuildKit daemonのregistry通信の両方を設定してください。
 - [ビルドの詳細](commands/build.md)を参照してください。
 

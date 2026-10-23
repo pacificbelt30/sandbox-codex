@@ -33,7 +33,7 @@ curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/downlo
 | `--operator USER` | 権限を与える既存の通常利用者を指定 |
 | operator省略 | スクリプトを実行した通常利用者を選択 |
 | rootでスクリプトを実行 | `--operator USER` が必須 |
-| `--bundle PATH` | 指定ディレクトリのビルド済みCLI・補助プログラムを使用。Go・Makeは不要 |
+| `--bundle PATH` | 指定ディレクトリのビルド済みCLI・補助プログラムを使用。`--version` とは併用不可 |
 | `--cache PATH` / `--offline` | 計画と適用の両方へ渡す |
 
 ### ビルド済みバンドルとは
@@ -53,6 +53,8 @@ node-bundle/
 ├── LICENSE                 製品のライセンス（リリース配布物）
 └── THIRD_PARTY_NOTICES.txt  依存ライブラリのライセンス／notice（リリース配布物）
 ```
+
+- 以下は[保存した `install.sh`](installation.md#版を固定して取得実行する)と、検証・展開済みバンドルを使う例です。パスは実際の保存先へ置換。
 
 ```bash
 bash install.sh --bundle /path/to/node-bundle
@@ -111,7 +113,7 @@ sudo ./dist/node-bundle/oaiso setup \
 - `sudo` のPATHやHOMEにuvがなくても、選択したPythonを使用できます。直接 `setup` を実行する場合は、準備済みのuv管理Python 3.12を探します。
 - 管理者権限での `setup` 自体はPythonをダウンロードしません。
 
-### 3. 通常利用者として認証とイメージを準備する
+### 通常利用者として認証とイメージを準備する
 
 1. 再ログインしてグループ所属を反映。
 2. 利用する認証を準備。
@@ -141,7 +143,7 @@ oaiso init --agent claude
 
 | 項目 | 確認事項 |
 |---|---|
-| 外部配布物 | [固定URLとSHA256](https://github.com/pacificbelt30/sandbox-codex/blob/main/deploy/kata/assets.lock.json)で検証 |
+| 外部配布物 | [固定URLとSHA256](https://github.com/pacificbelt30/sandbox-oasis/blob/main/deploy/kata/assets.lock.json)で検証 |
 | 自作バンドルの `bundle.json` | CLI/helperの組合せ・破損を検出。配布元の署名ではない |
 | バンドルの入手元 | 信頼したソースからビルドしたものを使用 |
 | 管理グループ | ホストmount・任意イメージを選択できるroot相当の権限 |
@@ -156,7 +158,23 @@ oaiso init --agent claude
 2. 旧版CLIでワーカーとProxyを停止・削除。
 3. [配布インストーラー](installation.md#3-計画を確認してインストール)を再実行して最新版の計画を確認。
 4. 同じインストーラーに `--apply` を付け、新しいCLI・node・補助プログラムを同時に配置。
-5. 再ログイン後、通常利用者で `oaiso init` と実Kata受入試験を実行。
+5. 再ログイン後、通常利用者でワーカーイメージを再ビルドし、認証済みのエージェントで `init`。
+6. `runtime-check` と、新規ワーカーでの動作を確認。
+
+**手順5〜6の例（既定ワーカーイメージ）**
+
+```bash
+oaiso build --template plain --tag codex-dock:latest
+oaiso init --agent codex
+# Claude Codeを使う場合は、上のinitの代わりに実行
+# oaiso init --agent claude
+oaiso runtime-check
+```
+
+- `init` だけでは、既存のワーカーイメージが必ず更新されるとは限りません。
+- Proxyイメージは、必要に応じて新しい静的CLIから作成します。
+- 独自イメージ・利用者テンプレート：[更新対象と再作成の注意点](operations.md#cliプロキシを更新する)。
+- 実行基盤の受入試験：[Kataの確認手順](kata.md)。実推論の成功は、新規ワーカーで別途確認。
 
 | 更新時の条件 | 動作 |
 |---|---|
@@ -200,10 +218,23 @@ sudo oaiso setup --rollback --python "$setup_python" --apply
 
 ## オフライン配置
 
-1. オンラインでuv本体と `uv python install 3.12` によるPythonを準備。
-2. 固定配布物を `assets.lock.json` の `file` 名でキャッシュへ配置。
-3. 必要なOSパッケージと、ビルド済みバンドルまたはGoのビルド用キャッシュを事前に準備。
-4. `--cache PATH --offline` を指定。Pythonの自動ダウンロードも禁止します。
+**配置先で、先に以下を準備してください。**
+
+1. uv本体と、`uv python install 3.12` によるPython。
+2. 配布元とSHA-256を確認した `install.sh`、検証・展開済みのリリースバンドル。
+3. 固定配布物を `assets.lock.json` の `file` 名で保存したキャッシュ。
+4. 必要なOSパッケージ。ワーカーの準備にはコンテナイメージ・ビルド依存物も必要。
+
+**準備済みファイルを使う例（パスは置換）**
+
+```bash
+bash /path/to/install.sh --bundle /path/to/node-bundle --cache /path/to/runtime-cache --offline
+bash /path/to/install.sh --bundle /path/to/node-bundle --cache /path/to/runtime-cache --offline --apply
+```
+
+- 配布インストーラーの `--offline` には `--bundle PATH` が必須です。
+- uv・Pythonの自動ダウンロードも禁止します。
+- ソースからビルドする場合は、Goのビルド用キャッシュも別途準備。
 
 | 項目 | 条件 |
 |---|---|

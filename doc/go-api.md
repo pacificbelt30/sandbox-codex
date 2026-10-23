@@ -281,7 +281,7 @@ TemporaryStorage: []cxd.TemporaryStorage{{
 
 ### 実行できる組み込み例
 
-- [`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-codex/blob/main/examples/embedding/main.go) は公開APIだけを使い、対応機能・プロファイル確認 → Create → Start → 出力を受け取りながらExecを取消 → 同じワーカーで再実行 → Stop → RemoveRequestを行います。
+- [`examples/embedding/main.go`](https://github.com/pacificbelt30/sandbox-oasis/blob/main/examples/embedding/main.go) は公開APIだけを使い、対応機能・プロファイル確認 → Create → Start → 出力を受け取りながらExecを取消 → 同じワーカーで再実行 → Stop → RemoveRequestを行います。
 - 回収には取消済みの実行contextと独立した1分のcontextを使います。
 - `-model` でトークンごとの認可、`-temporary-mib` で一時領域を追加でき、`-prompt` を指定した場合だけ実CodexをHTTP/SSEで呼びます。
 - 既定の試験コマンドはAIへ接続しません。

@@ -34,7 +34,7 @@
 
 | 場所 | 内容・使う操作 |
 |---|---|
-| 製品ソースのcheckout | `scripts/install.sh`・`docker/proxy/Dockerfile`・Goソース。初回のProxyビルドで使用 |
+| 製品ソースのcheckout | 開発・独自ビルド用。リリース版の導入・初回起動では不要 |
 | 作業プロジェクト | エージェントに編集させるリポジトリ。ここで `oaiso codex` / `oaiso claude` を実行 |
 | VMの `/workspace` | 作業プロジェクトの共有先。既定は読み書き可能で、変更はホストへ反映 |
 | `~/.config/codex-dock/config.toml` | ホスト側の利用者設定。認証の選択・Proxy・起動既定値 |
