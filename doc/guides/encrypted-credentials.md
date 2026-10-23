@@ -1,0 +1,115 @@
+# 認証情報を暗号化して保存する
+
+**日本語** | [English](../en/guides/encrypted-credentials.md)
+
+- **開発版の機能です。公開済みv0.0.2には含まれません。**
+- 既定は従来の0600平文保存。暗号化はプロファイルごとに選びます。
+- APIキー・サブスクの両方が対象です。認証Proxyを維持し、作業VMへ実資格情報を渡しません。
+
+## 方式を選ぶ
+
+| 方式 | 選ぶ場面 | 必要なもの |
+|---|---|---|
+| パスフレーズ | WSL・Linux VM・SSH・GUIなし | 12バイト以上の長いパスフレーズ |
+| OSキーリング | 既存のLinuxデスクトップの鍵保管を使いたい | Secret Service、利用者D-Bus、`secret-tool` |
+
+- パスフレーズ方式は追加サービス・DB・Vault・コンテナ不要。ローカルで保存・解錠できます。
+- OSキーリング方式は明示選択です。既存サービスを使い、利用不能ならエラーにします。製品専用のキーリングサービスは追加しません。OSキーリング側の保存時の保護は、その設定に依存します。
+- OSキーリングのロック解除は、既存サービスの画面が開く場合があります。応答できない場合は15秒で失敗します。
+- `secret-tool`：[公式マニュアル](https://manpages.debian.org/trixie/libsecret-tools/secret-tool.1.en.html)。Ubuntuでは`libsecret-tools`に含まれます。
+
+## 暗号化してログインする
+
+```bash
+oaiso login --agent codex --method subscription --profile work --encrypt
+```
+
+- パスフレーズを非表示で2回入力。
+- APIキーなら`--method api-key`、Claude Codeなら`--agent claude`を選択。
+- サブスク認証は一時Kataで実施し、回収した認証情報を直接暗号化して保存。
+- 既存プロファイルは上書きしません。別名を指定してください。
+
+OSキーリングを使う場合は`--encrypt`の代わりに`--keyring`を指定します。
+
+```bash
+oaiso login --agent claude --method api-key --profile claude-work --keyring
+```
+
+## 起動・確認・ロック
+
+```bash
+oaiso init --agent codex
+oaiso status
+oaiso auth profile show work
+oaiso auth profile lock work
+```
+
+| 操作 | 動作 |
+|---|---|
+| Proxyの初回起動・再起動 | ホストで解錠し、既存Proxyへ鍵を標準入力で渡す |
+| Proxy稼働中の追加タスク | 同じ暗号化ヘッダーと接続世代を確認して再利用。再入力不要 |
+| `status`・`profile show/list` | 復号せず、保存方式と未確認の状態を表示 |
+| `status --check-connection` | 明示的に解錠してAPIキーをモデル一覧APIで確認。推論は行わない |
+| `profile lock` | 対象ワーカーと認証Proxyを停止。成果物と暗号文は保持 |
+
+- `show`の`locked`は、そのコマンドが復号していないという意味です。既存Proxyの稼働は`status`のProxy欄で別に確認します。
+- ロックで実行中の作業は止まります。先に成果を保存してください。
+- 通常のProxy停止・ホスト再起動でも、プロセスメモリの鍵は失われます。
+- OSキーリングのロックだけでは、起動済みProxyの鍵は消えません。`profile lock`で別に停止します。このコマンドはOSキーリング自体をロックしません。
+- 暗号化に未対応の古いProxyイメージは更新が必要です。実行中ワーカーを排出してから再作成します。
+
+## 既存の平文を移行する
+
+1. 成果を保存して対象ワーカーを停止。
+2. 認証Proxyを停止。
+3. 明示的に移行。
+
+```bash
+oaiso auth profile encrypt work
+```
+
+- 暗号化保存・再読込の検証後に平文の`work.json`を削除。
+- 接続世代を更新するため、旧ワーカーの再認可は拒否します。新しく起動してください。
+- 移行途中で両ファイルが残ると、通常利用を拒否します。同じコマンドとパスフレーズで内容を照合して移行を完了。
+- 内容が異なる場合は自動削除しません。
+- 過去のbackupや削除済みディスクブロックの安全な消去までは保証しません。
+
+## パスフレーズを変更する
+
+```bash
+oaiso auth profile lock work
+oaiso auth profile passwd work
+```
+
+- 旧パスフレーズで解錠後、新しいパスフレーズを2回入力。
+- 対象の停止済みProxyを削除してから、データ鍵を新しい導出鍵で保護し直します。
+- 起動中ワーカー・Proxyがあれば変更を拒否。OSキーリング方式のパスフレーズ変更には使えません。
+- 新しいパスフレーズで`oaiso init`を実行してProxyを起動します。
+
+## 非対話で解錠する
+
+```bash
+oaiso --passphrase-fd 3 init --agent codex 3< /private/runtime/passphrase-input
+```
+
+- 例は専用FDの接続方法です。入力元は利用者が管理する秘密入力・一時pipe等を使い、パスフレーズをプロジェクトや暗号文の隣へ保存しないでください。
+- FDは3以上、最大4096バイト。末尾の改行1個を除去。APIキーのstdinとは別にします。
+- 秘密を引数・環境変数に入れる入力方法は提供しません。
+- `passwd`の非対話変更は、旧入力に`--passphrase-fd`、新入力に`--new-passphrase-fd`を別々に指定。
+
+## 保存形式と保護の範囲
+
+| 項目 | 仕様 |
+|---|---|
+| 保存先 | `~/.config/codex-dock/profiles/NAME/NAME.vault`、0700ディレクトリ・0600ファイル |
+| 暗号 | XChaCha20-Poly1305、256 bit乱数データ鍵、保存ごとに24バイト乱数nonce |
+| パスフレーズ導出 | Argon2id、64 MiB、3回、並列度1、16バイト乱数salt |
+| OSキーリング | 256 bit乱数の鍵保護用鍵を既存Secret Serviceへ保存 |
+| 秘密の所在 | ホストの解錠中プロセスと認証Proxyのメモリ。作業VMには仮トークンのみ |
+| 主な保護対象 | 停止中の保存ファイル・ディスク・backupの読取り |
+| 保護できないもの | ホストroot・同じUIDのプロセス読取り、稼働メモリ・swap・外側VM snapshot |
+
+- WSLではLinux側の私有領域を使用。DrvFS・NFS・FUSE等の未検証filesystemを拒否します。Kata起動には別途KVM条件が必要です。
+- パスフレーズ・キーリングの鍵を失うと復号できません。新しいプロファイルで再認証してください。
+- 鍵を含むVM snapshotの巻戻しは、ローカルだけで完全には検知できません。
+- [形式・保存契約の詳細](../development/local-credential-store.md)、[動作確認と未確認事項](../testing.md)。

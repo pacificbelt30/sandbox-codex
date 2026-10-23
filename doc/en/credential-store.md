@@ -10,7 +10,7 @@
 |---|---|
 | 0600 FileStore, independent profiles and auth-proxy integration | Implemented |
 | Dedicated login Kata, login flow and API connection checks | [Development version](commands/login.md); live accounts need separate verification |
-| Encrypted vault, key backends and unlock UI | Not implemented; requirements appear below |
+| Optional encryption and key backends | [Implemented in development](guides/encrypted-credentials.md): passphrase/existing Secret Service, migration and lock |
 | Real credentials in work VMs | Never provided; short-lived tokens only |
 
 ## Store contract
@@ -100,7 +100,7 @@
 
 ## Initial implementation: 0600 files
 
-- `credentialstore.NewFileStore(directory)` implements the same `Store` contract as a future vault, using plaintext files.
+- `credentialstore.NewFileStore(directory)` implements the same `Store` contract as a encrypted store, using plaintext files.
 - Its directory must be owned by the process user with mode `0700`; each `<profile>.json` and lock file uses `0600`.
 - It rejects unsafe permissions, symlinks, hardlinks and invalid names, without host CLI or authentication-environment fallback.
 
@@ -125,7 +125,7 @@
 - Each profile has a separate directory; only the selected directory is mounted read-write into its auth proxy.
 - OAuth refresh persists there and proxy restarts reload it.
 - Retained workers record the profile and connection generation, rejecting restart under another login.
-- A future vault replaces the Store implementation while preserving its conformance tests; neither the vault nor automatic migration is implemented.
+- A encrypted store replaces the Store implementation while preserving its conformance tests; neither the vault nor automatic migration is implemented.
 
 - The CLI rejects overlaps between profile storage and workspace, clone or extra mounts.
 - Embedding API callers must also keep Store data and admin authority outside worker shares.
@@ -136,7 +136,7 @@
 - Storage, encryption, unlocking and migration: [local credential store specification](development/local-credential-store.md).
 
 - This section specifies future product-vault requirements.
-- The encrypted vault, key backends and unlock UI are not implemented. Dedicated login is implemented in the [development version](commands/login.md).
+- [Optional encryption](guides/encrypted-credentials.md), key backends and [dedicated login](commands/login.md) are implemented in development. Live accounts and WSL deployment acceptance remain separate checks.
 - The initial FileStore, existing product API-key files and local OAuth rotation state are permission-restricted plaintext.
 - External Store encryption belongs to the embedding product.
 
@@ -187,9 +187,9 @@ flowchart LR
 - Derive keys only on unlock or passphrase changes, outside ordinary inference and OAuth refresh paths.
 
 - Choose the backend explicitly during initialization.
-- If an existing vault's backend disappears or locks, return unlock-required/unavailable; never automatically switch backend, read host credentials or save plaintext.
+- Refuse unlocking if the selected backend is unavailable/locked; never switch backends, import host credentials or save plaintext. An already-unlocked proxy retains its in-memory key; stop it with `auth profile lock` separately from locking the OS keyring.
 - Noninteractive callers must receive an error rather than wait indefinitely for input.
-- Backend migration requires unlocking with the previous backend and durably rewrapping the key before switching.
+- No direct backend-conversion command is currently provided; reauthenticate into a new profile using the other backend. Future direct migration must unlock with the previous backend and durably rewrap before switching.
 - A lost key must not silently create a new empty vault.
 
 ### Files, recovery and login

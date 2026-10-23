@@ -39,6 +39,8 @@ oaiso login --agent claude --method api-key --profile work
 | `--profile NAME` | New profile name |
 | `--key-stdin` | Explicit API key input; requires agent and method flags |
 | `--skip-check` | Explicitly save an unverified API key, for example offline |
+| `--encrypt` | Encrypt directly with a hidden passphrase |
+| `--keyring` | Encrypt with an existing Secret Service; mutually exclusive with `--encrypt` |
 | `--no-select` | Save without changing global settings |
 
 ## Saved and connection-checked are different
@@ -50,7 +52,7 @@ Selected profile: work
 Settings: /home/user/.config/codex-dock/config.toml
 ```
 
-- Names and paths are examples. Current storage is plaintext with 0600 permissions; see the [encrypted store specification](../development/local-credential-store.md).
+- Names and paths are examples. Default storage is plaintext with 0600 permissions. Choose [`--encrypt` or `--keyring`](../guides/encrypted-credentials.md) for optional encryption.
 - A passed models-list check does not establish inference success or permission to use every model.
 - Subscriptions report `Official CLI login: completed. Inference: not tested.`
 - Normal errors do not include upstream response bodies or real keys.

@@ -123,6 +123,7 @@ func (p *Proxy) handleAdminMode(w http.ResponseWriter, r *http.Request) {
 		"model_authorization":  true,
 		"model_policy_active":  len(p.cfg.AllowedModels) != 0,
 		"credential_broker":    true,
+		"openai_available":     p.apiKey != "" || p.IsOAuthMode(),
 		"oauth_mode":           p.IsOAuthMode(),
 		"anthropic_available":  p.IsAnthropicMode(),
 		"anthropic_oauth_mode": p.IsAnthropicOAuthMode(),

@@ -22,6 +22,7 @@ type RemoteProxy struct {
 	containerURL       string
 	adminSecret        string
 	oauthMode          bool
+	openaiMode         bool
 	anthropicMode      bool
 	anthropicOAuthMode bool
 	identityMode       bool
@@ -57,6 +58,7 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 		return nil, fmt.Errorf("auth proxy does not enforce worker API tokens; rebuild the proxy image and recreate the proxy before running workers")
 	}
 	r.oauthMode = mode["oauth_mode"]
+	r.openaiMode = mode["openai_available"]
 	r.anthropicMode = mode["anthropic_available"]
 	r.anthropicOAuthMode = mode["anthropic_oauth_mode"]
 	r.identityMode = mode["token_identity"]
@@ -69,6 +71,7 @@ func NewRemoteProxyContext(ctx context.Context, adminURL, containerURL, adminSec
 }
 
 func (r *RemoteProxy) ContainerEndpoint() string        { return r.containerURL }
+func (r *RemoteProxy) IsOpenAIMode() bool               { return r.openaiMode }
 func (r *RemoteProxy) IsOAuthMode() bool                { return r.oauthMode }
 func (r *RemoteProxy) IsAnthropicMode() bool            { return r.anthropicMode }
 func (r *RemoteProxy) IsAnthropicOAuthMode() bool       { return r.anthropicOAuthMode }

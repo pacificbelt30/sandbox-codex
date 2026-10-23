@@ -40,6 +40,8 @@ oaiso login --agent claude --method api-key --profile work
 | `--profile NAME` | 新しいプロファイル名 |
 | `--key-stdin` | 明示的にstdinからAPIキー入力。agentとmethodの指定が必須 |
 | `--skip-check` | APIキーを未検証のまま保存。オフラインなどで明示的に選ぶ場合のみ |
+| `--encrypt` | 非表示入力のパスフレーズで直接暗号化 |
+| `--keyring` | 既存Secret Serviceで暗号化。`--encrypt`とは同時指定不可 |
 | `--no-select` | 保存だけを行い、グローバル設定を変更しない |
 
 ## 保存と接続確認の表示
@@ -51,7 +53,7 @@ Selected profile: work
 Settings: /home/user/.config/codex-dock/config.toml
 ```
 
-- 名前・パスは例。現在の保存方式は0600の平文。
+- 名前・パスは例。既定の保存方式は0600の平文。任意で[暗号化保存](../guides/encrypted-credentials.md)を選べます。
 - 暗号化ストアは[実装仕様](../development/local-credential-store.md)を参照。
 - 接続確認はモデル一覧APIへの認証。実推論や全モデルの利用権限の保証ではない。
 - サブスクでは `Official CLI login: completed. Inference: not tested.` と表示。
@@ -89,3 +91,5 @@ oaiso claude
 - Codexの場合は両方の `claude` を `codex` へ置換。
 - 既存Proxyが別プロファイルを使う場合、旧ワーカーとProxyを先に終了してから初期化。
 - 公式手順：[Codex認証](https://learn.chatgpt.com/docs/auth)・[Claude認証](https://code.claude.com/docs/en/authentication)。
+
+- 既定は0600平文保存。任意の[暗号化保存](../guides/encrypted-credentials.md)も選べます。

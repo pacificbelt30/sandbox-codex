@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -23,7 +24,10 @@ var rootCmd = &cobra.Command{
 	Short:         "御AgentISOlation (Oaiso) — isolated execution for coding agents",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		if cache, ok := cmd.Context().Value(profileCacheKey{}).(*profileCache); ok {
+			cache.command = cmd
+		}
 		return initConfig()
 	},
 	Long: `御AgentISOlation (Oaiso) runs Codex CLI and Claude Code in Kata VM-isolated workers
@@ -32,7 +36,10 @@ Kata requires a Linux/KVM execution host. Runc compatibility is explicit.`,
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	cache := newProfileCache(rootCmd)
+	err := rootCmd.ExecuteContext(context.WithValue(context.Background(), profileCacheKey{}, cache))
+	cache.close()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		var exitErr interface{ ExitCode() int }
 		if errors.As(err, &exitErr) {
@@ -43,6 +50,7 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.PersistentFlags().Int("passphrase-fd", -1, "Read an encryption passphrase from an explicitly supplied descriptor >= 3")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/codex-dock/config.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug output")

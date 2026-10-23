@@ -1,5 +1,43 @@
 # テストと動作確認
 
+## ローカル暗号化・状態表示・更新案内の検証（2026-10-23）
+
+| 対象 | 結果 |
+|---|---|
+| 保存契約 | 暗号化版も既存のStore適合性試験に合格。期待版のCAS・接続世代維持・同時更新・永続化・失敗時の原子性・切断・独立snapshotを確認 |
+| 暗号化 | 誤パスフレーズ・暗号文改ざん・巨大KDF指定・別providerへの更新を拒否。平文移行の中断／再開・内容不一致の拒否・パスフレーズ変更を確認 |
+| Proxy | OpenAI／Anthropic × API／OAuth × 平文／暗号化の8組合せをローカルHTTP fixtureで確認。ホスト認証への切替・実IDトークン返却なし |
+| 状態表示 | 保存・未接続・未推論を区別し、暗号化プロファイルの通常検査は復号しない。実キーをJSON／通常表示へ出さない |
+| 更新案内 | 公開v0.0.2のinstaller・SHA256SUMSで実際の計画表示成功。改変・重複checksum・不正tag・HTTPS downgradeを拒否。暗号化rootの非対応版への適用を拒否 |
+| 既存の実Kata | VM受入260.41秒、認証専用VM24.21秒、共有9ケース、追加制御47.45秒、Go API68.69秒で成功 |
+| 暗号化の実Kata | **22.56秒で成功**。暗号文だけのmount、鍵のstdin転送、作業VMのファイル／環境／メタデータに秘密がないこと、通常consoleへの非残留、CLIによるlock、鍵なしの再起動拒否、明示解錠を確認 |
+| CLIの再利用 | 実CLIでProxyを起動し、別プロセスからパスフレーズ入力なしで再利用。別保存rootの同名profileをロック対象にしない判定も試験 |
+| 品質検査 | 全Go race・vet・lint、Python 77試験、上流契約のオフライン検査、MkDocs strict成功。macOS／Linux arm64はビルド確認のみ |
+
+- 既存5スイートの実行記録：`.kata-verification/setup-e2e/9235b5f8cd96`。この実行では新規暗号化CLI試験に起動引数の不備が見つかりました。
+- 修正後の暗号化CLI・実Kata再試験：`.kata-verification/setup-e2e/763401f7896d`。異常時の拒否を維持し、鍵の転送とProxy再利用が成功しました。
+- runcのbinaryログ方式がstdinを接続しない条件を確認し、非TTY・stdin付きruncだけshimのfile方式を使用。Kataのbinary loggerを維持し、ノード再起動・継続ログ・PTY・stdin EOF・取消を再検証しています。
+- 通常CIは架空の資格情報とfixtureを使用し、Kata試験は明示的な実行時のみ。提供元への実ログイン・推論を実行しません。
+
+### 暗号化の測定値
+
+| 条件 | 測定値 |
+|---|---|
+| 測定環境 | Linux amd64、Intel Core i5-8500。Go benchmark各3回の参考値 |
+| パスフレーズ解錠 | 約138 ms／回、約64 MiB割当て。Argon2id 64 MiB・3回・並列度1 |
+| 解錠後のOAuth保存 | 約0.09 ms／回、約10 KiB割当て。この環境の一時保存領域での値 |
+| 通常要求・OAuth更新 | KDFを実行しない。解錠済みのデータ鍵を再利用 |
+
+- 保存速度はfilesystem・fsync・機器で変わります。上の値は実推論の速度保証ではありません。
+
+### 残る実機確認
+
+- 実アカウントでのCodex／Claude Codeログイン、実APIキー、実推論、長期OAuth更新。
+- 実際のデスクトップSecret Serviceとの接続・画面・セッションlock。現在の試験はbackend障害と`secret-tool`互換の模擬clientです。
+- WSL 2・各Linux VM／SSH環境、実DrvFS等での拒否・鍵保管・KVM条件。
+- 公開済みv0.0.2には新機能を含みません。[暗号化の操作](guides/encrypted-credentials.md)・[実装仕様](development/local-credential-store.md)。
+
+
 - テストを「コードの確認」「実Kataでの確認」「実AIとの通信」に分けて説明します。
 - 自動テストの成功だけで、外部APIや任意のカスタムイメージの動作を保証するものではありません。
 

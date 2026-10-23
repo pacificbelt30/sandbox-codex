@@ -10,7 +10,7 @@
 |---|---|
 | 0600ファイルStore・独立プロファイル・Auth Proxy接続 | 実装済み |
 | 専用Kata・login・API接続確認 | [開発版で実装](commands/login.md)。実アカウントの確認は別途必要 |
-| 暗号化Vault・鍵backend・解除UI | 未実装。後半に設計要件を記載 |
+| 任意の暗号化保存・鍵backend | [開発版で実装](guides/encrypted-credentials.md)。パスフレーズ・既存Secret Service、明示移行・ロック |
 | 作業VMへの実資格情報 | 渡さない。短命トークンだけを渡す |
 
 ## 製品側の保存契約
@@ -105,7 +105,7 @@
 
 ## 初期実装：0600ファイル保存
 
-- `credentialstore.NewFileStore(directory)` は、将来のVaultと同じ`Store`契約を持つ平文ファイル実装です。
+- `credentialstore.NewFileStore(directory)` は、暗号化版と同じ`Store`契約を持つ平文ファイル実装です。
 - 保存ディレクトリは実行ユーザー所有の`0700`、各`<profile>.json`とlockファイルは`0600`です。
 - 権限不備・symlink・hardlink・不正なprofile名を拒否し、ホストCLIや認証用環境変数にはfallbackしません。
 
@@ -129,8 +129,8 @@
 - 各プロファイルを別のディレクトリへ保存し、選択したディレクトリだけをAuth Proxyへ読み書き可能で渡します。
 - OAuth更新も同じStoreへ永続化し、Proxy再起動時はそこから読み直します。
 - 保持したworkerには名前と接続世代を記録し、別ログインへの再開を拒否します。
-- ファイル版からVaultへ変更する際は `Store` 実装を差し替え、同じ適合性試験を使う設計です。
-- Vault自体と自動移行は未実装です。
+- 暗号化版も同じ`Store`契約と適合性試験を使います。
+- 開発版は暗号化保存と明示的な移行に対応します。自動移行は行いません。
 
 - CLIはprofile領域とworkspace・clone・追加mountの重複を拒否します。
 - 組み込みAPIの利用者も、Storeと管理シークレットをworkerの共有領域外へ置いてください。
@@ -140,8 +140,8 @@
 
 - 実装する保存方式・暗号・解錠・移行：[ローカル暗号化ストアの仕様](development/local-credential-store.md)。
 
-- この節は今後の製品内Vaultの要件です。
-- 暗号化Vault・鍵backend・解除UIは未実装です。専用loginは[開発版](commands/login.md)で実装しています。
+- この節は製品内ストアの設計要件と、実機で確認する条件です。
+- [任意の暗号化保存](guides/encrypted-credentials.md)・鍵backend・専用[login](commands/login.md)は開発版で実装しています。実アカウント・WSL固有の実機受入は別途必要です。
 - 初期のFileStoreと、既存の製品APIキーファイル・ローカルOAuth更新状態は権限制限付きの平文です。
 - 外部Storeの暗号化は組み込み側が担当します。
 
@@ -193,10 +193,10 @@ flowchart LR
 - 小さいVMでのメモリ／時間予算を測定し、保存ファイルが指定するパラメーターにも上限を設けます。
 - KDFは解除・パスフレーズ変更時に限定し、通常の推論やOAuth更新ごとには実行しません。
 
-- 初期設定でbackendを明示選択し、既存Vaultのbackendが消えた・ロックされた場合は解除待ち／利用不能として停止します。
+- 解錠時にbackendが利用不能・ロック中なら拒否し、別backendへ切り替えません。解錠済みProxyはメモリの鍵を使い続けるため、OSキーリングのロックと別に`auth profile lock`で停止してください。
 - 別backend・ホスト認証・平文保存へ自動切替しません。
 - TTYのない処理は入力待ちで停止させず、解除が必要であることを返します。
-- backend変更は、旧方式での解除後に鍵を再保護して永続化し、成功後だけ切り替えます。
+- 現在はbackendの変更用コマンドを提供しません。別backendの新しいprofileで再認証してください。将来の直接移行では、旧方式で解錠し、再保護・永続化が成功した後だけ切り替える必要があります。
 - 鍵紛失は新規空Vaultの作成で成功扱いにしません。
 
 ### 保存場所・復旧・ログイン

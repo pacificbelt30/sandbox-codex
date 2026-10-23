@@ -52,6 +52,7 @@ nav:
       - ファイル共有とworktree: workspace.md
       - 認証:
           - 認証方式とプロファイル: guides/authentication.md
+          - 暗号化して保存する: guides/encrypted-credentials.md
           - 認証プロキシ: auth-proxy.md
           - 短命トークン: auth-proxy/tokens.md
           - プロキシの単体利用: proxy-standalone.md
@@ -70,6 +71,7 @@ nav:
           - プロキシ管理: commands/proxy.md
           - 認証管理: commands/auth.md
           - ログイン: commands/login.md
+          - 状態の確認: commands/status.md
           - ネットワーク管理: commands/network-cmd.md
           - TUI: commands/ui.md
           - シェル補完: commands/completion.md
@@ -115,6 +117,7 @@ nav:
               - Claude Code: en/claude-code.md
           - Authentication:
               - Authentication and profiles: en/guides/authentication.md
+              - Encrypted storage: en/guides/encrypted-credentials.md
               - Auth proxy: en/auth-proxy.md
               - Short-lived tokens: en/auth-proxy/tokens.md
               - Standalone proxy: en/proxy-standalone.md
@@ -132,6 +135,7 @@ nav:
               - Proxy: en/commands/proxy.md
               - Auth: en/commands/auth.md
               - Login: en/commands/login.md
+              - Status: en/commands/status.md
               - Network: en/commands/network-cmd.md
               - TUI: en/commands/ui.md
               - Completion: en/commands/completion.md

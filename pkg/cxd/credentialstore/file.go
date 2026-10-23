@@ -182,6 +182,10 @@ func writeProfile(ctx context.Context, dir *os.File, name string, credentials Cr
 	if err != nil || len(data) > 1<<20 {
 		return fmt.Errorf("profile exceeds supported size")
 	}
+	return writeProfileData(ctx, dir, name+".json", data)
+}
+
+func writeProfileData(ctx context.Context, dir *os.File, filename string, data []byte) error {
 	id, err := newProfileVersion()
 	if err != nil {
 		return err
@@ -204,7 +208,7 @@ func writeProfile(ctx context.Context, dir *os.File, name string, credentials Cr
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := unix.Renameat(int(dir.Fd()), temporary, int(dir.Fd()), name+".json"); err != nil {
+	if err := unix.Renameat(int(dir.Fd()), temporary, int(dir.Fd()), filename); err != nil {
 		return err
 	}
 	return dir.Sync()
@@ -217,6 +221,11 @@ func (s *FileStore) Create(ctx context.Context, name string, credentials Credent
 		return err
 	}
 	return s.locked(ctx, name, func(dir *os.File) error {
+		if present, err := profileVaultPresent(dir, name); err != nil {
+			return err
+		} else if present {
+			return ErrLocked
+		}
 		if _, err := readProfile(dir, name); !errors.Is(err, ErrNotFound) {
 			if err == nil {
 				return fmt.Errorf("profile already exists; choose a new profile name")
@@ -242,6 +251,11 @@ func (s *FileStore) Load(ctx context.Context, name string) (Credentials, error) 
 	}
 	var credentials Credentials
 	err := s.locked(ctx, name, func(dir *os.File) (err error) {
+		if present, err := profileVaultPresent(dir, name); err != nil {
+			return err
+		} else if present {
+			return ErrLocked
+		}
 		credentials, err = readProfile(dir, name)
 		return err
 	})
@@ -254,6 +268,11 @@ func (s *FileStore) SaveRefresh(ctx context.Context, name, expected, provider st
 	}
 	var version string
 	err := s.locked(ctx, name, func(dir *os.File) error {
+		if present, err := profileVaultPresent(dir, name); err != nil {
+			return err
+		} else if present {
+			return ErrLocked
+		}
 		old, err := readProfile(dir, name)
 		if err != nil {
 			return err

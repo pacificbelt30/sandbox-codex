@@ -31,8 +31,8 @@ This file describes development conventions; [SKILL.md](SKILL.md) has reusable i
 ## Invariants
 
 Real API keys and OAuth access/refresh tokens belong only in the auth proxy.
-Workers receive short-lived placeholders; OAuth ID/account metadata may be returned for client compatibility.
-The auth proxy runs as the caller's UID/GID with a private HOME and read-only credential binds; keep `0600` files readable without adding capabilities.
+Workers receive short-lived placeholders and synthetic client-compatible ID metadata; never return real OAuth ID tokens.
+The auth proxy runs as the caller's UID/GID with a private HOME. Legacy credential binds are read-only; independent profiles have an exclusive writable store for durable refresh. Keep `0600` files readable without adding capabilities.
 
 Every AI HTTP/WS route must validate a live issued worker token before connecting upstream or injecting credentials.
 Pass the route-specific injector to both HTTP and WebSocket paths.

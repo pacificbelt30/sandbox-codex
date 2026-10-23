@@ -50,7 +50,7 @@ func authProfilesDirectory() (string, error) {
 
 // Each proxy mounts just this profile's directory, including its writable
 // refresh state. It cannot read sibling profiles or any host CLI files.
-func openAuthProfile(name string) (*credentialstore.FileStore, error) {
+func openAuthProfile(name string) (credentialstore.ProfileStore, error) {
 	if err := credentialstore.ValidateProfileName(name); err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func openAuthProfile(name string) (*credentialstore.FileStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return credentialstore.NewFileStore(filepath.Join(directory, name))
+	return credentialstore.OpenProfile(filepath.Join(directory, name), name)
 }
 
 func readProfileInput(cmd *cobra.Command) ([]byte, error) {
@@ -171,18 +171,29 @@ func newAuthProfileCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := store.Load(cmd.Context(), args[0]); err != nil {
-				return err
+			if _, encrypted := store.(*credentialstore.EncryptedStore); !encrypted {
+				if _, err := store.Load(cmd.Context(), args[0]); err != nil {
+					return err
+				}
 			}
 			return selectLoginProfile(cmd.Context(), cmd.OutOrStdout(), args[0])
 		}}
 	parent.AddCommand(set, importCmd, show, list, use)
+	addEncryptedProfileCommands(parent)
 	return parent
 }
 
 func showAuthProfile(cmd *cobra.Command, name string) error {
 	store, err := openAuthProfile(name)
 	if err != nil {
+		return err
+	}
+	if encrypted, ok := store.(*credentialstore.EncryptedStore); ok {
+		info, err := encrypted.Info(cmd.Context())
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile: %s\nStorage: encrypted (%s, 0600)\nCredentials: locked; live connection not checked\n", name, info.Backend)
 		return err
 	}
 	v, err := store.Load(cmd.Context(), name)
@@ -247,7 +258,10 @@ func decodeProfileInput(data []byte, format string) (credentialstore.Credentials
 }
 
 func profileProxyState(ctx context.Context, name string) (proxyAuthState, string, error) {
-	store, err := openAuthProfile(name)
+	if state, connection, ok := runningEncryptedProfile(ctx, name); ok {
+		return state, connection, nil
+	}
+	store, err := unlockedAuthProfile(ctx, name)
 	if err != nil {
 		return proxyAuthState{}, "", err
 	}

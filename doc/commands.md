@@ -19,6 +19,8 @@
 | [`oaiso default`](configuration.md#プロジェクト設定) | `oaiso run` の既定エージェントを表示・変更 | グローバル設定または `--local` |
 | `oaiso project init/check` | プロジェクト設定の作成と検証 | [設定リファレンス](configuration.md#プロジェクト設定) |
 | [`oaiso setup`](setup.md) | ホスト導入・更新・復旧 | 計画表示 / --apply / --rollback |
+| [`oaiso login`](commands/login.md) | 独立プロファイルで認証（開発版） | API・サブスク、認証専用Kata、初回設定 |
+| [`oaiso status`](commands/status.md) | 準備状態を一括確認（開発版） | `--json`・明示的な接続／更新チェック |
 | [`oaiso init`](getting-started.md) | 初回起動の準備 | 診断・認証確認・イメージ検査・プロキシ起動 |
 | [`oaiso runtime-check`](troubleshooting.md#複数の前提条件をまとめて調べる) | 実行環境の診断 | doctor別名・--json・修正手順 |
 | [`oaiso image check`](commands/build.md#起動前に互換性を調べる) | イメージの事前検査 | platform・必要ツール・entrypoint |

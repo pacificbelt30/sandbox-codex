@@ -56,11 +56,19 @@
 | Capabilities and source modes | No added capabilities or source-permission changes |
 | Admin authority | Optional separate `0600` file, read-only mount into auth only; value stays out of argv |
 | Worker shares | CLI rejects profile-storage overlaps; embedding callers must also keep credentials/admin authority outside shares |
-| At-rest encryption | Current files are permission-restricted plaintext; vault not implemented |
+| At-rest encryption | Optional in development: XChaCha20-Poly1305, passphrase/existing Secret Service. No ciphertext or keys in work VMs |
 
 - Trusted control environments may run inside WSL or a Linux VM.
 - Untrusted work VMs must never receive real credentials.
-- Future requirements: [WSL, VMs and headless systems](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems).
+- Requirements and deployment checks: [WSL, VMs and headless systems](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems).
+
+### Encryption limits
+
+- Protect inactive credential files; host root/same-UID process access, live memory, swap and outer VM snapshots are outside this protection.
+- Never store a passphrase alongside ciphertext. Lost keys require reauthentication.
+- Unlock failure never switches to host credentials, plaintext or another backend. Coexisting migration records fail closed.
+- Keyring storage encryption/locking depend on OS configuration.
+- [Usage](guides/encrypted-credentials.md), [specification](development/local-credential-store.md), [verification gaps](../testing.md).
 
 ### Token and admin boundaries
 

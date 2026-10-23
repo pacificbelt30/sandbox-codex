@@ -19,6 +19,8 @@
 | [`oaiso default`](configuration.md#project-settings) | Show or change the agent started by `oaiso run` | Global config or `--local` |
 | `oaiso project init/check` | Create and validate repository-local settings | [Configuration](configuration.md#project-settings) |
 | [`oaiso setup`](../setup.md) | Install, update or restore the node | Plan, --apply, --rollback (Japanese guide) |
+| [`oaiso login`](commands/login.md) | Independent login (development) | API/subscription, dedicated Kata, initial configuration |
+| [`oaiso status`](commands/status.md) | Consolidated readiness (development) | `--json`, explicit connection/update checks |
 | [`oaiso init`](getting-started.md) | Prepare the first worker | Readiness, credentials, image and proxies |
 | [`oaiso runtime-check`](../troubleshooting.md) | Diagnose execution host | doctor alias, --json and recovery steps |
 | [`oaiso image check`](commands/build.md) | Inspect image compatibility | Platform, tools and auth entrypoint |

@@ -10,8 +10,8 @@
 | `oaiso login` | Implemented in development; live accounts unverified: agent/method selection, API connection check, independent profile storage |
 | Automatic first configuration | Implemented in development: admin authority and profile selection while preserving existing policy/settings |
 | Subscription login Kata | Real Kata with fake credentials verified; live login unverified: pinned CLI, memory-only login, temporary VM cleanup, no secret retention in console logs or work VMs |
-| Consolidated status | In progress: distinguish stored, connection-checked, inference-tested, runtime and update states |
-| Lightweight local encrypted storage | [Specification prepared](development/local-credential-store.md); no additional daemon, WSL/headless unlocking |
+| Consolidated status | Implemented in development: [`oaiso status`](commands/status.md) distinguishes saved, connected, inference, runtime and update states |
+| Lightweight local encrypted storage | [Implemented in development](guides/encrypted-credentials.md): opt-in encryption, explicit migration, passphrase changes and locking; see [verification](../testing.md) |
 | Unified update guidance | Implemented in development: `oaiso upgrade` plans/applies distribution updates and explains image update order |
 
 - [Development-version login](commands/login.md) is separate from published v0.0.2 installation instructions.
@@ -57,11 +57,11 @@
 
 - The initial 0600 FileStore, independent profile creation/explicit import/selection and auth-proxy API/OAuth integration with durable refresh are implemented.
 - See [usage](commands/auth.md#independent-profiles).
-- Dedicated login Kata and API connection checks are [implemented in development](commands/login.md). Live accounts, encrypted storage/migration and WSL/VM deployment acceptance remain outstanding.
+- Dedicated login Kata and API connection checks are [implemented in development](commands/login.md). Encryption/explicit migration are also implemented. Live accounts, WSL/VM deployment acceptance and an actual desktop Secret Service still require verification.
 
 - Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems.
 - Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM.
 - Acceptance must include explicit passphrase unlocking, filesystem guarantees, lock/revocation, a browser on another device, backup, cloning and rollback.
 
 - See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems).
-- The vault/key backends are not implemented; Kata execution support in WSL/VMs requires separate deployment testing.
+- Encryption/key backends are implemented in development. Kata execution inside WSL/VMs and differences between desktop keyring services require separate deployment testing.

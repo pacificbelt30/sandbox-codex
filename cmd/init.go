@@ -128,7 +128,13 @@ func init() {
 
 func checkInitCredentials(ctx context.Context, agent string) error {
 	if profile := selectedAuthProfile(); profile != "" {
-		store, err := openAuthProfile(profile)
+		if state, _, openai, ok := runningEncryptedProfileDetails(ctx, profile); ok {
+			if agent == "codex" && !openai || agent == "claude" && !state.anthropicAvailable {
+				return fmt.Errorf("selected profile does not configure %s credentials", agent)
+			}
+			return nil
+		}
+		store, err := unlockedAuthProfile(ctx, profile)
 		if err != nil {
 			return err
 		}

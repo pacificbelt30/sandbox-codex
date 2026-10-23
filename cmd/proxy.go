@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -86,6 +87,10 @@ var proxyServeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		applyForwardPolicyDefaults(cmd)
 		var store credentialstore.Store
+		proxyProfileKeyStdin, err := cmd.Flags().GetBool("profile-key-stdin")
+		if err != nil {
+			return err
+		}
 		adminSecret, _, err := proxyServerSecret()
 		if err != nil {
 			return err
@@ -97,7 +102,7 @@ var proxyServeCmd = &cobra.Command{
 			}
 			var err error
 			if proxyProfileStoreDir != "" {
-				store, err = credentialstore.NewFileStore(proxyProfileStoreDir)
+				store, err = credentialstore.OpenProfile(proxyProfileStoreDir, profile)
 			} else {
 				store, err = openAuthProfile(profile)
 			}
@@ -107,6 +112,23 @@ var proxyServeCmd = &cobra.Command{
 		} else if proxyProfileStoreDir != "" {
 			return fmt.Errorf("--profile-store-dir requires --auth-profile")
 		}
+		if encrypted, ok := store.(*credentialstore.EncryptedStore); ok {
+			defer func() { _ = encrypted.Close() }()
+			if !proxyProfileKeyStdin {
+				return fmt.Errorf("encrypted proxy requires --profile-key-stdin")
+			}
+			key := make([]byte, 32)
+			defer clear(key)
+			if _, err := io.ReadFull(cmd.InOrStdin(), key); err != nil {
+				return fmt.Errorf("encrypted proxy key input failed")
+			}
+			if err := encrypted.UnlockWithKey(cmd.Context(), key); err != nil {
+				return err
+			}
+		} else if proxyProfileKeyStdin {
+			return fmt.Errorf("--profile-key-stdin requires an encrypted profile")
+		}
+
 		if proxyCredentialSocket != "" {
 			var err error
 			store, err = credentialstore.NewUnixClient(proxyCredentialSocket)
@@ -210,7 +232,9 @@ func startProxyContainer(ctx context.Context) error {
 		return err
 	}
 	profile := selectedAuthProfile()
-	var profileDirectory, profileConnection string
+	var profileDirectory, profileConnection, profileFingerprint string
+	var profileKey []byte
+	defer func() { clear(profileKey) }()
 	if profile != "" {
 		if proxyCredentialSocket != "" || proxyCaseID != "" || len(adminSecret) < 32 {
 			return fmt.Errorf("independent profile requires an admin secret of at least 32 bytes and cannot be combined with case/socket credentials")
@@ -219,11 +243,41 @@ func startProxyContainer(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		loaded, err := store.Load(ctx, profile)
-		if err != nil {
-			return fmt.Errorf("loading independent profile: %w", err)
+		profileDirectory = store.Directory()
+		if encrypted, ok := store.(*credentialstore.EncryptedStore); ok {
+			info, err := encrypted.Info(ctx)
+			if err != nil {
+				return err
+			}
+			profileFingerprint = info.Fingerprint
+			if _, connection, ok := runningEncryptedProfile(ctx, profile); ok {
+				profileConnection = connection
+			} else {
+				store, err = unlockedAuthProfile(ctx, profile)
+				if err != nil {
+					return err
+				}
+				value, err := store.Load(ctx, profile)
+				if err != nil {
+					return err
+				}
+				profileConnection = value.ConnectionVersion
+				unlocked, ok := store.(*credentialstore.EncryptedStore)
+				if !ok {
+					return fmt.Errorf("encrypted profile storage changed while unlocking")
+				}
+				profileKey, err = unlocked.UnlockedKey()
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			loaded, err := store.Load(ctx, profile)
+			if err != nil {
+				return fmt.Errorf("loading independent profile: %w", err)
+			}
+			profileConnection = loaded.ConnectionVersion
 		}
-		profileDirectory, profileConnection = store.Directory(), loaded.ConnectionVersion
 	}
 	rules := forwardPolicyRules()
 	rules.BlockPrivate = true
@@ -234,7 +288,7 @@ func startProxyContainer(ctx context.Context) error {
 	if err := ensureBridgeNetwork(ctx, proxyRunNetwork, network.ProxyBridgeName); err != nil {
 		return err
 	}
-	if err := ensureProxyImage(ctx, image); err != nil {
+	if err := ensureProxyImageForStore(ctx, image, profileFingerprint != ""); err != nil {
 		return err
 	}
 
@@ -259,23 +313,24 @@ func startProxyContainer(ctx context.Context) error {
 
 	// 1) Auth proxy: holds credentials, admin published, no forwarding.
 	auth := proxyRunArgs{allowedModels: proxyAllowedModels, brokerFile: proxyBrokerFile, upstreamProxy: proxyUpstreamURL, caFile: proxyCAFile,
-		name:              proxyRunName,
-		role:              authproxy.RoleAuth,
-		networkName:       proxyRunNetwork,
-		image:             image,
-		listenAddr:        fmt.Sprintf("0.0.0.0:%d", proxyRunPort),
-		adminPort:         proxyRunAdminPort,
-		adminListenAddr:   fmt.Sprintf("%s:%d", authproxy.AdminBindEgress, proxyRunAdminPort),
-		adminSecret:       adminSecret,
-		adminSecretFile:   adminSecretFile,
-		blockPrivate:      true, // defense-in-depth on its fixed upstreams
-		mountCreds:        proxyCredentialSocket == "" && profile == "",
-		oauthStateDir:     stateDir,
-		credentialSocket:  proxyCredentialSocket,
-		caseID:            proxyCaseID,
-		profileName:       profile,
-		profileDirectory:  profileDirectory,
-		profileConnection: profileConnection,
+		name:               proxyRunName,
+		role:               authproxy.RoleAuth,
+		networkName:        proxyRunNetwork,
+		image:              image,
+		listenAddr:         fmt.Sprintf("0.0.0.0:%d", proxyRunPort),
+		adminPort:          proxyRunAdminPort,
+		adminListenAddr:    fmt.Sprintf("%s:%d", authproxy.AdminBindEgress, proxyRunAdminPort),
+		adminSecret:        adminSecret,
+		adminSecretFile:    adminSecretFile,
+		blockPrivate:       true, // defense-in-depth on its fixed upstreams
+		mountCreds:         proxyCredentialSocket == "" && profile == "",
+		oauthStateDir:      stateDir,
+		credentialSocket:   proxyCredentialSocket,
+		caseID:             proxyCaseID,
+		profileName:        profile,
+		profileDirectory:   profileDirectory,
+		profileConnection:  profileConnection,
+		profileFingerprint: profileFingerprint, profileKey: profileKey,
 	}
 	if auth.mountCreds {
 		auth.apiKeyEnv = os.Getenv("OPENAI_API_KEY")
@@ -288,6 +343,10 @@ func startProxyContainer(ctx context.Context) error {
 	}
 	if err := ensureProxyContainer(ctx, auth); err != nil {
 		return err
+	}
+	if profileFingerprint != "" {
+		clear(profileKey)
+		forgetUnlockedProfile(ctx, profile)
 	}
 
 	// 2) Egress proxy: forward-only, no credentials, LAN blocked.
@@ -306,13 +365,17 @@ func startProxyContainer(ctx context.Context) error {
 
 // ensureProxyImage builds the proxy image when it is not present locally.
 func ensureProxyImage(ctx context.Context, image string) error {
+	return ensureProxyImageForStore(ctx, image, false)
+}
+
+func ensureProxyImageForStore(ctx context.Context, image string, encrypted bool) error {
 	c, err := engine.NewClient()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = c.Close() }()
 	if inspected, err := c.ImageInspect(ctx, image); err == nil {
-		if inspected.Config != nil && proxyImageCompatible(inspected.Config.Labels) {
+		if inspected.Config != nil && proxyImageCompatible(inspected.Config.Labels) && (!encrypted || inspected.Config.Labels[proxyVaultProtocolLabel] == proxyVaultProtocolVersion) {
 			return nil
 		}
 		if image != "codex-dock-proxy:latest" {
@@ -359,6 +422,12 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 		if v.Config == nil || v.State == nil {
 			return fmt.Errorf("incomplete proxy record")
 		}
+		if v.Config.Labels[proxyVaultLabel] != spec.profileFingerprint {
+			return fmt.Errorf("encrypted profile key changed; drain workers and remove the old proxy before restarting")
+		}
+		if spec.profileFingerprint != "" && !v.State.Running && len(spec.profileKey) != 32 {
+			return credentialstore.ErrLocked
+		}
 		if v.Config.Labels[proxyTransportLabel] != proxyTransportID(spec) {
 			return fmt.Errorf("proxy transport settings changed; drain workers before explicitly recreating this proxy")
 		}
@@ -404,7 +473,19 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 			if v.State.Running {
 				return nil
 			}
-			return c.ContainerStart(ctx, spec.name, container.StartOptions{})
+			if err := c.ContainerStart(ctx, spec.name, container.StartOptions{}); err != nil {
+				return err
+			}
+			return deliverProxyKey(ctx, c, spec.name, spec)
+		}
+	}
+	if spec.profileFingerprint != "" {
+		image, err := c.ImageInspect(ctx, spec.image)
+		if err != nil {
+			return err
+		}
+		if image.Config == nil || image.Config.Labels[proxyVaultProtocolLabel] != proxyVaultProtocolVersion {
+			return fmt.Errorf("proxy image does not support encrypted profiles; rebuild it with the current CLI before starting")
 		}
 	}
 	cfg, host, err := proxyConfiguration(spec)
@@ -415,7 +496,10 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 	if err != nil {
 		return err
 	}
-	return c.ContainerStart(ctx, created.ID, container.StartOptions{})
+	if err := c.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		return err
+	}
+	return deliverProxyKey(ctx, c, created.ID, spec)
 }
 
 // proxy stop ----------------------------------------------------------------
@@ -485,6 +569,8 @@ func init() {
 	proxyServeCmd.Flags().StringVar(&proxyCaseID, "case-id", "", "Credential case selected for this auth proxy instance")
 	proxyServeCmd.Flags().StringVar(&proxyProfileStoreDir, "profile-store-dir", "", "Private independent profile directory (auth proxy container only)")
 
+	proxyServeCmd.Flags().Bool("profile-key-stdin", false, "Read an encrypted profile data key from private container stdin")
+
 	// build flags
 	proxyBuildCmd.Flags().StringVarP(&proxyBuildTag, "tag", "t", "", "Image tag (default: proxy_image from config)")
 	proxyBuildCmd.Flags().StringVarP(&proxyBuildDockerfile, "dockerfile", "f", "", "Path to auth-proxy.Dockerfile")
@@ -517,6 +603,8 @@ var proxyBrokerFile string
 
 type proxyRunArgs struct {
 	profileName, profileDirectory, profileConnection string
+	profileFingerprint                               string
+	profileKey                                       []byte
 	brokerFile                                       string
 	upstreamProxy, caFile                            string
 	name                                             string
@@ -574,6 +662,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	if a.profileName != "" {
 		args = append(args, "--label", proxyProfileLabel+"="+profileProxyID(a), "-v", a.profileDirectory+":/run/cxd-profile:rw")
 	}
+	if a.profileFingerprint != "" {
+		args = append(args, "--label", proxyVaultLabel+"="+a.profileFingerprint, "--label", proxyProfileNameLabel+"="+a.profileName)
+	}
 	if a.adminSecretFile != "" {
 		args = append(args, "-v", a.adminSecretFile+":/run/cxd-admin-secret:ro")
 	}
@@ -626,6 +717,9 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	if a.profileName != "" {
 		args = append(args, "--auth-profile", a.profileName, "--profile-store-dir", "/run/cxd-profile")
 	}
+	if a.profileFingerprint != "" {
+		args = append(args, "--profile-key-stdin")
+	}
 	for _, model := range a.allowedModels {
 		args = append(args, "--allow-model", model)
 	}
@@ -644,6 +738,7 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 	if a.adminListenAddr != "" {
 		args = append(args, "--admin-listen", a.adminListenAddr)
 	}
+
 	if a.adminSecretFile != "" {
 		args = append(args, "--admin-secret-file", "/run/cxd-admin-secret")
 	} else if a.adminSecret != "" {

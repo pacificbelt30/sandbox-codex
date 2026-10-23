@@ -30,7 +30,7 @@ Plan only. Apply the same release with: oaiso upgrade --version v0.0.2 --apply
 ```
 
 - 上は出力例です。実際の版・計画は配置状態で変わります。
-- 暗号化プロファイルを持つ環境から、非対応のv0.0.2以前への適用は拒否します。
+- 選択したプロファイル保存rootに暗号化ファイルがあると、非対応のv0.0.2以前への適用を拒否します。別の保存rootは`--auth-profile-dir`で指定してください。
 
 ## 適用する
 

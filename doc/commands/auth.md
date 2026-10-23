@@ -222,3 +222,12 @@ oaiso auth rotate
 | 認証ソースの優先順位・資格情報保護 | [Auth Proxy](../auth-proxy.md) |
 | 設定値・ファイル形式 | [設定リファレンス](../configuration.md) |
 | 初回の準備 | [クイックスタート](../getting-started.md) |
+
+## 暗号化して保存する（開発版）
+
+- [方式・操作・出力例](../guides/encrypted-credentials.md)。公開済みv0.0.2では利用できません。
+- 新規：`oaiso login --encrypt`／`--keyring`。
+- 既存の平文を移行：`oaiso auth profile encrypt NAME`。
+- パスフレーズ変更：`oaiso auth profile passwd NAME`。
+- 実行とProxyを停止してロック：`oaiso auth profile lock NAME`。
+- 確認時は復号せず、秘密を表示しません。

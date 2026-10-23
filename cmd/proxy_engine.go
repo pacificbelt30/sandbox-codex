@@ -41,7 +41,7 @@ func hasProfileMount(host *container.HostConfig, directory string) bool {
 // Convert its structured option vector to the node DTO; no shell/CLI is run.
 func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfig, error) {
 	args := buildProxyRunArgs(a)
-	c := &container.Config{User: "0:0", Labels: map[string]string{}}
+	c := &container.Config{OpenStdin: a.profileFingerprint != "", User: "0:0", Labels: map[string]string{}}
 	h := &container.HostConfig{Runtime: "runc", CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, PortBindings: nat.PortMap{}}
 	if a.brokerFile != "" {
 		if a.role != "auth" {
@@ -133,9 +133,22 @@ func proxyConfiguration(a proxyRunArgs) (*container.Config, *container.HostConfi
 				continue
 			}
 			if len(parts) == 3 && parts[1] == "/run/cxd-profile" && parts[2] == "rw" {
-				store, err := credentialstore.NewFileStore(parts[0])
+				store, err := credentialstore.OpenProfile(parts[0], a.profileName)
 				if err != nil {
 					return nil, nil, err
+				}
+				if encrypted, ok := store.(*credentialstore.EncryptedStore); ok {
+					defer func() { _ = encrypted.Close() }()
+					info, err := encrypted.Info(context.Background())
+					if err != nil {
+						return nil, nil, err
+					}
+					if info.Fingerprint != a.profileFingerprint {
+						return nil, nil, fmt.Errorf("encrypted profile key changed before proxy creation")
+					}
+					if err = encrypted.UnlockWithKey(context.Background(), a.profileKey); err != nil {
+						return nil, nil, err
+					}
 				}
 				loaded, err := store.Load(context.Background(), a.profileName)
 				if err != nil {

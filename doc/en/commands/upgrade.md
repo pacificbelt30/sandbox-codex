@@ -30,7 +30,7 @@ Plan only. Apply the same release with: oaiso upgrade --version v0.0.2 --apply
 ```
 
 - Example output; versions and plans depend on your host.
-- Applying v0.0.2 or earlier is refused when encrypted profiles exist, because those releases cannot read them.
+- Applying v0.0.2 or earlier is refused when the selected profile root contains encrypted records. Specify another root explicitly with `--auth-profile-dir`; those older releases cannot read encrypted profiles.
 
 ## Apply
 

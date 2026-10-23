@@ -23,7 +23,7 @@ func init() { rootCmd.AddCommand(newLoginCommand()) }
 
 func newLoginCommand() *cobra.Command {
 	var agent, method, profile string
-	var keyStdin, skipCheck, noSelect bool
+	var keyStdin, skipCheck, noSelect, encrypt, keyring bool
 	cmd := &cobra.Command{Use: "login", Short: "Log in with an independent profile and prepare authentication settings", Args: cobra.NoArgs}
 	cmd.Flags().StringVar(&agent, "agent", "", "Agent: codex or claude; prompt when omitted")
 	cmd.Flags().StringVar(&method, "method", "", "Authentication: api-key or subscription; prompt when omitted")
@@ -31,6 +31,9 @@ func newLoginCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&keyStdin, "key-stdin", false, "Read the API key explicitly from stdin")
 	cmd.Flags().BoolVar(&skipCheck, "skip-check", false, "Save an API key without a network check, marked unverified")
 	cmd.Flags().BoolVar(&noSelect, "no-select", false, "Save the new profile without changing global settings")
+	cmd.Flags().BoolVar(&encrypt, "encrypt", false, "Encrypt the new profile with a passphrase (opt-in)")
+	cmd.Flags().BoolVar(&keyring, "keyring", false, "Encrypt using the existing Linux Secret Service (requires secret-tool)")
+	cmd.MarkFlagsMutuallyExclusive("encrypt", "keyring")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if os.Geteuid() == 0 {
 			return fmt.Errorf("run login as the normal operator")
@@ -85,6 +88,14 @@ func newLoginCommand() *cobra.Command {
 			}
 			return fmt.Errorf("profile already exists; choose a new --profile name")
 		}
+		var pass []byte
+		if encrypt {
+			pass, err = readPassphrase(cmd, true)
+			if err != nil {
+				return err
+			}
+			defer clear(pass)
+		}
 		var ctx context.Context
 		cancel := func() {}
 		defer func() { cancel() }()
@@ -128,10 +139,14 @@ func newLoginCommand() *cobra.Command {
 				return err
 			}
 		}
-		if err := store.Create(ctx, profile, value); err != nil {
+		if err := createLoginProfile(ctx, profile, value, encrypt, keyring, pass); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Profile saved: %s (plaintext, 0600).\n", profile)
+		storage := "plaintext"
+		if encrypt || keyring {
+			storage = "encrypted"
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Profile saved: %s (%s, 0600).\n", profile, storage)
 		if verified {
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Connection check: passed. Inference: not tested.")
 		} else if method == "subscription" {

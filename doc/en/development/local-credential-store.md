@@ -2,7 +2,8 @@
 
 [日本語](../../development/local-credential-store.md) | **English**
 
-- This page specifies the implementation to build. Encrypted storage is not available yet.
+- Development implementation specification; unavailable in published v0.0.2.
+- [Usage guide](../guides/encrypted-credentials.md).
 - Current storage and support: [Credential Store](../credential-store.md).
 - Priorities: simple operation, local processing, no additional persistent service, and WSL/headless use.
 
@@ -14,6 +15,7 @@
 | Encryption | Explicit, optional activation |
 | Location | Product-owned profile storage on the control host; never shared with projects |
 | Encrypted data | Credentials, including API keys and OAuth access, refresh and ID tokens |
+| Proxy admin authority | Separate 0600 file, outside the encrypted store; never shared with work VMs |
 | Public metadata | Format version, profile name, unlock backend, salt, KDF parameters and nonce; no secrets |
 | External services | None; storage and unlocking work offline |
 | Implementation | Embedded in the Go binary, without another Vault, database or container |
@@ -27,7 +29,7 @@
 | Tamper and substitution detection | Authenticate the format version and profile identity as associated data |
 | Passphrase | Derive a wrapping key with Argon2id and encrypt the data key |
 | Salt | Random per profile; regenerate when changing the passphrase |
-| KDF cost | Measure on small control VMs before fixing parameters; bound parameters read from files |
+| KDF cost | Default 64 MiB, 3 iterations, parallelism 1; accepted bounds: 64–128 MiB, 3–6 iterations, parallelism 1–4 |
 | Runtime overhead | Reuse the unlocked data key; no KDF per inference or OAuth refresh |
 | Cryptographic implementation | Existing Go cryptographic libraries, without custom algorithms |
 
@@ -41,13 +43,14 @@
 | Basic method | Hidden passphrase prompt when starting the Auth Proxy |
 | Running proxy | No repeated prompt per task; the existing proxy process holds the key in memory |
 | Proxy stop or host reboot | Unlock again on next startup |
-| OS key storage | Optional, explicitly selected backend using an available Secret Service or equivalent |
+| OS key storage | Explicit `--keyring`: a 256-bit wrapping key in existing Secret Service; host `secret-tool` and user D-Bus required |
 | WSL, SSH, no GUI | Passphrase path; no mandatory systemd, D-Bus, TPM or Windows integration |
-| Noninteractive operation | Explicit dedicated input FD; fail if no input mechanism is available |
+| Noninteractive operation | Explicit `--passphrase-fd`, descriptor >= 3, maximum 4096 bytes; fail without terminal/FD |
 | Key transfer | No secrets in argv, environment, configuration files, container metadata or logs |
 
 - An unavailable OS backend never silently switches to a passphrase or plaintext storage.
 - Do not introduce a product-specific daemon solely for key storage.
+- Secret Service operations time out after 15 seconds; never switch backends on failure.
 - Secret Service uses an [existing user-session service](https://specifications.freedesktop.org/secret-service/latest-single/).
 
 ## Auth Proxy and work VMs
@@ -91,3 +94,9 @@
 - Check work-VM files, environment and logs, plus normal host logs and container metadata, for real-secret retention.
 - Pass existing Store conformance and real-Kata acceptance tests.
 - Measure unlocking time/memory and overhead during inference and OAuth refresh.
+
+- Apply the existing Store conformance suite to encrypted storage, with synthetic credentials for interrupted migration recovery, passphrase changes and keyring failures.
+- Coexisting plaintext `.json` and encrypted `.vault` records fail closed as an incomplete migration.
+- Retain wrapping keys after uncertain ciphertext persistence failures to preserve recoverability.
+- The public external `Store` contract is unchanged; `EncryptedStore` is additive.
+- [Measurements, real Kata results and remaining gaps](../../testing.md).

@@ -196,3 +196,12 @@ oaiso auth rotate
 | Source precedence and credential protection | [Auth proxy](../auth-proxy.md) |
 | Configuration values and files | [Configuration](../configuration.md) |
 | Initial setup | [Quick start](../getting-started.md) |
+
+## Encrypted storage (development)
+
+- [Backends and operation](../guides/encrypted-credentials.md); unavailable in published v0.0.2.
+- New: `oaiso login --encrypt` / `--keyring`.
+- Migrate plaintext: `oaiso auth profile encrypt NAME`.
+- Change passphrase: `oaiso auth profile passwd NAME`.
+- Stop affected workers/proxies and lock: `oaiso auth profile lock NAME`.
+- Metadata inspection neither decrypts nor displays secrets.
