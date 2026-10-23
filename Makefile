@@ -7,6 +7,8 @@ MODULE      := github.com/pacificbelt30/codex-dock
 IMAGE       := codex-dock:latest
 PROXY_IMAGE := codex-dock-proxy:latest
 PREFIX      ?= /usr/local
+UV          ?= uv
+UV_RUN      = "$(UV)" run --no-project --no-config --isolated --managed-python --python '3.12' --no-python-downloads
 BINDIR      := $(PREFIX)/bin
 # When invoked with sudo, use the original user's home instead of /root
 REAL_HOME   := $(if $(SUDO_USER),$(shell getent passwd $(SUDO_USER) | cut -d: -f6),$(HOME))
@@ -44,7 +46,7 @@ node-bundle:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/node-bundle/oaiso ./cmd/oaiso
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-worker-guard ./cmd/worker-guard
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/node-bundle/codex-dock-io-logger ./cmd/io-logger
-	python3 deploy/kata/bundle.py dist/node-bundle "$(VERSION)"
+	$(UV_RUN) python deploy/kata/bundle.py dist/node-bundle "$(VERSION)"
 
 ## install: install the binary to $(BINDIR) (default: /usr/local/bin)
 install: build
@@ -133,8 +135,8 @@ test:
 
 ## contracts-check: test static upstream rules and validate the reviewed baseline offline
 contracts-check:
-	python3 -m unittest discover -s scripts -p 'test_upstream_contracts.py'
-	python3 scripts/upstream-contracts.py validate-baseline
+	$(UV_RUN) python -m unittest discover -s scripts -p 'test_upstream_contracts.py'
+	$(UV_RUN) python scripts/upstream-contracts.py validate-baseline
 
 ## kata-e2e: run real Kata acceptance on a configured execution host (no prerequisite skips)
 kata-e2e: build
@@ -142,7 +144,7 @@ kata-e2e: build
 
 ## kata-api-e2e: public Go API failure/recovery acceptance with synthetic upstreams
 kata-api-e2e: build
-	python3 scripts/verify-go-api.py --binary "$(CURDIR)/$(BINARY)" --version "$(VERSION)"
+	$(UV_RUN) python scripts/verify-go-api.py --binary "$(CURDIR)/$(BINARY)" --version "$(VERSION)"
 
 ## lint: run golangci-lint
 lint:

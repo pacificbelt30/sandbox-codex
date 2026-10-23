@@ -16,14 +16,18 @@
 
 - 対象：**Ubuntu 26.04・x86_64・systemd・KVM・cgroup v2**。
 - 実行者：`sudo` が使える通常ユーザー。管理操作はスクリプトが昇格。
-- ビルド要件：Go 1.24.7以上・Python 3.11以上。
+- ビルド要件：Go 1.24.7以上・Make。ホストPythonはuvで3.12を準備。
 - ほかのLinux：[手動配置](doc/kata.md)。WSL／VM：上記要件とnested virtualizationが必要。
 
 **1. 依存ツール・ソースを取得し、インストール**
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git make python3 golang-go
+sudo apt-get install -y git make curl ca-certificates golang-go
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.12
 go version
 
 git clone https://github.com/pacificbelt30/sandbox-codex.git
@@ -44,6 +48,7 @@ oaiso runtime-check
 
 - [クイックスタートの「認証方式を選ぶ」](doc/getting-started.md#2-認証方式を選ぶ)へ進む。
 - 詳細・配置先・更新：[Installation](doc/installation.md)。
+- `--bundle`：[ビルド済みの実行ファイル一式を使う場合](doc/setup.md#ビルド済みバンドルとは)の指定。通常は不要。
 - `make install` はCLI・補助ツール・補完の配置のみ。実行ホストの準備には上の手順を使用。
 
 ## できること

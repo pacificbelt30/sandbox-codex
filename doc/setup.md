@@ -15,7 +15,8 @@
 ### 1. 必要なツールを用意する
 
 - 実行場所：ソースのルート。
-- 必要なツール：Go 1.24.7以上・Make・Python 3.11以上。
+- 必要なツール：Go 1.24.7以上・Make・uv。ホストPythonはuv管理の3.12を使用。
+- uvとPythonの準備：[インストール手順](installation.md#2-ツールとソースを取得)。
 - ビルド対象：同じ版のCLIとhelperをまとめたバンドル。
 - Docker：このビルドには使わない。
 
@@ -29,12 +30,35 @@
 | 指定 | 動作・条件 |
 |---|---|
 | 指定なし | バンドルを作成・検証して計画を表示 |
-| `--apply` | 計画の成功後、同じバンドルのCLIを `sudo` で実行 |
+| `--apply` | 計画の成功後、同じCLIと選択済みPythonの絶対パスを使って `sudo` で配置 |
 | `--operator USER` | 権限を与える既存の通常利用者を指定 |
 | operator省略 | スクリプトを実行した通常利用者を選択 |
 | rootでスクリプトを実行 | `--operator USER` が必須 |
-| `--bundle PATH` | 新規ビルドせず、既存の信頼済みバンドルを使用 |
+| `--bundle PATH` | 指定ディレクトリのビルド済みCLI・補助プログラムを使用。Go・Makeは不要 |
 | `--cache PATH` / `--offline` | 計画と適用の両方へ渡す |
+
+### ビルド済みバンドルとは
+
+- **同じ版の実行ファイルと、検証用の一覧をまとめたディレクトリ**です。
+- 通常の `./scripts/install.sh` が `dist/node-bundle/` に作成します。通常利用では `--bundle` の指定は不要です。
+- 別ホストでビルドしたものや、前に作成したものを使うときだけ `--bundle PATH` を指定します。持ち込み先のホストにGo・Makeは不要です。
+- 自分でビルドしたもの、または配布元を確認したものを使ってください。
+
+```text
+node-bundle/
+├── oaiso                    CLI・管理サービス・埋め込みセットアップ処理
+├── codex-dock-worker-guard  VM起動時の検証用プログラム
+├── codex-dock-io-logger     入出力・ログ用プログラム
+└── bundle.json             版と各ファイルのSHA-256
+```
+
+```bash
+./scripts/install.sh --bundle /path/to/node-bundle
+./scripts/install.sh --bundle /path/to/node-bundle --apply
+```
+
+- 含まないもの：Kata等の配布物、コンテナイメージ、プロジェクト、認証情報。
+- オフライン導入には、バンドルに加えて[配布物のキャッシュとPythonの準備](#オフライン配置)が必要です。
 
 ### 個別に計画・適用する場合
 
@@ -58,9 +82,14 @@ make node-bundle
 - 適用：同じバンドルのCLIを使用し、付与先の `--operator` を明示。
 
 ```bash
+setup_python=$(uv python find --no-project --no-config --managed-python --system --no-python-downloads 3.12)
 sudo ./dist/node-bundle/oaiso setup \
-  --operator "$USER" --apply
+  --operator "$USER" --python "$setup_python" --apply
 ```
+
+- `--python` は配置処理に使うPythonの絶対パスです。通常の `install.sh --apply` では自動で渡します。
+- `sudo` のPATHやHOMEにuvがなくても、選択したPythonを使用できます。直接 `setup` を実行する場合は、準備済みのuv管理Python 3.12を探します。
+- 管理者権限での `setup` 自体はPythonをダウンロードしません。
 
 ### 3. 通常利用者として認証とイメージを準備する
 
@@ -137,8 +166,9 @@ oaiso init --agent claude
 3. `--apply` で適用。
 
 ```bash
-oaiso setup --rollback
-sudo oaiso setup --rollback --apply
+setup_python=$(uv python find --no-project --no-config --managed-python --system --no-python-downloads 3.12)
+oaiso setup --rollback --python "$setup_python"
+sudo oaiso setup --rollback --python "$setup_python" --apply
 ```
 
 | 保存対象 | 場所・扱い |
@@ -150,9 +180,10 @@ sudo oaiso setup --rollback --apply
 
 ## オフライン配置
 
-1. 固定配布物を `assets.lock.json` の `file` 名でキャッシュへ配置。
-2. 必要なOSパッケージを事前に準備。
-3. `--cache PATH --offline` を指定。
+1. オンラインでuv本体と `uv python install 3.12` によるPythonを準備。
+2. 固定配布物を `assets.lock.json` の `file` 名でキャッシュへ配置。
+3. 必要なOSパッケージと、ビルド済みバンドルまたはGoのビルド用キャッシュを事前に準備。
+4. `--cache PATH --offline` を指定。Pythonの自動ダウンロードも禁止します。
 
 | 項目 | 条件 |
 |---|---|

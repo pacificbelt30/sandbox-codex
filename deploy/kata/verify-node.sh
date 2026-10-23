@@ -7,13 +7,14 @@ operator() { runuser -u kata-test -- env HOME=/home/kata-test OPENAI_API_KEY=sk-
 release() { python3 -c 'import json; print(json.load(open("/var/lib/codex-dock-setup/installed.json"))["release"])'; }
 cli() { operator /usr/local/bin/oaiso "$@"; }
 ctr_node() { "$(release)/bin/ctr" --address /run/codex-dock-containerd/containerd.sock --namespace codex-dock "$@"; }
+setup_python=${CODEX_DOCK_SETUP_PYTHON:-/usr/bin/python3}
 mkdir -p /evidence /var/cache/codex-dock-setup
 for archive in /cache-input/*; do cp "$archive" /var/cache/codex-dock-setup/; done
 chmod -R go-w /var/cache/codex-dock-setup
-/bundle/oaiso setup --bundle /bundle --operator kata-test --offline > /evidence/plan.txt
+/bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline > /evidence/plan.txt
 [[ ! -e /etc/systemd/system/codex-dock-node.service ]]
 proof 'planning leaves services uninstalled'
-/bundle/oaiso setup --bundle /bundle --operator kata-test --offline --apply > /evidence/setup.txt 2>&1
+/bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline --apply > /evidence/setup.txt 2>&1
 cli runtime-check --json > /evidence/readiness.json
 initial_release=$(release)
 proof 'fresh setup and operator readiness'
@@ -79,7 +80,7 @@ if [[ ! -f created ]]; then
 fi
 [[ $(cat created) == 1000:1000 && $(stat -c '%u:%g' created) == 1000:1000 ]]
 cli vm ps -a --json > /evidence/vms-before-refusal.json
-if /bundle-next/oaiso setup --bundle /bundle-next --operator kata-test --offline --apply > /evidence/refused-update.txt 2>&1; then
+if /bundle-next/oaiso setup --python "$setup_python" --bundle /bundle-next --operator kata-test --offline --apply > /evidence/refused-update.txt 2>&1; then
  echo 'update accepted a running worker' >&2; exit 1
 fi
 [[ $(release) == "$initial_release" ]]
@@ -172,7 +173,7 @@ PYCLEANUP
 )
 if [[ $cleanup_egress == remove ]]; then cli network rm; fi
 ctr_node images list -q | sort > /evidence/images-before-update.txt
-/bundle-next/oaiso setup --bundle /bundle-next --operator kata-test --offline --apply > /evidence/update.txt 2>&1
+/bundle-next/oaiso setup --python "$setup_python" --bundle /bundle-next --operator kata-test --offline --apply > /evidence/update.txt 2>&1
 updated_release=$(release)
 [[ $updated_release != "$initial_release" ]]
 cli runtime-check --json > /evidence/readiness-updated.json
@@ -180,7 +181,7 @@ ctr_node images list -q | sort > /evidence/images-after-update.txt
 cmp /evidence/images-before-update.txt /evidence/images-after-update.txt
 proof 'successful matched-version update retains images and project files'
 # Fail only the newly staged BuildKit executable. Old release assets stay intact.
-/bundle/oaiso setup --bundle /bundle --operator kata-test --offline --apply > /evidence/failed-update.txt 2>&1 &
+/bundle/oaiso setup --python "$setup_python" --bundle /bundle --operator kata-test --offline --apply > /evidence/failed-update.txt 2>&1 &
 update_pid=$!
 faulted=''
 for attempt in $(seq 1 3000); do
@@ -202,7 +203,7 @@ chmod 0755 "$faulted"
 cli runtime-check --json > /evidence/readiness-after-failure.json
 [[ $(cat created) == 1000:1000 ]]
 proof 'failed new service activation automatically restores previous working release'
-/usr/local/bin/oaiso setup --rollback --apply > /evidence/rollback.txt 2>&1
+/usr/local/bin/oaiso setup --python "$setup_python" --rollback --apply > /evidence/rollback.txt 2>&1
 [[ $(release) == "$initial_release" ]]
 cli runtime-check --json > /evidence/readiness-rollback.json
 cli vm ps -a --json > /evidence/final-vms.json

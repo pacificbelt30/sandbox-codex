@@ -29,10 +29,19 @@ def main():
     parser.add_argument('--proxy-image', default='codex-dock-proxy:policy-verification')
     parser.add_argument('--worker-image', default='codex-dock:kata-guard',
                         help='Preloaded worker image matching the current entrypoint and pinned agents')
+    parser.add_argument('--setup-python', type=Path,
+                        help='Standalone Python executable; mount its installation read-only for setup verification')
     parser.add_argument('--image', default='codex-dock-setup-node:verification')
     parser.add_argument('--sudo-docker', action='store_true')
     parser.add_argument('--offline', action='store_true')
     args = parser.parse_args()
+    if args.setup_python:
+        args.setup_python = args.setup_python.resolve(strict=True)
+        if args.setup_python.parent.name != 'bin' or not os.access(args.setup_python, os.X_OK):
+            parser.error('--setup-python must be an executable in a standalone installation’s bin directory')
+        prefix = args.setup_python.parent.parent
+        if prefix.parent == Path('/') or prefix == Path('/usr/local'):
+            parser.error('--setup-python needs a dedicated standalone directory; system Python cannot be mounted')
     if os.environ.get('CODEX_DOCK_DISPOSABLE_SETUP') != '1':
         raise SystemExit('set CODEX_DOCK_DISPOSABLE_SETUP=1 on a dedicated Linux/KVM test host')
     if not Path('/dev/kvm').exists():
@@ -72,6 +81,10 @@ def main():
                 '-e', 'CODEX_DOCK_KATA_TEST_IMAGE='+args.worker_image,
                 '-e', 'CODEX_DOCK_KATA_ACCEPTANCE_RUN='+args.acceptance_run,
                 '--mount', f'type=volume,src={volume},dst=/var/lib/codex-dock-containerd']
+        if args.setup_python:
+            prefix = args.setup_python.parent.parent
+            argv += ['-e', 'CODEX_DOCK_SETUP_PYTHON='+str(args.setup_python),
+                     '--mount', f'type=bind,src={prefix},dst={prefix},readonly']
         for source, target, readonly in [
             (args.bundle, '/bundle', True), (args.next_bundle, '/bundle-next', True),
             (args.images, '/images.tar', True), (args.acceptance, '/acceptance.test', True),

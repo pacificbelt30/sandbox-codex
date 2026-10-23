@@ -6,6 +6,24 @@
 - API仕様・SDK型・CLIフラグの更新候補を調べるルールベースの検査は、[上流仕様の静的な変更検知](upstream-compatibility.md)を参照してください。
 - `make contracts-check` はネットワークを使わず、検知ルールと基準データの整合性を確認します。
 
+## ホストPythonのuv管理を検証（2026-10-23）
+
+- ホストのインストール・更新にはuv管理のPython 3.12を使用します。検証版はuv 0.13.5・Python 3.12.15です。
+- ソースからのビルドと、`--bundle` によるビルド済み実行ファイルの持ち込みを分けて確認しました。
+
+| 対象 | 結果 |
+|---|---|
+| コード検査 | 全Goパッケージのrace/coverage・vet・lint、Python 68件、Linux amd64/arm64・macOS amd64/arm64ビルド成功 |
+| uvによる実行 | 実物のuv管理Pythonでバンドル生成・配置計画・仕様基準データのオフライン確認・ドキュメントstrictビルドが成功 |
+| ビルド済みバンドル | Go・Make・`python3` がPATHにない状態でも、実物のCLIで配置計画が成功 |
+| sudo時の引き継ぎ | PATH・HOMEを変更する模擬sudoでも、選択したPythonの絶対パスを使って同じ配置計画が成功。ホストへ実適用はしない |
+| Pythonの分離 | 不正なプロジェクト設定・`.python-version`・`PYTHONPATH`・`PYTHONHOME`を引き継がず成功 |
+| 失敗時 | uv不在・オフラインでPython未準備・Python選択失敗・配置計画失敗は適用前に拒否。operator未指定のroot実行はPythonの取得前に拒否 |
+| 実Kata配置 | uv管理Pythonを読み取り専用で渡した使い捨てノードで、新規導入・稼働中の更新拒否・VM起動/削除・正常更新・起動失敗からの自動復旧・明示rollbackが成功 |
+| 最終回収 | VM・コンテナ・task・namespace・専用nftablesの残存0件を記録。試験ノードと専用ボリュームを回収 |
+
+- この変更はホストの配置処理が対象です。ワーカー機能の標準4スイート・追加16ケースを再実行した記録とは分けて扱います。
+
 ## 通し試験（2026-10-23）
 
 - 対象：名称・設定ファイル変更と、独立認証プロファイル／認証プロキシの修正を含む版。
@@ -126,7 +144,7 @@ CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
 
 ## 独立プロファイルの受入
 
-- 名称変更後の実CLI受入は `python3 scripts/verify-cli-names.py --binary ./oaiso` で確認できます。
+- 名称変更後の実CLI受入は `uv run --no-project --no-config --managed-python --python 3.12 python scripts/verify-cli-names.py --binary ./oaiso` で確認できます。
 - `make build` 後、`oaiso` のヘルプ・版表示、Bash/Zsh/Fish/PowerShell補完、主要コマンド、既存の `~/.config/codex-dock/` に置いた架空の認証profileの読み込みを別HOMEで試験します。
 - 旧コマンドの生成は廃止。セットアップの試験では、旧版の導入記録と内容が一致するファイルだけの回収、無関係な同名ファイルの保持、失敗時の復元も確認します。
 - node・外部APIは使いません。
@@ -140,7 +158,7 @@ CXD_TEST_CODEX_BINARY=/path/to/codex-0.163.0 \
 
 ```bash
 go build -o /private/path/oaiso .
-python3 scripts/verify-auth-profiles.py --binary /private/path/oaiso
+uv run --no-project --no-config --managed-python --python 3.12 python scripts/verify-auth-profiles.py --binary /private/path/oaiso
 ```
 
 実providerの認証成功、専用login Kata、WSLのDrvFS／VM共有filesystemの保証を確認する試験ではありません。
@@ -262,15 +280,15 @@ CODEX_DOCK_KATA_OWNER_FIXTURE="$owner_fixture/project" make kata-e2e
 
 ## ドキュメントを確認する
 
-Pythonの仮想環境で依存を入れ、strictビルドを実行します。
+uvの分離した環境で依存を準備し、strictビルドを実行します。
 
 ```bash
-python3 -m pip install -r requirements-docs.txt
-mkdocs build --strict
+uv run --no-project --no-config --managed-python --python 3.12 \
+  --with-requirements requirements-docs.txt mkdocs build --strict
 ```
 
 - ページ・見出しへのリンク切れ、ナビゲーションへの掲載漏れをエラーとして確認します。
-- プレビューは `mkdocs serve` で起動できます。
+- プレビューは同じ `uv run` の末尾を `mkdocs serve` に変更します。
 
 ## 新規導入・更新・復旧を検証する
 
@@ -283,7 +301,7 @@ mkdocs build --strict
 - 内部ノードへホストPID、ホストDockerソケット、外部ネットワーク、実認証情報は渡しません。
 - containerdのデータは、イメージ展開に必要なwhiteoutを扱える専用ボリュームへ配置します。
 
-- ソースのルートで、Go・Make・Python・Dockerを使って試験資産を作成します。
+- ソースのルートで、Go・Make・uv・Dockerを使って試験資産を作成します。
 - イメージのビルドにproxy/CAが必要な環境では、[Kataの通信設定](kata.md#3-ネットワークとサービスを有効にする)と同様に環境を整えてください。
 
 ```bash
@@ -297,13 +315,14 @@ docker build -t codex-dock-setup-node:verification -f deploy/kata/Dockerfile.ver
 docker build -t codex-dock:kata-guard docker/sandbox
 docker build --build-arg CODEX_DOCK_BUILD_VERSION=setup-test-a -t codex-dock-proxy:policy-verification -f docker/proxy/Dockerfile .
 docker save -o .kata-verification/setup-e2e/images.tar codex-dock:kata-guard codex-dock-proxy:policy-verification
-CODEX_DOCK_DISPOSABLE_SETUP=1 python3 scripts/verify-setup.py \
+CODEX_DOCK_DISPOSABLE_SETUP=1 uv run --no-project --no-config --managed-python --python 3.12 python scripts/verify-setup.py \
   --bundle dist/node-bundle-a --next-bundle dist/node-bundle-b \
   --images .kata-verification/setup-e2e/images.tar \
   --acceptance .kata-verification/setup-e2e/acceptance.test
 ```
 
 - 別名の試験用イメージを使う場合は、`--worker-image TAG --proxy-image TAG` を指定し、両方を `--images` のアーカイブに含めます。
+- uvで準備したstandalone Pythonを配置処理にも使う場合は、`--setup-python "$(uv python find --no-project --no-config --managed-python --system 3.12)"` を指定します。試験ノードにはそのPythonの配置ディレクトリだけを読み取り専用で渡します。
 - ワーカーのentrypointが試験するCLIと一致しない場合は、受入試験を始める前に失敗します。現在のソースからイメージを作り直してください。
 - Go APIだけを再試験する場合は `--acceptance-run '^TestKataGoAPI$'` を指定できます。
 - 既定では3つの受入試験を実行します。
@@ -367,7 +386,7 @@ CODEX_DOCK_DISPOSABLE_SETUP=1 python3 scripts/verify-setup.py \
 
 追加で、固定Codex 0.163.0を生成設定なしの明示HTTP/SSEで呼ぶ `codex-http`、容量超過時のENOSPC・所有者・exec/noexec・node再起動時の保持・VM停止時の消去を調べる `temporary-storage`、[公開APIの組み込み例](go-api.md#実行できる組み込み例)を実際にビルドして実行する `embedding-example` を含みます。
 
-- 絞り込みは `python3 scripts/verify-go-api.py --binary ./oaiso --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。
+- 絞り込みは `uv run --no-project --no-config --managed-python --python 3.12 python scripts/verify-go-api.py --binary ./oaiso --version <nodeと同じ版> --run '^TestKataAPIIntegration/temporary-storage$'` のように指定します。
 - 対象が0件、skipだけ、または途中失敗の場合は検証成功にしません。
 - 登録プロファイルも試す場合は `CODEX_DOCK_KATA_CUSTOM_PROFILE=<登録名>` を設定してください。
 - `custom-profile` が実際のguest CPU・メモリ・PID上限とnode/VM再起動後の値を確認します。
@@ -623,7 +642,7 @@ Linux/KVMの独立したノードでGo APIから実Kataを動かす試験:
 
 ```bash
 make build
-python3 scripts/verify-go-api.py --binary "$PWD/oaiso" --version "$(./oaiso --version | awk '{print $NF}')" --run '^TestKataAPIIntegration/claude-'
+uv run --no-project --no-config --managed-python --python 3.12 python scripts/verify-go-api.py --binary "$PWD/oaiso" --version "$(./oaiso --version | awk '{print $NF}')" --run '^TestKataAPIIntegration/claude-'
 ```
 
 - 既存の `make kata-api-e2e` にもClaudeのAPIキー・OAuthケースを含めています。

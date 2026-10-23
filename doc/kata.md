@@ -49,7 +49,8 @@ cd sandbox-codex
 ```
 
 - 公式リリースの配布物とSHA256を確認し、新しい作業ディレクトリへ展開する。
-- 必要なツールはPython 3.11以上、zstd、debugfs（e2fsprogs）、静的リンク可能なCコンパイラー。
+- 必要なツールはuv、zstd、debugfs（e2fsprogs）、静的リンク可能なCコンパイラー。
+- ホストPythonは[インストール手順](installation.md#2-ツールとソースを取得)と同じuv管理の3.12を使う。
 
 ```bash
 curl -fL -o kata-static-4.2.0-amd64.tar.zst \
@@ -62,11 +63,13 @@ tar --zstd -xf kata-static-4.2.0-amd64.tar.zst -C kata-staging \
   ./opt/kata/share/kata-containers/kata-ubuntu-resolute.image \
   ./opt/kata/share/defaults/kata-containers/runtime-rs/configuration-dragonball.toml
 gcc -static -Os -Wall -Wextra -Werror deploy/kata/pids_hook.c -o pids-hook
-python3 deploy/kata/prepare_guest.py build \
+uv python install 3.12
+host_python=$(uv python find --no-project --no-config --managed-python --system --no-python-downloads 3.12)
+"$host_python" deploy/kata/prepare_guest.py build \
   --source-image kata-staging/opt/kata/share/kata-containers/kata-ubuntu-resolute.image \
   --hook-binary pids-hook --output guest-assets
-python3 deploy/kata/prepare_guest.py verify guest-assets/assets.lock.json
-python3 deploy/kata/configure.py \
+"$host_python" deploy/kata/prepare_guest.py verify guest-assets/assets.lock.json
+"$host_python" deploy/kata/configure.py \
   --source kata-staging/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-dragonball.toml \
   --output kata.toml
 make build

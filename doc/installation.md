@@ -16,7 +16,7 @@
 | OS・CPU | Ubuntu 26.04・Linux x86_64 |
 | ホスト機能 | systemd・KVM（`/dev/kvm`）・cgroup v2の `cpu memory pids` |
 | 実行アカウント | `sudo` が使える通常ユーザー |
-| ビルドツール | Git・Make・Go 1.24.7以上・Python 3.11以上 |
+| ビルドツール | Git・Make・Go 1.24.7以上・uv（Python 3.12を管理） |
 | メモリ目安 | 既定の2ワーカー構成は8 GiB以上。ビルド用の余裕も確保 |
 | 通信 | ソース・固定ランタイム配布物・OSパッケージ・コンテナイメージの取得先に到達可能 |
 | WSL／VM | 上記要件に加え、nested virtualizationが必要 |
@@ -29,10 +29,15 @@
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git make python3 golang-go
+sudo apt-get install -y git make curl ca-certificates golang-go
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.12
 
 go version
-python3 --version
+uv --version
+uv run --no-project --no-config --managed-python --python 3.12 python --version
 test -c /dev/kvm && echo 'KVM device found'
 cat /sys/fs/cgroup/cgroup.controllers
 
@@ -40,7 +45,10 @@ git clone https://github.com/pacificbelt30/sandbox-codex.git
 cd sandbox-codex
 ```
 
-- 表示された版：Go 1.24.7以上・Python 3.11以上であることを確認。
+- 表示された版：Go 1.24.7以上・uv管理のPython 3.12であることを確認。
+- uv本体：[Astral公式のインストール手順](https://docs.astral.sh/uv/getting-started/installation/)。Python：[uvの管理方法](https://docs.astral.sh/uv/guides/install-python/)。
+- `install.sh` はuvでPythonを選び、配置計画と管理者権限での適用に同じPythonを使います。OSのPythonは変更しません。
+- Pythonの配布物：uvが管理する[python-build-standalone](https://docs.astral.sh/uv/concepts/python-versions/#managed-python-distributions)を使用。
 - cgroupの表示：`cpu memory pids` が含まれることを確認。
 - KVMがない場合：[ホスト要件](kata.md#必要なホスト)を満たしてから続行。
 - ソース：初回のProxyイメージ作成にも使用。初期設定完了まで保持。
@@ -68,7 +76,7 @@ Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator:
 | コマンド・指定 | 動作 |
 |---|---|
 | 指定なし | 同じ版のCLI・helperをビルドし、検証・配置計画を表示 |
-| `--apply` | 計画成功後に `sudo` で配置 |
+| `--apply` | 計画成功後に `sudo` で配置。選択済みPythonの絶対パスも渡す |
 | operator省略 | スクリプトを実行した通常ユーザーを登録 |
 | `--operator USER` | 別の既存通常ユーザーを登録。rootから実行する場合は必須 |
 
@@ -131,7 +139,7 @@ user sudo codex-dock
 | 方法 | 範囲・参照先 |
 |---|---|
 | 手動で実行ホストを配置 | [Kata実行ホストの準備](kata.md) |
-| 信頼済みバンドルを使用 | [自動セットアップ](setup.md)。`--bundle PATH` |
+| 別の場所でビルドした実行ファイル一式を使用 | [ビルド済みバンドルとは](setup.md#ビルド済みバンドルとは)。`--bundle PATH`。ホストのGo・Makeは不要 |
 | オフライン導入 | [オフライン配置](setup.md#オフライン配置) |
 | CLI・補助ツール・補完をビルド・配置 | `make build` / `sudo make install`。Kata・管理サービスの配置は含まない |
 | 更新・ロールバック | [更新と復旧](setup.md#更新する) |

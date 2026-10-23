@@ -16,7 +16,7 @@
 | OS and CPU | Ubuntu 26.04, Linux x86_64 |
 | Host features | systemd, KVM (`/dev/kvm`), cgroup v2 with `cpu memory pids` |
 | Account | A normal user with `sudo` access |
-| Build tools | Git, Make, Go 1.24.7 or later, Python 3.11 or later |
+| Build tools | Git, Make, Go 1.24.7 or later, uv (manages Python 3.12) |
 | Memory guidance | At least 8 GiB for the default two-worker configuration; allow extra capacity for builds |
 | Network | Access to source, pinned runtime archives, OS packages and container images |
 | WSL or a VM host | All requirements above, plus nested virtualization |
@@ -29,10 +29,15 @@
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git make python3 golang-go
+sudo apt-get install -y git make curl ca-certificates golang-go
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.12
 
 go version
-python3 --version
+uv --version
+uv run --no-project --no-config --managed-python --python 3.12 python --version
 test -c /dev/kvm && echo 'KVM device found'
 cat /sys/fs/cgroup/cgroup.controllers
 
@@ -40,7 +45,10 @@ git clone https://github.com/pacificbelt30/sandbox-codex.git
 cd sandbox-codex
 ```
 
-- Check the reported versions: Go 1.24.7 or later and Python 3.11 or later.
+- Check the reported versions: Go 1.24.7 or later and uv-managed Python 3.12.
+- Install uv using [Astral’s official instructions](https://docs.astral.sh/uv/getting-started/installation/); [uv manages Python](https://docs.astral.sh/uv/guides/install-python/).
+- `install.sh` selects Python through uv and passes the same absolute interpreter path to the plan and privileged application. The OS Python is retained.
+- Python distributions come from uv-managed [python-build-standalone](https://docs.astral.sh/uv/concepts/python-versions/#managed-python-distributions).
 - Check that the controller list includes `cpu memory pids`.
 - Missing KVM: meet the [host requirements](../kata.md#必要なホスト) (Japanese) before continuing.
 - Retain this checkout until initial setup completes; the first proxy image build also uses the source.
@@ -68,7 +76,7 @@ Bundle: /home/user/sandbox-codex/dist/node-bundle (version <version>); operator:
 | Command or option | Behavior |
 |---|---|
 | No options | Build matching CLI/helpers, verify the bundle and display the installation plan |
-| `--apply` | Apply through `sudo` after the plan succeeds |
+| `--apply` | Apply through `sudo` after the plan succeeds, forwarding the selected Python’s absolute path |
 | No operator option | Register the invoking normal user |
 | `--operator USER` | Register another existing normal user; required when invoking the script as root |
 
@@ -126,12 +134,24 @@ user sudo codex-dock
 - Real API keys and OAuth tokens stay in the Auth Proxy; work VMs receive short-lived placeholders.
 - General egress defaults to denial. [Allow destinations](../proxy-policy.md) (Japanese) when Git or package downloads are needed.
 
+## What `--bundle` means
+
+- A directory containing the prebuilt `oaiso` CLI, worker guard, I/O logger and `bundle.json` (version and SHA-256 checksums).
+- Normal installation creates it in `dist/node-bundle/`; you do not need to specify the option.
+- Use `--bundle PATH` to reuse a build or bring it from another host. The destination host needs uv/Python, but not Go/Make.
+- It excludes Kata archives, container images, projects and credentials. Offline installation also needs prepared archives and Python.
+
+```bash
+./scripts/install.sh --bundle /path/to/node-bundle
+./scripts/install.sh --bundle /path/to/node-bundle --apply
+```
+
 ## Other installation paths
 
 | Method | Scope and reference |
 |---|---|
 | Manual host installation | [Kata host setup](../kata.md) (Japanese) |
-| Trusted prebuilt bundle | [Setup](../setup.md) (Japanese); `--bundle PATH` |
+| Prebuilt CLI/helper directory | [Bundle contents](../setup.md#ビルド済みバンドルとは) (Japanese); `--bundle PATH` skips Go/Make on this host |
 | Offline installation | [Offline setup](../setup.md#オフライン配置) (Japanese) |
 | Build and install CLI, helpers and completion | `make build` / `sudo make install`; excludes Kata and host services |
 | Updates and rollback | [Update and recovery](../setup.md#更新する) (Japanese) |

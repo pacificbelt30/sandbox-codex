@@ -253,8 +253,8 @@ def stage(bundle, record, archives):
         selected['opt/kata/' + member] = (release / target, mode)
     extract_selected(archives['kata'], selected, True)
     run(['gcc', '-static', '-Os', '-Wall', '-Wextra', '-Werror', HERE / 'pids_hook.c', '-o', release / 'pids-hook'])
-    run([sys.executable, HERE / 'prepare_guest.py', 'build', '--source-image', release / 'original.image', '--hook-binary', release / 'pids-hook', '--output', release / 'guest'])
-    run([sys.executable, HERE / 'prepare_guest.py', 'verify', release / 'guest/assets.lock.json'])
+    run([sys.executable, '-E', '-s', HERE / 'prepare_guest.py', 'build', '--source-image', release / 'original.image', '--hook-binary', release / 'pids-hook', '--output', release / 'guest'])
+    run([sys.executable, '-E', '-s', HERE / 'prepare_guest.py', 'verify', release / 'guest/assets.lock.json'])
     from configure import configure
     config = configure((release / 'original.toml').read_text(), str(release / 'guest/guest.image'))
     config, count = re.subn(r'^kernel\s*=.*$', 'kernel = ' + json.dumps(str(release / 'kernel')), config, flags=re.MULTILINE)
@@ -405,6 +405,7 @@ def main():
     print('Plan: rollback previous setup' if args.rollback else 'Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3', flush=True)
     if not args.rollback:
         print(f'Bundle: {args.bundle.resolve()} (version {record.get("version", "unknown")}); operator: {args.operator}; cache: {args.cache.resolve()}; offline: {"yes" if args.offline else "no"}', flush=True)
+    print(f'Python: {sys.executable} (version {platform.python_version()})', flush=True)
     print('Stop admission/builds; require empty containers, tasks and VM allocations; keep images and projects. Install into a new root-owned release; switch only codex-dock services; verify readiness; restore previous files/services on failure.', flush=True)
     if not args.apply:
         print('No host changes. Add --apply as root. Operator access is root-equivalent. Runtime downloads are pinned in assets.lock.json.', flush=True)

@@ -25,15 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-docs.txt
+          version: "0.13.5"
 
-      - name: Install dependencies
-        run: pip install -r requirements-docs.txt
+      - name: Prepare managed Python
+        run: uv python install 3.12
 
       - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --strict --force
+        run: uv run --no-project --no-config --managed-python --python 3.12 --with-requirements requirements-docs.txt mkdocs gh-deploy --strict --force
