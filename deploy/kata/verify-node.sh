@@ -105,11 +105,11 @@ if [[ -x /acceptance.test ]]; then
  install -o 12001 -g 12002 -m 0600 /dev/null /home/kata-test/owner-fixture/project/foreign-private
  install -d -o 12001 -g 12002 -m 2777 /home/kata-test/owner-fixture/project/setgid
  install -d -o root -g 1000 -m 0770 /run/setup-node-restart
- operator env CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_TEST_BINARY=/usr/local/bin/oaiso \
+ operator env CODEX_DOCK_KATA_E2E=1 CODEX_DOCK_KATA_POLICY_E2E=1 CODEX_DOCK_KATA_TEST_BINARY=/usr/local/bin/oaiso \
   CODEX_DOCK_KATA_TEST_IMAGE="$worker_fixture" CODEX_DOCK_KATA_PROXY_IMAGE="$proxy_fixture" \
   CODEX_DOCK_KATA_OWNER_FIXTURE=/home/kata-test/owner-fixture/project \
   CODEX_DOCK_NODE_RESTART_REQUEST_DIR=/run/setup-node-restart \
-  /acceptance.test -test.run "${CODEX_DOCK_KATA_ACCEPTANCE_RUN:-^TestKata(Acceptance|WorkspaceSharing|GoAPI)$}" -test.v -test.count=1 -test.timeout=25m > /evidence/acceptance.txt 2>&1 &
+  /acceptance.test -test.run "${CODEX_DOCK_KATA_ACCEPTANCE_RUN:-^TestKata(Acceptance|AuthenticationSession|WorkspaceSharing|PolicyFeatures|GoAPI)$}" -test.v -test.count=1 -test.timeout=25m > /evidence/acceptance.txt 2>&1 &
  test_pid=$!
  while kill -0 "$test_pid" 2>/dev/null; do
   if [[ -f /run/setup-node-restart/request ]]; then

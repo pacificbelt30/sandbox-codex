@@ -69,6 +69,7 @@ nav:
           - イメージの作成: commands/build.md
           - プロキシ管理: commands/proxy.md
           - 認証管理: commands/auth.md
+          - ログイン: commands/login.md
           - ネットワーク管理: commands/network-cmd.md
           - TUI: commands/ui.md
           - シェル補完: commands/completion.md
@@ -88,6 +89,7 @@ nav:
       - 性能とベンチマーク: performance.md
   - 開発:
       - 開発用ツールの準備: development/toolchain.md
+      - ローカル暗号化ストアの仕様: development/local-credential-store.md
       - 仕組み:
           - アーキテクチャ: architecture.md
           - ネットワーク: network.md
@@ -128,6 +130,7 @@ nav:
               - Build: en/commands/build.md
               - Proxy: en/commands/proxy.md
               - Auth: en/commands/auth.md
+              - Login: en/commands/login.md
               - Network: en/commands/network-cmd.md
               - TUI: en/commands/ui.md
               - Completion: en/commands/completion.md
@@ -147,6 +150,7 @@ nav:
           - Upstream compatibility: en/upstream-compatibility.md
           - Future work: en/future-work.md
           - Development tools: en/development/toolchain.md
+          - Local credential store specification: en/development/local-credential-store.md
           - Documentation editing: en/development/documentation.md
           - Removed features:
               - Firewall: en/firewall.md

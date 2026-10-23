@@ -24,6 +24,16 @@ func Build(ctx context.Context, tag, dockerfile, buildContext string, log io.Wri
 
 // BuildAt imports the built image into an explicitly selected local node.
 func BuildAt(ctx context.Context, socket, tag, dockerfile, buildContext string, log io.Writer) error {
+	return buildAt(ctx, socket, tag, dockerfile, buildContext, log, false)
+}
+
+// BuildPinned builds a product-owned image using the embedded recipe's CLI
+// versions. Development version overrides must not change the login CLI.
+func BuildPinned(ctx context.Context, tag, dockerfile, buildContext string, log io.Writer) error {
+	return buildAt(ctx, Socket(), tag, dockerfile, buildContext, log, true)
+}
+
+func buildAt(ctx context.Context, socket, tag, dockerfile, buildContext string, log io.Writer, pinned bool) error {
 	name, err := normalizeBuildName(tag)
 	if err != nil {
 		return err
@@ -45,6 +55,9 @@ func BuildAt(ctx context.Context, socket, tag, dockerfile, buildContext string, 
 	c := exec.CommandContext(ctx, "buildctl", "--addr", addr, "build", "--progress=plain", "--frontend", "dockerfile.v0", "--local", "context="+dir, "--local", "dockerfile="+filepath.Dir(df), "--opt", "filename="+filepath.Base(df), "--opt", "image-resolve-mode=local", "--output", "type=oci,name="+name+",dest=-")
 	c.Args = append(c.Args, "--opt", "build-arg:CODEX_DOCK_BUILD_VERSION="+buildinfo.Version)
 	for _, agent := range []string{"CODEX", "CLAUDE"} {
+		if pinned {
+			continue
+		}
 		key := "CODEX_DOCK_" + agent + "_VERSION"
 		if version := os.Getenv(key); version != "" {
 			if !codexVersionPattern.MatchString(version) {

@@ -1,5 +1,21 @@
 # Future work
 
+## Simple setup, authentication and operation
+
+- Implement the following six items, validating, documenting and committing each feature.
+- Retain existing 0600 storage and the Auth Proxy; encryption and additional key backends remain optional.
+
+| Item | State and completion criteria |
+|---|---|
+| `oaiso login` | Implemented in development; live accounts unverified: agent/method selection, API connection check, independent profile storage |
+| Automatic first configuration | Implemented in development: admin authority and profile selection while preserving existing policy/settings |
+| Subscription login Kata | Real Kata with fake credentials verified; live login unverified: pinned CLI, memory-only login, temporary VM cleanup, no secret retention in console logs or work VMs |
+| Consolidated status | In progress: distinguish stored, connection-checked, inference-tested, runtime and update states |
+| Lightweight local encrypted storage | [Specification prepared](development/local-credential-store.md); no additional daemon, WSL/headless unlocking |
+| Unified update guidance | Not implemented: show CLI, node, helper and image update scope and order |
+
+- [Development-version login](commands/login.md) is separate from published v0.0.2 installation instructions.
+
 - In addition to Codex CLI and Claude Code, the following coding agents are candidates for future integration.
 - They are not currently supported.
 - Adoption, implementation order and release dates are undecided.
@@ -41,7 +57,7 @@
 
 - The initial 0600 FileStore, independent profile creation/explicit import/selection and auth-proxy API/OAuth integration with durable refresh are implemented.
 - See [usage](commands/auth.md#independent-profiles).
-- Automated login-only Kata, live key validation, vault/migration and WSL/VM deployment acceptance remain future work.
+- Dedicated login Kata and API connection checks are [implemented in development](commands/login.md). Live accounts, encrypted storage/migration and WSL/VM deployment acceptance remain outstanding.
 
 - Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems.
 - Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM.

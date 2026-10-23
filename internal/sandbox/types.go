@@ -101,14 +101,17 @@ type MountSpec struct {
 type RunOptions struct {
 	// CreateOnly materializes a Kata worker without booting user code or issuing
 	// a live token. StartContext performs verification and activation later.
-	CreateOnly         bool
-	Compatibility      Compatibility
-	Filesystem         workerpolicy.Filesystem
-	Lifecycle          workerpolicy.Lifecycle
-	Environment        workerpolicy.Environment
-	CloneDir           string
-	pendingPlaceholder string
-	proxyHosts         []string
+	CreateOnly bool
+	// authenticationSession is set only by RunAuthenticationContext. Login
+	// sessions never inherit project mounts, entrypoints or provider secrets.
+	authenticationSession bool
+	Compatibility         Compatibility
+	Filesystem            workerpolicy.Filesystem
+	Lifecycle             workerpolicy.Lifecycle
+	Environment           workerpolicy.Environment
+	CloneDir              string
+	pendingPlaceholder    string
+	proxyHosts            []string
 	// Runtime selects the isolation boundary, not the container management API.
 	// Empty means Kata. Runc requires an explicit compatibility opt-in.
 	Runtime            string

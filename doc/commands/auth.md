@@ -38,7 +38,7 @@ oaiso auth profile list
 
 - 対話入力：TTYで非表示入力。
 - 非対話入力：`--key-stdin` を付け、安全な入力元からstdinへ渡す。
-- 実APIでのキー照合：未実装。
+- このコマンドは保存のみ。開発版の[login](login.md)では登録時の実API接続確認も行います。
 - 成功時：`Profile created (plaintext, 0600).`。[プロファイル確認の出力例](../guides/authentication.md#3-管理シークレットとプロファイルを設定する)。
 
 ### OAuthを取り込む
@@ -56,7 +56,7 @@ oaiso auth profile import claude-oauth --format claude --credentials-stdin < /pr
 
 - `--credentials-stdin`：必須。
 - 元ファイル：自動探索・自動削除しない。
-- 認証専用Kataの自動起動：未実装。
+- このコマンドは既存JSONの明示import用。開発版では[login](login.md)で専用Kataから認証できます。
 - 成功時：`Profile imported (plaintext, 0600).`。確認表示はproviderの `oauth` を参照。
 
 ### 管理シークレットを作成し、起動する

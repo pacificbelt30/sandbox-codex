@@ -79,7 +79,7 @@ Anthropic: disabled
 
 - Expected in profile mode: `Profile: work`, and `api-key` or `oauth` for the selected provider.
 - Creating a profile does not select it. Before selection, `auth show` reports legacy OpenAI information.
-- Dedicated login Kata and live API-key validation are not implemented.
+- Published v0.0.2 uses the manual registration/import above. The development version also offers [login Kata and live API connection checks](../commands/login.md).
 
 ## 4. Continue to the first worker
 
@@ -96,7 +96,7 @@ Anthropic: disabled
 | Normal OAuth refresh | CAS save to the same Store; retain the connection generation |
 | Re-login or account switch | Import into a new profile, then [replace the workers and proxy](../commands/auth.md#refresh-switching-and-sharing) |
 | Credentials passed to workers | Short-lived placeholders only; no real API key or access/refresh/ID token |
-| Dedicated login Kata, automated login and live API-key validation | Not implemented |
+| Login Kata, automated login and API connection checks | [Implemented in development](../commands/login.md); live-account verification remains separate |
 | Encrypted vault and key backends | Not implemented; see [design requirements](../credential-store.md) |
 
 - Storage, permissions and limitations: [Security](../security.md).

@@ -165,7 +165,18 @@ func newAuthProfileCommand() *cobra.Command {
 			}
 			return nil
 		}}
-	parent.AddCommand(set, importCmd, show, list)
+	use := &cobra.Command{Use: "use NAME", Short: "Select a saved profile and prepare global auth settings", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openAuthProfile(args[0])
+			if err != nil {
+				return err
+			}
+			if _, err := store.Load(cmd.Context(), args[0]); err != nil {
+				return err
+			}
+			return selectLoginProfile(cmd.Context(), cmd.OutOrStdout(), args[0])
+		}}
+	parent.AddCommand(set, importCmd, show, list, use)
 	return parent
 }
 

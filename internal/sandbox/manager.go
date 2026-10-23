@@ -526,11 +526,16 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		AttachStderr: !opts.Detach,
 		User:         opts.ContainerUser,
 	}
+	if opts.authenticationSession {
+		if err := configureAuthenticationSession(containerConfig, hostConfig, opts, m.httpProxyURL); err != nil {
+			return "", err
+		}
+	}
 	if opts.ShellMode {
 		// Override the Dockerfile ENTRYPOINT so Docker runs the chosen shell
 		// directly instead of "/entrypoint.sh".
 		containerConfig.Entrypoint = []string{shellBinaryPath(opts.ShellType)}
-	} else {
+	} else if !opts.authenticationSession {
 		containerConfig.Cmd = []string{"/entrypoint.sh"}
 	}
 	_ = codexArgs // passed via env
@@ -632,6 +637,9 @@ func (m *Manager) StartContext(parent context.Context, containerID string) (star
 	}
 	if v.ContainerJSONBase == nil || v.Config == nil || v.HostConfig == nil || v.Config.Labels[labelManaged] != "true" {
 		return fmt.Errorf("worker is missing its managed configuration")
+	}
+	if v.Config.Labels[labelAuthenticationSession] == "true" {
+		return fmt.Errorf("authentication sessions cannot be resumed; start a new login")
 	}
 	unlock, err := m.lockCleanup(ctx, v.ID)
 	if err != nil {
@@ -1397,6 +1405,9 @@ func buildCodexArgs(opts RunOptions) []string {
 // additional user-requested mounts from opts.Mounts, each independently
 // read-only or read-write.
 func buildMounts(opts RunOptions, absWorkspace string) []mount.Mount {
+	if opts.authenticationSession {
+		return nil
+	}
 	mounts := []mount.Mount{
 		{
 			Type:     mount.TypeBind,

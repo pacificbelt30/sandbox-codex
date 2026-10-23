@@ -38,7 +38,7 @@ oaiso auth profile list
 
 - Interactive: hidden TTY input.
 - Noninteractive: `--key-stdin` with a protected input source.
-- Live API-key validation: not implemented.
+- This command only saves the key. Development-version [login](login.md) also checks the live API connection during registration.
 - Success: `Profile created (plaintext, 0600).` See the [profile inspection example](../guides/authentication.md#3-configure-admin-authority-and-profile-selection).
 
 ### Import OAuth
@@ -56,7 +56,7 @@ oaiso auth profile import claude-oauth --format claude --credentials-stdin < /pr
 
 - `--credentials-stdin`: required.
 - Source files: never automatically discovered or deleted.
-- Automated login-only Kata: not implemented.
+- This command explicitly imports existing JSON. Development-version [login](login.md) authenticates through a dedicated Kata.
 - Success: `Profile imported (plaintext, 0600).` Check for `oauth` on the registered provider's line.
 
 ### Create admin authority and start the proxy

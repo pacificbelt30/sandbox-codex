@@ -79,7 +79,7 @@ Anthropic: disabled
 
 - 独立プロファイルの期待値：`Profile: work` と、選択したproviderの `api-key` または `oauth`。
 - プロファイルを作成しただけでは選択されない。設定前の `auth show` は従来モードのOpenAI情報を表示。
-- サブスクの専用Kataログインと、その場での実APIキー照合は未実装。
+- 公開済みv0.0.2は上記の手動登録・importを使用。開発版は[専用KataログインとAPI接続確認](../commands/login.md)にも対応。
 
 ## 4. 初回起動へ進む
 
@@ -96,7 +96,7 @@ Anthropic: disabled
 | 通常のOAuth更新 | 同じStoreへCAS保存。接続世代を維持 |
 | 再ログイン・別アカウントへの切り替え | 新規プロファイルへ取り込み、[ワーカーとProxyを切り替える](../commands/auth.md#更新切り替え共有の制限) |
 | ワーカーへ渡す資格情報 | 短命トークンのみ。実APIキー・access/refresh/ID tokenは返さない |
-| 認証専用Kata・自動login・実APIキー検証 | 未実装 |
+| 認証専用Kata・自動login・API接続確認 | [開発版で実装](../commands/login.md)。実アカウントでの確認は別途必要 |
 | 暗号化Vault・鍵backend | 未実装。[設計要件](../credential-store.md) |
 
 - 保持先・権限・制限：[セキュリティ](../security.md)。

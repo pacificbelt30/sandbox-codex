@@ -9,7 +9,8 @@
 | Component | Status |
 |---|---|
 | 0600 FileStore, independent profiles and auth-proxy integration | Implemented |
-| Encrypted vault, key backends, unlock UI and dedicated login flow | Not implemented; requirements appear below |
+| Dedicated login Kata, login flow and API connection checks | [Development version](commands/login.md); live accounts need separate verification |
+| Encrypted vault, key backends and unlock UI | Not implemented; requirements appear below |
 | Real credentials in work VMs | Never provided; short-lived tokens only |
 
 ## Store contract
@@ -135,7 +136,7 @@
 - Storage, encryption, unlocking and migration: [local credential store specification](development/local-credential-store.md).
 
 - This section specifies future product-vault requirements.
-- The encrypted vault, key backends, unlock UI and dedicated login flow are not implemented.
+- The encrypted vault, key backends and unlock UI are not implemented. Dedicated login is implemented in the [development version](commands/login.md).
 - The initial FileStore, existing product API-key files and local OAuth rotation state are permission-restricted plaintext.
 - External Store encryption belongs to the embedding product.
 

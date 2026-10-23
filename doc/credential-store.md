@@ -9,7 +9,8 @@
 | 対象 | 現状 |
 |---|---|
 | 0600ファイルStore・独立プロファイル・Auth Proxy接続 | 実装済み |
-| 暗号化Vault・鍵backend・解除UI・専用loginフロー | 未実装。後半に設計要件を記載 |
+| 専用Kata・login・API接続確認 | [開発版で実装](commands/login.md)。実アカウントの確認は別途必要 |
+| 暗号化Vault・鍵backend・解除UI | 未実装。後半に設計要件を記載 |
 | 作業VMへの実資格情報 | 渡さない。短命トークンだけを渡す |
 
 ## 製品側の保存契約
@@ -140,7 +141,7 @@
 - 実装する保存方式・暗号・解錠・移行：[ローカル暗号化ストアの仕様](development/local-credential-store.md)。
 
 - この節は今後の製品内Vaultの要件です。
-- 暗号化Vault、鍵backend、解除UI、専用loginフローは未実装です。
+- 暗号化Vault・鍵backend・解除UIは未実装です。専用loginは[開発版](commands/login.md)で実装しています。
 - 初期のFileStoreと、既存の製品APIキーファイル・ローカルOAuth更新状態は権限制限付きの平文です。
 - 外部Storeの暗号化は組み込み側が担当します。
 
