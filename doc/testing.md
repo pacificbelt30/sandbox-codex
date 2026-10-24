@@ -1,5 +1,24 @@
 # テストと動作確認
 
+## インストールから初回利用までの通し検証（2026-10-24）
+
+| 対象 | 確認結果 |
+|---|---|
+| バイナリ導入 | 対応するCLI・guard・loggerを含むバンドルを、パイプ経由のインストーラーで計画表示・適用。Goなしの使い捨てUbuntu 26.04で成功 |
+| 新規認証設定 | Codex／Claude Codeそれぞれ空のHOMEから、実キーリングの解錠・既定login・age保存・プロファイル選択・管理シークレットの自動生成が成功 |
+| 初回ビルド | 標準ワーカーイメージを未ロードの状態で、ネイティブBuildKitによる新規ビルド・containerdへの取込みが成功 |
+| 両エージェント | VM内でCodex 0.163.0／Claude Code 2.1.306の起動・正常終了を確認。前面TTYへの入力・出力・ログ保持、workspace書込み・数値UIDの一致、停止・削除まで成功 |
+| 実Kata受入 | VM、認証専用VM、前面TTY、共有9ケース、追加制御、ageプロファイル、実キーリング、Go APIの8スイートが成功。前面TTYを動かしたまま管理サービスを再起動し、同じguestでログ収集の再開・最終出力・正常終了を確認 |
+| 更新と復旧 | 稼働中の更新拒否、正常更新、起動失敗からの自動復旧、明示rollbackが成功。VM・コンテナ・task・ネットワーク・専用firewallの残存0件 |
+| 品質 | 全Go race・vet・lint、Python 77試験、MkDocs strictが成功 |
+
+- 通し試験・8スイート・更新／復旧の実行記録：`.kata-verification/setup-e2e/4561c54c0575`。試験ノードと専用ボリュームも回収済みです。
+- 修正：Kataの前面TTYをFIFO/passfd経由に変更し、短いコマンドの終了時も出力を読み終えてからCLIを終了。終了済みtaskへの入力専用接続は拒否します。
+- 対象は開発版から作成した検証用バンドルです。**公開済みv0.0.2の更新・新リリースの公開は行っていません。** [開発版の通し手順](guides/first-run.md)。
+- OS依存パッケージは試験用イメージで準備し、Kata等の配布物にはチェックサム検証済みキャッシュを使用。標準ワーカーは新規ビルドしています。
+- 資格情報は架空で、loginの実API確認は`--skip-check`で省略。実アカウントのログイン・推論、実WSL、ホスト再起動、対話画面の全キーボード操作は未確認です。
+
+
 ## キーリングを使う新規loginとGUIなしの解錠（2026-10-24）
 
 | 対象 | 結果 |
@@ -431,7 +450,7 @@ uv run --no-project --no-config --managed-python --python 3.12 \
 
 - `deploy/kata/Dockerfile.verify` はsystemdとOS依存パッケージを準備します。
 - `setup` 本体が固定配布物を展開して、専用サービスを新規導入します。
-- 内部ノードへホストPID、ホストDockerソケット、外部ネットワーク、実認証情報は渡しません。
+- 内部ノードへホストPID、ホストDockerソケット、実認証情報は渡しません。既定は外部ネットワークも切断します。
 - containerdのデータは、イメージ展開に必要なwhiteoutを扱える専用ボリュームへ配置します。
 
 - ソースのルートで、Go・Make・uv・Dockerを使って試験資産を作成します。
@@ -458,7 +477,7 @@ CODEX_DOCK_DISPOSABLE_SETUP=1 uv run --no-project --no-config --managed-python -
 - uvで準備したstandalone Pythonを配置処理にも使う場合は、`--setup-python "$(uv python find --no-project --no-config --managed-python --system 3.12)"` を指定します。試験ノードにはそのPythonの配置ディレクトリだけを読み取り専用で渡します。
 - ワーカーのentrypointが試験するCLIと一致しない場合は、受入試験を始める前に失敗します。現在のソースからイメージを作り直してください。
 - Go APIだけを再試験する場合は `--acceptance-run '^TestKataGoAPI$'` を指定できます。
-- 既定では3つの受入試験を実行します。
+- 既定では8つの受入試験（VM・認証専用VM・暗号化・キーリング・共有・追加制御・前面TTY・Go API）を実行します。
 
 - 必要な場合だけ `--sudo-docker` を付けます。
 - 配布物を準備済みなら `--cache PATH --offline` で検証できます。
@@ -466,7 +485,16 @@ CODEX_DOCK_DISPOSABLE_SETUP=1 uv run --no-project --no-config --managed-python -
 - 証跡は `.kata-verification/setup-e2e/<識別子>/` に残します。
 
 - 確認範囲は、計画時にサービスを作らないこと、新規配置、通常利用者の `init`、実Kata受入、稼働資源がある場合の更新拒否、正常更新時のイメージ保持、新サービスの起動失敗からの自動復旧、明示的なロールバックです。
-- OSパッケージのネットワーク取得、ホスト再起動、外部AI推論はこの試験に含みません。
+- 既定の試験には、OSパッケージのネットワーク取得、ホスト再起動、外部AI推論を含みません。
+
+### 新規HOMEから初回利用までを追加確認する
+
+- 上の呼出しに`--online-onboarding`を追加します。使い捨てノードだけを外部通信可能にし、事前ロード前に標準ワーカーイメージを新規ビルドします。
+- Codex／Claude Codeそれぞれ別の空のHOMEを用意し、実Secret Serviceの解錠→既定login→プロファイル／管理シークレットの自動設定→`init`→固定CLIの起動→前面TTYの入出力→workspace書込み→削除を確認します。
+- 認証情報は架空です。APIの接続確認を省略し、実アカウントへのログインや推論は実行しません。
+- OS依存パッケージは試験用Ubuntuイメージで準備します。ランタイム配布物には検証済みキャッシュを利用でき、`--offline`と併用した場合もワーカーの新規ビルドには通信が必要です。
+- 企業プロキシ環境では、既存のproxy/CA設定を使い捨てノードとそのBuildKitに設定します。ホストのサービスは変更しません。
+- `--release-installer PATH --setup-python PATH --uv PATH`も付けると、ビルド済みバンドルの導入を`cat install.sh | bash`の形で確認します。公開済み`releases/latest`の版を変更する操作ではありません。
 
 ## 追加制御の検証（2026-10-19）
 

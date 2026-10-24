@@ -5,6 +5,8 @@ package engine
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	cd "github.com/containerd/containerd/v2/client"
@@ -53,6 +55,17 @@ func (b *Backend) recover(ctx context.Context) error {
 			return err
 		}
 		h.io = task.IO()
+		if r.Host.Runtime != "runc" && r.Config.Tty {
+			if _, err := os.Lstat(filepath.Join(b.path(r.ID), "terminal.fifo")); err == nil {
+				terminal, err := openTerminalIO(b.path(r.ID), &loggingIO{})
+				if err != nil {
+					return err
+				}
+				h.io = terminal
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+		}
 		b.hubs[r.ID] = h
 		if err = b.prepareSupervisor(ctx, r); err != nil {
 			_ = h.Close()

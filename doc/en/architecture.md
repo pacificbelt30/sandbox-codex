@@ -71,7 +71,8 @@ flowchart LR
 - Stopped containers and snapshots remain in containerd.
 - Restart uses the same ID.
 - The node stores allocations and engine state under `/var/lib/codex-dock-node`.
-- Console I/O is owned by the shim so restarting the node service does not stop the guest or its logs.
+- Nonterminal logs use the shim's binary logger. Primary Kata terminals use a FIFO kept open by the shim and drained by the node; recovery resumes draining after a node restart.
+- Restarting the node does not recreate the VM. Terminal output may briefly wait while the node restarts; the shim retains stdin.
 
 - Stop records the exit code and time from containerd's exit notification.
 - When waiting for a running task to exit, a failed notification or a channel closed without a result remains an error.

@@ -9,6 +9,12 @@
 | Updating an installed node | [Update procedure](../setup.md#更新する) (Japanese) |
 | Other Linux distributions | [Manual installation](../kata.md) (Japanese) |
 
+## Installed version
+
+- The latest published installer is v0.0.2 (checked 2026-10-24); it has no `login`, keyring or age storage.
+- For those features, follow [development installation through first startup](guides/first-run.md).
+- The `releases/latest` commands below install the published release.
+
 ## 1. Requirements
 
 | Item | Requirement |

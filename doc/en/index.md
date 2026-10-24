@@ -24,6 +24,8 @@
 
 ## Start here
 
+- For development keyring/login features, use the [complete installation-to-first-run guide](guides/first-run.md). Published v0.0.2 uses manual authentication setup.
+
 1. Follow [Installation](installation.md) to install the CLI and execution host, then verify the setup.
 2. A user follows the [quick start](getting-started.md) to configure credentials and start a worker.
 3. Use the [operations guide](../operations.md) (Japanese) for updates and cleanup.

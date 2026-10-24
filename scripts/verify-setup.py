@@ -10,6 +10,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
+import urllib.parse
 import subprocess
 import time
 import uuid
@@ -23,7 +25,7 @@ def main():
     parser.add_argument('--next-bundle', type=Path, required=True)
     parser.add_argument('--images', type=Path, required=True)
     parser.add_argument('--acceptance', type=Path, required=True)
-    parser.add_argument('--acceptance-run', default='^TestKata(Acceptance|AuthenticationSession|EncryptedProfile|KeyringProfile|WorkspaceSharing|PolicyFeatures|GoAPI)$',
+    parser.add_argument('--acceptance-run', default='^TestKata(Acceptance|AuthenticationSession|EncryptedProfile|KeyringProfile|WorkspaceSharing|PolicyFeatures|PrimaryTerminal|GoAPI)$',
                         help='Go test name pattern for the real-Kata acceptance binary')
     parser.add_argument('--cache', type=Path, default=ROOT / '.kata-verification/setup-e2e/cache')
     parser.add_argument('--proxy-image', default='codex-dock-proxy:policy-verification')
@@ -37,6 +39,7 @@ def main():
     parser.add_argument('--image', default='codex-dock-setup-node:verification')
     parser.add_argument('--sudo-docker', action='store_true')
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--online-onboarding', action='store_true', help='Use a bridged disposable node to build the uncached default worker and verify fresh keyring login/init for both agents')
     args = parser.parse_args()
     if args.release_installer and not (args.setup_python and args.uv):
         parser.error('--release-installer also requires --setup-python and --uv')
@@ -80,12 +83,26 @@ def main():
         call(['volume', 'create', '--label', 'codex-dock.setup-test=' + identity, volume], stdout=subprocess.DEVNULL)
         volume_created = True
         argv = ['run', '-d', '--name', name, '--label', 'codex-dock.setup-test=' + identity,
-                '--privileged', '--cgroupns=private', '--network=none',
+                '--privileged', '--cgroupns=private', '--network=bridge' if args.online_onboarding else '--network=none',
                 '--device', '/dev/kvm', '--device', '/dev/vhost-vsock', '--device', '/dev/vhost-net',
                 '-e', 'CODEX_DOCK_DISPOSABLE_NODE=1', '-e', 'CODEX_DOCK_KATA_PROXY_IMAGE='+args.proxy_image,
                 '-e', 'CODEX_DOCK_KATA_TEST_IMAGE='+args.worker_image,
                 '-e', 'CODEX_DOCK_KATA_ACCEPTANCE_RUN='+args.acceptance_run,
                 '--mount', f'type=volume,src={volume},dst=/var/lib/codex-dock-containerd']
+        if args.online_onboarding:
+            argv += ['-e', 'CODEX_DOCK_VERIFY_ONBOARDING=1']
+            # Resolve the existing session proxy for the nested node; never
+            # print or alter its credential-bearing URL.
+            hosts = set()
+            for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
+                endpoint = urllib.parse.urlsplit(os.environ.get(key, ''))
+                if endpoint.hostname and endpoint.hostname not in hosts:
+                    hosts.add(endpoint.hostname)
+                    argv += ['--add-host', endpoint.hostname + ':' + socket.gethostbyname(endpoint.hostname)]
+            ca = os.environ.get('CODEX_PROXY_CERT')
+            if ca:
+                argv += ['--mount', f'type=bind,src={Path(ca).resolve(strict=True)},dst=/run/onboarding-ca.crt,readonly',
+                         '-e', 'CODEX_PROXY_CERT=/run/onboarding-ca.crt']
         if args.setup_python:
             prefix = args.setup_python.parent.parent
             argv += ['-e', 'CODEX_DOCK_SETUP_PYTHON='+str(args.setup_python),

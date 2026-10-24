@@ -15,8 +15,8 @@ import (
 	"github.com/containerd/containerd/v2/pkg/cio"
 )
 
-// The shim's binary logger owns output and the stdin keepalive independently
-// of this service. There are no service-owned FIFO readers to break on restart.
+// Binary loggers own output independently of this service. Primary Kata
+// terminals wrap this input state with a recoverable passfd FIFO collector.
 type loggingIO struct {
 	config    cio.Config
 	eof       *os.File
@@ -39,12 +39,34 @@ func (*loggingIO) Wait()                {}
 func (l *loggingIO) Close() error       { return l.CloseInput() }
 func (b *Backend) logIO(r *record) (cio.Creator, error) {
 	creator, err := b.logIOAt(b.path(r.ID), r.ID, r.Config.Tty, r.Config.OpenStdin, 0)
-	if err != nil || r.Host.Runtime != "runc" || !r.Config.OpenStdin || r.Config.Tty {
-		return creator, err
+	if err != nil {
+		return nil, err
+	}
+	if r.Host.Runtime != "runc" && r.Config.Tty {
+		return func(id string) (cio.IO, error) {
+			streams, err := creator(id)
+			if err != nil {
+				return nil, err
+			}
+			owned, ok := streams.(*loggingIO)
+			if !ok {
+				_ = streams.Close()
+				return nil, fmt.Errorf("unexpected terminal I/O implementation")
+			}
+			terminal, err := openTerminalIO(b.path(r.ID), owned)
+			if err != nil {
+				_ = owned.Close()
+				return nil, err
+			}
+			return terminal, nil
+		}, nil
+	}
+	if r.Host.Runtime != "runc" || !r.Config.OpenStdin || r.Config.Tty {
+		return creator, nil
 	}
 	// Runc's binary logging driver deliberately has no stdin. Its file driver
 	// keeps shim-owned output while connecting the provided input FIFO. Kata's
-	// passfd/binary-logger path is unchanged.
+	// nonterminal binary-logger path is unchanged.
 	path := filepath.Join(b.path(r.ID), "console.log")
 	log, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
 	if err != nil {

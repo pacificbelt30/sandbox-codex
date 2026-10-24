@@ -26,6 +26,32 @@ fi
 cli runtime-check --json > /evidence/readiness.json
 initial_release=$(release)
 proof 'fresh setup and operator readiness'
+if [[ ${CODEX_DOCK_VERIFY_ONBOARDING:-} == 1 ]]; then
+ # Test-only network trust/proxy setup for the session's package registry.
+ # No host service or credentials are mounted into the disposable node.
+ if [[ -r /run/onboarding-ca.crt ]]; then
+  install -m 0644 /run/onboarding-ca.crt /usr/local/share/ca-certificates/oaiso-onboarding.crt
+  update-ca-certificates > /evidence/onboarding-ca.txt 2>&1
+  export CODEX_PROXY_CERT=/usr/local/share/ca-certificates/oaiso-onboarding.crt
+ fi
+ python3 - <<'PYPROXY'
+import json, os
+from pathlib import Path
+keys = ['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'all_proxy']
+lines = [key + '=' + json.dumps(os.environ[key]) for key in keys if os.environ.get(key)]
+path = Path('/run/onboarding-build-proxy.env')
+path.write_text('\n'.join(lines) + '\n')
+path.chmod(0o600)
+dropin = Path('/etc/systemd/system/codex-dock-buildkit.service.d/onboarding.conf')
+dropin.parent.mkdir(parents=True, exist_ok=True)
+dropin.write_text('[Service]\nEnvironmentFile=/run/onboarding-build-proxy.env\n')
+PYPROXY
+ systemctl daemon-reload
+ systemctl restart codex-dock-buildkit
+ install -d -o kata-test -g 1000 -m 0700 /evidence/onboarding /home/kata-test/onboarding
+ operator python3 /verification/verify-onboarding.py --home-base /home/kata-test/onboarding --evidence /evidence/onboarding > /evidence/onboarding.txt 2>&1
+ proof 'fresh keyring login, automatic profile/admin setup, uncached default image and both agent CLIs in real Kata'
+fi
 ctr_node images import --local /images.tar > /evidence/import.txt
 install -d -o kata-test -g 1000 -m 0700 /home/kata-test/.config/codex-dock /home/kata-test/project
 proxy_fixture=${CODEX_DOCK_KATA_PROXY_IMAGE:-codex-dock-proxy:policy-verification}
@@ -109,7 +135,7 @@ if [[ -x /acceptance.test ]]; then
   CODEX_DOCK_KATA_TEST_IMAGE="$worker_fixture" CODEX_DOCK_KATA_PROXY_IMAGE="$proxy_fixture" \
   CODEX_DOCK_KATA_OWNER_FIXTURE=/home/kata-test/owner-fixture/project \
   CODEX_DOCK_NODE_RESTART_REQUEST_DIR=/run/setup-node-restart \
-  /acceptance.test -test.run "${CODEX_DOCK_KATA_ACCEPTANCE_RUN:-^TestKata(Acceptance|AuthenticationSession|EncryptedProfile|KeyringProfile|WorkspaceSharing|PolicyFeatures|GoAPI)$}" -test.v -test.count=1 -test.timeout=25m > /evidence/acceptance.txt 2>&1 &
+  /acceptance.test -test.run "${CODEX_DOCK_KATA_ACCEPTANCE_RUN:-^TestKata(Acceptance|AuthenticationSession|EncryptedProfile|KeyringProfile|WorkspaceSharing|PolicyFeatures|PrimaryTerminal|GoAPI)$}" -test.v -test.count=1 -test.timeout=25m > /evidence/acceptance.txt 2>&1 &
  test_pid=$!
  while kill -0 "$test_pid" 2>/dev/null; do
   if [[ -f /run/setup-node-restart/request ]]; then

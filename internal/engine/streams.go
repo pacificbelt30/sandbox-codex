@@ -25,8 +25,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// The shim owns console collection. This per-service object tracks exit state
-// only, so closing/restarting the node cannot terminate guest I/O.
+// The shim keeps guest descriptors alive. Primary Kata terminals use a
+// recoverable node-side FIFO collector; other tasks use the shim's logger.
 type hub struct {
 	mu     sync.Mutex
 	io     cio.IO
@@ -123,7 +123,12 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 		reply(w, container.WaitResponse{StatusCode: int64(rec.ExitCode)})
 		return
 	}
-	if taskErr != nil {
+	wantOutput := r.URL.Query().Get("stdout") == "1" || r.URL.Query().Get("stderr") == "1"
+	if action == "attach" && rec.FinishedAt != "" && r.URL.Query().Get("stdin") == "1" && !wantOutput {
+		failure(w, fmt.Errorf("cannot attach stdin to an exited task"))
+		return
+	}
+	if taskErr != nil && (action != "attach" || rec.FinishedAt == "" || !wantOutput) {
 		failure(w, taskErr)
 		return
 	}
@@ -152,12 +157,18 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 	}
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Time{})
-	b.attachIO(ctx, conn, rw, rec, r.URL.Query().Get("stdin") == "1", r.URL.Query().Get("stdout") == "1" || r.URL.Query().Get("stderr") == "1")
+	if taskErr != nil {
+		_ = b.copyConsole(ctx, conn, rec.ID, 200, false)
+		return
+	}
+	b.attachIO(ctx, conn, rw, rec, r.URL.Query().Get("stdin") == "1", wantOutput)
 }
 
 func (b *Backend) attachIO(ctx context.Context, conn net.Conn, reader io.Reader, rec *record, stdin, output bool) {
 	if rec.Config.OpenStdin && stdin {
-		input, err := os.OpenFile(filepath.Join(b.path(rec.ID), "stdin.fifo"), os.O_WRONLY, 0)
+		// A fast process can exit before attach. Opening write-only would
+		// block forever once its shim has closed the FIFO reader.
+		input, err := os.OpenFile(filepath.Join(b.path(rec.ID), "stdin.fifo"), os.O_RDWR|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 		if err != nil {
 			return
 		}
@@ -454,7 +465,10 @@ func (b *Backend) copyConsole(ctx context.Context, w io.Writer, cid string, tail
 		}
 		b.mu.Unlock()
 		if !running {
-			return nil
+			// Exit may race the preceding EOF; collectors drain before closing
+			// the hub. Read again after observing that closure.
+			_, err = io.Copy(w, f)
+			return err
 		}
 		select {
 		case <-ctx.Done():

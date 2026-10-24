@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -164,3 +165,33 @@ type inputOnlyAttachConn struct {
 }
 
 func (c *inputOnlyAttachConn) Write([]byte) (int, error) { c.writes.Add(1); return 0, net.ErrClosed }
+
+// Attaching after a short-lived process exits must not wait for its closed
+// stdin reader: its final console output is still available.
+func TestAttachReplaysFinalOutputWithoutLiveStdinReader(t *testing.T) {
+	b := &Backend{opts: Options{State: t.TempDir()}}
+	rec := &record{ID: "fixture"}
+	rec.Config.OpenStdin = true
+	dir := b.path(rec.ID)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(dir, "stdin.fifo"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "console.log"), []byte("final output\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
+	go func() {
+		b.attachIO(context.Background(), server, strings.NewReader(""), rec, true, true)
+		_ = server.Close()
+	}()
+	output, err := io.ReadAll(client)
+	if err != nil || string(output) != "final output\n" {
+		t.Fatalf("finished attach: %q %v", output, err)
+	}
+}

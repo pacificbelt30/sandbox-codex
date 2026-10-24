@@ -5,6 +5,9 @@
 - Prerequisite: complete [installation](../installation.md).
 - Configure authentication on the trusted host, including a WSL or VM host.
 
+- For new development installations, follow [install → keyring → login → first startup](first-run.md). Login selects the profile and prepares the admin secret automatically.
+- The manual steps below also support v0.0.2; do not combine both setup flows.
+
 ## 1. Choose credential separation
 
 | Mode | Credential storage | Use it for |

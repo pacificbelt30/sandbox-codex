@@ -74,7 +74,8 @@ flowchart LR
 | `/run/codex-dock-containerd` | containerdの実行時状態 |
 
 - 停止したコンテナとsnapshotは保持し、再起動には同じIDを使います。
-- ログ収集とstdinの維持はshim側のloggerが担当するため、管理サービスを再起動してもVMとI/Oを維持します。
+- 非TTYのログはshim側のloggerが収集します。Kataの前面TTYは、shimが開いたまま保つFIFOを管理サービスが読み、再起動時に読取りを再開します。
+- 管理サービスの再起動でVMは再作成しません。TTYの出力は再起動中に一時的に待つ場合があります。stdinはshim側で保持します。
 
 - 停止時はcontainerdの終了通知から終了コードと時刻を保存します。
 - 実行中taskの終了通知の失敗や結果なしのchannel終了はエラーとし、task削除前に停止・不在を確認します。

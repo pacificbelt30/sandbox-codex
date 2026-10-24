@@ -78,6 +78,8 @@ type Manager struct {
 	kataConfig            *kataguard.Config
 	guard                 kataNode
 	guardMu               sync.Mutex
+	attachMu              sync.Mutex
+	attachments           map[string]chan struct{}
 	stateDir              string
 	execProbe             func(context.Context, string, []string) ([]byte, error)
 }
@@ -615,8 +617,23 @@ func (m *Manager) RunContext(parent context.Context, opts RunOptions) (container
 		}
 	}
 	if !opts.Detach {
-		// Attach stdio
-		go m.attachIO(context.Background(), resp.ID)
+		// Keep final output alive until Wait returns, including fast commands.
+		done := make(chan struct{})
+		m.attachMu.Lock()
+		if m.attachments == nil {
+			m.attachments = make(map[string]chan struct{})
+		}
+		m.attachments[resp.ID] = done
+		m.attachMu.Unlock()
+		go func() {
+			m.attachIO(context.Background(), resp.ID)
+			close(done)
+			m.attachMu.Lock()
+			if m.attachments[resp.ID] == done {
+				delete(m.attachments, resp.ID)
+			}
+			m.attachMu.Unlock()
+		}()
 	}
 
 	return resp.ID, nil
@@ -774,18 +791,28 @@ func (m *Manager) StartByName(name string) error {
 // Wait returns a channel that receives nil when the container exits cleanly, or an error.
 func (m *Manager) Wait(containerID string) <-chan error {
 	ch := make(chan error, 1)
+	m.attachMu.Lock()
+	outputDone := m.attachments[containerID]
+	m.attachMu.Unlock()
 	go func() {
 		statusCh, errCh := m.cli.ContainerWait(context.Background(), containerID, container.WaitConditionNotRunning)
+		var waitErr error
 		select {
 		case err := <-errCh:
-			ch <- err
+			waitErr = err
 		case status := <-statusCh:
 			if status.StatusCode != 0 {
-				ch <- fmt.Errorf("container exited with code %d", status.StatusCode)
-			} else {
-				ch <- nil
+				waitErr = fmt.Errorf("container exited with code %d", status.StatusCode)
 			}
 		}
+		if outputDone != nil {
+			select {
+			case <-outputDone:
+			case <-time.After(10 * time.Second):
+				waitErr = errors.Join(waitErr, fmt.Errorf("timed out draining worker output"))
+			}
+		}
+		ch <- waitErr
 	}()
 	return ch
 }

@@ -153,6 +153,47 @@ func TestKataAcceptance(t *testing.T) {
 	if err := m.CheckRuntime(ctx, RunOptions{KataRuntime: runtimeName}); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("primary-terminal-exit-and-restart", func(t *testing.T) {
+		id, err := m.Run(RunOptions{Name: prefix + "-terminal", Image: workerImage, KataRuntime: runtimeName,
+			ProjectDir: t.TempDir(), ContainerUser: fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+			NoInternet: true, ExecCmd: "printf 'PRIMARY_TERMINAL_OK\\n'"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := m.Remove(id, true); err != nil {
+				t.Error(err)
+			}
+		}()
+		for generation := 1; generation <= 2; generation++ {
+			if generation == 2 {
+				if err := m.StartContext(ctx, id); err != nil {
+					t.Fatal(err)
+				}
+			}
+			select {
+			case err := <-m.Wait(id):
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(30 * time.Second):
+				t.Fatal("primary terminal failed to report exit")
+			}
+			logs, err := c.ContainerLogs(ctx, id, container.LogsOptions{ShowStdout: true, ShowStderr: true, Tail: "all"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := io.ReadAll(logs)
+			_ = logs.Close()
+			if err != nil || strings.Count(string(data), "\nPRIMARY_TERMINAL_OK\r\n") != generation {
+				t.Fatalf("terminal history after generation %d: %q %v", generation, data, err)
+			}
+			if attached, err := c.ContainerAttach(ctx, id, container.AttachOptions{Stdin: true, Stream: true}); err == nil {
+				attached.Close()
+				t.Fatal("finished task accepted stdin-only attach")
+			}
+		}
+	})
 
 	// Exercise a shim Create/Start failure before any image code can run.
 	guard, err := m.kataNode()

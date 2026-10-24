@@ -8,6 +8,8 @@
 | Host is ready | Steps 1–4 start the first worker; steps 5–6 are optional |
 | Updating an existing installation | [Operations](../operations.md) (Japanese) |
 
+- **For development keyring/login features, follow the [complete first-run guide](guides/first-run.md).** The manual authentication below is also available in published v0.0.2.
+
 ## 1. Check the host
 
 - Account: a normal user in the operator group.

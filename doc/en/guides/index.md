@@ -4,6 +4,7 @@
 
 - Prerequisites: complete [installation](../installation.md) and the [quick start](../getting-started.md).
 - Choose the task you need below.
+- First use of development keyring/login features: [installation through first startup](first-run.md).
 
 ## Use an agent
 

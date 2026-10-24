@@ -12,6 +12,8 @@
 
 [日本語ドキュメント](doc/index.md) · [English documentation](doc/en/index.md)
 
+- **キーリング・`oaiso login`を使う場合：[開発版のインストールから初回起動まで](doc/guides/first-run.md)。** 下の公開インストーラーはv0.0.2を取得し、これらの新機能を含みません（2026-10-24確認）。
+
 ## Installation — インストール
 
 - 対象：**Ubuntu 26.04・x86_64・systemd・KVM・cgroup v2**。
@@ -173,7 +175,7 @@ git add oaiso.toml       # チームで共有する場合
 
 ## 開発
 
-- ビルド済み版の利用にGoは不要。ソースからビルドする場合はGo 1.24.7以上・Makeなどを準備。
+- ビルド済み版の利用にGoは不要。ソースからビルドする場合はGo 1.26.0以上・Makeなどを準備。
 - [開発用ツールの準備](doc/development/toolchain.md)：[Go公式のLinux手順](https://go.dev/doc/install)と各ツールの公式手順。
 - `make build`：CLI・ワーカー起動用guard・IO loggerを作成。
 - ホストへの配置：[Kataの手順](doc/kata.md)。
