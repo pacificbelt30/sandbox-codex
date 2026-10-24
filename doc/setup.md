@@ -128,7 +128,7 @@ oaiso init --agent claude
 - リリース版のProxyイメージは、配置済みの静的CLIから作成します。ソースの取得は不要です。
 - 詳細：[クイックスタート](getting-started.md)。
 
-- 新規loginのキーリング保存にはD-Bus・GNOME Keyring・`secret-tool`を使用し、開発版setupで不足分を導入します。GUIなしでは[専用セッション](guides/keyring.md)を使用します。
+- 新規loginのキーリング保存にはD-Bus・GNOME Keyring・`secret-tool`を使用し、v0.0.3以降のsetupで不足分を導入します。GUIなしでは[専用セッション](guides/keyring.md)を使用します。
 
 ## 自動で準備するもの
 

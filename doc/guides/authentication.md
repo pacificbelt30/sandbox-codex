@@ -5,7 +5,7 @@
 - 前提：[インストール](../installation.md)を完了。
 - 設定場所：信頼済みホスト側。WSL／VMをホストにする場合も同様。
 
-- 開発版の新規導入は[インストール→キーリング→login→初回起動](first-run.md)へ。`login`がプロファイル選択と管理シークレットを自動準備します。
+- v0.0.3以降の新規導入は[インストール→キーリング→login→初回起動](first-run.md)へ。`login`がプロファイル選択と管理シークレットを自動準備します。
 - 以下は公開v0.0.2でも使える手動設定です。両方の手順を重ねて実行しないでください。
 
 ## 1. 認証の分離方法を選ぶ
@@ -17,7 +17,7 @@
 | 組み込み製品のStore | 組み込み側が提供する保存先 | ケースごとの認証を[Go API](../credential-store.md)で管理する |
 
 - 独立プロファイル選択時：ホスト認証へfallbackしない。
-- 以下の手動`set/import`例は0600平文保存。開発版の新規`login`は[キーリング＋age](keyring.md)が既定です。
+- 以下の手動`set/import`例は0600平文保存。v0.0.3以降の新規`login`は[キーリング＋age](keyring.md)が既定です。
 - プロジェクトの `oaiso.toml`：資格情報・認証プロファイル設定を置かない。
 
 ## 2. エージェントと認証方式を選ぶ
@@ -82,7 +82,7 @@ Anthropic: disabled
 
 - 独立プロファイルの期待値：`Profile: work` と、選択したproviderの `api-key` または `oauth`。
 - プロファイルを作成しただけでは選択されない。設定前の `auth show` は従来モードのOpenAI情報を表示。
-- 公開済みv0.0.2は上記の手動登録・importを使用。開発版は[専用KataログインとAPI接続確認](../commands/login.md)にも対応。
+- 公開済みv0.0.2は上記の手動登録・importを使用。v0.0.3以降は[専用KataログインとAPI接続確認](../commands/login.md)にも対応。
 
 ## 4. 初回起動へ進む
 
@@ -99,8 +99,8 @@ Anthropic: disabled
 | 通常のOAuth更新 | 同じStoreへCAS保存。接続世代を維持 |
 | 再ログイン・別アカウントへの切り替え | 新規プロファイルへ取り込み、[ワーカーとProxyを切り替える](../commands/auth.md#更新切り替え共有の制限) |
 | ワーカーへ渡す資格情報 | 短命トークンのみ。実APIキー・access/refresh/ID tokenは返さない |
-| 認証専用Kata・自動login・API接続確認 | [開発版で実装](../commands/login.md)。実アカウントでの確認は別途必要 |
-| 暗号化Vault・鍵backend | 未実装。[設計要件](../credential-store.md) |
+| 認証専用Kata・自動login・API接続確認 | [v0.0.3で実装](../commands/login.md)。実アカウントでの確認は別途必要 |
+| ローカル暗号化・鍵backend | [v0.0.3以降でage・キーリング対応](encrypted-credentials.md)。外部Vaultは組み込み側のStoreで接続 |
 
 - 保持先・権限・制限：[セキュリティ](../security.md)。
 - フラグと保存先：[認証コマンドリファレンス](../commands/auth.md)。

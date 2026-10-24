@@ -2,7 +2,7 @@
 
 [日本語](../../commands/status.md) | **English**
 
-- **Development only; unavailable in published v0.0.2.**
+- **Available in v0.0.3 or later; unavailable in v0.0.2.**
 - Distinguish saved credentials, checked connections and tested inference without displaying secrets.
 
 ```bash
@@ -21,7 +21,7 @@ oaiso status --json
 | Connection/inference | Unchecked; no provider request |
 
 ```text
-[ok] version: dev
+[ok] version: v0.0.3
 [ok] profile: work (encrypted (passphrase, age), 0600); saved, locked for this command
 [unchecked] connection: Credentials were not decrypted; connection and inference not tested
 ...

@@ -2,14 +2,14 @@
 
 [日本語](../../commands/upgrade.md) | **English**
 
-- **Development version only; unavailable in published v0.0.2.** On v0.0.2, rerun the [release installer](../../setup.md#更新する).
+- **Available in v0.0.3 or later; unavailable in v0.0.2.** On v0.0.2, rerun the [release installer](../../setup.md#更新する).
 - No Go installation required. The command reuses the distribution installer and explains host/image update order.
 
 ## Review a plan
 
 ```bash
 oaiso upgrade
-oaiso upgrade --version v0.0.2
+oaiso upgrade --version v0.0.3
 ```
 
 - Choose one. Omit the version to query GitHub's latest stable release.
@@ -19,14 +19,14 @@ oaiso upgrade --version v0.0.2
 
 ```text
 Installed CLI: dev
-Target release: v0.0.2
+Target release: v0.0.3
 
 Host update: CLI, node, helpers and pinned runtime assets.
 Images: rebuild the default worker after the host update; prepare proxies with the new CLI.
 Custom images/templates: review separately.
 Before applying: save work, then stop/remove retained workers and proxies with the installed CLI.
 ...
-Plan only. Apply the same release with: oaiso upgrade --version v0.0.2 --apply
+Plan only. Apply the same release with: oaiso upgrade --version v0.0.3 --apply
 ```
 
 - Example output; versions and plans depend on your host.

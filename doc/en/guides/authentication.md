@@ -5,7 +5,7 @@
 - Prerequisite: complete [installation](../installation.md).
 - Configure authentication on the trusted host, including a WSL or VM host.
 
-- For new development installations, follow [install → keyring → login → first startup](first-run.md). Login selects the profile and prepares the admin secret automatically.
+- For new v0.0.3+ installations, follow [install → keyring → login → first startup](first-run.md). Login selects the profile and prepares the admin secret automatically.
 - The manual steps below also support v0.0.2; do not combine both setup flows.
 
 ## 1. Choose credential separation
@@ -17,7 +17,7 @@
 | Embedding product Store | Storage provided by the embedding application | Manage per-case credentials through the [Go API](../credential-store.md) |
 
 - Selected independent profiles never fall back to host authentication.
-- The manual `set/import` examples below use 0600 plaintext. New development `login` profiles default to [keyring plus age](keyring.md).
+- The manual `set/import` examples below use 0600 plaintext. New v0.0.3+ `login` profiles default to [keyring plus age](keyring.md).
 - Keep credentials and profile selection out of project `oaiso.toml` files.
 
 ## 2. Choose the agent and authentication method
@@ -82,7 +82,7 @@ Anthropic: disabled
 
 - Expected in profile mode: `Profile: work`, and `api-key` or `oauth` for the selected provider.
 - Creating a profile does not select it. Before selection, `auth show` reports legacy OpenAI information.
-- Published v0.0.2 uses the manual registration/import above. The development version also offers [login Kata and live API connection checks](../commands/login.md).
+- Published v0.0.2 uses the manual registration/import above. v0.0.3+ also offers [login Kata and live API connection checks](../commands/login.md).
 
 ## 4. Continue to the first worker
 
@@ -99,8 +99,8 @@ Anthropic: disabled
 | Normal OAuth refresh | CAS save to the same Store; retain the connection generation |
 | Re-login or account switch | Import into a new profile, then [replace the workers and proxy](../commands/auth.md#refresh-switching-and-sharing) |
 | Credentials passed to workers | Short-lived placeholders only; no real API key or access/refresh/ID token |
-| Login Kata, automated login and API connection checks | [Implemented in development](../commands/login.md); live-account verification remains separate |
-| Encrypted vault and key backends | Not implemented; see [design requirements](../credential-store.md) |
+| Login Kata, automated login and API connection checks | [Implemented in v0.0.3](../commands/login.md); live-account verification remains separate |
+| Local encryption and key backends | [age and keyring in v0.0.3+](encrypted-credentials.md); external Vault integration uses an embedding Store |
 
 - Storage, permissions and limitations: [Security](../security.md).
 - Flags and file paths: [Authentication command reference](../commands/auth.md).

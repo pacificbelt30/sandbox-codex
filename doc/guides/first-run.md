@@ -1,33 +1,30 @@
-# インストールから最初のVM起動まで（開発版）
+# インストールから最初のVM起動まで
 
 **日本語** | [English](../en/guides/first-run.md)
 
-## 最初に使う版を選ぶ
+## 対応する版
 
 | 版 | インストール | 認証の準備 |
 |---|---|---|
-| 公開v0.0.2 | [ビルド済みインストーラー](../installation.md) | [手動のset/import](authentication.md#2-エージェントと認証方式を選ぶ)。キーリング・`login`は未収録 |
-| mainの開発版 | 以下のソース導入、または同じ版のビルド済みバンドル | このページの`login`・キーリング |
+| v0.0.3以降 | [ビルド済みインストーラー](../installation.md) | このページの`login`・キーリング |
+| v0.0.2 | 旧版の配布物 | [手動のset/import](authentication.md#2-エージェントと認証方式を選ぶ)。キーリング・`login`は未収録 |
 
-- **`releases/latest`のインストーラーは公開版を取得します。mainの新機能は入りません。**
-- `oaiso --version`で導入した版を確認してから、その版の手順へ進んでください。
+- このページはv0.0.3以降の手順です。`oaiso --version`で導入した版を確認してください。
 - 以下はUbuntu 26.04・x86_64・systemd・KVM・cgroup v2があるホスト向けです。[前提条件](../installation.md#1-前提条件)。
 
-## 1. 開発版をインストールする
+## 1. ビルド済み版をインストールする
 
-1. [開発ツール](../development/toolchain.md)に従いGo 1.26.0以上・Make・Gitを準備。
-2. 通常ユーザーで計画を表示し、内容を確認して適用。
+通常ユーザーで計画を表示し、内容を確認して適用します。`curl`がない場合は先に[ツールの準備](../installation.md#2-ツールを準備する)を行います。
 
 ```bash
-git clone https://github.com/pacificbelt30/sandbox-oasis.git
-cd sandbox-oasis
-./scripts/install.sh
-./scripts/install.sh --apply
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash -s -- --apply
 ```
 
-- uv・Pythonはスクリプトが準備します。
-- D-Bus・GNOME Keyring・`secret-tool`は開発版setupの依存として導入します。
-- ビルド済みバンドルを使う場合、ホストのGo・Makeは不要です。[バンドルの導入](../setup.md#ビルド済みバンドルとは)。
+- Go・Make・ソース取得は不要。uv・Pythonはスクリプトが準備します。
+- 不足するD-Bus・GNOME Keyring・`secret-tool`もsetupが導入します。
+- 版を固定する場合：[v0.0.3を指定して導入](../installation.md#版を固定して取得実行する)。
+- mainをソースから導入する場合：[開発ツール](../development/toolchain.md)と[ソースからの配置手順](../setup.md)を参照してください。
 
 ## 2. 再ログインして基盤を確認する
 

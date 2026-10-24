@@ -2,7 +2,7 @@
 
 **日本語** | [English](../en/commands/status.md)
 
-- **開発版の機能です。公開済みv0.0.2には含まれません。**
+- **v0.0.3以降で利用できます。v0.0.2には含まれません。**
 - 保存済み・接続確認済み・推論確認済みを区別し、秘密は表示しません。
 
 ```bash
@@ -21,7 +21,7 @@ oaiso status --json
 | 接続・推論 | 未確認。提供元のAPIへ問い合わせない |
 
 ```text
-[ok] version: dev
+[ok] version: v0.0.3
 [ok] profile: work (encrypted (passphrase, age), 0600); saved, locked for this command
 [unchecked] connection: Credentials were not decrypted; connection and inference not tested
 ...

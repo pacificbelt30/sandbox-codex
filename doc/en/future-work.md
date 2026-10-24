@@ -7,14 +7,14 @@
 
 | Item | State and completion criteria |
 |---|---|
-| `oaiso login` | Implemented in development; live accounts unverified: agent/method selection, API connection check, independent profile storage |
-| Automatic first configuration | Implemented in development: admin authority and profile selection while preserving existing policy/settings |
+| `oaiso login` | Implemented in v0.0.3; live accounts unverified: agent/method selection, API connection check, independent profile storage |
+| Automatic first configuration | Implemented in v0.0.3: admin authority and profile selection while preserving existing policy/settings |
 | Subscription login Kata | Real Kata with fake credentials verified; live login unverified: pinned CLI, memory-only login, temporary VM cleanup, no secret retention in console logs or work VMs |
-| Consolidated status | Implemented in development: [`oaiso status`](commands/status.md) distinguishes saved, connected, inference, runtime and update states |
-| Lightweight local encrypted storage | [Implemented in development](guides/encrypted-credentials.md): keyring-default new login profiles, explicit migration, passphrase changes and locking; see [verification](../testing.md) |
-| Unified update guidance | Implemented in development: `oaiso upgrade` plans/applies distribution updates and explains image update order |
+| Consolidated status | Implemented in v0.0.3: [`oaiso status`](commands/status.md) distinguishes saved, connected, inference, runtime and update states |
+| Lightweight local encrypted storage | [Implemented in v0.0.3](guides/encrypted-credentials.md): keyring-default new login profiles, explicit migration, passphrase changes and locking; see [verification](../testing.md) |
+| Unified update guidance | Implemented in v0.0.3: `oaiso upgrade` plans/applies distribution updates and explains image update order |
 
-- [Development-version login](commands/login.md) is separate from published v0.0.2 installation instructions.
+- [Login is available in v0.0.3+](commands/login.md); v0.0.2 manual setup remains supported.
 
 - In addition to Codex CLI and Claude Code, the following coding agents are candidates for future integration.
 - They are not currently supported.
@@ -57,14 +57,14 @@
 
 - The initial 0600 FileStore, independent profile creation/explicit import/selection and auth-proxy API/OAuth integration with durable refresh are implemented.
 - See [usage](commands/auth.md#independent-profiles).
-- Dedicated login Kata and API connection checks are [implemented in development](commands/login.md). Encryption/explicit migration are also implemented. Live accounts, WSL/VM deployment acceptance and an actual desktop Secret Service still require verification.
+- Dedicated login Kata and API connection checks are [implemented in v0.0.3](commands/login.md). Encryption/explicit migration are also implemented. Live accounts, WSL/VM deployment acceptance and an actual desktop Secret Service still require verification.
 
 - Design the product's encrypted vault for trusted control environments running in WSL 2, Linux VMs and SSH/headless systems.
 - Retain the auth proxy and work-VM credential boundary without requiring an OS keyring, systemd or TPM.
 - Acceptance must include explicit passphrase unlocking, filesystem guarantees, lock/revocation, a browser on another device, backup, cloning and rollback.
 
 - See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems).
-- Encryption/key backends are implemented in development. Kata execution inside WSL/VMs and differences between desktop keyring services require separate deployment testing.
+- Encryption/key backends are implemented in v0.0.3. Kata execution inside WSL/VMs and differences between desktop keyring services require separate deployment testing.
 
 ## Existing SDK dependency findings
 

@@ -8,7 +8,7 @@
 | 実行ホストは準備済み | 1〜4で最初のワーカーを起動。5〜6は任意 |
 | 既存環境を更新したい | [日常の運用](operations.md) |
 
-- **開発版のキーリング・`login`を使う場合は[専用の通し手順](guides/first-run.md)へ進んでください。** 以下の手動認証は公開v0.0.2でも利用できる手順です。
+- このページはv0.0.3以降向けです。[インストールから一続きの手順](guides/first-run.md)も用意しています。v0.0.2は[手動の認証設定](guides/authentication.md)を使用してください。
 
 ## 1. 実行ホストを確認する
 
@@ -48,12 +48,35 @@ oaiso runtime-check
 
 ## 2. 認証方式を選ぶ
 
-**Proxy起動前に、どちらか一方を選択します。**
+**新規利用は`login`で、ホストCLIと分けた認証を作成します。**
+
+1. キーリングを確認。SSH・WSL・GUIなしでは`session`を開き、そのシェル内で続行。
+2. 下表から利用する方式を1つ選択。
+
+```bash
+oaiso auth keyring check
+# キーリングを利用できない場合：
+oaiso auth keyring session
+```
+
+| 認証 | コマンド |
+|---|---|
+| Codex・APIキー | `oaiso login --agent codex --method api-key --profile work` |
+| Codex・サブスク | `oaiso login --agent codex --method subscription --profile work` |
+| Claude Code・APIキー | `oaiso login --agent claude --method api-key --profile work` |
+| Claude Code・サブスク | `oaiso login --agent claude --method subscription --profile work` |
+
+- 成功時は、キーリング＋age保存、プロファイル選択、管理シークレットの準備を自動実行。
+- APIキーは非表示入力・モデル一覧APIで接続確認。サブスクは一時Kataで公式CLIのログイン手順を実行。
+- 以後の`init`も同じキーリングセッション内で実行します。[パスフレーズと解錠](guides/keyring.md)。
+- `auth profile set/import`や管理シークレット生成を追加実行する必要はありません。
+
+### 既存の認証方式を使う場合
 
 | 認証方式 | 準備 | 読み込み元 |
 |---|---|---|
-| 独立プロファイル | [認証ガイドの1〜3](guides/authentication.md)で資格情報を登録し、プロファイルと管理シークレットを設定 | 選択した製品専用Storeのみ。ホスト認証へfallbackしない |
-| 従来のホスト連携 | 下表の環境変数またはログインファイルを準備 | ホスト認証を[優先順位](auth-proxy.md#認証ソース)で選択 |
+| 手動の独立プロファイル | [認証ガイドの1〜3](guides/authentication.md) | 選択した製品専用Storeのみ。ホスト認証へfallbackしない |
+| 従来のホスト連携 | 下表の環境変数またはログインファイル | ホスト認証を[優先順位](auth-proxy.md#認証ソース)で選択 |
 
 **従来のホスト連携を選んだ場合**
 
@@ -98,7 +121,7 @@ Ready. From your project run: oaiso codex
 For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 ```
 
-- Claudeの場合：1行目は `Ready. From your project run: oaiso run --agent claude`。
+- Claudeの場合：1行目は `Ready. From your project run: oaiso claude`。
 - 途中にはホスト診断・イメージ検査・必要に応じたビルドログも表示。
 
 | `init` が行うこと | 条件・制限 |
@@ -144,7 +167,7 @@ oaiso proxy run
 ```bash
 oaiso codex
 # Anthropicを準備した場合はこちら
-oaiso run --agent claude
+oaiso claude
 ```
 
 **シェル・単発コマンド**
@@ -159,7 +182,7 @@ oaiso run -- ls -la
 | 起動方法 | 動作 |
 |---|---|
 | `oaiso codex` | Codexを起動 |
-| `oaiso run --agent claude` | Claude Codeを起動 |
+| `oaiso claude` | Claude Codeを起動 |
 | `oaiso run` | 設定した既定値。組み込み既定値は認証済みシェル |
 | `oaiso run -- COMMAND` | コマンドを1回実行 |
 | Kata検証に失敗 | 起動中止。隔離・権限・資源の確認を省略しない |

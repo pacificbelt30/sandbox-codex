@@ -44,7 +44,7 @@ oaiso auth profile list
 
 - 対話入力：TTYで非表示入力。
 - 非対話入力：`--key-stdin` を付け、安全な入力元からstdinへ渡す。
-- このコマンドは保存のみ。開発版の[login](login.md)では登録時の実API接続確認も行います。
+- このコマンドは保存のみ。v0.0.3以降の[login](login.md)では登録時の実API接続確認も行います。
 - 成功時：`Profile created (plaintext, 0600).`。[プロファイル確認の出力例](../guides/authentication.md#3-管理シークレットとプロファイルを設定する)。
 
 ### OAuthを取り込む
@@ -229,7 +229,7 @@ oaiso auth rotate
 | 設定値・ファイル形式 | [設定リファレンス](../configuration.md) |
 | 初回の準備 | [クイックスタート](../getting-started.md) |
 
-## 暗号化して保存する（開発版）
+## 暗号化して保存する（v0.0.3以降）
 
 - [方式・操作・出力例](../guides/encrypted-credentials.md)。公開済みv0.0.2では利用できません。
 - 新規：`oaiso login --encrypt`／`--keyring`。

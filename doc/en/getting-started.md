@@ -8,7 +8,7 @@
 | Host is ready | Steps 1–4 start the first worker; steps 5–6 are optional |
 | Updating an existing installation | [Operations](../operations.md) (Japanese) |
 
-- **For development keyring/login features, follow the [complete first-run guide](guides/first-run.md).** The manual authentication below is also available in published v0.0.2.
+- This page covers v0.0.3 or later. A [complete installation-to-first-run guide](guides/first-run.md) is also available. On v0.0.2, use [manual authentication setup](guides/authentication.md).
 
 ## 1. Check the host
 
@@ -48,12 +48,35 @@ oaiso runtime-check
 
 ## 2. Prepare credentials
 
-**Choose one mode before starting the proxy.**
+**For new installations, use `login` to separate product and host credentials.**
+
+1. Check the keyring. For SSH, WSL or headless use, open `session` and continue inside that shell.
+2. Choose exactly one login command below.
+
+```bash
+oaiso auth keyring check
+# If the keyring is unavailable:
+oaiso auth keyring session
+```
+
+| Authentication | Command |
+|---|---|
+| Codex, API key | `oaiso login --agent codex --method api-key --profile work` |
+| Codex, subscription | `oaiso login --agent codex --method subscription --profile work` |
+| Claude Code, API key | `oaiso login --agent claude --method api-key --profile work` |
+| Claude Code, subscription | `oaiso login --agent claude --method subscription --profile work` |
+
+- Login encrypts storage with keyring plus age, selects the profile and prepares the admin secret.
+- API keys use hidden input and a models-list connection check. Subscription login runs the official CLI inside temporary Kata.
+- Run `init` in the same keyring session. See [passphrases and unlocking](guides/keyring.md).
+- Do not additionally run manual `auth profile set/import` or admin-secret creation.
+
+### Use an existing authentication method
 
 | Mode | Setup | Credential source |
 |---|---|---|
-| Independent profile | Complete steps 1–3 of [Authentication](guides/authentication.md): register credentials, select the profile and configure the admin secret | Selected product Store only; no host fallback |
-| Legacy host integration | Configure one of the sources below | Host credentials, using [source precedence](auth-proxy.md#credential-sources) |
+| Manual independent profile | [Authentication steps 1–3](guides/authentication.md) | Selected product Store only; no host fallback |
+| Legacy host integration | Configure a source below | Host credentials using [source precedence](auth-proxy.md#credential-sources) |
 
 **For legacy host integration**
 
@@ -95,7 +118,7 @@ Ready. From your project run: oaiso codex
 For host edit watchers add --watch-polling to `oaiso run` (Chokidar/Watchpack).
 ```
 
-- For Claude, the first line is `Ready. From your project run: oaiso run --agent claude`.
+- For Claude, the first line is `Ready. From your project run: oaiso claude`.
 - Host diagnostics, image checks and any required build logs appear before these lines.
 
 | `init` action | Behavior or limit |
@@ -148,7 +171,7 @@ oaiso run -- ls -la
 | Invocation | Result |
 |---|---|
 | `oaiso codex` | Start Codex |
-| `oaiso run --agent claude` | Start Claude Code |
+| `oaiso claude` | Start Claude Code |
 | `oaiso run` | Configured agent; built-in default is an authenticated shell |
 | `oaiso run -- COMMAND` | Run a command once |
 | Failed isolation check | Startup stops; no automatic fallback to runc |

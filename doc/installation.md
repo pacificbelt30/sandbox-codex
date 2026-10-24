@@ -11,8 +11,8 @@
 
 ## インストールする版
 
-- 公開インストーラーの最新版はv0.0.2です（2026-10-24確認）。`login`・キーリング・age保存は含みません。
-- これらの新機能を使う場合は、[開発版の導入から初回起動まで](guides/first-run.md)を使用してください。
+- v0.0.3は`login`・キーリング・age保存を含むビルド済み配布版です。
+- 一続きの操作例：[インストールから初回起動まで](guides/first-run.md)。
 - このページの`releases/latest`は公開版を導入する手順です。
 
 ## 1. 前提条件
@@ -57,7 +57,7 @@ curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/downlo
 
 ```text
 Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3
-Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: /var/cache/codex-dock-setup; offline: no
+Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.3); operator: user; cache: /var/cache/codex-dock-setup; offline: no
 ```
 
 - 版・パス・利用者名は例。実際の環境とリリースにより変わります。
@@ -68,7 +68,7 @@ Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: 
 | コマンド・指定 | 動作 |
 |---|---|
 | 指定なし | 同じリリースのCLI・補助プログラムを取得・検証し、配置計画を表示 |
-| `--version v0.0.2` | 指定版を取得 |
+| `--version v0.0.3` | 指定版を取得 |
 | `--apply` | 計画成功後に `sudo` で配置。選択済みPythonの絶対パスも渡す |
 | operator省略 | スクリプトを実行した通常ユーザーを登録 |
 | `--operator USER` | 別の既存通常ユーザーを登録。rootから実行する場合は必須 |
@@ -86,13 +86,13 @@ Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: 
 
 ### 版を固定して取得・実行する
 
-**v0.0.2を指定する例。保存したスクリプトを確認してから、同じファイルで計画・適用します。**
+**v0.0.3を指定する例。保存したスクリプトを確認してから、同じファイルで計画・適用します。**
 
 ```bash
-curl -fsSL -o install.sh https://github.com/pacificbelt30/sandbox-oasis/releases/download/v0.0.2/install.sh
+curl -fsSL -o install.sh https://github.com/pacificbelt30/sandbox-oasis/releases/download/v0.0.3/install.sh
 less install.sh
-bash install.sh --version v0.0.2
-bash install.sh --version v0.0.2 --apply
+bash install.sh --version v0.0.3
+bash install.sh --version v0.0.3 --apply
 ```
 
 ## 4. 再ログインして確認
@@ -130,7 +130,7 @@ user sudo codex-dock
 
 ## 次は認証と初回起動
 
-1. [認証方式を選ぶ](getting-started.md#2-認証方式を選ぶ)。独立プロファイル／従来のホスト連携から選択。
+1. [キーリングを解錠し、loginで認証を登録](guides/first-run.md#3-キーリングを解錠する)。既存設定を使う場合は[認証ガイド](guides/authentication.md)を参照。
 2. `oaiso init`。Claude Codeの場合は `oaiso init --agent claude`。
 3. 作業するプロジェクトで `oaiso codex` または `oaiso claude`。
 

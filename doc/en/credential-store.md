@@ -10,7 +10,7 @@
 |---|---|
 | 0600 FileStore, independent profiles and auth-proxy integration | Implemented |
 | Dedicated login Kata, login flow and API connection checks | [Development version](commands/login.md); live accounts need separate verification |
-| Optional encryption and key backends | [Implemented in development](guides/encrypted-credentials.md): passphrase/existing Secret Service, migration and lock |
+| Optional encryption and key backends | [Implemented in v0.0.3](guides/encrypted-credentials.md): passphrase/existing Secret Service, migration and lock |
 | Real credentials in work VMs | Never provided; short-lived tokens only |
 
 ## Store contract
@@ -136,7 +136,7 @@
 - Storage, encryption, unlocking and migration: [local credential store specification](development/local-credential-store.md).
 
 - This section specifies future product-vault requirements.
-- [Optional encryption](guides/encrypted-credentials.md), key backends and [dedicated login](commands/login.md) are implemented in development. Live accounts and WSL deployment acceptance remain separate checks.
+- [Optional encryption](guides/encrypted-credentials.md), key backends and [dedicated login](commands/login.md) are implemented in v0.0.3. Live accounts and WSL deployment acceptance remain separate checks.
 - The initial FileStore, existing product API-key files and local OAuth rotation state are permission-restricted plaintext.
 - External Store encryption belongs to the embedding product.
 

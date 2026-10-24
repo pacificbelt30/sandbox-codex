@@ -8,7 +8,7 @@
 | ホストのプロジェクト | VMの `/workspace` と共有。既定は読み書き可能 | 変更・削除はホストにも反映される。必要なら `--read-only` を指定 |
 | 外部通信 | 既定では、一般通信は許可した宛先だけ。AI用の接続先は別の認証経路 | Git・パッケージ取得先など、必要な宛先を設定 |
 | ホスト管理 | 管理グループとBuildKitの利用者はroot相当の権限 | 信頼する利用者だけに管理権限を与える |
-| 認証情報の保存 | 開発版の新規loginはキーリング＋age。既存方式は維持 | [暗号化保存](guides/encrypted-credentials.md)の方式・鍵管理・保護範囲を確認 |
+| 認証情報の保存 | v0.0.3以降の新規loginはキーリング＋age。既存方式は維持 | [暗号化保存](guides/encrypted-credentials.md)の方式・鍵管理・保護範囲を確認 |
 
 ## VMと管理サービス
 
@@ -53,7 +53,7 @@
 | capabilities | 全削除。認証ファイル読取用にも追加しない |
 | 管理secret | 別の0600ファイルをAuth Proxyだけにreadonly mount可能。値をargvへ載せない |
 | ワーカーへの共有 | CLIはprofile領域との重複を拒否。組み込み側もStore・管理secretを共有外へ置く |
-| 保存暗号化 | 開発版の新規loginはSecret Service＋ageが既定。age＋HMAC-SHA256、明示パスフレーズ方式も対応。作業VMへ鍵や暗号文を渡さない |
+| 保存暗号化 | v0.0.3以降の新規loginはSecret Service＋ageが既定。age＋HMAC-SHA256、明示パスフレーズ方式も対応。作業VMへ鍵や暗号文を渡さない |
 
 - 「ホスト」：信頼済みの制御環境。
 - WSL／VM内に置く構成も含む。

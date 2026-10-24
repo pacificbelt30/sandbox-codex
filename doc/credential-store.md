@@ -9,8 +9,8 @@
 | 対象 | 現状 |
 |---|---|
 | 0600ファイルStore・独立プロファイル・Auth Proxy接続 | 実装済み |
-| 専用Kata・login・API接続確認 | [開発版で実装](commands/login.md)。実アカウントの確認は別途必要 |
-| 任意の暗号化保存・鍵backend | [開発版で実装](guides/encrypted-credentials.md)。パスフレーズ・既存Secret Service、明示移行・ロック |
+| 専用Kata・login・API接続確認 | [v0.0.3で実装](commands/login.md)。実アカウントの確認は別途必要 |
+| 任意の暗号化保存・鍵backend | [v0.0.3で実装](guides/encrypted-credentials.md)。パスフレーズ・既存Secret Service、明示移行・ロック |
 | 作業VMへの実資格情報 | 渡さない。短命トークンだけを渡す |
 
 ## 製品側の保存契約
@@ -141,7 +141,7 @@
 - 実装する保存方式・暗号・解錠・移行：[ローカル暗号化ストアの仕様](development/local-credential-store.md)。
 
 - この節は製品内ストアの設計要件と、実機で確認する条件です。
-- [任意の暗号化保存](guides/encrypted-credentials.md)・鍵backend・専用[login](commands/login.md)は開発版で実装しています。実アカウント・WSL固有の実機受入は別途必要です。
+- [任意の暗号化保存](guides/encrypted-credentials.md)・鍵backend・専用[login](commands/login.md)はv0.0.3で実装しています。実アカウント・WSL固有の実機受入は別途必要です。
 - 初期のFileStoreと、既存の製品APIキーファイル・ローカルOAuth更新状態は権限制限付きの平文です。
 - 外部Storeの暗号化は組み込み側が担当します。
 

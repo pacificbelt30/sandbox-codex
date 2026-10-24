@@ -2,14 +2,14 @@
 
 **日本語** | [English](../en/commands/upgrade.md)
 
-- **開発版の機能です。公開済みv0.0.2では利用できません。** v0.0.2は[配布インストーラー](../setup.md#更新する)を再実行してください。
+- **v0.0.3以降で利用できます。v0.0.2では利用できません。** v0.0.2は[配布インストーラー](../setup.md#更新する)を再実行してください。
 - Goの追加は不要です。既存の配布インストーラーを使い、ホスト全体の更新手順を案内します。
 
 ## 更新計画を確認する
 
 ```bash
 oaiso upgrade
-oaiso upgrade --version v0.0.2
+oaiso upgrade --version v0.0.3
 ```
 
 - どちらかを選びます。版を省略するとGitHubで最新の安定版を調べます。
@@ -19,14 +19,14 @@ oaiso upgrade --version v0.0.2
 
 ```text
 Installed CLI: dev
-Target release: v0.0.2
+Target release: v0.0.3
 
 Host update: CLI, node, helpers and pinned runtime assets.
 Images: rebuild the default worker after the host update; prepare proxies with the new CLI.
 Custom images/templates: review separately.
 Before applying: save work, then stop/remove retained workers and proxies with the installed CLI.
 ...
-Plan only. Apply the same release with: oaiso upgrade --version v0.0.2 --apply
+Plan only. Apply the same release with: oaiso upgrade --version v0.0.3 --apply
 ```
 
 - 上は出力例です。実際の版・計画は配置状態で変わります。

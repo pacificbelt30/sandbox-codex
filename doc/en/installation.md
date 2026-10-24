@@ -11,8 +11,8 @@
 
 ## Installed version
 
-- The latest published installer is v0.0.2 (checked 2026-10-24); it has no `login`, keyring or age storage.
-- For those features, follow [development installation through first startup](guides/first-run.md).
+- v0.0.3 includes `login`, keyring and age storage in the prebuilt distribution.
+- For the complete flow, follow [installation through first startup](guides/first-run.md).
 - The `releases/latest` commands below install the published release.
 
 ## 1. Requirements
@@ -56,7 +56,7 @@ curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/downlo
 
 ```text
 Plan: verified Ubuntu 26.04 amd64 node; Kata 4.2.0 / Dragonball / containerd 2.4.2 / BuildKit 0.34.0 / runc 1.4.3
-Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: /var/cache/codex-dock-setup; offline: no
+Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.3); operator: user; cache: /var/cache/codex-dock-setup; offline: no
 ```
 
 - Versions, paths and account names are examples and vary by installation and release.
@@ -67,7 +67,7 @@ Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: 
 | Command or option | Behavior |
 |---|---|
 | No options | Download and verify the matching release binaries, then display the plan |
-| `--version v0.0.2` | Download a specific release |
+| `--version v0.0.3` | Download a specific release |
 | `--apply` | Apply through `sudo` after the plan succeeds, forwarding the selected Python’s absolute path |
 | No operator option | Register the invoking normal user |
 | `--operator USER` | Register another existing normal user; required when invoking the script as root |
@@ -85,13 +85,13 @@ Bundle: /tmp/oaiso-release-<id>/bundle (version v0.0.2); operator: user; cache: 
 
 ### Download and review a pinned release
 
-**Example for v0.0.2. Inspect the saved script, then use the same file for planning and installation.**
+**Example for v0.0.3. Inspect the saved script, then use the same file for planning and installation.**
 
 ```bash
-curl -fsSL -o install.sh https://github.com/pacificbelt30/sandbox-oasis/releases/download/v0.0.2/install.sh
+curl -fsSL -o install.sh https://github.com/pacificbelt30/sandbox-oasis/releases/download/v0.0.3/install.sh
 less install.sh
-bash install.sh --version v0.0.2
-bash install.sh --version v0.0.2 --apply
+bash install.sh --version v0.0.3
+bash install.sh --version v0.0.3 --apply
 ```
 
 ## 4. Log in again and verify
@@ -129,7 +129,7 @@ user sudo codex-dock
 
 ## Next: credentials and first worker
 
-1. [Choose credentials](getting-started.md#2-prepare-credentials): independent profile or legacy host integration.
+1. [Unlock the keyring and log in](guides/first-run.md#3-unlock-the-keyring). For existing settings, see [Authentication](guides/authentication.md).
 2. Run `oaiso init`; use `oaiso init --agent claude` for Claude Code.
 3. From your project, run `oaiso codex` or `oaiso claude`.
 

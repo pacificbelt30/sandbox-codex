@@ -12,7 +12,7 @@
 
 [日本語ドキュメント](doc/index.md) · [English documentation](doc/en/index.md)
 
-- **キーリング・`oaiso login`を使う場合：[開発版のインストールから初回起動まで](doc/guides/first-run.md)。** 下の公開インストーラーはv0.0.2を取得し、これらの新機能を含みません（2026-10-24確認）。
+- **v0.0.3：キーリング＋age保存・`oaiso login`を含むビルド済み版。** [インストールから初回起動まで](doc/guides/first-run.md)。
 
 ## Installation — インストール
 
@@ -40,7 +40,7 @@ oaiso runtime-check
 
 **3. 認証を選び、初回起動**
 
-- [クイックスタートの「認証方式を選ぶ」](doc/getting-started.md#2-認証方式を選ぶ)へ進む。
+- [キーリング解錠・login・初回起動](doc/guides/first-run.md#3-キーリングを解錠する)へ進む。
 - 詳細・配置先・更新：[Installation](doc/installation.md)。[必要なツールの公式手順](doc/installation.md#ツールの公式手順)も掲載。
 - `--bundle`：[ビルド済みの実行ファイル一式を使う場合](doc/setup.md#ビルド済みバンドルとは)の指定。通常は不要。
 - `make install` はCLI・補助ツール・補完の配置のみ。実行ホストの準備には上の手順を使用。
@@ -63,14 +63,14 @@ oaiso runtime-check
 | 順序 | 担当 | 実施内容 |
 |---|---|---|
 | 1 | 管理者 | [インストール](doc/installation.md)。Ubuntu 26.04対応ホストでは配布インストーラーで計画、`--apply` で適用 |
-| 2 | 利用者 | [認証とイメージを準備](doc/getting-started.md)。ホストと分ける場合は[独立プロファイル](doc/commands/auth.md#独立プロファイル)を選択 |
+| 2 | 利用者 | [認証とイメージを準備](doc/getting-started.md)。新規利用は[キーリング＋login](doc/guides/first-run.md#3-キーリングを解錠する)で独立プロファイルを準備 |
 | 3 | 利用者 | プロジェクトでワーカーを起動 |
 
 **先に認証を設定（いずれか1つ）**
 
 | 認証方式 | 準備するもの |
 |---|---|
-| 独立プロファイル | [登録・選択・管理シークレット設定](doc/guides/authentication.md)。ホストCLIの認証と分ける |
+| 独立プロファイル | [キーリング解錠・login](doc/guides/first-run.md#3-キーリングを解錠する)。選択と管理シークレット設定も自動化 |
 | 従来のホスト連携 | [エージェント別の認証ソース](doc/getting-started.md#2-認証方式を選ぶ)を準備 |
 
 - 以下はどちらか1つ。`/path/to/your-project` は実際の作業プロジェクトへ置換。
@@ -192,7 +192,7 @@ make vet
 | 確認すること | 動作・注意点 |
 |---|---|
 | APIキー・ログイントークン | 認証Proxyで保持。作業VMには短命トークンだけを渡す |
-| 認証情報の保存 | 公開v0.0.2は0600平文。開発版の新規loginは[キーリング＋age](doc/guides/keyring.md)が既定。既存方式は維持 |
+| 認証情報の保存 | v0.0.3の新規loginは[キーリング＋age](doc/guides/keyring.md)が既定。既存方式は維持 |
 | プロジェクトの共有 | 既定では読み書き可能。エージェントの変更・削除はホストの共有ファイルにも反映される |
 | 外部通信 | AI用の接続先とは別に、Git・パッケージ取得先などを許可する。一般通信は既定で拒否 |
 | 管理グループ `codex-dock` | メンバーはホストのroot相当の操作が可能。信頼する利用者だけを登録 |

@@ -46,7 +46,7 @@ nav:
       - リリース情報: release-notes.md
   - 利用ガイド:
       - 概要: guides/index.md
-      - 開発版の導入から初回起動: guides/first-run.md
+      - 導入から初回起動: guides/first-run.md
       - エージェント:
           - 起動方法と対応状況: guides/agents.md
           - Claude Code: claude-code.md
@@ -115,7 +115,7 @@ nav:
           - Quick start: en/getting-started.md
       - Guides:
           - Overview: en/guides/index.md
-          - Development first run: en/guides/first-run.md
+          - Installation to first run: en/guides/first-run.md
           - Agents:
               - Launch methods and support: en/guides/agents.md
               - Claude Code: en/claude-code.md

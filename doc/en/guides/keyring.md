@@ -2,7 +2,7 @@
 
 [日本語](../../guides/keyring.md) | **English**
 
-- **Development only; unavailable in published v0.0.2.**
+- **Available in v0.0.3 or later; unavailable in v0.0.2.**
 - New `oaiso login` profiles use Secret Service by default. Existing profiles keep their storage backend.
 - API keys and OAuth tokens remain age-encrypted in `.vault`. The keyring holds the age private identity and authentication key.
 - Work VMs receive no keyring, D-Bus socket or real credentials.
@@ -21,7 +21,7 @@
 
 ## 1. Install dependencies
 
-Development `oaiso setup` installs missing D-Bus, GNOME Keyring and `secret-tool` dependencies. Offline setup requires these packages in advance. Manual Ubuntu installation:
+v0.0.3+ `oaiso setup` installs missing D-Bus, GNOME Keyring and `secret-tool` dependencies. Offline setup requires these packages in advance. Manual Ubuntu installation:
 
 ```bash
 sudo apt-get update

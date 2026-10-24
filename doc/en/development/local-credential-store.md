@@ -2,7 +2,7 @@
 
 [日本語](../../development/local-credential-store.md) | **English**
 
-- Development specification; unavailable in published v0.0.2.
+- Specification for v0.0.3 or later; unavailable in v0.0.2.
 - [Usage](../guides/encrypted-credentials.md), [Store contract](../credential-store.md).
 
 ## Defaults and dependencies

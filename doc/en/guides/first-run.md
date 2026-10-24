@@ -1,32 +1,30 @@
-# From installation to the first VM (development)
+# From installation to the first VM
 
 [日本語](../../guides/first-run.md) | **English**
 
-## Choose the version first
+## Supported versions
 
 | Version | Install | Authentication |
 |---|---|---|
-| Published v0.0.2 | [Prebuilt installer](../installation.md) | [Manual set/import](authentication.md#2-choose-the-agent-and-authentication-method); no `login` or keyring support |
-| Development main | Build below, or install a matching prebuilt bundle | Follow this page's keyring and login steps |
+| v0.0.3 or later | [Prebuilt installer](../installation.md) | Follow this page's keyring and login steps |
+| v0.0.2 | Older release assets | [Manual set/import](authentication.md#2-choose-the-agent-and-authentication-method); no keyring or `login` |
 
-- **`releases/latest` downloads the published release, not features from main.**
-- Check `oaiso --version` before following version-specific instructions.
+- This page covers v0.0.3 or later. Check `oaiso --version` first.
 - Requires Ubuntu 26.04, x86_64, systemd, KVM and cgroup v2. [Requirements](../installation.md#1-requirements).
 
-## 1. Install the development build
+## 1. Install the prebuilt release
 
-Prepare Go 1.26.0+, Make and Git using the [toolchain guide](../development/toolchain.md), then run as a normal user:
+Run as a normal user, review the plan, then apply it. If curl is missing, first [prepare curl](../installation.md#2-prepare-curl).
 
 ```bash
-git clone https://github.com/pacificbelt30/sandbox-oasis.git
-cd sandbox-oasis
-./scripts/install.sh
-./scripts/install.sh --apply
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pacificbelt30/sandbox-oasis/releases/latest/download/install.sh | bash -s -- --apply
 ```
 
-- Review the plan before applying. The script prepares uv/Python.
-- Development setup installs missing D-Bus, GNOME Keyring and `secret-tool` dependencies.
-- A matching prebuilt bundle needs no host Go/Make; see [bundle installation](../../setup.md#ビルド済みバンドルとは).
+- No Go, Make or source checkout is required. The script prepares uv/Python.
+- Setup also installs missing D-Bus, GNOME Keyring and `secret-tool` dependencies.
+- To pin the release, use the [v0.0.3 installation example](../installation.md#download-and-review-a-pinned-release).
+- For main source builds, see the [toolchain guide](../development/toolchain.md) and [source installation](../../setup.md).
 
 ## 2. Log in again and check the host
 
