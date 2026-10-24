@@ -193,7 +193,7 @@ func showAuthProfile(cmd *cobra.Command, name string) error {
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile: %s\nStorage: encrypted (%s, 0600)\nCredentials: locked; live connection not checked\n", name, info.Backend)
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile: %s\nStorage: encrypted (%s, 0600)\nFormat: %s\nCredentials: locked; live connection not checked\n", name, info.Backend, info.Format)
 		return err
 	}
 	v, err := store.Load(cmd.Context(), name)

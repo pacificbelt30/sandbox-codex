@@ -22,7 +22,7 @@ oaiso status --json
 
 ```text
 [ok] version: dev
-[ok] profile: work (encrypted (passphrase), 0600); saved, locked for this command
+[ok] profile: work (encrypted (passphrase, age), 0600); saved, locked for this command
 [unchecked] connection: Credentials were not decrypted; connection and inference not tested
 ...
 [ok] proxy: worker-token enforcement is active; inference not tested

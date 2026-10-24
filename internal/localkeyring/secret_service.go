@@ -1,5 +1,5 @@
 // Package localkeyring uses an existing Linux Secret Service through its
-// official secret-tool client. It never starts a service or stores a file key.
+// official secret-tool client. It adds no product-specific keyring daemon.
 package localkeyring
 
 import (
@@ -56,7 +56,7 @@ func (s SecretService) Get(ctx context.Context, id string) ([]byte, error) {
 		return nil, err
 	}
 	key, err := base64.StdEncoding.DecodeString(string(bytes.TrimSpace(data)))
-	if err != nil || len(key) != 32 {
+	if err != nil || len(key) == 0 || len(key) > 1024 {
 		clear(key)
 		return nil, fmt.Errorf("invalid or missing Oaiso keyring key")
 	}

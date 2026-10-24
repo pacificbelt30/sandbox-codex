@@ -12,7 +12,7 @@
 
 | Tool | Purpose or requirement | Official instructions or downloads |
 |---|---|---|
-| Go | `go.mod` requires at least 1.24.7; builds the CLI, node and helpers | [Linux installation](https://go.dev/doc/install), [downloads and SHA-256](https://go.dev/dl/) |
+| Go | `go.mod` requires at least 1.26.0; builds the CLI, node and helpers | [Linux installation](https://go.dev/doc/install), [downloads and SHA-256](https://go.dev/dl/) |
 | GNU Make | Build and test targets | [Official downloads and documentation](https://www.gnu.org/software/make/) |
 | Git | Source checkout and version control | [Linux installation](https://git-scm.com/install/linux) |
 | curl | Download release assets | [Official download guide](https://curl.se/download.html) |
@@ -95,3 +95,5 @@ uv python find --no-project --no-config --managed-python --system 3.12
 - [Code validation](../../testing.md#コードを確認する) (Japanese)
 - [Documentation editing](documentation.md)
 - [Create a release](../../development/releases.md) (Japanese)
+
+- The selected age and patched HTTP/2 dependencies require Go 1.26.0 or later. Development/CI use `toolchain go1.27.3` from `go.mod`. Binary-distribution users do not need Go.

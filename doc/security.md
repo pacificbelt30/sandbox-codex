@@ -53,7 +53,7 @@
 | capabilities | 全削除。認証ファイル読取用にも追加しない |
 | 管理secret | 別の0600ファイルをAuth Proxyだけにreadonly mount可能。値をargvへ載せない |
 | ワーカーへの共有 | CLIはprofile領域との重複を拒否。組み込み側もStore・管理secretを共有外へ置く |
-| 保存暗号化 | 開発版で任意対応。XChaCha20-Poly1305、パスフレーズ／既存Secret Service。作業VMへ鍵や暗号文を渡さない |
+| 保存暗号化 | 開発版で任意対応。age＋HMAC-SHA256、パスフレーズ／既存Secret Service。作業VMへ鍵や暗号文を渡さない |
 
 - 「ホスト」：信頼済みの制御環境。
 - WSL／VM内に置く構成も含む。

@@ -228,6 +228,7 @@ oaiso auth rotate
 - [方式・操作・出力例](../guides/encrypted-credentials.md)。公開済みv0.0.2では利用できません。
 - 新規：`oaiso login --encrypt`／`--keyring`。
 - 既存の平文を移行：`oaiso auth profile encrypt NAME`。
+- 旧暗号化形式からageへ：`oaiso auth profile migrate-age NAME`。
 - パスフレーズ変更：`oaiso auth profile passwd NAME`。
 - 実行とProxyを停止してロック：`oaiso auth profile lock NAME`。
 - 確認時は復号せず、秘密を表示しません。

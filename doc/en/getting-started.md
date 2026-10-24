@@ -39,7 +39,7 @@ oaiso runtime-check
 |---|---|
 | Run workers | Linux x86_64, KVM, cgroup v2, dedicated containerd, Kata runtime-rs, Dragonball |
 | Build images | BuildKit and `buildctl` |
-| Build the CLI from source | Go 1.24.7 or later and Make |
+| Build the CLI from source | Go 1.26.0 or later and Make |
 
 - This page assumes the CLI and host are installed; otherwise return to [Installation](installation.md).
 - Release installations can run `init` from any directory; launch agents from your own project.

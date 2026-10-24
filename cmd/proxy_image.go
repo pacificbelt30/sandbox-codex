@@ -80,7 +80,7 @@ func buildProxyImageFromExecutable(ctx context.Context, tag string) (bool, error
 	}
 	dockerfile := filepath.Join(dir, "Dockerfile")
 	contents := fmt.Sprintf(`FROM scratch
-LABEL io.codex-dock.encrypted-store="stdin-key-v1"
+LABEL io.codex-dock.encrypted-store="stdin-key-v2-age"
 ARG CODEX_DOCK_BUILD_VERSION=dev
 LABEL %s=%q
 LABEL %s=$CODEX_DOCK_BUILD_VERSION

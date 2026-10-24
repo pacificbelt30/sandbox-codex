@@ -59,7 +59,7 @@ python=$("$uv" "${python_args[@]}" python -I -c 'import os,sys; print(os.path.re
 [[ "$python" = /* && -x "$python" ]] || fail 'uv did not return an absolute Python executable'
 
 if [[ -z "$bundle" ]]; then
-  command -v go >/dev/null 2>&1 || fail 'Go 1.24.7 or newer is required to build the node bundle'
+  command -v go >/dev/null 2>&1 || fail 'Go 1.26.0 or newer is required to build the node bundle'
   command -v make >/dev/null 2>&1 || fail 'Make is required to build the node bundle'
   (cd "$repo_root" && make node-bundle UV="$uv")
   bundle="$repo_root/dist/node-bundle"

@@ -13,7 +13,7 @@
 | パスフレーズ | WSL・Linux VM・SSH・GUIなし | 12バイト以上の長いパスフレーズ |
 | OSキーリング | 既存のLinuxデスクトップの鍵保管を使いたい | Secret Service、利用者D-Bus、`secret-tool` |
 
-- パスフレーズ方式は追加サービス・DB・Vault・コンテナ不要。ローカルで保存・解錠できます。
+- ageをバイナリへ組み込むため、追加のageコマンド・サービス・DB・Vault・コンテナは不要です。ローカルで保存・解錠できます。
 - OSキーリング方式は明示選択です。既存サービスを使い、利用不能ならエラーにします。製品専用のキーリングサービスは追加しません。OSキーリング側の保存時の保護は、その設定に依存します。
 - OSキーリングのロック解除は、既存サービスの画面が開く場合があります。応答できない場合は15秒で失敗します。
 - `secret-tool`：[公式マニュアル](https://manpages.debian.org/trixie/libsecret-tools/secret-tool.1.en.html)。Ubuntuでは`libsecret-tools`に含まれます。
@@ -74,6 +74,25 @@ oaiso auth profile encrypt work
 - 内容が異なる場合は自動削除しません。
 - 過去のbackupや削除済みディスクブロックの安全な消去までは保証しません。
 
+## 旧暗号化形式からageへ移行する
+
+```bash
+oaiso auth profile show work
+oaiso auth profile lock work
+oaiso auth profile migrate-age work
+oaiso init --agent codex
+```
+
+- `show`の`Format: legacy-v1`が対象。新しい形式は`Format: age`。
+- 作業を保存してからlock。旧Proxyを停止・削除し、旧パスフレーズまたはキーリングで移行します。
+- age保存・再読込の検証後に切り替え、接続世代を更新。旧ワーカーは新しく作成してください。
+- `work.vault.v1-backup`を0600の暗号文で残します。通常利用で自動的に読み込みません。
+- 中断時は同じコマンドで再試行できます。異なる内容のbackupを上書きしません。
+- 移行済みの再実行は内容を検証し、世代を再度更新しません。
+- キーリング方式では、backupの復旧用に旧キーリング項目も残します。確認後に管理者が整理してください。
+- 旧形式の新規Proxy起動と更新保存は拒否します。平文やホスト認証へ切り替えません。
+- ホストの`setup --rollback`はプロファイル形式を戻しません。旧版への復旧では再認証を基本とし、旧ワーカーを再開しないでください。
+
 ## パスフレーズを変更する
 
 ```bash
@@ -82,7 +101,7 @@ oaiso auth profile passwd work
 ```
 
 - 旧パスフレーズで解錠後、新しいパスフレーズを2回入力。
-- 対象の停止済みProxyを削除してから、データ鍵を新しい導出鍵で保護し直します。
+- 対象の停止済みProxyを削除してから、同じage秘密identityと認証鍵を新しいパスフレーズで保護し直します。
 - 起動中ワーカー・Proxyがあれば変更を拒否。OSキーリング方式のパスフレーズ変更には使えません。
 - 新しいパスフレーズで`oaiso init`を実行してProxyを起動します。
 
@@ -102,9 +121,10 @@ oaiso --passphrase-fd 3 init --agent codex 3< /private/runtime/passphrase-input
 | 項目 | 仕様 |
 |---|---|
 | 保存先 | `~/.config/codex-dock/profiles/NAME/NAME.vault`、0700ディレクトリ・0600ファイル |
-| 暗号 | XChaCha20-Poly1305、256 bit乱数データ鍵、保存ごとに24バイト乱数nonce |
-| パスフレーズ導出 | Argon2id、64 MiB、3回、並列度1、16バイト乱数salt |
-| OSキーリング | 256 bit乱数の鍵保護用鍵を既存Secret Serviceへ保存 |
+| ファイル構成 | age形式の暗号文・保護済み鍵ファイルを含むJSON manifest。`.vault`全体をageコマンドへ直接は渡せない |
+| 暗号 | age v1.3.2のX25519 recipient。公開鍵だけで差し替えられないようHMAC-SHA256でも検証 |
+| 鍵束の保護 | ageのscrypt、`logN=17`（約128 MiB）。起動時の解錠だけで実行 |
+| OSキーリング | age秘密identityと認証鍵の鍵束を、既存Secret Serviceへ保存 |
 | 秘密の所在 | ホストの解錠中プロセスと認証Proxyのメモリ。作業VMには仮トークンのみ |
 | 主な保護対象 | 停止中の保存ファイル・ディスク・backupの読取り |
 | 保護できないもの | ホストroot・同じUIDのプロセス読取り、稼働メモリ・swap・外側VM snapshot |

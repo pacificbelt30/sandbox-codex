@@ -56,7 +56,7 @@
 | Capabilities and source modes | No added capabilities or source-permission changes |
 | Admin authority | Optional separate `0600` file, read-only mount into auth only; value stays out of argv |
 | Worker shares | CLI rejects profile-storage overlaps; embedding callers must also keep credentials/admin authority outside shares |
-| At-rest encryption | Optional in development: XChaCha20-Poly1305, passphrase/existing Secret Service. No ciphertext or keys in work VMs |
+| At-rest encryption | Optional in development: age plus HMAC-SHA256, passphrase/existing Secret Service. No ciphertext or keys in work VMs |
 
 - Trusted control environments may run inside WSL or a Linux VM.
 - Untrusted work VMs must never receive real credentials.

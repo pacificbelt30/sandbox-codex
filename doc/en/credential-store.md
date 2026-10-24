@@ -182,9 +182,10 @@ flowchart LR
 - [DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata) usually depends on the user and machine, so cloned or reinstalled environments must not assume the same protected key remains usable.
 
 - Read passphrases through a hidden TTY or explicit dedicated input FD, never argv, environment variables or ordinary logs.
-- Use an established Argon2id implementation or equivalent, recording salt and parameters.
+- Use age scrypt to protect new identity bundles and bound file-supplied KDF work. Argon2id remains only in the read-only legacy decoder.
 - Measure memory/time budgets on small VMs and enforce upper bounds on file-supplied KDF parameters.
 - Derive keys only on unlock or passphrase changes, outside ordinary inference and OAuth refresh paths.
+- Explicitly convert old ciphertext using `oaiso auth profile migrate-age NAME`; see the [format/migration contract](development/local-credential-store.md#explicit-migration).
 
 - Choose the backend explicitly during initialization.
 - Refuse unlocking if the selected backend is unavailable/locked; never switch backends, import host credentials or save plaintext. An already-unlocked proxy retains its in-memory key; stop it with `auth profile lock` separately from locking the OS keyring.

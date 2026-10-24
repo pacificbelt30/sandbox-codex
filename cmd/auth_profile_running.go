@@ -14,7 +14,7 @@ import (
 const proxyVaultLabel = "io.codex-dock.encrypted-profile"
 const proxyProfileNameLabel = "io.codex-dock.profile-name"
 const proxyVaultProtocolLabel = "io.codex-dock.encrypted-store"
-const proxyVaultProtocolVersion = "stdin-key-v1"
+const proxyVaultProtocolVersion = "stdin-key-v2-age"
 
 // Reuse requires both authenticated proxy metadata and the exact local wrapped
 // key fingerprint. A changed connection/key cannot reuse an old unlocked proxy.
@@ -34,7 +34,7 @@ func runningEncryptedProfileDetails(ctx context.Context, name string) (proxyAuth
 		return proxyAuthState{}, "", false, false
 	}
 	info, err := encrypted.Info(ctx)
-	if err != nil {
+	if err != nil || info.Format != "age" {
 		return proxyAuthState{}, "", false, false
 	}
 	c, err := engine.NewClient()
@@ -43,7 +43,7 @@ func runningEncryptedProfileDetails(ctx context.Context, name string) (proxyAuth
 	}
 	defer func() { _ = c.Close() }()
 	v, err := c.ContainerInspect(ctx, proxyRunName)
-	if err != nil || v.Config == nil || v.State == nil || !v.State.Running || v.HostConfig == nil || !hasProfileMount(v.HostConfig, s.Directory()) || v.Config.Labels[proxyVaultLabel] != info.Fingerprint {
+	if err != nil || v.Config == nil || v.State == nil || !v.State.Running || v.HostConfig == nil || !hasProfileMount(v.HostConfig, s.Directory()) || v.Config.Labels[proxyVaultLabel] != info.Fingerprint || v.Config.Labels[proxyVaultProtocolLabel] != proxyVaultProtocolVersion {
 		return proxyAuthState{}, "", false, false
 	}
 	secret, _, err := proxyServerSecret()

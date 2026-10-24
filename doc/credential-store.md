@@ -189,9 +189,10 @@ flowchart LR
 - [Microsoftの仕様](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)を参照してください。
 
 - パスフレーズは非表示TTYまたは明示的な専用入力FDで受け取り、argv・環境変数・通常ログには載せません。
-- 導出にはArgon2id等の既存実装を使い、saltとKDFパラメーターを記録します。
+- 新規保存はageのscryptで鍵束を保護し、ファイル指定の負荷に上限を設けます。Argon2idは旧暗号化形式の読取り専用です。
 - 小さいVMでのメモリ／時間予算を測定し、保存ファイルが指定するパラメーターにも上限を設けます。
 - KDFは解除・パスフレーズ変更時に限定し、通常の推論やOAuth更新ごとには実行しません。
+- 旧暗号化形式は`oaiso auth profile migrate-age NAME`で明示移行します。[保存形式・移行規則](development/local-credential-store.md#旧形式からの移行)。
 
 - 解錠時にbackendが利用不能・ロック中なら拒否し、別backendへ切り替えません。解錠済みProxyはメモリの鍵を使い続けるため、OSキーリングのロックと別に`auth profile lock`で停止してください。
 - 別backend・ホスト認証・平文保存へ自動切替しません。

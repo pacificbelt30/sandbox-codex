@@ -12,7 +12,7 @@
 
 | ツール | 用途・条件 | 公式手順・配布元 |
 |---|---|---|
-| Go | `go.mod` の最低版は1.24.7。CLI・node・補助プログラムのビルド | [Linux向けインストール](https://go.dev/doc/install)・[配布物とSHA-256](https://go.dev/dl/) |
+| Go | `go.mod` の最低版は1.26.0。CLI・node・補助プログラムのビルド | [Linux向けインストール](https://go.dev/doc/install)・[配布物とSHA-256](https://go.dev/dl/) |
 | GNU Make | `make build`・テストなど | [公式配布・ドキュメント](https://www.gnu.org/software/make/) |
 | Git | ソース取得・変更管理 | [Linux向けインストール](https://git-scm.com/install/linux) |
 | curl | 配布物の取得 | [公式ダウンロード案内](https://curl.se/download.html) |
@@ -95,3 +95,5 @@ uv python find --no-project --no-config --managed-python --system 3.12
 - [コードを確認する](../testing.md#コードを確認する)
 - [ドキュメントを追加・修正する](documentation.md)
 - [リリースの作成](releases.md)
+
+- ageとHTTP/2依存の修正版により最低版はGo 1.26.0。開発・CIは`go.mod`の`toolchain go1.27.3`を使用します。配布バイナリ利用者にGoは不要です。

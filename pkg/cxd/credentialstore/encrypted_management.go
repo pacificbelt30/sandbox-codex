@@ -1,23 +1,23 @@
 package credentialstore
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 
-	"golang.org/x/crypto/argon2"
-	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/sys/unix"
 )
 
 // EncryptionInfo contains public metadata only. Fingerprint identifies the
-// wrapped key and connection, and stays unchanged across OAuth refreshes.
-type EncryptionInfo struct{ Backend, KeyID, Fingerprint string }
+// protected identity and stays unchanged across ordinary OAuth refreshes.
+type EncryptionInfo struct{ Backend, KeyID, Fingerprint, Format string }
 
 func (s *EncryptedStore) Info(ctx context.Context) (EncryptionInfo, error) {
 	var info EncryptionInfo
@@ -27,81 +27,82 @@ func (s *EncryptedStore) Info(ctx context.Context) (EncryptionInfo, error) {
 			return err
 		}
 		sum := sha256.Sum256(dataAAD(r.Header))
-		info = EncryptionInfo{r.Header.Backend, r.Header.KeyID, hex.EncodeToString(sum[:])}
+		format := "age"
+		if r.Header.Schema == 1 {
+			format = "legacy-v1"
+		}
+		info = EncryptionInfo{Backend: r.Header.Backend, KeyID: r.Header.KeyID, Fingerprint: hex.EncodeToString(sum[:]), Format: format}
 		return nil
 	})
 	return info, err
 }
 func validKeyID(id string) bool {
-	decoded, err := hex.DecodeString(id)
-	return err == nil && len(decoded) == 16
-}
-func validUnlockParameters(h encryptedHeader) bool {
-	switch h.Backend {
-	case "passphrase":
-		return h.Memory >= 64*1024 && h.Memory <= 128*1024 && h.Time >= 3 && h.Time <= 6 && h.Parallelism >= 1 && h.Parallelism <= 4 && len(h.Salt) == 16
-	case "secret-service":
-		return h.Memory == 0 && h.Time == 0 && h.Parallelism == 0 && len(h.Salt) == 0
-	}
-	return false
-}
-func newPassphraseHeader(name string, pass []byte) (encryptedHeader, []byte, error) {
-	key := make([]byte, chacha20poly1305.KeySize)
-	if _, err := rand.Read(key); err != nil {
-		return encryptedHeader{}, nil, err
-	}
-	header, err := protectPassphraseKey(name, pass, key)
-	if err != nil {
-		clear(key)
-		return encryptedHeader{}, nil, err
-	}
-	return header, key, nil
-}
-func protectPassphraseKey(name string, pass, key []byte) (encryptedHeader, error) {
-	if len(pass) < 12 || len(pass) > 4096 {
-		return encryptedHeader{}, fmt.Errorf("choose a passphrase of 12..4096 bytes")
-	}
-	header := encryptedHeader{Schema: 1, Name: name, Backend: "passphrase", Memory: 64 * 1024, Time: 3, Parallelism: 1, Salt: make([]byte, 16)}
-	if _, err := rand.Read(header.Salt); err != nil {
-		return encryptedHeader{}, err
-	}
-	derived := argon2.IDKey(pass, header.Salt, header.Time, header.Memory, header.Parallelism, chacha20poly1305.KeySize)
-	defer clear(derived)
-	return wrapNewKey(header, derived, key)
-}
-func wrapNewKey(h encryptedHeader, wrapperKey, key []byte) (encryptedHeader, error) {
-	var err error
-	h.KeyID, err = newProfileVersion()
-	if err != nil {
-		return h, err
-	}
-	h.WrapNonce = make([]byte, chacha20poly1305.NonceSizeX)
-	if _, err = rand.Read(h.WrapNonce); err != nil {
-		return h, err
-	}
-	box, err := chacha20poly1305.NewX(wrapperKey)
-	if err != nil {
-		return h, err
-	}
-	h.WrappedKey = box.Seal(nil, h.WrapNonce, key, wrapAAD(h))
-	return h, nil
+	value, err := hex.DecodeString(id)
+	return err == nil && len(value) == 16
 }
 
-// Keyring is an optional host-only key-wrapping backend. Implementations must
-// never fall back to files or another backend on failure.
+// Keyring is an optional host-only secret backend. New age profiles store an
+// opaque identity/authentication-key bundle; legacy profiles stored 32 bytes.
+// Implementations must never fall back to files or another backend on failure.
 type Keyring interface {
 	Put(context.Context, string, []byte) error
 	Get(context.Context, string) ([]byte, error)
 	Delete(context.Context, string) error
 }
 
+func newKeyringHeader(ctx context.Context, name string, ring Keyring) (encryptedHeader, []byte, error) {
+	if ring == nil {
+		return encryptedHeader{}, nil, fmt.Errorf("keyring backend is required")
+	}
+	key, recipient, err := newAgeSecret()
+	if err != nil {
+		return encryptedHeader{}, nil, err
+	}
+	id, err := newProfileVersion()
+	if err != nil {
+		clear(key)
+		return encryptedHeader{}, nil, err
+	}
+	header := encryptedHeader{Schema: ageProfileSchema, Name: name, KeyID: id, Backend: "secret-service", Recipient: recipient}
+	if err = ring.Put(ctx, id, key); err != nil {
+		clear(key)
+		return encryptedHeader{}, nil, err
+	}
+	stored, err := ring.Get(ctx, id)
+	defer clear(stored)
+	if err != nil || !bytes.Equal(stored, key) {
+		clear(key)
+		return encryptedHeader{}, nil, fmt.Errorf("keyring read-back verification failed")
+	}
+	// Retain the item on uncertain persistence failure: deleting it could make
+	// already-committed ciphertext unrecoverable.
+	return header, key, nil
+}
+func keyringRecordKey(ctx context.Context, r encryptedRecord, ring Keyring) ([]byte, error) {
+	if r.Header.Backend != "secret-service" || ring == nil {
+		return nil, ErrUnlock
+	}
+	key, err := ring.Get(ctx, r.Header.KeyID)
+	if err != nil {
+		return nil, err
+	}
+	if r.Header.Schema == 1 {
+		defer clear(key)
+		return legacyKeyringKey(r, key)
+	}
+	if _, err = openEncrypted(r, key); err != nil {
+		clear(key)
+		return nil, ErrUnlock
+	}
+	return key, nil
+}
 func (s *EncryptedStore) CreateWithKeyring(ctx context.Context, name string, ring Keyring, credentials Credentials) error {
 	if name != s.name || ring == nil {
 		return fmt.Errorf("invalid keyring profile")
 	}
 	return s.base.locked(ctx, name, func(dir *os.File) error {
-		for _, file := range []string{name + ".vault", name + ".json"} {
-			f, err := openProfileFile(dir, file, unix.O_RDONLY)
+		for _, filename := range []string{name + ".vault", name + ".json"} {
+			f, err := openProfileFile(dir, filename, unix.O_RDONLY)
 			if err == nil {
 				_ = f.Close()
 				return fmt.Errorf("profile already exists")
@@ -110,145 +111,136 @@ func (s *EncryptedStore) CreateWithKeyring(ctx context.Context, name string, rin
 				return err
 			}
 		}
-		var err error
-		credentials.Version, err = newProfileVersion()
+		value, err := newCredentialConnection(credentials)
 		if err != nil {
 			return err
 		}
-		credentials.ConnectionVersion, err = newProfileVersion()
+		header, key, err := newKeyringHeader(ctx, name, ring)
 		if err != nil {
 			return err
 		}
-		key, wrapper := make([]byte, 32), make([]byte, 32)
 		defer clear(key)
-		defer clear(wrapper)
-		if _, err = rand.Read(key); err != nil {
-			return err
-		}
-		if _, err = rand.Read(wrapper); err != nil {
-			return err
-		}
-		h, err := wrapNewKey(encryptedHeader{Schema: 1, Name: name, Backend: "secret-service"}, wrapper, key)
+		record, err := sealEncrypted(header, key, value)
 		if err != nil {
 			return err
 		}
-		r, err := sealEncrypted(h, key, credentials)
-		if err != nil {
+		if err = writeEncrypted(ctx, dir, record); err != nil {
 			return err
 		}
-		// Verify durable keyring storage before committing ciphertext. On uncertain
-		// filesystem persistence retain the keyring item so recovery stays possible.
-		if err = ring.Put(ctx, h.KeyID, wrapper); err != nil {
-			return err
-		}
-		stored, err := ring.Get(ctx, h.KeyID)
-		defer clear(stored)
-		if err != nil || !reflect.DeepEqual(stored, wrapper) {
-			return fmt.Errorf("keyring read-back verification failed")
-		}
-		if err = writeEncrypted(ctx, dir, r); err != nil {
-			return err
-		}
-		s.setKey(key, h)
+		s.setKey(key, header)
 		return nil
 	})
 }
 func (s *EncryptedStore) UnlockWithKeyring(ctx context.Context, ring Keyring) error {
 	return s.base.locked(ctx, s.name, func(dir *os.File) error {
-		r, err := readEncryptedRecord(dir, s.name)
+		record, err := readEncryptedRecord(dir, s.name)
 		if err != nil {
 			return err
 		}
-		if r.Header.Backend != "secret-service" || ring == nil {
-			return ErrUnlock
-		}
-		wrapper, err := ring.Get(ctx, r.Header.KeyID)
+		key, err := keyringRecordKey(ctx, record, ring)
 		if err != nil {
 			return err
-		}
-		defer clear(wrapper)
-		box, err := chacha20poly1305.NewX(wrapper)
-		if err != nil {
-			return ErrUnlock
-		}
-		key, err := box.Open(nil, r.Header.WrapNonce, r.Header.WrappedKey, wrapAAD(r.Header))
-		if err != nil {
-			return ErrUnlock
 		}
 		defer clear(key)
-		if _, err = openEncrypted(r, key); err != nil {
-			return ErrUnlock
-		}
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		s.setKey(key, r.Header)
+		s.setKey(key, record.Header)
 		return nil
 	})
 }
+func newCredentialConnection(value Credentials) (Credentials, error) {
+	var err error
+	value.Version, err = newProfileVersion()
+	if err != nil {
+		return Credentials{}, err
+	}
+	value.ConnectionVersion, err = newProfileVersion()
+	if err != nil {
+		return Credentials{}, err
+	}
+	if err = validateFileCredentials(value); err != nil {
+		return Credentials{}, err
+	}
+	return value, nil
+}
+func sameCredentialContent(a, b Credentials) bool {
+	a.Version, b.Version = "", ""
+	a.ConnectionVersion, b.ConnectionVersion = "", ""
+	return reflect.DeepEqual(a, b)
+}
+func persistVerifiedAge(ctx context.Context, dir *os.File, header encryptedHeader, key []byte, value Credentials) error {
+	record, err := sealEncrypted(header, key, value)
+	if err != nil {
+		return err
+	}
+	if _, err = openEncrypted(record, key); err != nil {
+		return err
+	}
+	if err = writeEncrypted(ctx, dir, record); err != nil {
+		return err
+	}
+	saved, err := readEncryptedRecord(dir, header.Name)
+	if err != nil {
+		return err
+	}
+	reloaded, err := openEncrypted(saved, key)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(reloaded, value) {
+		return ErrConflict
+	}
+	return nil
+}
 
-// EncryptPlaintext explicitly migrates an existing profile. If interrupted after
-// ciphertext commit, both records are retained and reads fail closed; repeat the
-// same operation to verify the ciphertext before removing plaintext.
+// EncryptPlaintext explicitly migrates plaintext. An interrupted migration
+// leaves both records and fails closed; repeat it with the same passphrase to
+// compare credentials before removing plaintext. Old interrupted schema-1
+// migrations are upgraded only through this explicit operation.
 func (s *EncryptedStore) EncryptPlaintext(ctx context.Context, pass []byte) error {
 	return s.base.locked(ctx, s.name, func(dir *os.File) error {
 		plain, err := readProfile(dir, s.name)
 		if err != nil {
 			return err
 		}
-		record, err := readEncryptedRecord(dir, s.name)
-		var key []byte
-		if errors.Is(err, ErrNotFound) {
-			h, k, e := newPassphraseHeader(s.name, pass)
-			if e != nil {
-				return e
-			}
-			key = k
-			defer clear(key)
-			plain.Version, err = newProfileVersion()
-			if err != nil {
-				return err
-			}
-			plain.ConnectionVersion, err = newProfileVersion()
-			if err != nil {
-				return err
-			}
-			record, err = sealEncrypted(h, key, plain)
-			if err != nil {
-				return err
-			}
-			if err = writeEncrypted(ctx, dir, record); err != nil {
-				return err
-			}
-			record, err = readEncryptedRecord(dir, s.name)
-			if err != nil {
-				return err
-			}
-		} else if err != nil {
+		existing, err := readEncryptedRecord(dir, s.name)
+		if err != nil && !errors.Is(err, ErrNotFound) {
 			return err
-		} else {
-			if record.Header.Backend != "passphrase" {
-				return ErrMigrationPending
-			}
-			h := record.Header
-			derived := argon2.IDKey(pass, h.Salt, h.Time, h.Memory, h.Parallelism, 32)
-			defer clear(derived)
-			box, _ := chacha20poly1305.NewX(derived)
-			key, err = box.Open(nil, h.WrapNonce, h.WrappedKey, wrapAAD(h))
+		}
+		var header encryptedHeader
+		var key []byte
+		if err == nil {
+			key, err = passphraseRecordKey(existing, pass)
 			if err != nil {
-				return ErrUnlock
+				return err
 			}
 			defer clear(key)
+			saved, err := openEncrypted(existing, key)
+			if err != nil {
+				return err
+			}
+			if !sameCredentialContent(plain, saved) {
+				return ErrConflict
+			}
+			if existing.Header.Schema == ageProfileSchema {
+				header = existing.Header
+				plain = saved
+			}
 		}
-		saved, err := openEncrypted(record, key)
-		if err != nil {
-			return ErrUnlock
-		}
-		a, b := plain, saved
-		a.Version, b.Version = "", ""
-		a.ConnectionVersion, b.ConnectionVersion = "", ""
-		if !reflect.DeepEqual(a, b) {
-			return ErrConflict
+		if header.Schema != ageProfileSchema {
+			header, key, err = newPassphraseHeader(s.name, pass)
+			if err != nil {
+				return err
+			}
+			defer clear(key)
+			plain, err = newCredentialConnection(plain)
+			if err != nil {
+				return err
+			}
+			if err = persistVerifiedAge(ctx, dir, header, key, plain); err != nil {
+				return err
+			}
 		}
 		if err = ctx.Err(); err != nil {
 			return err
@@ -259,13 +251,104 @@ func (s *EncryptedStore) EncryptPlaintext(ctx context.Context, pass []byte) erro
 		if err = dir.Sync(); err != nil {
 			return err
 		}
-		s.setKey(key, record.Header)
+		s.setKey(key, header)
 		return nil
 	})
 }
 
-// ChangePassphrase requires an unlocked passphrase-backed store. Existing proxy
-// processes must be removed by the caller before changing its wrapping key.
+// MigrateToAge explicitly replaces a schema-1 encrypted record, rotates its
+// connection generation, and retains a private encrypted recovery backup. It
+// never writes plaintext. Callers must drain workers and remove old proxies.
+func (s *EncryptedStore) MigrateToAge(ctx context.Context, pass []byte, ring Keyring) error {
+	return s.base.locked(ctx, s.name, func(dir *os.File) error {
+		if f, err := openProfileFile(dir, s.name+".json", unix.O_RDONLY); err == nil {
+			_ = f.Close()
+			return ErrMigrationPending
+		} else if !errors.Is(err, unix.ENOENT) {
+			return err
+		}
+		record, err := readEncryptedRecord(dir, s.name)
+		if err != nil {
+			return err
+		}
+		var oldKey []byte
+		switch record.Header.Backend {
+		case "passphrase":
+			oldKey, err = passphraseRecordKey(record, pass)
+		case "secret-service":
+			oldKey, err = keyringRecordKey(ctx, record, ring)
+		default:
+			return ErrUnlock
+		}
+		if err != nil {
+			return err
+		}
+		defer clear(oldKey)
+		if record.Header.Schema == ageProfileSchema {
+			s.setKey(oldKey, record.Header)
+			return nil
+		}
+		value, err := openEncrypted(record, oldKey)
+		if err != nil {
+			return err
+		}
+		value, err = newCredentialConnection(value)
+		if err != nil {
+			return err
+		}
+		var header encryptedHeader
+		var key []byte
+		if record.Header.Backend == "passphrase" {
+			header, key, err = newPassphraseHeader(s.name, pass)
+		} else {
+			header, key, err = newKeyringHeader(ctx, s.name, ring)
+		}
+		if err != nil {
+			return err
+		}
+		defer clear(key)
+		// Prepare/verify the new ciphertext before retaining the original backup.
+		prepared, err := sealEncrypted(header, key, value)
+		if err != nil {
+			return err
+		}
+		if _, err = openEncrypted(prepared, key); err != nil {
+			return err
+		}
+		if err = backupLegacyRecord(ctx, dir, s.name, record); err != nil {
+			return err
+		}
+		if err = persistVerifiedAge(ctx, dir, header, key, value); err != nil {
+			return err
+		}
+		s.setKey(key, header)
+		return nil
+	})
+}
+func backupLegacyRecord(ctx context.Context, dir *os.File, name string, record encryptedRecord) error {
+	filename := name + ".vault.v1-backup"
+	f, err := openProfileFile(dir, filename, unix.O_RDONLY)
+	if err == nil {
+		data, readErr := io.ReadAll(io.LimitReader(f, (2<<20)+1))
+		_ = f.Close()
+		var saved encryptedRecord
+		if readErr != nil || len(data) > 2<<20 || json.Unmarshal(data, &saved) != nil || !reflect.DeepEqual(saved, record) {
+			return fmt.Errorf("existing legacy backup differs; retain and inspect it before retrying migration")
+		}
+		return nil
+	}
+	if !errors.Is(err, unix.ENOENT) {
+		return err
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return writeProfileData(ctx, dir, filename, data)
+}
+
+// ChangePassphrase rewraps the same age identity/authentication-key bundle.
+// Existing proxy processes must be removed by the caller before changing it.
 func (s *EncryptedStore) ChangePassphrase(ctx context.Context, pass []byte) error {
 	return s.base.locked(ctx, s.name, func(dir *os.File) error {
 		value, err := s.load(dir)
@@ -273,9 +356,12 @@ func (s *EncryptedStore) ChangePassphrase(ctx context.Context, pass []byte) erro
 			return err
 		}
 		s.mu.Lock()
-		backend := s.header.Backend
+		previous := s.header
 		s.mu.Unlock()
-		if backend != "passphrase" {
+		if previous.Schema != ageProfileSchema {
+			return ErrMigrationRequired
+		}
+		if previous.Backend != "passphrase" {
 			return fmt.Errorf("profile does not use a passphrase")
 		}
 		key, err := s.UnlockedKey()
@@ -283,18 +369,14 @@ func (s *EncryptedStore) ChangePassphrase(ctx context.Context, pass []byte) erro
 			return err
 		}
 		defer clear(key)
-		h, err := protectPassphraseKey(s.name, pass, key)
+		header, err := protectPassphraseKey(s.name, pass, key)
 		if err != nil {
 			return err
 		}
-		r, err := sealEncrypted(h, key, value)
-		if err != nil {
+		if err = persistVerifiedAge(ctx, dir, header, key, value); err != nil {
 			return err
 		}
-		if err = writeEncrypted(ctx, dir, r); err != nil {
-			return err
-		}
-		s.setKey(key, h)
+		s.setKey(key, header)
 		return nil
 	})
 }

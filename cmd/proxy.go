@@ -9,7 +9,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -117,11 +116,18 @@ var proxyServeCmd = &cobra.Command{
 			if !proxyProfileKeyStdin {
 				return fmt.Errorf("encrypted proxy requires --profile-key-stdin")
 			}
-			key := make([]byte, 32)
-			defer clear(key)
-			if _, err := io.ReadFull(cmd.InOrStdin(), key); err != nil {
+			info, err := encrypted.Info(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if info.Format != "age" {
+				return credentialstore.ErrMigrationRequired
+			}
+			key, err := credentialstore.ReadUnlockKey(cmd.InOrStdin())
+			if err != nil {
 				return fmt.Errorf("encrypted proxy key input failed")
 			}
+			defer clear(key)
 			if err := encrypted.UnlockWithKey(cmd.Context(), key); err != nil {
 				return err
 			}
@@ -248,6 +254,9 @@ func startProxyContainer(ctx context.Context) error {
 			info, err := encrypted.Info(ctx)
 			if err != nil {
 				return err
+			}
+			if info.Format != "age" {
+				return credentialstore.ErrMigrationRequired
 			}
 			profileFingerprint = info.Fingerprint
 			if _, connection, ok := runningEncryptedProfile(ctx, profile); ok {
@@ -422,10 +431,13 @@ func ensureProxyContainer(ctx context.Context, spec proxyRunArgs) (result error)
 		if v.Config == nil || v.State == nil {
 			return fmt.Errorf("incomplete proxy record")
 		}
+		if spec.profileFingerprint != "" && v.Config.Labels[proxyVaultProtocolLabel] != proxyVaultProtocolVersion {
+			return fmt.Errorf("encrypted proxy key protocol changed; drain workers and remove the old authentication proxy before restarting")
+		}
 		if v.Config.Labels[proxyVaultLabel] != spec.profileFingerprint {
 			return fmt.Errorf("encrypted profile key changed; drain workers and remove the old proxy before restarting")
 		}
-		if spec.profileFingerprint != "" && !v.State.Running && len(spec.profileKey) != 32 {
+		if spec.profileFingerprint != "" && !v.State.Running && (len(spec.profileKey) == 0 || len(spec.profileKey) > credentialstore.UnlockKeyMaxSize) {
 			return credentialstore.ErrLocked
 		}
 		if v.Config.Labels[proxyTransportLabel] != proxyTransportID(spec) {
@@ -663,7 +675,7 @@ func buildProxyRunArgs(a proxyRunArgs) []string {
 		args = append(args, "--label", proxyProfileLabel+"="+profileProxyID(a), "-v", a.profileDirectory+":/run/cxd-profile:rw")
 	}
 	if a.profileFingerprint != "" {
-		args = append(args, "--label", proxyVaultLabel+"="+a.profileFingerprint, "--label", proxyProfileNameLabel+"="+a.profileName)
+		args = append(args, "--label", proxyVaultLabel+"="+a.profileFingerprint, "--label", proxyProfileNameLabel+"="+a.profileName, "--label", proxyVaultProtocolLabel+"="+proxyVaultProtocolVersion)
 	}
 	if a.adminSecretFile != "" {
 		args = append(args, "-v", a.adminSecretFile+":/run/cxd-admin-secret:ro")

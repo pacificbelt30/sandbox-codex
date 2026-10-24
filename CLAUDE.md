@@ -62,7 +62,7 @@ Known limits and verified behavior belong in [security](doc/security.md) and [te
 
 ## Checks
 
-Go 1.24.7 or later is required. Run checks appropriate to the change:
+Go 1.26.0 or later is required. Run checks appropriate to the change:
 
 ```bash
 make build

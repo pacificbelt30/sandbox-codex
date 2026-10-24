@@ -93,6 +93,7 @@ nav:
   - 開発:
       - 開発用ツールの準備: development/toolchain.md
       - ローカル暗号化ストアの仕様: development/local-credential-store.md
+      - 依存関係の検出結果: development/dependency-security.md
       - 仕組み:
           - アーキテクチャ: architecture.md
           - ネットワーク: network.md
@@ -157,6 +158,7 @@ nav:
           - Future work: en/future-work.md
           - Development tools: en/development/toolchain.md
           - Local credential store specification: en/development/local-credential-store.md
+          - Dependency findings: en/development/dependency-security.md
           - Documentation editing: en/development/documentation.md
           - Removed features:
               - Firewall: en/firewall.md

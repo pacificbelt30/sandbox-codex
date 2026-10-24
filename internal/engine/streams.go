@@ -152,13 +152,25 @@ func (b *Backend) streamHTTP(w http.ResponseWriter, r *http.Request, ctx context
 	}
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Time{})
-	if rec.Config.OpenStdin && r.URL.Query().Get("stdin") == "1" {
+	b.attachIO(ctx, conn, rw, rec, r.URL.Query().Get("stdin") == "1", r.URL.Query().Get("stdout") == "1" || r.URL.Query().Get("stderr") == "1")
+}
+
+func (b *Backend) attachIO(ctx context.Context, conn net.Conn, reader io.Reader, rec *record, stdin, output bool) {
+	if rec.Config.OpenStdin && stdin {
 		input, err := os.OpenFile(filepath.Join(b.path(rec.ID), "stdin.fifo"), os.O_WRONLY, 0)
 		if err != nil {
 			return
 		}
 		defer func() { _ = input.Close() }()
-		go func() { _, _ = io.Copy(input, rw) }()
+		if !output {
+			// A restarted task has old console output. Replaying it to a
+			// stdin-only client can fail as that client closes, closing the
+			// FIFO before the input goroutine delivers its complete key frame.
+			// Finish the requested input stream before releasing its writer.
+			_, _ = io.Copy(input, reader)
+			return
+		}
+		go func() { _, _ = io.Copy(input, reader) }()
 	}
 	_ = b.copyConsole(ctx, conn, rec.ID, 200, true)
 }

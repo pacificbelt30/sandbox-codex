@@ -202,6 +202,7 @@ oaiso auth rotate
 - [Backends and operation](../guides/encrypted-credentials.md); unavailable in published v0.0.2.
 - New: `oaiso login --encrypt` / `--keyring`.
 - Migrate plaintext: `oaiso auth profile encrypt NAME`.
+- Migrate legacy ciphertext to age: `oaiso auth profile migrate-age NAME`.
 - Change passphrase: `oaiso auth profile passwd NAME`.
 - Stop affected workers/proxies and lock: `oaiso auth profile lock NAME`.
 - Metadata inspection neither decrypts nor displays secrets.

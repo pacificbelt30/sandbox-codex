@@ -149,14 +149,14 @@ func (p *Proxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tar
 	// Bidirectional tunnel.
 	// upstreamBufReader drains any bytes already buffered after the 101 headers
 	// before falling through to raw reads from upstreamConn.
-	errc := make(chan error, 2)
+	done := make(chan struct{}, 2)
 	go func() {
-		_, err := io.Copy(clientConn, upstreamBufReader)
-		errc <- err
+		_, _ = io.Copy(clientConn, upstreamBufReader)
+		done <- struct{}{}
 	}()
 	go func() {
-		_, err := io.Copy(upstreamConn, clientConn)
-		errc <- err
+		_, _ = io.Copy(upstreamConn, clientConn)
+		done <- struct{}{}
 	}()
-	<-errc
+	<-done
 }

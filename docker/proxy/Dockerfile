@@ -1,4 +1,4 @@
-FROM golang:1.24 AS build
+FROM golang:1.27.3 AS build
 ARG CODEX_DOCK_BUILD_VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -12,7 +12,7 @@ RUN --mount=type=secret,id=proxy_ca \
 
 FROM gcr.io/distroless/base-debian12
 ARG CODEX_DOCK_BUILD_VERSION=dev
-LABEL io.codex-dock.encrypted-store="stdin-key-v1"
+LABEL io.codex-dock.encrypted-store="stdin-key-v2-age"
 LABEL io.codex-dock.proxy-protocol="external-store-v1"
 LABEL io.codex-dock.proxy-build=$CODEX_DOCK_BUILD_VERSION
 COPY --from=build /out/codex-dock /codex-dock

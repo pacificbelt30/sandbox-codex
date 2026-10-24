@@ -90,7 +90,7 @@ make build
 
 - 配置先が既存の場合は、[固定資産の更新](#固定資産の更新)を参照してください。
 - 以下は新規配置の例です。
-- `make build` にはGo 1.24.7以上とMakeが必要です。
+- `make build` にはGo 1.26.0以上とMakeが必要です。
 
 ```bash
 sudo groupadd --system codex-dock

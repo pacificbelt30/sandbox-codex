@@ -79,7 +79,38 @@ func addEncryptedProfileCommands(parent *cobra.Command) {
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Profile locked: affected workers and authentication proxies stopped; saved work and ciphertext retained.")
 		return err
 	}}
-	parent.AddCommand(encrypt, passwd, lock)
+	migrate := &cobra.Command{Use: "migrate-age NAME", Short: "Explicitly migrate a legacy encrypted profile to age after draining workers", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := openAuthProfile(args[0])
+		if err != nil {
+			return err
+		}
+		encrypted, ok := store.(*credentialstore.EncryptedStore)
+		if !ok {
+			return fmt.Errorf("profile is not encrypted")
+		}
+		defer func() { _ = encrypted.Close() }()
+		info, err := encrypted.Info(cmd.Context())
+		if err != nil {
+			return err
+		}
+		if err = prepareProfileKeyChange(cmd.Context(), args[0], store.Directory()); err != nil {
+			return err
+		}
+		var pass []byte
+		if info.Backend == "passphrase" {
+			pass, err = readPassphrase(cmd, false)
+			if err != nil {
+				return err
+			}
+			defer clear(pass)
+		}
+		if err = encrypted.MigrateToAge(cmd.Context(), pass, localkeyring.SecretService{}); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Profile uses age (0600). Migration rotates the connection generation; create new workers. The encrypted legacy backup is retained and never loaded automatically.")
+		return err
+	}}
+	parent.AddCommand(encrypt, passwd, lock, migrate)
 }
 func readNewPassphrase(cmd *cobra.Command) ([]byte, error) {
 	if cmd.Flags().Changed("new-passphrase-fd") {

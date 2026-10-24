@@ -1,0 +1,21 @@
+{
+  "Description": "Synthetic schema-1 fixture only; credentials are never valid",
+  "Passphrase": "legacy fixture long passphrase",
+  "WrappingKey": "4N8uOPyoa8pZwccv62e1nK3QdHVMQA2KZOSGyZ1ty3w=",
+  "Vault": {
+    "header": {
+      "schema": 1,
+      "name": "work",
+      "key_id": "e2efb23fbcec96736501dba8e8574d46",
+      "backend": "secret-service",
+      "memory_kib": 0,
+      "iterations": 0,
+      "parallelism": 0,
+      "salt": null,
+      "wrap_nonce": "OyezZx8zy9BeyqbulhEKrn6y8wKVLsh6",
+      "wrapped_key": "10+1fgXko/p2G/m4LPPy/ssu8lQp0bXRmHOGvYS2O7IopIlNyCbpdroXM6lANQVz"
+    },
+    "nonce": "ece7dG4FbYmkKCutgPcLhjQlWY9NrekK",
+    "ciphertext": "61P8FODKutW2X1SEWVBe4dsa52/5/uRbqU8MsrslEyM3ZPg4qadCmugyOT/OEByVUhCCVuiSzu5t8wEG1GgQk/fzGEUBDaK6iFis7yRxNyHG1QnTSPDCf1NjcQAEhmkO36884ShiSfpe8QzdYpodaa0Hd6uRccSiqLQA55h5Vthe+ums/Dk/F+TUOdAOOgrs5xevMqzdWe8wDAnAA0vPF2SOMlbwrslXBtX9w7q/vwdEOO/Xc2/9a2iXPjneGlNiuQraPmvzCHe+mEAklKHZ6uhEsNNJlk07WYZurePNuGQ7Nx0igNiqQ0v1g7Xmq96Zh49ycnb3Ns6/tuao5vy3hDXOGKaJfnVbJO6K4obT7WJ8UQSqH1dQfhgby5q/1GoU+UncNwdXrBcJgs2SqfO7Y8cDDRB8ErK40mBoX/Zwphfcgz5M3uwjq3EZagVsOeGa7dQDo7FUznXy+QY8WlBz7ZdYsk8/BEqe5Nw0UCVEqBkZTmzNoko+Tpdgn6On1lp3We8viA=="
+  }
+}

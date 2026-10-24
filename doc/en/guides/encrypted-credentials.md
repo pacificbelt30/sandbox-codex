@@ -13,7 +13,7 @@
 | Passphrase | WSL, Linux VMs, SSH and headless hosts | A long passphrase, at least 12 bytes |
 | OS keyring | Existing Linux desktop secret storage | Secret Service, user D-Bus, `secret-tool` |
 
-- Passphrases need no extra service, database, Vault or container; storage/unlocking are local.
+- age is embedded: no additional age executable, service, database, Vault or container; storage/unlocking are local.
 - Explicit keyring selection uses the existing service; failure never switches backends. Oaiso adds no product-specific keyring daemon. Keyring storage protection depends on its OS configuration.
 - Existing keyring unlock dialogs may appear. Unanswered operations fail after 15 seconds.
 - [`secret-tool` manual](https://manpages.debian.org/trixie/libsecret-tools/secret-tool.1.en.html); Ubuntu packages it as `libsecret-tools`.
@@ -74,6 +74,25 @@ oaiso auth profile encrypt work
 - Different content is never silently removed.
 - Deleted disk blocks and old backups are not securely erased.
 
+## Migrate the older encrypted format
+
+```bash
+oaiso auth profile show work
+oaiso auth profile lock work
+oaiso auth profile migrate-age work
+oaiso init --agent codex
+```
+
+- `Format: legacy-v1` identifies the old format; new records show `Format: age`.
+- Save work first. Stop/remove old proxies, then migrate using the original passphrase or keyring.
+- Verify age persistence/read-back and rotate connection generation; create new workers.
+- Retain `work.vault.v1-backup` as 0600 ciphertext, never automatically loaded.
+- Retry the same command after interruption; a different backup is never overwritten.
+- Retrying an already migrated record verifies it without rotating generations again.
+- Keyring migration also retains the old keyring item for backup recovery; operators can remove retired items after verification.
+- New proxy startup/refresh on the old format is refused, without plaintext/host credential fallback.
+- Host `setup --rollback` does not downgrade credential formats. Prefer reauthentication when recovering an older version; do not resume old workers.
+
 ## Change a passphrase
 
 ```bash
@@ -82,7 +101,7 @@ oaiso auth profile passwd work
 ```
 
 - Unlock with the old passphrase, then enter/confirm the new one.
-- Remove stopped profile proxies, then rewrap the same data key with a new derived key.
+- Remove stopped profile proxies, then protect the same age private identity/authentication key using the new passphrase.
 - Refuse changes while profile workers/proxies are running; unavailable for keyring-backed profiles.
 - Run `oaiso init` with the new passphrase to restart the proxy.
 
@@ -102,9 +121,10 @@ oaiso --passphrase-fd 3 init --agent codex 3< /private/runtime/passphrase-input
 | Item | Specification |
 |---|---|
 | Storage | `~/.config/codex-dock/profiles/NAME/NAME.vault`; 0700 directories, 0600 files |
-| Cipher | XChaCha20-Poly1305, random 256-bit data key, fresh random 24-byte nonce per write |
-| Passphrase derivation | Argon2id, 64 MiB, 3 iterations, parallelism 1, random 16-byte salt |
-| OS keyring | Random 256-bit wrapping key in existing Secret Service |
+| Container | JSON manifest containing standard age ciphertext/protected-key data; the whole `.vault` is not direct age CLI input |
+| Cipher | age v1.3.2 X25519 recipient; HMAC-SHA256 also prevents public-key-only substitution |
+| Key protection | age scrypt, `logN=17` (approximately 128 MiB), only when unlocking |
+| OS keyring | age private identity/authentication-key bundle in existing Secret Service |
 | Secret location | Unlocked host command/proxy memory; only placeholders in work VMs |
 | Main protection | Reading inactive files, disks and backups |
 | Outside protection | Host root/same-UID process access, live memory, swap and outer VM snapshots |

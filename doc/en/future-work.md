@@ -65,3 +65,9 @@
 
 - See the [detailed requirements](credential-store.md#independent-credential-management-wsl-vms-and-headless-systems).
 - Encryption/key backends are implemented in development. Kata execution inside WSL/VMs and differences between desktop keyring services require separate deployment testing.
+
+## Existing SDK dependency findings
+
+- age migration checks reduced symbol findings from 19 to 15, with zero findings absent from the baseline.
+- Prioritize reachability review and compatible SDK updates separately.
+- [Findings and affected modules](development/dependency-security.md).

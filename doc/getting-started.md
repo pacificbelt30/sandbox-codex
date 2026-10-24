@@ -38,7 +38,7 @@ oaiso runtime-check
 |---|---|
 | VM実行 | Linux x86_64・KVM・cgroup v2・専用containerd・Kata runtime-rs・Dragonball |
 | イメージ作成 | BuildKit・`buildctl` |
-| ソースからのCLI作成 | Go 1.24.7以上・Make |
+| ソースからのCLI作成 | Go 1.26.0以上・Make |
 | 診断エラーの解決 | [トラブルシューティング](troubleshooting.md) |
 
 - このページはCLIと実行ホストの配置後に実施。未配置なら[インストール](installation.md)へ戻る。

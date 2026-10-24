@@ -3,6 +3,8 @@ package sandbox_test
 import (
 	"bytes"
 	"context"
+	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +26,9 @@ import (
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 )
 
+//go:embed testdata/legacy-encrypted-profile.json
+var legacyEncryptedProfileFixture []byte
+
 // Exercises ciphertext mounts, secret stdin IPC and a real Kata worker. All
 // credentials are deliberately invalid; no provider request is made.
 func TestKataEncryptedProfile(t *testing.T) {
@@ -37,6 +42,7 @@ func TestKataEncryptedProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = node.Close() })
+	verifyLegacyAgeMigration(t, ctx)
 	prefix := fmt.Sprintf("encrypted-kata-%d", time.Now().UnixNano())
 	bridge, err := node.NetworkCreate(ctx, prefix+"-net", dn.CreateOptions{Driver: "bridge"})
 	if err != nil {
@@ -67,6 +73,14 @@ func TestKataEncryptedProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(key)
+	var keyFields struct {
+		Identity          string `json:"identity"`
+		AuthenticationKey []byte `json:"authentication_key"`
+	}
+	if err = json.Unmarshal(key, &keyFields); err != nil || keyFields.Identity == "" {
+		t.Fatal("age identity bundle is invalid")
+	}
+	defer clear(keyFields.AuthenticationKey)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +119,7 @@ func TestKataEncryptedProfile(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = attached.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if _, err = attached.Conn.Write(key); err != nil {
+		if err = credentialstore.WriteUnlockKey(attached.Conn, key); err != nil {
 			t.Fatal(err)
 		}
 		_ = attached.CloseWrite()
@@ -151,7 +165,7 @@ func TestKataEncryptedProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata, _ := json.Marshal(inspected)
-	for _, private := range []string{secret, string(pass), string(key), dir, authority} {
+	for _, private := range []string{secret, string(pass), string(key), keyFields.Identity, base64.StdEncoding.EncodeToString(keyFields.AuthenticationKey), dir, authority} {
 		if bytes.Contains(metadata, []byte(private)) {
 			t.Fatal("worker metadata contains a secret or private host share")
 		}
@@ -165,8 +179,10 @@ for p in h.rglob('*'):
  if p.is_file():
   try:
    assert b'fixture-encrypted-api-never-valid' not in p.read_bytes()
+   assert b'AGE-SECRET-KEY-1' not in p.read_bytes()
   except PermissionError: pass
 assert 'fixture-encrypted-api-never-valid' not in str(dict(os.environ))
+assert 'AGE-SECRET-KEY-1' not in str(dict(os.environ))
 print('encrypted profile remains host-only')`}, Stdout: &output, Stderr: &output})
 	if err != nil || code != 0 {
 		t.Fatalf("guest secret check failed: %v %d %s", err, code, output.String())
@@ -180,7 +196,7 @@ print('encrypted profile remains host-only')`}, Stdout: &output, Stderr: &output
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(data, key) || bytes.Contains(data, []byte(secret)) || bytes.Contains(data, pass) {
+	if bytes.Contains(data, key) || bytes.Contains(data, []byte(secret)) || bytes.Contains(data, pass) || bytes.Contains(data, []byte(keyFields.Identity)) || bytes.Contains(data, keyFields.AuthenticationKey) {
 		t.Fatal("proxy console leaked credentials or input key")
 	}
 	// Removing the proxy discards its in-memory token table. Ciphertext alone is
@@ -272,4 +288,68 @@ print('encrypted profile remains host-only')`}, Stdout: &output, Stderr: &output
 	}
 	t.Log("verified: production CLI unlocks through secret stdin and reuses the authenticated proxy without another passphrase")
 
+}
+
+func verifyLegacyAgeMigration(t *testing.T, ctx context.Context) {
+	t.Helper()
+	var fixture struct {
+		Passphrase string
+		Vault      json.RawMessage
+	}
+	if err := json.Unmarshal(legacyEncryptedProfileFixture, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := credentialstore.NewEncryptedStore(filepath.Join(root, "work"), "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	path := filepath.Join(store.Directory(), "work.vault")
+	if err = os.WriteFile(path, fixture.Vault, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Unlock(ctx, []byte(fixture.Passphrase)); err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.Load(ctx, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = input.Close() }()
+	_, _ = writer.Write([]byte(fixture.Passphrase))
+	_ = writer.Close()
+	command := exec.CommandContext(ctx, os.Getenv("CODEX_DOCK_KATA_TEST_BINARY"), "--passphrase-fd", "3", "--auth-profile-dir", root, "auth", "profile", "migrate-age", "work")
+	command.ExtraFiles = []*os.File{input}
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("legacy migration CLI failed: %v %s", err, output)
+	}
+	if bytes.Contains(output, []byte(fixture.Passphrase)) || bytes.Contains(output, []byte(before.OpenAIOAuth.RefreshToken)) {
+		t.Fatal("migration CLI exposed credentials")
+	}
+	info, err := store.Info(ctx)
+	if err != nil || info.Format != "age" {
+		t.Fatal("migration CLI did not create age storage", err)
+	}
+	_ = store.Close()
+	if err = store.Unlock(ctx, []byte(fixture.Passphrase)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := store.Load(ctx, "work")
+	if err != nil || after.ConnectionVersion == before.ConnectionVersion || after.OpenAIOAuth.RefreshToken != before.OpenAIOAuth.RefreshToken {
+		t.Fatal("migration did not preserve credentials and replace the connection", err)
+	}
+	backup, err := os.Stat(path + ".v1-backup")
+	if err != nil || backup.Mode().Perm() != 0600 {
+		t.Fatal("migration recovery backup is missing")
+	}
+	t.Log("verified: production CLI migrates original schema-1 ciphertext to age, rotates connection generation and retains an encrypted 0600 recovery backup")
 }

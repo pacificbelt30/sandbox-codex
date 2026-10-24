@@ -111,6 +111,9 @@ func unlockedAuthProfile(ctx context.Context, name string) (credentialstore.Prof
 	if err != nil {
 		return nil, err
 	}
+	if info.Format != "age" {
+		return nil, credentialstore.ErrMigrationRequired
+	}
 	if info.Backend == "secret-service" {
 		err = encrypted.UnlockWithKeyring(ctx, localkeyring.SecretService{})
 	} else {

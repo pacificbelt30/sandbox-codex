@@ -2,101 +2,110 @@
 
 [日本語](../../development/local-credential-store.md) | **English**
 
-- Development implementation specification; unavailable in published v0.0.2.
-- [Usage guide](../guides/encrypted-credentials.md).
-- Current storage and support: [Credential Store](../credential-store.md).
-- Priorities: simple operation, local processing, no additional persistent service, and WSL/headless use.
+- Development specification; unavailable in published v0.0.2.
+- [Usage](../guides/encrypted-credentials.md), [Store contract](../credential-store.md).
 
-## Storage
+## Defaults and dependencies
 
-| Item | Specification |
+| Item | Contract |
 |---|---|
-| Default | Retain existing 0700 directories and 0600 plaintext files |
-| Encryption | Explicit, optional activation |
-| Location | Product-owned profile storage on the control host; never shared with projects |
-| Encrypted data | Credentials, including API keys and OAuth access, refresh and ID tokens |
-| Proxy admin authority | Separate 0600 file, outside the encrypted store; never shared with work VMs |
-| Public metadata | Format version, profile name, unlock backend, salt, KDF parameters and nonce; no secrets |
-| External services | None; storage and unlocking work offline |
-| Implementation | Embedded in the Go binary, without another Vault, database or container |
+| Default | Retain 0700 directories and 0600 plaintext files; encryption is explicit |
+| Location | Private product profiles on the control host, outside workspace/clone/additional shares |
+| Encrypted data | API keys, OAuth access/refresh/ID tokens, credential versions and connection generations |
+| Implementation | Embed `filippo.io/age` v1.3.2 in the Go binary |
+| External dependencies | Passphrase mode needs no network, external age CLI, additional daemon or database |
+| Proxy admin authority | Separate 0600 file; outside this store and never shared with work VMs |
+| Go | Minimum 1.26.0; development/CI toolchain 1.27.3. Binary-distribution users need no Go |
 
-## Keys and encryption
+- [Official age source](https://github.com/FiloSottile/age/tree/v1.3.2), [format specification](https://age-encryption.org/v1), [Go API](https://pkg.go.dev/filippo.io/age@v1.3.2).
 
-| Item | Specification |
+## Format and cryptography
+
+| Element | Contract |
 |---|---|
-| Data key | A cryptographically random 256-bit key per profile |
-| Data encryption | XChaCha20-Poly1305 with a fresh nonce for every write |
-| Tamper and substitution detection | Authenticate the format version and profile identity as associated data |
-| Passphrase | Derive a wrapping key with Argon2id and encrypt the data key |
-| Salt | Random per profile; regenerate when changing the passphrase |
-| KDF cost | Default 64 MiB, 3 iterations, parallelism 1; accepted bounds: 64–128 MiB, 3–6 iterations, parallelism 1–4 |
-| Runtime overhead | Reuse the unlocked data key; no KDF per inference or OAuth refresh |
-| Cryptographic implementation | Existing Go cryptographic libraries, without custom algorithms |
+| File | `NAME/NAME.vault`, a single atomically updated JSON manifest |
+| Manifest version | Oaiso schema 2, separate from the standard age format version |
+| Public metadata | Profile name, unlock backend, key ID, public age recipient and protected key file |
+| Credential ciphertext | Standard binary age stream, base64 encoded in the manifest, encrypted to an X25519 recipient |
+| Secret bundle | Product-specific age private identity plus an independent random 32-byte authentication key |
+| Store authentication | HMAC-SHA256 binds the manifest and credential ciphertext |
+| Complete reads | Consume the age stream through EOF, validating the final chunk and size limit before use |
 
-- Implementations: [XChaCha20-Poly1305](https://pkg.go.dev/golang.org/x/crypto/chacha20poly1305), [Argon2id](https://pkg.go.dev/golang.org/x/crypto/argon2).
-- Do not support automatic unlocking through a plaintext key stored alongside the ciphertext.
+- Public-key age encryption does not authenticate the sender. The separate authentication key prevents someone knowing only the recipient from replacing stored credentials undetected; protect it together with the private identity.
+- age implements credential/key-bundle encryption. No custom cipher, age recipient or age-format parser is implemented.
+- The whole `.vault` file is a JSON manifest, not direct input to the age CLI. Interoperability tests extract its age ciphertext and decrypt it with the official CLI.
+- Keeping one file avoids multi-file transactions during ordinary OAuth refresh.
 
-## Unlocking and everyday use
+## Key protection
 
-| Method or operation | Specification |
+| Method | Contract |
 |---|---|
-| Basic method | Hidden passphrase prompt when starting the Auth Proxy |
-| Running proxy | No repeated prompt per task; the existing proxy process holds the key in memory |
-| Proxy stop or host reboot | Unlock again on next startup |
-| OS key storage | Explicit `--keyring`: a 256-bit wrapping key in existing Secret Service; host `secret-tool` and user D-Bus required |
-| WSL, SSH, no GUI | Passphrase path; no mandatory systemd, D-Bus, TPM or Windows integration |
-| Noninteractive operation | Explicit `--passphrase-fd`, descriptor >= 3, maximum 4096 bytes; fail without terminal/FD |
-| Key transfer | No secrets in argv, environment, configuration files, container metadata or logs |
+| Passphrase | Encrypt the secret bundle using an age scrypt recipient; hidden TTY or dedicated FD |
+| New scrypt cost | `logN=17`, `r=8`, `p=1`, approximately 128 MiB workspace; explicit small-control-host budget |
+| Accepted maximum | `SetMaxWorkFactor(18)` prevents unbounded file-supplied KDF work |
+| Input limits | New passphrases 12–4096 bytes; explicit descriptor >= 3, maximum 4096 bytes |
+| Optional keyring | `--keyring` stores the secret bundle in existing Secret Service and verifies read-back |
+| Keyring requirements | Host `secret-tool` and user D-Bus; 15-second operation timeout |
+| Everyday use | Unlock on proxy startup; no repeated prompt while the same proxy is running |
+| Refresh cost | Reuse the unlocked identity and encrypt to its public recipient; no scrypt per inference/refresh |
 
-- An unavailable OS backend never silently switches to a passphrase or plaintext storage.
-- Do not introduce a product-specific daemon solely for key storage.
-- Secret Service operations time out after 15 seconds; never switch backends on failure.
-- Secret Service uses an [existing user-session service](https://specifications.freedesktop.org/secret-service/latest-single/).
+- age CLI defaults to `logN=18`; Oaiso explicitly uses 17 for its 128 MiB budget and accepts reads up to 18. [Implementation](https://github.com/FiloSottile/age/blob/v1.3.2/scrypt.go).
+- No automatic unlocking through a plaintext key alongside ciphertext.
+- OS keyring encryption/locking depend on OS configuration. Unavailable backends never switch to passphrases, plaintext or host credentials.
+- No direct backend-conversion command; reauthenticate into a new profile using the other backend.
 
-## Auth Proxy and work VMs
+## Proxy and VM boundary
 
-1. Unlock the profile on the host.
-2. The Auth Proxy loads credentials for upstream connections.
-3. Work VMs receive only short-lived placeholders.
-4. Encrypt and durably save OAuth refresh results before using them.
+1. Unlock the identity/authentication-key bundle in host CLI memory.
+2. Transfer it to the existing Auth Proxy through a bounded, length-prefixed private stdin stream.
+3. Drop the long-running host command's unlocked references after proxy readiness.
+4. Give work VMs only short-lived, proxy-scoped placeholders.
 
-- Do not give work VMs ciphertext, real credentials, unlocking keys or credential-store sockets.
-- A login Kata is a separate use: collect official CLI login results from temporary memory, then remove the session on success, cancellation or failure.
-- Never automatically import the host CLI's authentication.
-
-## Saving, locking and migration
-
-| Operation or condition | Specification |
+| Boundary | Contract |
 |---|---|
-| OAuth refresh | Preserve the Store contract, expected-version comparison and connection generation |
-| Durable save | Encrypted temporary file, fsync, atomic rename and directory fsync |
-| Save failure or version conflict | Fail; revoke new requests and existing proxy streams |
-| Explicit lock | Stop/revoke affected executions and stop credential-holding proxies |
-| After locking | Retain ciphertext and work products |
-| Plaintext migration | Explicit operation; validate encrypted save/reload before switching |
-| Existing profiles | No automatic conversion or overwrite |
-| Passphrase change | Rewrap the data key; preserve the previous method if the change fails |
-| Lost key | Treat as undecryptable; reauthenticate to establish a new connection |
-| Backup restore or cloning | Reauthenticate with a new connection generation; never automatically reauthorize old workers |
+| argv/environment/configuration/container metadata/ordinary logs | No secret bundle or real credentials |
+| Stdin protocol | Maximum 1024 bytes; reject partial input, disconnect and excessive lengths |
+| Proxy reuse | Match profile, protected-key fingerprint, connection generation and protocol |
+| Older proxy protocol | Drain workers and explicitly remove/recreate the authentication proxy |
+| Work VMs | No ciphertext, identity, authentication key, credential socket or control-host HOME |
+| Login-only Kata | Separate temporary memory-only collection using the pinned official CLI |
 
-## Protection limits
+## Persistence and locking
 
-- Main protection: credential files read from stopped systems, disks or backups.
-- Storage encryption alone does not protect against control-host root, same-UID process access, running memory, swap or VM memory snapshots.
-- Go memory management cannot guarantee zeroing every secret copy. Minimize copies and bound their lifetime by stopping credential-holding processes.
-- A local store cannot guarantee detecting an outer VM snapshot rollback that restores keys, ciphertext and generation state together.
-- Prefer the Linux filesystem on WSL. Support DrvFS/shared filesystems only after validating their permission and persistence guarantees.
+| Operation | Contract |
+|---|---|
+| OAuth refresh | Cross-process lock and atomic expected-version CAS; retain connection generation |
+| Durable save | Ciphertext temporary file, fsync, atomic rename and directory fsync |
+| Failure/conflict | Never acknowledge success; propagate to existing proxy revocation behavior |
+| Product lock | Stop workers/proxies belonging to this private store; retain work/ciphertext |
+| OS keyring lock | Does not erase an already-unlocked proxy; run `auth profile lock` separately |
+| Process close | Clear owned key/authentication-key byte slices and drop the age identity reference |
 
-## Required validation
+- Public `credentialstore.Store` is unchanged.
+- Go cannot guarantee zeroing every temporary secret copy; bound lifetime, including process termination.
 
-- Reject wrong passphrases, tampered/substituted ciphertext and excessive KDF parameters.
-- Never fall back to plaintext or host authentication after save failures, concurrent updates, cancellation, proxy restart or unavailable key backends.
-- Check work-VM files, environment and logs, plus normal host logs and container metadata, for real-secret retention.
-- Pass existing Store conformance and real-Kata acceptance tests.
-- Measure unlocking time/memory and overhead during inference and OAuth refresh.
+## Explicit migration
 
-- Apply the existing Store conformance suite to encrypted storage, with synthetic credentials for interrupted migration recovery, passphrase changes and keyring failures.
-- Coexisting plaintext `.json` and encrypted `.vault` records fail closed as an incomplete migration.
-- Retain wrapping keys after uncertain ciphertext persistence failures to preserve recoverability.
-- The public external `Store` contract is unchanged; `EncryptedStore` is additive.
-- [Measurements, real Kata results and remaining gaps](../../testing.md).
+| Source | Operation |
+|---|---|
+| Plaintext `.json` | `auth profile encrypt NAME`; verify age persistence/read-back before deleting plaintext |
+| Encrypted schema 1 | `auth profile migrate-age NAME`; unlock using its original backend and explicitly convert |
+| Ordinary schema-1 writes/new proxy startup | Refuse; no automatic conversion or credential fallback |
+| Migration generation | Rotate credential/connection versions; old workers cannot be reauthorized |
+| Recovery backup | Retain `NAME.vault.v1-backup` with mode 0600; ciphertext only, never loaded automatically |
+| Conflicting backup | Refuse overwrite; preserve recovery data |
+| Retry/interruption | Validate using the selected backend and resume; an already-migrated profile does not rotate again |
+| Coexisting plaintext/ciphertext | Fail closed until explicit migration compares content and completes |
+| Passphrase change | Reprotect the same identity/authentication key; retain connection generation |
+
+- Argon2id/XChaCha20-Poly1305 remain only in the read-only schema-1 decoder, never new writes.
+- Keyring migration retains the old keyring item for encrypted-backup recovery; operators can remove retired backups/items after verification.
+- Backups still decrypt with old passphrases/keys. Deleted blocks and earlier backups are not securely erased.
+
+## Protection and verification
+
+- Primary target: reading inactive credential files, disks and backups.
+- Outside this protection: control-host root/same-UID process access, live memory, swap and outer VM snapshots.
+- Local-only storage cannot fully detect a snapshot rolling back keys, ciphertext and generation state together.
+- WSL uses private Linux storage; reject unverified DrvFS/NFS/FUSE filesystems.
+- [Results, measurements and remaining checks](../../testing.md).

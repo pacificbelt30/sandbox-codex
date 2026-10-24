@@ -2,10 +2,10 @@ package credentialstore
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"filippo.io/age"
 	"fmt"
 	"io"
 	"os"
@@ -13,15 +13,14 @@ import (
 	"runtime"
 	"sync"
 
-	"golang.org/x/crypto/argon2"
-	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/sys/unix"
 )
 
 var (
-	ErrLocked           = errors.New("credential profile is encrypted and locked")
-	ErrUnlock           = errors.New("could not unlock credential profile")
-	ErrMigrationPending = errors.New("encrypted and plaintext records coexist; complete the explicit encryption migration")
+	ErrMigrationRequired = errors.New("legacy encrypted profile requires explicit migration: oaiso auth profile migrate-age NAME")
+	ErrLocked            = errors.New("credential profile is encrypted and locked")
+	ErrUnlock            = errors.New("could not unlock credential profile")
+	ErrMigrationPending  = errors.New("encrypted and plaintext records coexist; complete the explicit encryption migration")
 )
 
 // ProfileStore is the common CLI profile boundary. Existing FileStore callers
@@ -43,23 +42,27 @@ type encryptedHeader struct {
 	Salt        []byte `json:"salt"`
 	WrapNonce   []byte `json:"wrap_nonce"`
 	WrappedKey  []byte `json:"wrapped_key"`
+	Recipient   string `json:"recipient,omitempty"`
 }
 
 type encryptedRecord struct {
 	Header     encryptedHeader `json:"header"`
 	Nonce      []byte          `json:"nonce"`
 	Ciphertext []byte          `json:"ciphertext"`
+	MAC        []byte          `json:"mac,omitempty"`
 }
 
-// EncryptedStore stores only authenticated ciphertext and a wrapped random
-// data key. An unlocked instance is process-local; no plaintext key file or
+// EncryptedStore stores age ciphertext and a protected private identity with
+// an independent authentication key. An unlocked instance is process-local; no plaintext key file or
 // additional persistent daemon is created.
 type EncryptedStore struct {
-	base   *FileStore
-	name   string
-	mu     sync.Mutex
-	key    []byte
-	header encryptedHeader
+	base              *FileStore
+	name              string
+	mu                sync.Mutex
+	key               []byte
+	header            encryptedHeader
+	identity          *age.X25519Identity
+	authenticationKey []byte
 }
 
 func OpenProfile(directory, name string) (ProfileStore, error) {
@@ -158,7 +161,7 @@ func readEncryptedRecord(dir *os.File, name string) (encryptedRecord, error) {
 		return value, fmt.Errorf("invalid encrypted profile")
 	}
 	h := value.Header
-	if h.Schema != 1 || h.Name != name || !validKeyID(h.KeyID) || !validUnlockParameters(h) || len(h.WrapNonce) != chacha20poly1305.NonceSizeX || len(h.WrappedKey) != chacha20poly1305.KeySize+chacha20poly1305.Overhead || len(value.Nonce) != chacha20poly1305.NonceSizeX || len(value.Ciphertext) < chacha20poly1305.Overhead {
+	if h.Name != name || !validKeyID(h.KeyID) || !validEncryptedRecord(value) {
 		return encryptedRecord{}, fmt.Errorf("unsupported encrypted profile or key-derivation parameters")
 	}
 	return value, nil
@@ -179,8 +182,20 @@ func (s *EncryptedStore) setKey(key []byte, header encryptedHeader) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	clear(s.key)
-	s.key = append([]byte{}, key...)
+	clear(s.authenticationKey)
+	s.key = nil
+	s.identity = nil
+	s.authenticationKey = nil
 	s.header = header
+	if header.Schema == ageProfileSchema {
+		secret, identity, err := parseAgeSecret(key)
+		if err != nil {
+			return
+		}
+		s.identity = identity
+		s.authenticationKey = secret.AuthenticationKey
+	}
+	s.key = append([]byte{}, key...)
 }
 
 // Close drops the store's key reference and clears its owned byte slice. Go
@@ -189,16 +204,19 @@ func (s *EncryptedStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	clear(s.key)
+	clear(s.authenticationKey)
 	s.key = nil
+	s.authenticationKey = nil
+	s.identity = nil
 	return nil
 }
 
-// UnlockedKey returns an owned data-key copy solely for explicit host-to-proxy
+// UnlockedKey returns an owned opaque identity-key bundle solely for host-to-proxy
 // IPC. Never put its result in argv, environment, metadata, files or logs.
 func (s *EncryptedStore) UnlockedKey() ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.key) != chacha20poly1305.KeySize {
+	if len(s.key) == 0 || len(s.key) > UnlockKeyMaxSize {
 		return nil, ErrLocked
 	}
 	return append([]byte{}, s.key...), nil
@@ -210,31 +228,21 @@ func (s *EncryptedStore) Unlock(ctx context.Context, passphrase []byte) error {
 		if err != nil {
 			return err
 		}
-		h := record.Header
-		if h.Backend != "passphrase" || len(passphrase) > 4096 {
-			return ErrUnlock
-		}
-		derived := argon2.IDKey(passphrase, h.Salt, h.Time, h.Memory, h.Parallelism, chacha20poly1305.KeySize)
-		defer clear(derived)
-		box, _ := chacha20poly1305.NewX(derived)
-		key, err := box.Open(nil, h.WrapNonce, h.WrappedKey, wrapAAD(h))
+		key, err := passphraseRecordKey(record, passphrase)
 		if err != nil {
-			return ErrUnlock
+			return err
 		}
 		defer clear(key)
-		if _, err := openEncrypted(record, key); err != nil {
-			return ErrUnlock
-		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		s.setKey(key, h)
+		s.setKey(key, record.Header)
 		return nil
 	})
 }
 
 func (s *EncryptedStore) UnlockWithKey(ctx context.Context, key []byte) error {
-	if len(key) != chacha20poly1305.KeySize {
+	if len(key) == 0 || len(key) > UnlockKeyMaxSize {
 		return ErrUnlock
 	}
 	return s.base.locked(ctx, s.name, func(dir *os.File) error {
@@ -251,46 +259,6 @@ func (s *EncryptedStore) UnlockWithKey(ctx context.Context, key []byte) error {
 		s.setKey(key, record.Header)
 		return nil
 	})
-}
-
-func openEncrypted(record encryptedRecord, key []byte) (Credentials, error) {
-	box, err := chacha20poly1305.NewX(key)
-	if err != nil {
-		return Credentials{}, ErrUnlock
-	}
-	data, err := box.Open(nil, record.Nonce, record.Ciphertext, dataAAD(record.Header))
-	if err != nil {
-		return Credentials{}, ErrUnlock
-	}
-	defer clear(data)
-	var value fileProfile
-	if json.Unmarshal(data, &value) != nil || value.Schema != 1 || value.Name != record.Header.Name {
-		return Credentials{}, ErrUnlock
-	}
-	if err := validateFileCredentials(value.Credentials); err != nil {
-		return Credentials{}, ErrUnlock
-	}
-	return value.Credentials, nil
-}
-
-func sealEncrypted(header encryptedHeader, key []byte, credentials Credentials) (encryptedRecord, error) {
-	if err := validateFileCredentials(credentials); err != nil {
-		return encryptedRecord{}, err
-	}
-	data, err := json.Marshal(fileProfile{Schema: 1, Name: header.Name, Credentials: credentials})
-	if err != nil || len(data) > 1<<20 {
-		return encryptedRecord{}, fmt.Errorf("profile exceeds supported size")
-	}
-	defer clear(data)
-	nonce := make([]byte, chacha20poly1305.NonceSizeX)
-	if _, err := rand.Read(nonce); err != nil {
-		return encryptedRecord{}, err
-	}
-	box, err := chacha20poly1305.NewX(key)
-	if err != nil {
-		return encryptedRecord{}, err
-	}
-	return encryptedRecord{Header: header, Nonce: nonce, Ciphertext: box.Seal(nil, nonce, data, dataAAD(header))}, nil
 }
 
 func writeEncrypted(ctx context.Context, dir *os.File, record encryptedRecord) error {
@@ -361,17 +329,29 @@ func (s *EncryptedStore) load(dir *os.File) (Credentials, error) {
 		return Credentials{}, err
 	}
 	s.mu.Lock()
-	key := append([]byte{}, s.key...)
 	header := s.header
-	s.mu.Unlock()
-	defer clear(key)
-	if len(key) != chacha20poly1305.KeySize {
-		return Credentials{}, ErrLocked
+	identity := s.identity
+	auth := append([]byte{}, s.authenticationKey...)
+	var key []byte
+	if header.Schema == 1 {
+		key = append([]byte{}, s.key...)
 	}
+	s.mu.Unlock()
+	defer clear(auth)
+	defer clear(key)
 	if sha256.Sum256(dataAAD(header)) != sha256.Sum256(dataAAD(record.Header)) {
 		return Credentials{}, ErrLocked
 	}
-	return openEncrypted(record, key)
+	if header.Schema == ageProfileSchema {
+		if identity == nil || len(auth) != 32 {
+			return Credentials{}, ErrLocked
+		}
+		return openAgeEncrypted(record, identity, auth)
+	}
+	if len(key) == 0 {
+		return Credentials{}, ErrLocked
+	}
+	return legacyOpenEncrypted(record, key)
 }
 
 func (s *EncryptedStore) Load(ctx context.Context, name string) (Credentials, error) {
@@ -392,6 +372,12 @@ func (s *EncryptedStore) SaveRefresh(ctx context.Context, name, expected, provid
 		old, err := s.load(dir)
 		if err != nil {
 			return err
+		}
+		s.mu.Lock()
+		schema := s.header.Schema
+		s.mu.Unlock()
+		if schema != ageProfileSchema {
+			return ErrMigrationRequired
 		}
 		if old.Version != expected || old.ConnectionVersion != next.ConnectionVersion {
 			return ErrConflict

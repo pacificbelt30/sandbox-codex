@@ -72,7 +72,7 @@ func TestEncryptedProxyKeyOnlyUsesStdin(t *testing.T) {
 			}
 		}
 	}
-	if !cfg.OpenStdin || !strings.Contains(args, "--profile-key-stdin") || bytes.Contains(data, key) || strings.Contains(string(data)+args, "fixture-encrypted-command-key") {
+	if !cfg.OpenStdin || !strings.Contains(args, "--profile-key-stdin") || bytes.Contains(data, key) || strings.Contains(string(data), "AGE-SECRET-KEY-") || strings.Contains(string(data)+args, "fixture-encrypted-command-key") {
 		t.Fatal("key or credentials leaked into metadata, or stdin missing")
 	}
 	spec.profileKey = bytes.Repeat([]byte{1}, 32)

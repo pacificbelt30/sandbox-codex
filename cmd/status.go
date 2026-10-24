@@ -78,7 +78,11 @@ func profileStatus(ctx context.Context, report *diagnostics.Report, checkConnect
 			report.Add("profile", "", "Check encrypted profile metadata.", fmt.Errorf("encrypted profile metadata is invalid"))
 			return
 		}
-		storage = "encrypted (" + info.Backend + ")"
+		if info.Format != "age" {
+			report.Add("profile", "", "Run oaiso auth profile migrate-age "+profile+" after draining workers.", credentialstore.ErrMigrationRequired)
+			return
+		}
+		storage = "encrypted (" + info.Backend + ", " + info.Format + ")"
 		if !checkConnection {
 			report.Add("profile", profile+" ("+storage+", 0600); saved, locked for this command", "", nil)
 			report.Checks = append(report.Checks, diagnostics.Check{Name: "connection", Status: "unchecked", Detail: "Credentials were not decrypted; connection and inference not tested", Fix: "Start the selected agent, or explicitly use --check-connection for API keys."})

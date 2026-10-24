@@ -79,7 +79,7 @@ cd sandbox-oasis
 ```
 
 - 必要なツールと公式手順：[Go・Make・Git・uv・Python](development/toolchain.md#必要なツールと公式手順)。
-- Goの最低版は `go.mod` の1.24.7。公式の安定版と対応するSHA-256を使用してください。
+- Goの最低版は `go.mod` の1.26.0。公式の安定版と対応するSHA-256を使用してください。
 
 ### 個別に計画・適用する場合
 

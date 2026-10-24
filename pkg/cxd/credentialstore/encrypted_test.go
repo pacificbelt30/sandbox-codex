@@ -355,3 +355,21 @@ func BenchmarkEncryptedRefresh(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkEncryptedLoad(b *testing.B) {
+	s, err := NewEncryptedStore(filepath.Join(b.TempDir(), "profile"), "work")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if err = s.CreateWithPassphrase(context.Background(), "work", []byte("correct horse battery staple"), Credentials{OpenAIAPIKey: "fixture-load-benchmark"}); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err = s.Load(context.Background(), "work"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
