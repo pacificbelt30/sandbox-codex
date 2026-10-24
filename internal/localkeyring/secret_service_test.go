@@ -10,6 +10,7 @@ import (
 
 func TestSecretServiceUnavailableDoesNotFallback(t *testing.T) {
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "")
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	_, err := (SecretService{}).Get(context.Background(), "public-key-id")
 	if err == nil || !strings.Contains(err.Error(), "existing user D-Bus") {
 		t.Fatal("missing service did not fail closed")

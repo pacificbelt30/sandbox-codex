@@ -25,7 +25,7 @@ func TestLoginCreatesAndSelectsIndependentProfileWithoutHostCredentials(t *testi
 	}
 	var output bytes.Buffer
 	cmd := newLoginCommand()
-	cmd.SetArgs([]string{"--agent", "claude", "--method", "api-key", "--profile", "work", "--key-stdin", "--skip-check"})
+	cmd.SetArgs([]string{"--agent", "claude", "--method", "api-key", "--profile", "work", "--key-stdin", "--skip-check", "--plaintext"})
 	cmd.SetIn(strings.NewReader("explicit-key\n"))
 	cmd.SetOut(&output)
 	cmd.SetErr(&output)
@@ -101,5 +101,26 @@ func TestLoginConfigRejectsLinksAndConcurrentChanges(t *testing.T) {
 	data, _ := os.ReadFile(target)
 	if string(data) != "# original\n" {
 		t.Fatal("failed login changed existing settings")
+	}
+}
+
+func TestDefaultLoginRejectsUnavailableKeyringWithoutSavingPlaintext(t *testing.T) {
+	isolatedProfiles(t)
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "")
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	cmd := newLoginCommand()
+	cmd.SetArgs([]string{"--agent", "codex", "--method", "api-key", "--profile", "new-work", "--key-stdin", "--skip-check", "--no-select"})
+	cmd.SetIn(strings.NewReader("fixture-never-valid"))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "keyring") {
+		t.Fatal("default login did not require keyring", err)
+	}
+	store, err := openAuthProfile("new-work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Load(context.Background(), "new-work"); err != credentialstore.ErrNotFound {
+		t.Fatal("failed keyring login wrote credentials", err)
 	}
 }

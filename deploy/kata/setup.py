@@ -49,7 +49,9 @@ BUNDLE_FILES = ['oaiso', 'codex-dock-worker-guard', 'codex-dock-io-logger']
 PACKAGES = {'ip': 'iproute2', 'nft': 'nftables', 'sysctl': 'procps',
             'gcc': 'gcc', 'debugfs': 'e2fsprogs', 'zstd': 'zstd',
             'curl': 'curl', 'getent': 'libc-bin', 'usermod': 'passwd',
-            'modprobe': 'kmod', 'tar': 'tar'}
+            'modprobe': 'kmod', 'tar': 'tar',
+            'dbus-daemon': 'dbus-daemon', 'dbus-run-session': 'dbus-daemon',
+            'gnome-keyring-daemon': 'gnome-keyring', 'secret-tool': 'libsecret-tools'}
 
 
 def run(args, **kwargs):

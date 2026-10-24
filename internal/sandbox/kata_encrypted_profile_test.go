@@ -22,6 +22,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/pacificbelt30/codex-dock/internal/authproxy"
 	"github.com/pacificbelt30/codex-dock/internal/engine"
+	"github.com/pacificbelt30/codex-dock/internal/localkeyring"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 )
@@ -65,7 +66,12 @@ func TestKataEncryptedProfile(t *testing.T) {
 	defer func() { _ = store.Close() }()
 	secret := "fixture-encrypted-api-never-valid"
 	pass := []byte("fixture long encrypted passphrase")
-	if err = store.CreateWithPassphrase(ctx, "work", pass, credentialstore.Credentials{OpenAIAPIKey: secret}); err != nil {
+	if os.Getenv("CODEX_DOCK_KATA_KEYRING") == "1" {
+		err = store.CreateWithKeyring(ctx, "work", localkeyring.SecretService{}, credentialstore.Credentials{OpenAIAPIKey: secret})
+	} else {
+		err = store.CreateWithPassphrase(ctx, "work", pass, credentialstore.Credentials{OpenAIAPIKey: secret})
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	key, err := store.UnlockedKey()
@@ -352,4 +358,37 @@ func verifyLegacyAgeMigration(t *testing.T, ctx context.Context) {
 		t.Fatal("migration recovery backup is missing")
 	}
 	t.Log("verified: production CLI migrates original schema-1 ciphertext to age, rotates connection generation and retains an encrypted 0600 recovery backup")
+}
+
+// Runs the same real-Kata and production-proxy checks with real Secret Service.
+func TestKataKeyringProfile(t *testing.T) {
+	if os.Getenv("CODEX_DOCK_KATA_E2E") != "1" {
+		t.Skip("requires disposable Linux/KVM node")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	testBinary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli := os.Getenv("CODEX_DOCK_KATA_TEST_BINARY")
+	input, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	pass := []byte("fixture headless keyring master password")
+	_, _ = writer.Write(pass)
+	_ = writer.Close()
+	command := exec.CommandContext(ctx, cli, "--passphrase-fd", "3", "auth", "keyring", "session", "--", testBinary, "-test.run", "^TestKataEncryptedProfile$", "-test.v", "-test.count=1")
+	command.Env = append(os.Environ(), "CODEX_DOCK_KATA_KEYRING=1")
+	command.ExtraFiles = []*os.File{input}
+	output, err := command.CombinedOutput()
+	if bytes.Contains(output, pass) {
+		t.Fatal("keyring session exposed its master password")
+	}
+	if err != nil {
+		t.Fatalf("real keyring/Kata flow failed: %v %s", err, output)
+	}
+	t.Log("verified: real headless D-Bus/GNOME Keyring, encrypted profiles, secret stdin proxy startup, credential-free Kata guest, lock/restart and CLI reuse")
 }

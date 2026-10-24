@@ -10,7 +10,7 @@
 
 | 項目 | 仕様 |
 |---|---|
-| 既定 | 0700ディレクトリ・0600の平文保存を維持。暗号化は明示選択 |
+| 既定 | 新規loginはキーリング。既存profile・低水準set/importは維持。`login --encrypt`／`--plaintext`で明示選択 |
 | 保存先 | 制御ホストの製品専用profile。workspace・clone・追加mountと共有しない |
 | 対象 | APIキー・OAuth access／refresh／ID token・資格情報版・接続世代 |
 | 暗号化の実装 | `filippo.io/age` v1.3.2をGoバイナリへ組込み |
@@ -45,7 +45,7 @@
 | 新規scrypt負荷 | `logN=17`、`r=8`、`p=1`。約128 MiBの作業領域。小さい制御環境を考慮して明示設定 |
 | 読取り時の上限 | `SetMaxWorkFactor(18)`。過大なファイル指定値による無制限な鍵導出を拒否 |
 | 入力制限 | 新規パスフレーズ12〜4096バイト。専用FDは3以上、最大4096バイト |
-| OSキーリング | 任意の`--keyring`。既存Secret Serviceへ鍵束を保存し、読戻しを検証 |
+| OSキーリング | 新規loginの既定。Secret Serviceへ鍵束を保存し、読戻しを検証。専用sessionも利用可能 |
 | キーリングの前提 | ホストの`secret-tool`・利用者D-Bus。操作は15秒でタイムアウト |
 | 日常操作 | Proxy起動時に解錠。起動済みProxyでは再入力不要 |
 | 更新時の負荷 | 解錠済みidentityを再利用し、公開recipientで暗号化。推論・OAuth保存ごとにscryptを実行しない |
@@ -110,3 +110,10 @@
 - 外側VM snapshotで鍵・暗号文・世代情報が同時に戻る場合、ローカルだけで完全な巻戻し検知はできません。
 - WSLはLinux側の私有領域を使用。DrvFS・NFS・FUSE等の未検証filesystemは拒否します。
 - [実施済み試験・測定値・未確認事項](../testing.md)を参照してください。
+
+## キーリングのセッション管理
+
+- [操作手順](../guides/keyring.md)：デスクトップの既存サービスを探索し、GUIなしでは専用セッションを起動。
+- D-BusとGNOME KeyringをCLIのforeground子プロセスとして管理。通常終了、SIGINT・SIGTERM・SIGHUPで取消・回収。
+- 専用のキーリングファイルとProxyメモリで鍵を管理し、パスフレーズファイルやPAM設定の自動変更は行わない。
+- キーリングの保管先とfilesystem上のD-Busソケットを、作業VMへの共有対象にできないよう検証。

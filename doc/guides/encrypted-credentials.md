@@ -3,7 +3,7 @@
 **日本語** | [English](../en/guides/encrypted-credentials.md)
 
 - **開発版の機能です。公開済みv0.0.2には含まれません。**
-- 既定は従来の0600平文保存。暗号化はプロファイルごとに選びます。
+- 新規`login`は[キーリング方式](keyring.md)が既定。既存プロファイルと低水準の`auth profile set/import`は従来の方式を維持します。
 - APIキー・サブスクの両方が対象です。認証Proxyを維持し、作業VMへ実資格情報を渡しません。
 
 ## 方式を選ぶ
@@ -11,10 +11,10 @@
 | 方式 | 選ぶ場面 | 必要なもの |
 |---|---|---|
 | パスフレーズ | WSL・Linux VM・SSH・GUIなし | 12バイト以上の長いパスフレーズ |
-| OSキーリング | 既存のLinuxデスクトップの鍵保管を使いたい | Secret Service、利用者D-Bus、`secret-tool` |
+| キーリング（新規loginの既定） | デスクトップ・SSH・WSL・VM | Secret Service、利用者D-Bus、`secret-tool`。[準備とGUIなしの使い方](keyring.md) |
 
 - ageをバイナリへ組み込むため、追加のageコマンド・サービス・DB・Vault・コンテナは不要です。ローカルで保存・解錠できます。
-- OSキーリング方式は明示選択です。既存サービスを使い、利用不能ならエラーにします。製品専用のキーリングサービスは追加しません。OSキーリング側の保存時の保護は、その設定に依存します。
+- 既存のデスクトップサービス、または明示的な専用セッションを使い、利用不能ならエラーにします。OSキーリング側の保存時の保護は、その設定に依存します。
 - OSキーリングのロック解除は、既存サービスの画面が開く場合があります。応答できない場合は15秒で失敗します。
 - `secret-tool`：[公式マニュアル](https://manpages.debian.org/trixie/libsecret-tools/secret-tool.1.en.html)。Ubuntuでは`libsecret-tools`に含まれます。
 

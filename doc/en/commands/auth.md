@@ -12,6 +12,12 @@
 | Select a profile | `--auth-profile NAME` or global `auth_profile` |
 | Keep legacy host integration | Leave profiles unselected; use `auth show` / `auth set` |
 
+## Keyring
+
+- `oaiso auth keyring check`: store/read/delete probe without displaying secrets.
+- `oaiso auth keyring session [-- COMMAND...]`: private headless session.
+- [Dependencies, unlocking and session lifetime](../guides/keyring.md).
+
 ## Independent profiles
 
 ### Behavior and storage

@@ -9,7 +9,7 @@
 
 | Item | Contract |
 |---|---|
-| Default | Retain 0700 directories and 0600 plaintext files; encryption is explicit |
+| Default | New login profiles use Secret Service; existing profiles and low-level set/import remain unchanged; explicit `--encrypt`/`--plaintext` alternatives |
 | Location | Private product profiles on the control host, outside workspace/clone/additional shares |
 | Encrypted data | API keys, OAuth access/refresh/ID tokens, credential versions and connection generations |
 | Implementation | Embed `filippo.io/age` v1.3.2 in the Go binary |
@@ -44,7 +44,7 @@
 | New scrypt cost | `logN=17`, `r=8`, `p=1`, approximately 128 MiB workspace; explicit small-control-host budget |
 | Accepted maximum | `SetMaxWorkFactor(18)` prevents unbounded file-supplied KDF work |
 | Input limits | New passphrases 12–4096 bytes; explicit descriptor >= 3, maximum 4096 bytes |
-| Optional keyring | `--keyring` stores the secret bundle in existing Secret Service and verifies read-back |
+| Keyring | New-login default; store/read-back the bundle through an existing service or an explicit private session |
 | Keyring requirements | Host `secret-tool` and user D-Bus; 15-second operation timeout |
 | Everyday use | Unlock on proxy startup; no repeated prompt while the same proxy is running |
 | Refresh cost | Reuse the unlocked identity and encrypt to its public recipient; no scrypt per inference/refresh |
@@ -109,3 +109,10 @@
 - Local-only storage cannot fully detect a snapshot rolling back keys, ciphertext and generation state together.
 - WSL uses private Linux storage; reject unverified DrvFS/NFS/FUSE filesystems.
 - [Results, measurements and remaining checks](../../testing.md).
+
+## Keyring sessions
+
+- [User guide](../guides/keyring.md): existing desktop service discovery and private headless sessions.
+- The CLI owns foreground D-Bus and GNOME Keyring processes; normal exit, SIGINT, SIGTERM and SIGHUP cancel and reap them.
+- Keys stay in the separate private keyring files and proxy memory; no passphrase file or global PAM modification.
+- Share validation rejects keyring storage and filesystem D-Bus socket paths.

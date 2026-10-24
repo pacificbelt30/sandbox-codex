@@ -12,6 +12,12 @@
 | 利用するプロファイルを選ぶ | `--auth-profile NAME` またはグローバル `auth_profile` |
 | ホスト認証を従来どおり使う | プロファイル未選択で [`auth show`](#auth-show--認証状態の確認) / [`auth set`](#auth-set--api-キーの保存) |
 
+## キーリング
+
+- `oaiso auth keyring check`：秘密を表示せず保存・取得・削除を確認。
+- `oaiso auth keyring session [-- COMMAND...]`：GUIなしの専用セッション。
+- [依存・解錠・終了時の扱い](../guides/keyring.md)。
+
 ## 独立プロファイル
 
 ### 動作と保存先

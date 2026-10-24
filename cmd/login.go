@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/pacificbelt30/codex-dock/internal/localkeyring"
 	"github.com/pacificbelt30/codex-dock/internal/logincheck"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/spf13/cobra"
@@ -23,7 +24,7 @@ func init() { rootCmd.AddCommand(newLoginCommand()) }
 
 func newLoginCommand() *cobra.Command {
 	var agent, method, profile string
-	var keyStdin, skipCheck, noSelect, encrypt, keyring bool
+	var keyStdin, skipCheck, noSelect, encrypt, keyring, plaintext bool
 	cmd := &cobra.Command{Use: "login", Short: "Log in with an independent profile and prepare authentication settings", Args: cobra.NoArgs}
 	cmd.Flags().StringVar(&agent, "agent", "", "Agent: codex or claude; prompt when omitted")
 	cmd.Flags().StringVar(&method, "method", "", "Authentication: api-key or subscription; prompt when omitted")
@@ -31,13 +32,18 @@ func newLoginCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&keyStdin, "key-stdin", false, "Read the API key explicitly from stdin")
 	cmd.Flags().BoolVar(&skipCheck, "skip-check", false, "Save an API key without a network check, marked unverified")
 	cmd.Flags().BoolVar(&noSelect, "no-select", false, "Save the new profile without changing global settings")
-	cmd.Flags().BoolVar(&encrypt, "encrypt", false, "Encrypt the new profile with a passphrase (opt-in)")
-	cmd.Flags().BoolVar(&keyring, "keyring", false, "Encrypt using the existing Linux Secret Service (requires secret-tool)")
-	cmd.MarkFlagsMutuallyExclusive("encrypt", "keyring")
+	cmd.Flags().BoolVar(&encrypt, "encrypt", false, "Encrypt with a product passphrase instead of the default keyring")
+	cmd.Flags().BoolVar(&keyring, "keyring", true, "Encrypt using Secret Service (default; use auth keyring session on headless hosts)")
+	cmd.Flags().BoolVar(&plaintext, "plaintext", false, "Explicitly save unencrypted credentials with mode 0600")
+	cmd.MarkFlagsMutuallyExclusive("encrypt", "keyring", "plaintext")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if os.Geteuid() == 0 {
 			return fmt.Errorf("run login as the normal operator")
 		}
+		if cmd.Flags().Changed("keyring") && !keyring {
+			return fmt.Errorf("choose --encrypt or --plaintext explicitly instead of --keyring=false")
+		}
+		keyring = !encrypt && !plaintext
 		input := cmd.InOrStdin()
 		terminal := false
 		var terminalInput *os.File
@@ -87,6 +93,11 @@ func newLoginCommand() *cobra.Command {
 				return err
 			}
 			return fmt.Errorf("profile already exists; choose a new --profile name")
+		}
+		if keyring {
+			if err := (localkeyring.SecretService{}).Probe(cmd.Context()); err != nil {
+				return fmt.Errorf("keyring is not ready: %w; on headless hosts use oaiso auth keyring session", err)
+			}
 		}
 		var pass []byte
 		if encrypt {

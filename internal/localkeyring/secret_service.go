@@ -1,5 +1,5 @@
 // Package localkeyring uses an existing Linux Secret Service through its
-// official secret-tool client. It adds no product-specific keyring daemon.
+// official secret-tool client. It can use a desktop service or an explicit private headless session.
 package localkeyring
 
 import (
@@ -12,11 +12,16 @@ import (
 	"time"
 )
 
-type SecretService struct{}
+type SecretService struct{ Address string }
 
-func (SecretService) run(ctx context.Context, input []byte, args ...string) ([]byte, error) {
-	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
-		return nil, fmt.Errorf("secret service needs an existing user D-Bus session; choose passphrase storage on headless hosts")
+func (s SecretService) run(ctx context.Context, input []byte, args ...string) ([]byte, error) {
+	address := s.Address
+	var err error
+	if address == "" {
+		address, err = BusAddress()
+		if err != nil {
+			return nil, err
+		}
 	}
 	path, err := exec.LookPath("secret-tool")
 	if err != nil {
@@ -25,6 +30,7 @@ func (SecretService) run(ctx context.Context, input []byte, args ...string) ([]b
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = append(os.Environ(), "DBUS_SESSION_BUS_ADDRESS="+address)
 	cmd.Stdin = bytes.NewReader(input)
 	var out limitedBuffer
 	cmd.Stdout = &out

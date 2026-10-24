@@ -53,6 +53,7 @@ nav:
       - 認証:
           - 認証方式とプロファイル: guides/authentication.md
           - 暗号化して保存する: guides/encrypted-credentials.md
+          - キーリングを使う: guides/keyring.md
           - 認証プロキシ: auth-proxy.md
           - 短命トークン: auth-proxy/tokens.md
           - プロキシの単体利用: proxy-standalone.md
@@ -119,6 +120,7 @@ nav:
           - Authentication:
               - Authentication and profiles: en/guides/authentication.md
               - Encrypted storage: en/guides/encrypted-credentials.md
+              - Keyring sessions: en/guides/keyring.md
               - Auth proxy: en/auth-proxy.md
               - Short-lived tokens: en/auth-proxy/tokens.md
               - Standalone proxy: en/proxy-standalone.md

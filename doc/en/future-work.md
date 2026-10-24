@@ -3,7 +3,7 @@
 ## Simple setup, authentication and operation
 
 - Implement the following six items, validating, documenting and committing each feature.
-- Retain existing 0600 storage and the Auth Proxy; encryption and additional key backends remain optional.
+- Retain existing profiles and the Auth Proxy. New login profiles default to [keyring plus age](guides/keyring.md), with explicit passphrase/plaintext alternatives.
 
 | Item | State and completion criteria |
 |---|---|
@@ -11,7 +11,7 @@
 | Automatic first configuration | Implemented in development: admin authority and profile selection while preserving existing policy/settings |
 | Subscription login Kata | Real Kata with fake credentials verified; live login unverified: pinned CLI, memory-only login, temporary VM cleanup, no secret retention in console logs or work VMs |
 | Consolidated status | Implemented in development: [`oaiso status`](commands/status.md) distinguishes saved, connected, inference, runtime and update states |
-| Lightweight local encrypted storage | [Implemented in development](guides/encrypted-credentials.md): opt-in encryption, explicit migration, passphrase changes and locking; see [verification](../testing.md) |
+| Lightweight local encrypted storage | [Implemented in development](guides/encrypted-credentials.md): keyring-default new login profiles, explicit migration, passphrase changes and locking; see [verification](../testing.md) |
 | Unified update guidance | Implemented in development: `oaiso upgrade` plans/applies distribution updates and explains image update order |
 
 - [Development-version login](commands/login.md) is separate from published v0.0.2 installation instructions.

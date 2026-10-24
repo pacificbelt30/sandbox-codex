@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -114,5 +115,24 @@ func TestProfileLockScopesSameNamesByProxyStore(t *testing.T) {
 		if selected != tc.selected || known != tc.known {
 			t.Fatal("profile lock crossed storage roots or accepted an unknown worker scope")
 		}
+	}
+}
+
+func TestWorkerSharesRejectKeyringAuthority(t *testing.T) {
+	isolatedProfiles(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+t.TempDir()+"/bus")
+	authProfileName = "work"
+	// A selected profile enables the credential share boundary.
+	if _, err := openAuthProfile("work"); err != nil {
+		t.Fatal(err)
+	}
+	keyring := filepath.Join(os.Getenv("HOME"), ".config", "codex-dock", "keyring")
+	if err := ensureProfilesOutsideWorkerShares(keyring, "", nil); err == nil {
+		t.Fatal("keyring storage accepted as workspace")
+	}
+	bus := strings.TrimPrefix(os.Getenv("DBUS_SESSION_BUS_ADDRESS"), "unix:path=")
+	if err := ensureProfilesOutsideWorkerShares(filepath.Dir(bus), "", nil); err == nil {
+		t.Fatal("keyring bus accepted as workspace")
 	}
 }

@@ -3,7 +3,7 @@
 [日本語](../../guides/encrypted-credentials.md) | **English**
 
 - **Development only; unavailable in published v0.0.2.**
-- Plaintext 0600 storage remains the default; choose encryption per profile.
+- New `login` profiles use the [keyring](keyring.md) by default. Existing profiles and low-level `auth profile set/import` keep their existing behavior.
 - Supports API keys and subscription credentials. The Auth Proxy remains; work VMs receive no real credentials.
 
 ## Choose a backend
@@ -11,10 +11,10 @@
 | Backend | Use case | Requirements |
 |---|---|---|
 | Passphrase | WSL, Linux VMs, SSH and headless hosts | A long passphrase, at least 12 bytes |
-| OS keyring | Existing Linux desktop secret storage | Secret Service, user D-Bus, `secret-tool` |
+| Keyring (new-login default) | Desktop, SSH, WSL and VMs | Secret Service, user D-Bus, `secret-tool`; [setup and headless use](keyring.md) |
 
 - age is embedded: no additional age executable, service, database, Vault or container; storage/unlocking are local.
-- Explicit keyring selection uses the existing service; failure never switches backends. Oaiso adds no product-specific keyring daemon. Keyring storage protection depends on its OS configuration.
+- Use an existing desktop service or an explicitly opened private session; failure never switches backends. Keyring storage protection depends on its OS configuration.
 - Existing keyring unlock dialogs may appear. Unanswered operations fail after 15 seconds.
 - [`secret-tool` manual](https://manpages.debian.org/trixie/libsecret-tools/secret-tool.1.en.html); Ubuntu packages it as `libsecret-tools`.
 

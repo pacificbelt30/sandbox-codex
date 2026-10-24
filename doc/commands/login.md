@@ -4,6 +4,8 @@
 
 **開発版の機能です。公開済みv0.0.2では[独立プロファイルの手動設定](auth.md#独立プロファイル)を使用してください。**
 
+- 既定はキーリング保存です。GUIなしでは先に`oaiso auth keyring session`を開いてください。[準備と操作](../guides/keyring.md)。
+
 ## 対話でログインする
 
 ```bash
@@ -41,19 +43,20 @@ oaiso login --agent claude --method api-key --profile work
 | `--key-stdin` | 明示的にstdinからAPIキー入力。agentとmethodの指定が必須 |
 | `--skip-check` | APIキーを未検証のまま保存。オフラインなどで明示的に選ぶ場合のみ |
 | `--encrypt` | 非表示入力のパスフレーズで直接暗号化 |
-| `--keyring` | 既存Secret Serviceで暗号化。`--encrypt`とは同時指定不可 |
+| `--keyring` | Secret Serviceで暗号化。新規loginの既定 |
+| `--plaintext` | 明示的に0600平文保存。`--encrypt`・`--keyring`とは同時指定不可 |
 | `--no-select` | 保存だけを行い、グローバル設定を変更しない |
 
 ## 保存と接続確認の表示
 
 ```text
-Profile saved: work (plaintext, 0600).
+Profile saved: work (encrypted, 0600).
 Connection check: passed. Inference: not tested.
 Selected profile: work
 Settings: /home/user/.config/codex-dock/config.toml
 ```
 
-- 名前・パスは例。既定の保存方式は0600の平文。任意で[暗号化保存](../guides/encrypted-credentials.md)を選べます。
+- 名前・パスは例。新規loginは[キーリング方式](../guides/keyring.md)が既定。GUIなしでは`oaiso auth keyring session`内で実行します。
 - 暗号化ストアは[実装仕様](../development/local-credential-store.md)を参照。
 - 接続確認はモデル一覧APIへの認証。実推論や全モデルの利用権限の保証ではない。
 - サブスクでは `Official CLI login: completed. Inference: not tested.` と表示。
@@ -92,4 +95,4 @@ oaiso claude
 - 既存Proxyが別プロファイルを使う場合、旧ワーカーとProxyを先に終了してから初期化。
 - 公式手順：[Codex認証](https://learn.chatgpt.com/docs/auth)・[Claude認証](https://code.claude.com/docs/en/authentication)。
 
-- 既定は0600平文保存。任意の[暗号化保存](../guides/encrypted-credentials.md)も選べます。
+- 既存プロファイルは変更しません。キーリングを使わない新規loginは`--encrypt`または`--plaintext`を明示指定します。

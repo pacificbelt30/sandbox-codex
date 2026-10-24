@@ -14,7 +14,7 @@
 | Embedding product Store | Storage provided by the embedding application | Manage per-case credentials through the [Go API](../credential-store.md) |
 
 - Selected independent profiles never fall back to host authentication.
-- Current independent profile storage: permission-restricted plaintext.
+- The manual `set/import` examples below use 0600 plaintext. New development `login` profiles default to [keyring plus age](keyring.md).
 - Keep credentials and profile selection out of project `oaiso.toml` files.
 
 ## 2. Choose the agent and authentication method

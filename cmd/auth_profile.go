@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pacificbelt30/codex-dock/internal/localkeyring"
 	"github.com/pacificbelt30/codex-dock/internal/sandbox"
 	"github.com/pacificbelt30/codex-dock/pkg/cxd/credentialstore"
 	"github.com/spf13/cobra"
@@ -284,6 +285,11 @@ func ensureProfilesOutsideWorkerShares(project, clone string, mounts []sandbox.M
 		return err
 	}
 	protected := []string{directory}
+	keyringPaths, err := localkeyring.PrivatePaths()
+	if err != nil {
+		return err
+	}
+	protected = append(protected, keyringPaths...)
 	if runProxyAdminSecretFile != "" {
 		path, err := filepath.Abs(runProxyAdminSecretFile)
 		if err != nil {
@@ -317,7 +323,7 @@ func ensureProfilesOutsideWorkerShares(project, clone string, mounts []sandbox.M
 		}
 		for _, private := range protected {
 			if contains(private, path) || contains(path, private) {
-				return fmt.Errorf("credential profile storage and admin secret must be outside the workspace, clone and additional mounts")
+				return fmt.Errorf("credential profiles, keyring files/sockets and admin secrets must be outside the workspace, clone and additional mounts")
 			}
 		}
 	}

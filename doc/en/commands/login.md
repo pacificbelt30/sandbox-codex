@@ -4,6 +4,8 @@
 
 **Development version only. Published v0.0.2 uses [manual independent profile setup](auth.md#independent-profiles).**
 
+- Keyring storage is the default. On headless hosts, first open `oaiso auth keyring session`. [Setup and use](../guides/keyring.md).
+
 ## Interactive login
 
 ```bash
@@ -40,19 +42,20 @@ oaiso login --agent claude --method api-key --profile work
 | `--key-stdin` | Explicit API key input; requires agent and method flags |
 | `--skip-check` | Explicitly save an unverified API key, for example offline |
 | `--encrypt` | Encrypt directly with a hidden passphrase |
-| `--keyring` | Encrypt with an existing Secret Service; mutually exclusive with `--encrypt` |
+| `--keyring` | Secret Service encryption; the default for new login profiles |
+| `--plaintext` | Explicit 0600 plaintext storage; mutually exclusive with `--encrypt` and `--keyring` |
 | `--no-select` | Save without changing global settings |
 
 ## Saved and connection-checked are different
 
 ```text
-Profile saved: work (plaintext, 0600).
+Profile saved: work (encrypted, 0600).
 Connection check: passed. Inference: not tested.
 Selected profile: work
 Settings: /home/user/.config/codex-dock/config.toml
 ```
 
-- Names and paths are examples. Default storage is plaintext with 0600 permissions. Choose [`--encrypt` or `--keyring`](../guides/encrypted-credentials.md) for optional encryption.
+- Names and paths are examples. New login profiles use the [keyring](../guides/keyring.md) by default; use `oaiso auth keyring session` on headless hosts. Existing profiles are unchanged.
 - A passed models-list check does not establish inference success or permission to use every model.
 - Subscriptions report `Official CLI login: completed. Inference: not tested.`
 - Normal errors do not include upstream response bodies or real keys.
